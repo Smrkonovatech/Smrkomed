@@ -2,11 +2,13 @@ import type { NextAuthConfig } from "next-auth";
 import type { StaffRole } from "@prisma/client";
 
 const authSecret =
-  process.env["AUTH_SECRET"] ?? process.env["NEXTAUTH_SECRET"];
+  process.env["AUTH_SECRET"] ??
+  process.env["NEXTAUTH_SECRET"] ??
+  "smrkomed-demo-auth-secret-replace-in-production-32";
 
 export const authConfig = {
   trustHost: true,
-  ...(authSecret ? { secret: authSecret } : {}),
+  secret: authSecret,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",

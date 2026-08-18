@@ -14,11 +14,7 @@ function LoginForm() {
   const callbackUrl = searchParams.get("callbackUrl") || "/";
   const [email, setEmail] = useState("meera@abcfertility.demo");
   const [password, setPassword] = useState("Demo@12345");
-  const [error, setError] = useState<string | null>(() =>
-    searchParams.get("error") === "Configuration"
-      ? "Sign-in is not configured on this deployment. Add AUTH_SECRET and DATABASE_URL in Vercel, then redeploy."
-      : null,
-  );
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent) {
@@ -32,11 +28,7 @@ function LoginForm() {
     });
     setLoading(false);
     if (result?.error) {
-      setError(
-        result.error === "Configuration"
-          ? "Sign-in is not configured on this deployment. Add AUTH_SECRET and DATABASE_URL in Vercel, then redeploy."
-          : "Invalid email or password.",
-      );
+      setError("Invalid email or password.");
       return;
     }
     router.push(callbackUrl);
