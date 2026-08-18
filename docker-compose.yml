@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: smrkomed-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: smrkomed
+      POSTGRES_PASSWORD: smrkomed
+      POSTGRES_DB: smrkomed
+    volumes:
+      - smrkomed_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smrkomed -d smrkomed"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  smrkomed_pgdata:
