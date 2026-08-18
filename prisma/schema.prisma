@@ -1,6 +1,7 @@
 // SmrkoMed — multi-tenant fertility clinic schema (Phase 1 foundation)
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
 }
 
 datasource db {

@@ -45,6 +45,32 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) → login screen.
 
+### Deploy on Vercel
+
+Auth.js shows **“There is a problem with the server configuration”** when `AUTH_SECRET` is missing. Vercel also cannot use `localhost` Postgres.
+
+1. Create a hosted Postgres database (Neon, Supabase, or Vercel Postgres).
+2. In the Vercel project: **Settings → Environment Variables**, add for Production + Preview:
+
+| Name | Value |
+|---|---|
+| `AUTH_SECRET` | output of `npx auth secret` (or any 32+ character random string) |
+| `AUTH_TRUST_HOST` | `true` |
+| `AUTH_URL` | `https://your-app.vercel.app` |
+| `DATABASE_URL` | your hosted Postgres URL (`sslmode=require`) |
+| `DIRECT_URL` | same as `DATABASE_URL` unless your host gives a separate direct URL |
+
+3. From this repo, push schema and demo users to the hosted database:
+
+```sh
+npx prisma db push
+npx tsx prisma/seed.ts
+```
+
+Use the hosted `DATABASE_URL` (set it in `.env` or the shell before those commands).
+
+4. Redeploy the Vercel project after saving env vars.
+
 ### Demo accounts
 
 Password for all: `Demo@12345`
