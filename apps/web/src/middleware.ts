@@ -13,6 +13,7 @@ export default auth((req) => {
   const isPublicPage = pathname.startsWith("/book/");
   const isPublicApi =
     pathname.startsWith("/api/auth") ||
+    pathname.startsWith("/api/v1") ||
     pathname === "/api/health" ||
     pathname.startsWith("/api/whatsapp/webhook") ||
     pathname === "/api/onboarding" ||

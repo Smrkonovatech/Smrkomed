@@ -18,6 +18,7 @@ import { Form } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAppState } from "@/lib/app-state";
+import { clinicErrorMessage } from "@/lib/clinic-api";
 import { addCoupleSchema, type AddCoupleValues } from "@/lib/validations/global-actions";
 
 import { FieldGrid, SelectField, TextField } from "./form-fields";
@@ -97,7 +98,7 @@ export function AddCoupleDialog({
       onOpenChange(false);
       router.push(`/patients/${couple.slug}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to create couple. Try again.");
+      toast.error(clinicErrorMessage(error, "Unable to create couple. Try again."));
     }
   });
 
