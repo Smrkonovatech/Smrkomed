@@ -41,6 +41,48 @@ CREATE TYPE "LeadActivityType" AS ENUM (
   'SCORE_UPDATED'
 );
 
+-- Lead was never created in earlier migrations (local DBs used db push).
+CREATE TABLE IF NOT EXISTS "Lead" (
+  "id" TEXT NOT NULL,
+  "organizationId" TEXT NOT NULL,
+  "clinicId" TEXT,
+  "name" TEXT NOT NULL,
+  "phone" TEXT,
+  "email" TEXT,
+  "source" "LeadSource" NOT NULL,
+  "campaign" TEXT,
+  "ad" TEXT,
+  "location" TEXT,
+  "treatmentInterest" TEXT,
+  "assignedToId" TEXT,
+  "status" "LeadStatus" NOT NULL DEFAULT 'NEW',
+  "metadata" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+
+  CONSTRAINT "Lead_pkey" PRIMARY KEY ("id")
+);
+
+DO $$ BEGIN
+  ALTER TABLE "Lead"
+    ADD CONSTRAINT "Lead_organizationId_fkey"
+    FOREIGN KEY ("organizationId") REFERENCES "Organization"("id")
+    ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE "Lead"
+    ADD CONSTRAINT "Lead_clinicId_fkey"
+    FOREIGN KEY ("clinicId") REFERENCES "Clinic"("id")
+    ON DELETE SET NULL ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "Lead_organizationId_status_idx" ON "Lead"("organizationId", "status");
+
 CREATE TABLE "Campaign" (
   "id" TEXT NOT NULL,
   "organizationId" TEXT NOT NULL,
