@@ -1,0 +1,47 @@
+import { Hono } from "hono";
+
+import { authMiddleware } from "../middleware/auth";
+import { tenantMiddleware } from "../middleware/tenant";
+import { analyticsRoutes } from "../modules/analytics";
+import { appointmentRoutes } from "../modules/appointments";
+import { carePlanRoutes, careTaskRoutes } from "../modules/care-loop";
+import { clinicRoutes } from "../modules/clinics";
+import { coupleRoutes } from "../modules/couples";
+import { documentRoutes } from "../modules/documents";
+import { healthRoutes } from "../modules/health";
+import { integrationRoutes } from "../modules/integrations";
+import { leadRoutes } from "../modules/leads";
+import { publicLeadRoutes } from "../modules/leads/public";
+import { campaignRoutes } from "../modules/campaigns";
+import { crmRoutes } from "../modules/crm";
+import { organizationRoutes } from "../modules/organizations";
+import { patientRoutes } from "../modules/patients";
+import { userRoutes } from "../modules/users";
+import { adminRoutes } from "../modules/admin";
+import { publicIntegrationRoutes } from "../modules/integrations/public";
+import type { AppEnv } from "../types";
+
+const protectedRoutes = new Hono<AppEnv>();
+protectedRoutes.use("*", authMiddleware);
+protectedRoutes.use("*", tenantMiddleware);
+protectedRoutes.route("/admin", adminRoutes);
+protectedRoutes.route("/organizations", organizationRoutes);
+protectedRoutes.route("/clinics", clinicRoutes);
+protectedRoutes.route("/users", userRoutes);
+protectedRoutes.route("/patients", patientRoutes);
+protectedRoutes.route("/couples", coupleRoutes);
+protectedRoutes.route("/leads", leadRoutes);
+protectedRoutes.route("/campaigns", campaignRoutes);
+protectedRoutes.route("/crm", crmRoutes);
+protectedRoutes.route("/appointments", appointmentRoutes);
+protectedRoutes.route("/care-plans", carePlanRoutes);
+protectedRoutes.route("/care-tasks", careTaskRoutes);
+protectedRoutes.route("/documents", documentRoutes);
+protectedRoutes.route("/analytics", analyticsRoutes);
+protectedRoutes.route("/integrations", integrationRoutes);
+
+export const v1 = new Hono<AppEnv>();
+v1.route("/health", healthRoutes);
+v1.route("/public", publicLeadRoutes);
+v1.route("/", publicIntegrationRoutes);
+v1.route("/", protectedRoutes);

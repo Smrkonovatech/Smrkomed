@@ -13,6 +13,23 @@ Fertility clinic operating platform with Care Loop — AI-powered patient follow
 
 See [BACKEND-ARCHITECTURE.md](./BACKEND-ARCHITECTURE.md) for the full backend plan.
 
+## Repository layout
+
+npm workspaces. The clinic Next.js app lives in `apps/web`. Prisma lives in `packages/database`.
+
+```text
+apps/web              clinic application (Auth.js + existing Next.js API routes)
+apps/api              Hono API on http://localhost:4000 (`/api/v1`)
+apps/admin            platform admin portal on http://localhost:3001
+packages/database     shared Prisma client, schema, migrations, seed
+```
+
+Root scripts: `npm run dev` and `npm run dev:web` start the clinic app. `npm run dev:api` starts the Hono API. `npm run dev:admin` starts the Admin Portal. Database commands (`npm run db:generate`, `npm run db:seed`) delegate to `packages/database`. You can also run workspaces directly:
+
+```sh
+npm run dev -w @smrkomed/web
+```
+
 ## Phase 1 — local setup
 
 ### 1. Start PostgreSQL
@@ -63,13 +80,13 @@ Auth.js shows **“There is a problem with the server configuration”** when `A
 3. From this repo, push schema and demo users to the hosted database:
 
 ```sh
-npx prisma db push
-npx tsx prisma/seed.ts
+npm run db:push
+npm run db:seed
 ```
 
 Use the hosted `DATABASE_URL` (set it in `.env` or the shell before those commands).
 
-4. Redeploy the Vercel project after saving env vars.
+On Vercel, set the project **Root Directory** to `apps/web`. Env vars still belong in the Vercel dashboard (`AUTH_SECRET`, `DATABASE_URL`, …). Prisma schema lives in `packages/database/prisma/`.
 
 ### Demo accounts
 
@@ -82,6 +99,8 @@ Password for all: `Demo@12345`
 | admin@abcfertility.demo | Clinic Admin |
 | ravi@abcfertility.demo | Doctor |
 | nisha@abcfertility.demo | Receptionist |
+| platform@abcfertility.demo | Organization Admin (ABC Fertility only) |
+| platform@smrkomed.demo | SmrkoMed Platform Admin (Admin Portal) |
 
 ### Useful scripts
 
@@ -91,10 +110,17 @@ Password for all: `Demo@12345`
 | `npm run db:setup` | Generate client, push schema, seed |
 | `npm run db:seed` | Re-seed demo data |
 | `npm run db:studio` | Prisma Studio |
-| `npm run dev` | Next.js dev server |
+| `npm run dev` | Next.js clinic app (`apps/web`) |
+| `npm run dev:web` | Same as `npm run dev` |
+| `npm run dev:api` | Hono API on http://localhost:4000 |
+| `npm run dev:admin` | Admin Portal on http://localhost:3001 |
+
+Existing Next.js routes in `apps/web/src/app/api/` stay in place (`/api/auth/*`, `/api/health`, `/api/clinics/current`, `/api/onboarding`, `/api/integrations`, `/api/leads/ingest`). The Hono service is additive. See `apps/api/README.md` and `apps/admin/README.md`.
 
 ## Current status
 
-**Phase 1:** Auth + PostgreSQL schema + seed + clinic/user/role foundation.
+**Phase 1–3:** Auth.js, shared Prisma package, multi-tenant RBAC, tenant isolation tests.
 
-UI screens still use in-memory demo state for most content. Phase 2 wires patients, couples, care plans, and tasks to real APIs.
+**Phase 4:** Dedicated Hono API at `apps/api` (`/api/v1`). Clinic UI still uses the existing Next.js routes; dashboard migration is later.
+
+**Phase 5:** Internal Admin Portal at `apps/admin` (`http://localhost:3001`) with platform-admin APIs under `/api/v1/admin`.

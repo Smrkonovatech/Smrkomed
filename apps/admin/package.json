@@ -1,0 +1,38 @@
+{
+  "name": "@smrkomed/admin",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node ./scripts/sync-root-env.mjs && next dev -p 3001",
+    "build": "node ./scripts/sync-root-env.mjs && next build",
+    "start": "node ./scripts/sync-root-env.mjs && next start -p 3001",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "@smrkomed/database": "*",
+    "bcryptjs": "^3.0.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.575.0",
+    "next": "16.3.1",
+    "next-auth": "^5.0.0-beta.32",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.3.4",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.16.5",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "^9.32.0",
+    "eslint-config-next": "16.3.1",
+    "tailwindcss": "^4.2.1",
+    "typescript": "^5.8.3"
+  }
+}

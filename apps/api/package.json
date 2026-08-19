@@ -1,0 +1,31 @@
+{
+  "name": "@smrkomed/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "tsx --import ./src/test-preload.ts --test --test-concurrency=1 src/api.test.ts src/admin.test.ts src/integrations.test.ts src/whatsapp.test.ts src/crm.test.ts"
+  },
+  "dependencies": {
+    "@auth/core": "0.41.3",
+    "@hono/node-server": "^1.19.0",
+    "@hono/zod-validator": "^0.7.2",
+    "@smrkomed/database": "*",
+    "dotenv": "^17.4.2",
+    "hono": "^4.9.8",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.32.0",
+    "@types/node": "^22.16.5",
+    "eslint": "^9.32.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.56.1"
+  }
+}

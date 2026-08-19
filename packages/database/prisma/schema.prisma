@@ -1,0 +1,1236 @@
+// SmrkoMed — multi-tenant fertility clinic schema (Phase 1 foundation)
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum StaffRole {
+  CLINIC_ADMIN
+  DOCTOR
+  CARE_COORDINATOR
+  NURSE
+  RECEPTIONIST
+  PLATFORM_ADMIN
+  ORGANIZATION_ADMIN
+  COUNSELOR
+  MARKETING
+  READ_ONLY
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum MembershipStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CoupleStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+enum CarePlanType {
+  FERTILITY_EVALUATION
+  IUI
+  IVF
+  FET
+}
+
+enum CarePlanStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum CarePlanStepStatus {
+  PENDING
+  CURRENT
+  DONE
+  SKIPPED
+}
+
+enum CareTaskStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  ESCALATED
+  CANCELLED
+}
+
+enum CareTaskPriority {
+  LOW
+  NORMAL
+  HIGH
+  CLINICAL
+}
+
+enum TreatmentKind {
+  IVF
+  IUI
+  EVALUATION
+  FET
+}
+
+enum CycleStatus {
+  ACTIVE
+  NEEDS_ATTENTION
+  COMPLETED
+  CANCELLED
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  WAITING
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+enum ConversationChannel {
+  WHATSAPP
+  VOICE
+  SMS
+  EMAIL
+}
+
+enum ConversationStatus {
+  OPEN
+  WAITING_PATIENT
+  WAITING_STAFF
+  CLOSED
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageSenderType {
+  PATIENT
+  STAFF
+  AI
+  SYSTEM
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum WhatsAppTemplateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DISABLED
+  PAUSED
+}
+
+enum EscalationType {
+  CLINICAL
+  NO_RESPONSE
+  MISSING_REPORT
+  APPOINTMENT
+  TASK_OVERDUE
+  AI_UNABLE_TO_RESOLVE
+}
+
+enum EscalationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EscalationStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  DISMISSED
+}
+
+enum DocumentStatus {
+  AWAITING_UPLOAD
+  UPLOADED
+  DOCTOR_REVIEW
+  REVIEWED
+  REJECTED
+}
+
+enum ConsentChannel {
+  WHATSAPP
+  VOICE
+  SMS
+  EMAIL
+}
+
+enum ConsentType {
+  WHATSAPP_COMMUNICATION
+  VOICE_COMMUNICATION
+  MARKETING
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+  PENDING
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+enum IntegrationProvider {
+  WHATSAPP_CLOUD
+  META_ADS
+  GOOGLE_ADS
+  GOOGLE_CALENDAR
+  RAZORPAY
+  SMS
+  EMAIL
+  VOICE
+  EMR
+  ABDM
+  OPENAI
+  S3
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+  ACTION_REQUIRED
+  PENDING
+  DISCONNECTED
+}
+
+enum IntegrationEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum ModuleKey {
+  CARE_LOOP
+  CRM
+  APPOINTMENTS
+  ANALYTICS
+  BILLING
+  MARKETING
+  VOICE
+}
+
+enum SubscriptionPlanKey {
+  STARTER
+  GROWTH
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+}
+
+enum LeadSource {
+  META
+  GOOGLE
+  META_ADS
+  GOOGLE_ADS
+  WEBSITE
+  WHATSAPP
+  PHONE
+  REFERRAL
+  WALK_IN
+  INSTAGRAM
+  FACEBOOK
+  ORGANIC
+  OTHER
+  CAMPAIGN
+}
+
+enum LeadStatus {
+  NEW
+  OPEN
+  CONVERTED
+  LOST
+  ARCHIVED
+  CONTACTED
+  QUALIFIED
+  CONSULTATION_BOOKED
+  CONSULTATION_COMPLETED
+  TREATMENT_DISCUSSION
+  TREATMENT_STARTED
+  ACTIVE_PATIENT
+}
+
+enum LeadStage {
+  NEW_LEAD
+  CONTACTED
+  QUALIFIED
+  CONSULTATION_BOOKED
+  CONSULTATION_COMPLETED
+  INVESTIGATION
+  TREATMENT_DISCUSSION
+  TREATMENT_STARTED
+  ACTIVE_PATIENT
+  LOST
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum LeadActivityType {
+  LEAD_CREATED
+  LEAD_ASSIGNED
+  LEAD_REASSIGNED
+  CALL_ATTEMPTED
+  CALL_CONNECTED
+  WHATSAPP_SENT
+  WHATSAPP_RECEIVED
+  COUNSELLING_COMPLETED
+  APPOINTMENT_BOOKED
+  APPOINTMENT_CANCELLED
+  STAGE_CHANGED
+  NOTE_ADDED
+  FOLLOW_UP_SCHEDULED
+  LEAD_CONVERTED
+  LEAD_LOST
+  LEAD_REOPENED
+  SCORE_UPDATED
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  OTHER
+  UNSPECIFIED
+}
+
+// ─── Tenancy ─────────────────────────────────────────────────────────────────
+
+model Organization {
+  id                    String             @id @default(cuid())
+  name                  String
+  slug                  String?
+  status                OrganizationStatus @default(ACTIVE)
+  ownerUserId           String?
+  trialEndsAt           DateTime?
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  clinics               Clinic[]
+  subscription          Subscription?
+  modules               OrganizationModule[]
+  leads                 Lead[]
+  campaigns             Campaign[]
+  leadActivities        LeadActivity[]
+  staffInvites          StaffInvite[]
+  auditLogs             AuditLog[]
+  integrations          Integration[]
+  integrationEvents     IntegrationEvent[]
+
+  @@index([slug])
+}
+
+model Clinic {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String   @unique
+  city           String?
+  address        String?
+  phone          String?
+  email          String?
+  website        String?
+  timezone       String   @default("Asia/Kolkata")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  branches     ClinicBranch[]
+  memberships  ClinicMembership[]
+  patients     Patient[]
+  couples      Couple[]
+  carePlanTemplates CarePlanTemplate[]
+  carePlans    CarePlan[]
+  careTasks    CareTask[]
+  treatments   Treatment[]
+  appointments Appointment[]
+  conversations Conversation[]
+  escalations  Escalation[]
+  documents    Document[]
+  documentCategories DocumentCategory[]
+  consents     Consent[]
+  notifications Notification[]
+  auditLogs    AuditLog[]
+  automationRules AutomationRule[]
+  integrations Integration[]
+  integrationEvents IntegrationEvent[]
+  whatsappAccounts WhatsAppAccount[]
+  whatsappTemplates WhatsAppTemplate[]
+  leads        Lead[]
+  campaigns    Campaign[]
+  leadActivities LeadActivity[]
+
+  @@index([organizationId])
+}
+
+model ClinicBranch {
+  id        String   @id @default(cuid())
+  clinicId  String
+  name      String
+  city      String?
+  address   String?
+  phone     String?
+  hours     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  phone        String?
+  initials     String?
+  title        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships ClinicMembership[]
+  assignedTasks TaskAssignment[] @relation("AssignedTasks")
+  createdTasks  CareTask[]       @relation("CreatedTasks")
+  assignedEscalations Escalation[] @relation("EscalationAssignee")
+  notifications Notification[]
+  auditLogs     AuditLog[]       @relation("AuditActor")
+  coordinatedCouples Couple[]    @relation("CoupleCoordinator")
+  doctorCouples      Couple[]    @relation("CoupleDoctor")
+  assignedLeads      Lead[]      @relation("LeadAssignee")
+  leadActivities     LeadActivity[]
+}
+
+model Role {
+  id          String    @id @default(cuid())
+  key         StaffRole @unique
+  name        String
+  description String?
+  permissions RolePermission[]
+  memberships ClinicMembership[]
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  key         String @unique
+  name        String
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model ClinicMembership {
+  id        String           @id @default(cuid())
+  clinicId  String
+  userId    String
+  roleId    String
+  status    MembershipStatus @default(ACTIVE)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@unique([clinicId, userId])
+  @@index([userId])
+  @@index([clinicId])
+}
+
+// ─── Patients & couples ──────────────────────────────────────────────────────
+
+model Patient {
+  id              String        @id @default(cuid())
+  clinicId        String
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  gender          Gender        @default(UNSPECIFIED)
+  phone           String?
+  whatsappNumber  String?
+  email           String?
+  preferredLanguage String      @default("en")
+  status          PatientStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  primaryCouples Couple[] @relation("PrimaryPatient")
+  partnerCouples Couple[] @relation("PartnerPatient")
+  conversations Conversation[]
+  documents     Document[]
+  consents      Consent[]
+  escalations   Escalation[]
+  convertedLeads Lead[]
+
+  @@index([clinicId])
+  @@index([clinicId, whatsappNumber])
+  @@index([clinicId, phone])
+}
+
+model Couple {
+  id                    String       @id @default(cuid())
+  clinicId              String
+  slug                  String
+  primaryPatientId      String
+  partnerPatientId      String?
+  status                CoupleStatus @default(ACTIVE)
+  assignedCoordinatorId String?
+  assignedDoctorId      String?
+  careLoopActive        Boolean      @default(true)
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  clinic              Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  primaryPatient      Patient @relation("PrimaryPatient", fields: [primaryPatientId], references: [id])
+  partnerPatient      Patient? @relation("PartnerPatient", fields: [partnerPatientId], references: [id])
+  assignedCoordinator User?   @relation("CoupleCoordinator", fields: [assignedCoordinatorId], references: [id])
+  assignedDoctor      User?   @relation("CoupleDoctor", fields: [assignedDoctorId], references: [id])
+  carePlans           CarePlan[]
+  careTasks           CareTask[]
+  treatments          Treatment[]
+  appointments        Appointment[]
+  conversations       Conversation[]
+  documents           Document[]
+  escalations         Escalation[]
+  convertedLeads      Lead[]
+
+  @@unique([clinicId, slug])
+  @@index([clinicId])
+  @@index([primaryPatientId])
+}
+
+// ─── Care plans & tasks ──────────────────────────────────────────────────────
+
+model CarePlanTemplate {
+  id          String       @id @default(cuid())
+  clinicId    String
+  type        CarePlanType
+  name        String
+  description String?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  steps  CarePlanTemplateStep[]
+  plans  CarePlan[]
+
+  @@index([clinicId])
+}
+
+model CarePlanTemplateStep {
+  id         String @id @default(cuid())
+  templateId String
+  sortOrder  Int
+  name       String
+  description String?
+
+  template CarePlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+}
+
+model CarePlan {
+  id           String         @id @default(cuid())
+  clinicId     String
+  coupleId     String
+  templateId   String?
+  type         CarePlanType
+  name         String
+  status       CarePlanStatus @default(ACTIVE)
+  startDate    DateTime?
+  currentStep  Int            @default(0)
+  createdById  String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  clinic   Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple   Couple            @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  template CarePlanTemplate? @relation(fields: [templateId], references: [id])
+  steps    CarePlanStep[]
+  tasks    CareTask[]
+  treatments Treatment[]
+
+  @@index([clinicId])
+  @@index([coupleId])
+}
+
+model CarePlanStep {
+  id         String             @id @default(cuid())
+  carePlanId String
+  sortOrder  Int
+  name       String
+  status     CarePlanStepStatus @default(PENDING)
+  detail     String?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  carePlan CarePlan   @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+  tasks    CareTask[]
+
+  @@index([carePlanId])
+}
+
+model CareTask {
+  id                  String           @id @default(cuid())
+  clinicId            String
+  coupleId            String?
+  leadId              String?
+  carePlanId          String?
+  carePlanStepId      String?
+  title               String
+  description         String?
+  category            String?
+  status              CareTaskStatus   @default(WAITING)
+  priority            CareTaskPriority @default(NORMAL)
+  dueDate             DateTime?
+  dueTime             String?
+  createdById         String?
+  automationEnabled   Boolean          @default(true)
+  aiFollowUpEnabled   Boolean          @default(true)
+  voiceFollowUpEnabled Boolean         @default(false)
+  escalationEnabled   Boolean          @default(true)
+  completedAt         DateTime?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple       Couple?       @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  carePlan     CarePlan?     @relation(fields: [carePlanId], references: [id])
+  carePlanStep CarePlanStep? @relation(fields: [carePlanStepId], references: [id])
+  createdBy    User?         @relation("CreatedTasks", fields: [createdById], references: [id])
+  reminders    TaskReminder[]
+  assignments  TaskAssignment[]
+  escalations  Escalation[]
+  documents    Document[]
+  aiInteractions AIInteraction[]
+
+  @@index([clinicId, status])
+  @@index([coupleId])
+  @@index([leadId])
+  @@index([dueDate])
+}
+
+model TaskReminder {
+  id          String   @id @default(cuid())
+  careTaskId  String
+  remindAt    DateTime
+  channel     ConversationChannel @default(WHATSAPP)
+  sentAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  careTask CareTask @relation(fields: [careTaskId], references: [id], onDelete: Cascade)
+
+  @@index([careTaskId])
+  @@index([remindAt])
+}
+
+model TaskAssignment {
+  id         String   @id @default(cuid())
+  careTaskId String
+  userId     String
+  note       String?
+  assignedAt DateTime @default(now())
+
+  careTask CareTask @relation(fields: [careTaskId], references: [id], onDelete: Cascade)
+  user     User     @relation("AssignedTasks", fields: [userId], references: [id])
+
+  @@index([careTaskId])
+  @@index([userId])
+}
+
+// ─── Treatments & appointments ───────────────────────────────────────────────
+
+model Treatment {
+  id         String        @id @default(cuid())
+  clinicId   String
+  coupleId   String
+  carePlanId String?
+  kind       TreatmentKind
+  label      String
+  status     CycleStatus   @default(ACTIVE)
+  stageIndex Int           @default(0)
+  stageName  String?
+  startedAt  DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  clinic   Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple   Couple    @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  carePlan CarePlan? @relation(fields: [carePlanId], references: [id])
+  ivfCycle IVFCycle?
+  iuiCycle IUICycle?
+
+  @@index([clinicId])
+  @@index([coupleId])
+}
+
+model IVFCycle {
+  id          String @id @default(cuid())
+  treatmentId String @unique
+  cycleNumber Int    @default(1)
+  notes       String?
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+}
+
+model IUICycle {
+  id          String @id @default(cuid())
+  treatmentId String @unique
+  cycleNumber Int    @default(1)
+  notes       String?
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id          String            @id @default(cuid())
+  clinicId    String
+  coupleId    String?
+  leadId      String?
+  type        String
+  doctorName  String?
+  room        String?
+  startsAt    DateTime
+  durationMin Int               @default(30)
+  status      AppointmentStatus @default(CONFIRMED)
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple Couple? @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, startsAt])
+  @@index([coupleId])
+  @@index([leadId])
+}
+
+// ─── Conversations & AI ──────────────────────────────────────────────────────
+
+model Conversation {
+  id           String              @id @default(cuid())
+  clinicId     String
+  coupleId     String?
+  patientId    String?
+  leadId       String?
+  contactPhone String?
+  unmatched    Boolean             @default(false)
+  channel      ConversationChannel @default(WHATSAPP)
+  status       ConversationStatus  @default(OPEN)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  clinic   Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple   Couple?   @relation(fields: [coupleId], references: [id])
+  patient  Patient?  @relation(fields: [patientId], references: [id])
+  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  messages Message[]
+  aiInteractions AIInteraction[]
+
+  @@index([clinicId, channel])
+  @@index([patientId])
+  @@index([coupleId])
+  @@index([leadId])
+  @@index([clinicId, contactPhone])
+}
+
+model Message {
+  id                String           @id @default(cuid())
+  conversationId    String
+  direction         MessageDirection
+  senderType        MessageSenderType
+  content           String
+  messageType       String           @default("text")
+  providerMessageId String?
+  status            MessageStatus    @default(QUEUED)
+  createdAt         DateTime         @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  aiInteractions AIInteraction[]
+
+  @@index([conversationId, createdAt])
+  @@unique([providerMessageId])
+}
+
+model AIInteraction {
+  id             String   @id @default(cuid())
+  conversationId String?
+  messageId      String?
+  careTaskId     String?
+  intent         String?
+  classification String?
+  model          String?
+  safeToAutoReply Boolean @default(false)
+  rawSummary     String?
+  createdAt      DateTime @default(now())
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+  message      Message?      @relation(fields: [messageId], references: [id])
+  careTask     CareTask?     @relation(fields: [careTaskId], references: [id])
+
+  @@index([careTaskId])
+}
+
+// ─── Escalations ─────────────────────────────────────────────────────────────
+
+model Escalation {
+  id           String             @id @default(cuid())
+  clinicId     String
+  coupleId     String?
+  patientId    String?
+  careTaskId   String?
+  type         EscalationType
+  severity     EscalationSeverity @default(MEDIUM)
+  reason       String
+  assignedToId String?
+  status       EscalationStatus   @default(OPEN)
+  createdAt    DateTime           @default(now())
+  resolvedAt   DateTime?
+  updatedAt    DateTime           @updatedAt
+
+  clinic     Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple     Couple?   @relation(fields: [coupleId], references: [id])
+  patient    Patient?  @relation(fields: [patientId], references: [id])
+  careTask   CareTask? @relation(fields: [careTaskId], references: [id])
+  assignedTo User?     @relation("EscalationAssignee", fields: [assignedToId], references: [id])
+
+  @@index([clinicId, status])
+  @@index([careTaskId])
+}
+
+// ─── Documents ───────────────────────────────────────────────────────────────
+
+model DocumentCategory {
+  id       String @id @default(cuid())
+  clinicId String
+  key      String
+  name     String
+
+  clinic    Clinic     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@unique([clinicId, key])
+}
+
+model Document {
+  id           String         @id @default(cuid())
+  clinicId     String
+  patientId    String?
+  coupleId     String?
+  careTaskId   String?
+  categoryId   String?
+  name         String
+  storageKey   String?
+  mimeType     String?
+  sizeBytes    Int?
+  uploadedById String?
+  status       DocumentStatus @default(AWAITING_UPLOAD)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  clinic   Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient  Patient?          @relation(fields: [patientId], references: [id])
+  couple   Couple?           @relation(fields: [coupleId], references: [id])
+  careTask CareTask?         @relation(fields: [careTaskId], references: [id])
+  category DocumentCategory? @relation(fields: [categoryId], references: [id])
+
+  @@index([clinicId])
+  @@index([coupleId])
+}
+
+// ─── Consent, notifications, audit ───────────────────────────────────────────
+
+model Consent {
+  id          String         @id @default(cuid())
+  clinicId    String
+  patientId   String
+  channel     ConsentChannel
+  consentType ConsentType
+  status      ConsentStatus  @default(PENDING)
+  consentedAt DateTime?
+  source      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, consentType, channel])
+  @@index([clinicId])
+}
+
+model Notification {
+  id        String             @id @default(cuid())
+  clinicId  String
+  userId    String
+  title     String
+  body      String?
+  status    NotificationStatus @default(UNREAD)
+  href      String?
+  createdAt DateTime           @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([clinicId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  organizationId String?
+  clinicId       String?
+  actorId        String?
+  action         String
+  entityType     String?
+  entityId       String?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  clinic       Clinic?       @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  actor        User?         @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([clinicId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model AutomationRule {
+  id        String   @id @default(cuid())
+  clinicId  String
+  name      String
+  isActive  Boolean  @default(true)
+  trigger   String
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+}
+
+model Integration {
+  id                   String              @id @default(cuid())
+  organizationId       String
+  clinicId             String
+  provider             IntegrationProvider
+  status               IntegrationStatus   @default(DISABLED)
+  config               Json?
+  displayName          String?
+  externalAccountId    String?
+  encryptedCredentials String?
+  expiresAt            DateTime?
+  lastError            String?
+  lastErrorCode        String?
+  lastSyncAt           DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinic       Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  events       IntegrationEvent[]
+  whatsappAccounts WhatsAppAccount[]
+  whatsappTemplates WhatsAppTemplate[]
+
+  @@unique([clinicId, provider])
+  @@index([organizationId, provider])
+}
+
+model IntegrationEvent {
+  id               String                  @id @default(cuid())
+  integrationId    String?
+  organizationId   String
+  clinicId         String
+  provider         IntegrationProvider
+  externalEventId  String
+  eventType        String
+  status           IntegrationEventStatus  @default(RECEIVED)
+  receivedAt       DateTime                @default(now())
+  processedAt      DateTime?
+  error            String?
+  metadata         Json?
+  encryptedPayload String?
+  payloadExpiresAt DateTime?
+
+  integration  Integration?  @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalEventId])
+  @@index([organizationId, receivedAt])
+  @@index([clinicId, receivedAt])
+  @@index([status, receivedAt])
+  @@index([integrationId])
+}
+
+model Subscription {
+  id               String               @id @default(cuid())
+  organizationId   String               @unique
+  plan             SubscriptionPlanKey  @default(STARTER)
+  status           SubscriptionStatus   @default(TRIALING)
+  trialEndsAt      DateTime
+  currentPeriodEnd DateTime?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model OrganizationModule {
+  organizationId String
+  module         ModuleKey
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, module])
+}
+
+model Lead {
+  id                 String      @id @default(cuid())
+  organizationId     String
+  clinicId           String?
+  name               String
+  phone              String?
+  email              String?
+  preferredLanguage  String?
+  source             LeadSource
+  sourceDetail       String?
+  campaign           String?
+  campaignId         String?
+  ad                 String?
+  medium             String?
+  externalLeadId     String?
+  landingPage        String?
+  utmSource          String?
+  utmMedium          String?
+  utmCampaign        String?
+  utmTerm            String?
+  utmContent         String?
+  location           String?
+  treatmentInterest  String?
+  assignedToId       String?
+  status             LeadStatus  @default(NEW)
+  stage              LeadStage   @default(NEW_LEAD)
+  score              Int         @default(0)
+  nextFollowUpAt     DateTime?
+  lastActivityAt     DateTime?
+  lostReason         String?
+  convertedAt        DateTime?
+  patientId          String?
+  coupleId           String?
+  conversationId     String?
+  metadata           Json?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinic       Clinic?      @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  assignedTo   User?        @relation("LeadAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  campaignRecord Campaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  patient      Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  couple       Couple?      @relation(fields: [coupleId], references: [id], onDelete: SetNull)
+  activities   LeadActivity[]
+  careTasks    CareTask[]
+  appointments Appointment[]
+  conversations Conversation[]
+
+  @@index([organizationId, status])
+  @@index([organizationId, stage])
+  @@index([clinicId, stage])
+  @@index([clinicId, source])
+  @@index([assignedToId])
+  @@index([campaignId])
+  @@index([createdAt])
+  @@index([clinicId, phone])
+  @@index([clinicId, email])
+  @@index([nextFollowUpAt])
+}
+
+model Campaign {
+  id                  String         @id @default(cuid())
+  organizationId      String
+  clinicId            String?
+  name                String
+  source              LeadSource
+  medium              String?
+  campaignExternalId  String?
+  treatmentFocus      String?
+  status              CampaignStatus @default(DRAFT)
+  startDate           DateTime?
+  endDate             DateTime?
+  budget              Decimal?       @db.Decimal(12, 2)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinic       Clinic?      @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  leads        Lead[]
+
+  @@index([organizationId, status])
+  @@index([clinicId])
+  @@index([source])
+}
+
+model LeadActivity {
+  id             String           @id @default(cuid())
+  leadId         String
+  organizationId String
+  clinicId       String?
+  userId         String?
+  type           LeadActivityType
+  description    String
+  metadata       Json?
+  createdAt      DateTime         @default(now())
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  clinic       Clinic?      @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([leadId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([clinicId, createdAt])
+}
+
+model StaffInvite {
+  id             String           @id @default(cuid())
+  organizationId String
+  clinicId       String?
+  email          String
+  name           String
+  role           StaffRole
+  status         MembershipStatus @default(INVITED)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+}
+
+model WhatsAppAccount {
+  id                  String   @id @default(cuid())
+  clinicId            String
+  integrationId       String?
+  phoneNumberId       String
+  displayPhoneNumber  String?
+  displayName         String?
+  verifiedName        String?
+  businessAccountId   String?
+  qualityRating       String?
+  isActive            Boolean  @default(true)
+  lastSyncedAt        DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  clinic      Clinic       @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  integration Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+
+  @@unique([clinicId, phoneNumberId])
+  @@index([clinicId])
+  @@index([phoneNumberId])
+  @@index([businessAccountId])
+}
+
+model WhatsAppTemplate {
+  id               String                 @id @default(cuid())
+  clinicId         String
+  integrationId    String
+  externalId       String?
+  name             String
+  language         String
+  category         String
+  status           WhatsAppTemplateStatus
+  parameterCount   Int                    @default(0)
+  rejectionReason  String?
+  lastSyncedAt     DateTime?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  clinic      Clinic      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, name, language])
+  @@index([clinicId, status])
+}
+
+model IntegrationOauthState {
+  id             String               @id @default(cuid())
+  provider       IntegrationProvider
+  userId         String
+  organizationId String
+  clinicId       String
+  nonce          String
+  expiresAt      DateTime
+  consumedAt     DateTime?
+  createdAt      DateTime             @default(now())
+
+  @@index([expiresAt])
+  @@index([clinicId, provider])
+}
