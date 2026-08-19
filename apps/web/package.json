@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "node ./scripts/sync-root-env.mjs && next dev",
-    "build": "node ./scripts/sync-root-env.mjs && npm run db:generate -w @smrkomed/database && next build",
+    "build": "node ./scripts/sync-root-env.mjs && npm run db:generate -w @smrkomed/database && npm run db:migrate:deploy -w @smrkomed/database && next build",
     "start": "node ./scripts/sync-root-env.mjs && next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",

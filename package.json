@@ -20,6 +20,7 @@
     "db:down": "docker compose down",
     "db:generate": "npm run db:generate -w @smrkomed/database",
     "db:migrate": "npm run db:migrate -w @smrkomed/database",
+    "db:migrate:deploy": "npm run db:migrate:deploy -w @smrkomed/database",
     "db:push": "npm run db:push -w @smrkomed/database",
     "db:seed": "npm run db:seed -w @smrkomed/database",
     "db:setup": "npm run db:setup -w @smrkomed/database",
