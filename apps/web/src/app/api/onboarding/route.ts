@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not create workspace.";
     if (message.includes("already exists")) return conflict(message);
-    return serverError(message);
+    console.error("Onboarding failed:", message);
+    return serverError("Could not create the clinic workspace. Try again.");
   }
 }

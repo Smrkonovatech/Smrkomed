@@ -116,7 +116,7 @@ export async function provisionWorkspace(input: OnboardingInput) {
         address: input.address,
         phone: input.clinicPhone,
         email: input.clinicEmail || email,
-        website: input.website || null,
+        website: input.website?.trim() ? input.website.trim() : null,
       },
     });
 
@@ -130,7 +130,10 @@ export async function provisionWorkspace(input: OnboardingInput) {
     });
 
     await tx.clinicBranch.createMany({
-      data: input.locations.map((location) => ({
+      data: (input.locations.length > 0
+        ? input.locations
+        : [{ name: input.clinicName, city: input.city }]
+      ).map((location) => ({
         clinicId: clinic.id,
         name: location.name,
         city: location.city,

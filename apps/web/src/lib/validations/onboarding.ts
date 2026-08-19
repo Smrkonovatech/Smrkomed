@@ -19,7 +19,7 @@ export const onboardingSchema = z.object({
         city: z.string().min(2),
       }),
     )
-    .min(1),
+    .default([]),
   invites: z.array(
     z.object({
       name: z.string().min(2),

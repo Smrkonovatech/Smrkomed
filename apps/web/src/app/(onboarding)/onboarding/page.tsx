@@ -155,9 +155,11 @@ export default function OnboardingPage() {
     });
   }
 
-  async function finish() {
+  async function finish(selectedPlan: typeof plan = plan) {
     setLoading(true);
     setError(null);
+    const websiteValue = website.trim();
+    const resolvedLocations = locations.filter((item) => item.name && item.city);
     const payload = {
       ...account,
       organizationName,
@@ -165,37 +167,48 @@ export default function OnboardingPage() {
       address,
       city,
       clinicPhone,
-      clinicEmail,
-      ...(website.trim() ? { website: website.trim() } : {}),
-      locations: locations.filter((item) => item.name && item.city),
+      clinicEmail: clinicEmail.trim() || account.email,
+      ...(websiteValue && websiteValue !== "https://" ? { website: websiteValue } : {}),
+      locations:
+        resolvedLocations.length > 0
+          ? resolvedLocations
+          : clinicName.trim() && city.trim()
+            ? [{ name: clinicName.trim(), city: city.trim() }]
+            : [],
       invites: invites.filter((item) => item.name.trim().length > 1),
       modules,
-      plan,
+      plan: selectedPlan,
     };
-    const response = await fetch("/api/onboarding", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = (await response.json()) as { success: boolean; error?: { message: string } };
-    if (!response.ok || !body.success) {
+    try {
+      const response = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { success: boolean; error?: { message: string } }
+        | null;
+      if (!response.ok || !body?.success) {
+        setError(body?.error?.message ?? "Could not create the workspace. Check clinic details and try again.");
+        return;
+      }
+      sessionStorage.removeItem(ACCOUNT_KEY);
+      const result = await signIn("credentials", {
+        email: account.email,
+        password: account.password,
+        redirect: false,
+      });
+      if (result?.error) {
+        router.push("/login");
+        return;
+      }
+      router.push("/setup");
+      router.refresh();
+    } catch {
+      setError("Could not create the workspace. Try again.");
+    } finally {
       setLoading(false);
-      setError(body.error?.message ?? "Could not create the workspace.");
-      return;
     }
-    sessionStorage.removeItem(ACCOUNT_KEY);
-    const result = await signIn("credentials", {
-      email: account.email,
-      password: account.password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (result?.error) {
-      router.push("/login");
-      return;
-    }
-    router.push("/setup");
-    router.refresh();
   }
 
   function next() {
@@ -314,6 +327,11 @@ export default function OnboardingPage() {
             </p>
             <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">{headline.title}</h1>
             <p className="mt-2 text-sm text-muted-foreground">{headline.copy}</p>
+            {step === 5 && (
+              <p className="mt-2 text-sm font-medium text-primary">
+                Tap a plan to start the 14-day trial, or use Start free trial below.
+              </p>
+            )}
           </div>
 
           <div className="mx-auto mt-8 w-full max-w-3xl flex-1">
@@ -519,7 +537,11 @@ export default function OnboardingPage() {
                     icon={Sparkles}
                     title={`${item.name} · ${item.price}`}
                     copy={item.description}
-                    onClick={() => setPlan(item.key)}
+                    onClick={() => {
+                      if (loading) return;
+                      setPlan(item.key);
+                      void finish(item.key);
+                    }}
                   />
                 ))}
               </div>

@@ -90,6 +90,7 @@ export default function LoginPage() {
         </p>
         <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
           <p className="font-medium text-foreground">Demo accounts (password: Demo@12345)</p>
+          <p className="mt-1">First sign-in creates the demo clinic in the database.</p>
           <ul className="mt-2 space-y-1">
             <li>meera@abcfertility.demo — Care Coordinator</li>
             <li>ananya@abcfertility.demo — Doctor</li>
