@@ -22,7 +22,7 @@ loadApiEnv();
 
 export const env = {
   nodeEnv: process.env["NODE_ENV"] ?? "development",
-  port: Number.parseInt(process.env["API_PORT"] ?? "4000", 10),
+  port: Number.parseInt(process.env["PORT"] ?? "4000", 10),
   apiUrl: process.env["API_URL"] ?? "http://localhost:4000",
   webAppUrl: process.env["WEB_APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000",
   authSecret:
