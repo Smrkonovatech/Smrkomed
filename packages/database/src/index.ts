@@ -1,4 +1,4 @@
-export { pingDatabase, prisma } from "./client";
+export { pingDatabase, prisma, databaseUrlDiagnostics, prismaErrorHint } from "./client";
 export { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS, assertPermission, roleHasPermission, type PermissionKey } from "./permissions";
 export { TenantAccessError, isTenantAccessError } from "./errors";
 export {

@@ -56,16 +56,20 @@ export function isDemoLogin(email: string, password: string) {
   return password === DEMO_PASSWORD && DEMO_EMAILS.has(email.toLowerCase());
 }
 
-export async function ensureDefaultRoles() {
-  const [roleCount, permissionCount, linkCount] = await Promise.all([
-    prisma.role.count(),
-    prisma.permission.count(),
-    prisma.rolePermission.count(),
-  ]);
-  if (roleCount >= ROLE_DEFS.length && permissionCount >= Object.keys(PERMISSIONS).length && linkCount > 0) {
-    return prisma.role.findMany();
-  }
+function isBcryptHash(value: string) {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
+}
 
+async function demoPasswordMatches(passwordHash: string) {
+  if (!isBcryptHash(passwordHash)) return false;
+  try {
+    return await compare(DEMO_PASSWORD, passwordHash);
+  } catch {
+    return false;
+  }
+}
+
+export async function ensureDefaultRoles() {
   const permissionRows = await Promise.all(
     Object.values(PERMISSIONS).map((key) =>
       prisma.permission.upsert({
@@ -83,13 +87,13 @@ export async function ensureDefaultRoles() {
       update: { name: def.name, description: def.description },
       create: { key: def.key, name: def.name, description: def.description },
     });
-    await prisma.rolePermission.createMany({
-      data: ROLE_PERMISSIONS[def.key].map((key) => ({
-        roleId: role.id,
-        permissionId: byKey[key]!,
-      })),
-      skipDuplicates: true,
-    });
+    const links = ROLE_PERMISSIONS[def.key]
+      .map((key) => byKey[key])
+      .filter((permissionId): permissionId is string => Boolean(permissionId))
+      .map((permissionId) => ({ roleId: role.id, permissionId }));
+    if (links.length > 0) {
+      await prisma.rolePermission.createMany({ data: links, skipDuplicates: true });
+    }
   }
 
   return prisma.role.findMany();
@@ -105,7 +109,7 @@ export async function ensureDemoWorkspace() {
     },
   });
   if (admin) {
-    const passwordMatches = await compare(DEMO_PASSWORD, admin.passwordHash);
+    const passwordMatches = await demoPasswordMatches(admin.passwordHash);
     if (passwordMatches) return;
     const passwordHash = await hash(DEMO_PASSWORD, 10);
     await prisma.user.updateMany({
@@ -117,6 +121,10 @@ export async function ensureDemoWorkspace() {
 
   const roles = await ensureDefaultRoles();
   const roleByKey = Object.fromEntries(roles.map((role) => [role.key, role]));
+  const adminRole = roleByKey["CLINIC_ADMIN"];
+  if (!adminRole) {
+    throw new Error("CLINIC_ADMIN role is missing after role seed.");
+  }
   const passwordHash = await hash(DEMO_PASSWORD, 10);
 
   let organization = await prisma.organization.findFirst({
@@ -154,7 +162,9 @@ export async function ensureDemoWorkspace() {
 
   for (const person of DEMO_STAFF) {
     const role = roleByKey[person.role];
-    if (!role) continue;
+    if (!role) {
+      throw new Error(`Missing clinic role ${person.role}.`);
+    }
     const user = await prisma.user.upsert({
       where: { email: person.email },
       create: {
