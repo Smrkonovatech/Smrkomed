@@ -30,6 +30,10 @@ export const DEMO_STAFF = [
   },
 ] as const;
 
+export function isDemoLogin(email: string, password: string) {
+  return password === DEMO_PASSWORD && DEMO_STAFF.some((person) => person.email === email.toLowerCase());
+}
+
 export function authorizeDemoUser(email: string, password: string) {
   if (password !== DEMO_PASSWORD) return null;
   const staff = DEMO_STAFF.find((person) => person.email === email);

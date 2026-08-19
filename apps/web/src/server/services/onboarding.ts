@@ -1,6 +1,6 @@
 import { hash } from "bcryptjs";
 import type { ModuleKey, StaffRole, SubscriptionPlanKey } from "@smrkomed/database";
-import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS, prisma, writeAuditLog } from "@smrkomed/database";
+import { ensureDefaultRoles, prisma, writeAuditLog } from "@smrkomed/database";
 import { TRIAL_DAYS } from "@/lib/saas/catalog";
 import { slugify, uniqueSlug } from "@/lib/saas/slug";
 import type { onboardingSchema } from "@/lib/validations/onboarding";
@@ -8,33 +8,7 @@ import type { z } from "zod";
 
 type OnboardingInput = z.infer<typeof onboardingSchema>;
 
-async function ensureRoles() {
-  const permissionRows = await Promise.all(
-    Object.entries(PERMISSIONS).map(async ([, key]) =>
-      prisma.permission.upsert({
-        where: { key },
-        update: {},
-        create: { key, name: key },
-      }),
-    ),
-  );
-  const byKey = Object.fromEntries(permissionRows.map((row) => [row.key, row]));
-
-  for (const def of ROLE_DEFS) {
-    const role = await prisma.role.upsert({
-      where: { key: def.key },
-      update: { name: def.name, description: def.description },
-      create: { key: def.key, name: def.name, description: def.description },
-    });
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
-    const keys = ROLE_PERMISSIONS[def.key];
-    await prisma.rolePermission.createMany({
-      data: keys.map((key) => ({ roleId: role.id, permissionId: byKey[key]!.id })),
-    });
-  }
-
-  return prisma.role.findMany();
-}
+const MODULE_KEYS = new Set(["CARE_LOOP", "CRM", "APPOINTMENTS", "ANALYTICS", "BILLING", "MARKETING", "VOICE"]);
 
 export async function provisionWorkspace(input: OnboardingInput) {
   const email = input.email.toLowerCase();
@@ -43,12 +17,16 @@ export async function provisionWorkspace(input: OnboardingInput) {
     throw new Error("An account with this email already exists.");
   }
 
-  const roles = await ensureRoles();
+  const roles = await ensureDefaultRoles();
   const roleByKey = Object.fromEntries(roles.map((role) => [role.key, role]));
   const adminRole = roleByKey["CLINIC_ADMIN"];
   if (!adminRole) throw new Error("Clinic admin role is missing.");
 
-  const passwordHash = await hash(input.password, 12);
+  const passwordHash = await hash(input.password, 10);
+  const modules = [...new Set(input.modules.filter((module) => MODULE_KEYS.has(module)))] as ModuleKey[];
+  if (modules.length === 0) {
+    throw new Error("Choose at least one module.");
+  }
   const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
   const orgSlug = uniqueSlug(
     input.organizationName,
@@ -100,9 +78,9 @@ export async function provisionWorkspace(input: OnboardingInput) {
     });
 
     await tx.organizationModule.createMany({
-      data: input.modules.map((module) => ({
+      data: modules.map((module) => ({
         organizationId: organization.id,
-        module: module as ModuleKey,
+        module,
         enabled: true,
       })),
     });

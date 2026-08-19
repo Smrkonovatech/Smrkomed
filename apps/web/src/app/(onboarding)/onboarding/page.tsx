@@ -156,6 +156,10 @@ export default function OnboardingPage() {
   }
 
   async function finish(selectedPlan: typeof plan = plan) {
+    if (!account.email || !account.password) {
+      setError("Return to register and enter your name, email and password first.");
+      return;
+    }
     setLoading(true);
     setError(null);
     const websiteValue = website.trim();

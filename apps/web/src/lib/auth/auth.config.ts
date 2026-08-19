@@ -24,6 +24,7 @@ export const authConfig = {
       const isPublicPage = pathname.startsWith("/book/");
       const isPublicApi =
         pathname.startsWith("/api/auth") ||
+        pathname.startsWith("/api/demo") ||
         pathname === "/api/health" ||
         pathname.startsWith("/api/whatsapp/webhook") ||
         pathname === "/api/onboarding" ||
@@ -34,8 +35,11 @@ export const authConfig = {
       return isLoggedIn;
     },
     async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id!;
+      if (user?.id) {
+        token.sub = user.id;
+        token.id = user.id;
+        if (user.email) token.email = user.email;
+        if (user.name) token.name = user.name;
         token.organizationId = user.organizationId;
         token.organizationName = user.organizationName;
         token.clinicId = user.clinicId;
@@ -45,15 +49,16 @@ export const authConfig = {
       return token;
     },
     async session({ session, token }) {
+      const id = (typeof token.id === "string" && token.id) || token.sub;
       if (
-        token.id &&
+        id &&
         token.organizationId &&
         token.organizationName &&
         token.clinicId &&
         token.clinicName &&
         token.role
       ) {
-        session.user.id = token.id;
+        session.user.id = id;
         session.user.email = token.email ?? "";
         session.user.name = token.name ?? "";
         session.user.organizationId = token.organizationId;

@@ -1,5 +1,6 @@
 "use client";
 
+import { isDemoLogin } from "@/lib/auth/demo-accounts";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -22,18 +23,37 @@ function LoginForm() {
     event.preventDefault();
     setLoading(true);
     setError(null);
-    const result = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-    });
-    setLoading(false);
-    if (result?.error) {
-      setError("Invalid email or password.");
-      return;
+    try {
+      if (isDemoLogin(email.trim().toLowerCase(), password)) {
+        const setup = await fetch("/api/demo/setup", { method: "POST" });
+        const setupBody = (await setup.json().catch(() => null)) as
+          | { success?: boolean; error?: { message: string } }
+          | null;
+        if (!setup.ok || setupBody?.success === false) {
+          setError(setupBody?.error?.message ?? "Could not create demo accounts. Check the database connection.");
+          return;
+        }
+      }
+      const result = await signIn("credentials", {
+        email: email.trim().toLowerCase(),
+        password,
+        redirect: false,
+      });
+      if (result?.error) {
+        setError(
+          result.error === "CredentialsSignin"
+            ? "Invalid email or password."
+            : `Sign-in failed (${result.error}). If this is production, confirm AUTH_SECRET and AUTH_URL match the Vercel site URL.`,
+        );
+        return;
+      }
+      router.push(callbackUrl);
+      router.refresh();
+    } catch {
+      setError("Could not reach the sign-in service. Try again.");
+    } finally {
+      setLoading(false);
     }
-    router.push(callbackUrl);
-    router.refresh();
   }
 
   return (

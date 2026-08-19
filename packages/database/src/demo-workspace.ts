@@ -1,4 +1,4 @@
-import { hash } from "bcryptjs";
+import { compare, hash } from "bcryptjs";
 import type { StaffRole } from "@prisma/client";
 
 import { prisma } from "./client";
@@ -56,7 +56,16 @@ export function isDemoLogin(email: string, password: string) {
   return password === DEMO_PASSWORD && DEMO_EMAILS.has(email.toLowerCase());
 }
 
-async function ensureRoles() {
+export async function ensureDefaultRoles() {
+  const [roleCount, permissionCount, linkCount] = await Promise.all([
+    prisma.role.count(),
+    prisma.permission.count(),
+    prisma.rolePermission.count(),
+  ]);
+  if (roleCount >= ROLE_DEFS.length && permissionCount >= Object.keys(PERMISSIONS).length && linkCount > 0) {
+    return prisma.role.findMany();
+  }
+
   const permissionRows = await Promise.all(
     Object.values(PERMISSIONS).map((key) =>
       prisma.permission.upsert({
@@ -74,12 +83,12 @@ async function ensureRoles() {
       update: { name: def.name, description: def.description },
       create: { key: def.key, name: def.name, description: def.description },
     });
-    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     await prisma.rolePermission.createMany({
       data: ROLE_PERMISSIONS[def.key].map((key) => ({
         roleId: role.id,
         permissionId: byKey[key]!,
       })),
+      skipDuplicates: true,
     });
   }
 
@@ -88,9 +97,27 @@ async function ensureRoles() {
 
 /** Creates the ABC Fertility demo clinic and staff in PostgreSQL. Does not create patients. */
 export async function ensureDemoWorkspace() {
-  const roles = await ensureRoles();
+  const admin = await prisma.user.findFirst({
+    where: {
+      email: "admin@abcfertility.demo",
+      isActive: true,
+      memberships: { some: { status: "ACTIVE" } },
+    },
+  });
+  if (admin) {
+    const passwordMatches = await compare(DEMO_PASSWORD, admin.passwordHash);
+    if (passwordMatches) return;
+    const passwordHash = await hash(DEMO_PASSWORD, 10);
+    await prisma.user.updateMany({
+      where: { email: { in: [...DEMO_EMAILS] } },
+      data: { passwordHash, isActive: true },
+    });
+    return;
+  }
+
+  const roles = await ensureDefaultRoles();
   const roleByKey = Object.fromEntries(roles.map((role) => [role.key, role]));
-  const passwordHash = await hash(DEMO_PASSWORD, 12);
+  const passwordHash = await hash(DEMO_PASSWORD, 10);
 
   let organization = await prisma.organization.findFirst({
     where: { slug: "abc-fertility-group" },

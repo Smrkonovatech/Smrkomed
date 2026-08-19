@@ -4,6 +4,8 @@ import { conflict, created, serverError, validationError } from "@/lib/api/respo
 import { onboardingSchema } from "@/lib/validations/onboarding";
 import { provisionWorkspace } from "@/server/services/onboarding";
 
+export const maxDuration = 60;
+
 export async function POST(request: NextRequest) {
   try {
     const body: unknown = await request.json();

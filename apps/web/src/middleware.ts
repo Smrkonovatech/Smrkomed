@@ -14,6 +14,7 @@ export default auth((req) => {
   const isPublicApi =
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/v1") ||
+    pathname.startsWith("/api/demo") ||
     pathname === "/api/health" ||
     pathname.startsWith("/api/whatsapp/webhook") ||
     pathname === "/api/onboarding" ||
