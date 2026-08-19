@@ -43,6 +43,13 @@ const templates = [
   { value: "FET", label: "FET" },
 ];
 
+const UNASSIGNED = { value: "__unassigned__", label: "Unassigned" };
+
+function staffOption(member: { id: string; name: string; email?: string; roleName: string }) {
+  const label = member.name?.trim() || member.email?.trim() || member.roleName;
+  return { value: member.id, label };
+}
+
 const emptyPerson = {
   fullName: "",
   dob: "",
@@ -61,19 +68,21 @@ export function AddCoupleDialog({
   const router = useRouter();
   const { addCouple, staff } = useAppState();
   const doctors = staff.filter((member) =>
-    /doctor|fertility|endocrin|clinician/i.test(`${member.role} ${member.roleName} ${member.name}`),
+    /doctor|fertility|endocrin|clinician|^DOCTOR$/i.test(`${member.role} ${member.roleName} ${member.name}`),
   );
   const coordinators = staff.filter((member) =>
-    /coordinator|nurse|front|admin|counsel/i.test(`${member.role} ${member.roleName}`),
+    /coordinator|nurse|front|admin|counsel|CLINIC_ADMIN|CARE_COORDINATOR/i.test(
+      `${member.role} ${member.roleName}`,
+    ),
   );
-  const doctorOptions = (doctors.length > 0 ? doctors : staff).map((member) => ({
-    value: member.name,
-    label: member.name,
-  }));
-  const coordinatorOptions = (coordinators.length > 0 ? coordinators : staff).map((member) => ({
-    value: member.name,
-    label: member.name,
-  }));
+  const doctorOptions = [
+    UNASSIGNED,
+    ...(doctors.length > 0 ? doctors : staff).map(staffOption).filter((option) => option.value),
+  ];
+  const coordinatorOptions = [
+    UNASSIGNED,
+    ...(coordinators.length > 0 ? coordinators : staff).map(staffOption).filter((option) => option.value),
+  ];
 
   const form = useForm<AddCoupleValues>({
     resolver: zodResolver(addCoupleSchema),
@@ -81,8 +90,8 @@ export function AddCoupleDialog({
       primary: emptyPerson,
       partner: emptyPerson,
       treatment: "IVF",
-      doctor: "Unassigned",
-      coordinator: "Unassigned",
+      doctor: "__unassigned__",
+      coordinator: "__unassigned__",
       whatsappConsent: true,
       carePlanTemplate: "IVF",
     },
@@ -170,22 +179,14 @@ export function AddCoupleDialog({
                   name="doctor"
                   label="Assigned doctor"
                   placeholder="Select doctor"
-                  options={
-                    doctorOptions.length > 0
-                      ? doctorOptions
-                      : [{ value: "Unassigned", label: "Unassigned" }]
-                  }
+                  options={doctorOptions}
                 />
                 <SelectField
                   control={form.control}
                   name="coordinator"
                   label="Assigned coordinator"
                   placeholder="Select coordinator"
-                  options={
-                    coordinatorOptions.length > 0
-                      ? coordinatorOptions
-                      : [{ value: "Unassigned", label: "Unassigned" }]
-                  }
+                  options={coordinatorOptions}
                 />
                 <SelectField
                   control={form.control}

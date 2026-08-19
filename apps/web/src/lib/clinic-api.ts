@@ -81,6 +81,8 @@ export type ClinicActivity = {
 export type ClinicStaff = {
   id: string;
   name: string;
+  email?: string;
+  title?: string;
   role: string;
   roleName: string;
 };
@@ -114,6 +116,8 @@ export const clinicApi = {
   createDocument: (body: unknown) => apiPost<ClinicDocument>("/api/v1/documents", body),
   activity: () => apiGet<ClinicActivity[]>("/api/v1/activity"),
   staff: () => apiGet<ClinicStaff[]>("/api/v1/users/staff"),
+  me: () =>
+    apiGet<{ id: string; name: string; email: string; role: string; clinicName: string }>("/api/v1/users/me"),
   carePlans: () => apiGet<ClinicCarePlan[]>("/api/v1/care-plans"),
   createCarePlan: (body: unknown) => apiPost<ClinicCarePlan>("/api/v1/care-plans", body),
   patchPatient: (id: string, body: unknown) => apiPatch(`/api/v1/patients/${id}`, body),

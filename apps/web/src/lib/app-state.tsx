@@ -287,7 +287,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         clinicApi.appointments(),
         clinicApi.documents(),
         clinicApi.activity(),
-        clinicApi.staff().catch(() => [] as ClinicStaff[]),
+        clinicApi.staff().catch(async () => {
+          const me = await clinicApi.me().catch(() => null);
+          return me
+            ? [{ id: me.id, name: me.name || me.email, email: me.email, role: me.role, roleName: me.role }]
+            : [];
+        }),
       ]);
       setCoupleList(couples.map(toCouple));
       setTasks(nextTasks.map(toTask));
@@ -329,12 +334,30 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             language: input.partner.language,
           }
         : undefined;
+    const { email: primaryEmail, ...primaryRest } = input.primary;
     const created = await clinicApi.createCouple({
-      primary: input.primary,
-      ...(partner ? { partner } : {}),
+      primary: {
+        ...primaryRest,
+        ...(primaryEmail ? { email: primaryEmail } : {}),
+      },
+      ...(partner
+        ? {
+            partner: {
+              fullName: partner.fullName,
+              dob: partner.dob,
+              phone: partner.phone,
+              language: partner.language,
+              ...(partner.email ? { email: partner.email } : {}),
+            },
+          }
+        : {}),
       treatment: input.treatment,
-      doctorName: input.doctor,
-      coordinatorName: input.coordinator,
+      ...(input.doctor && input.doctor !== "__unassigned__" && input.doctor !== "Unassigned"
+        ? { assignedDoctorId: input.doctor }
+        : {}),
+      ...(input.coordinator && input.coordinator !== "__unassigned__" && input.coordinator !== "Unassigned"
+        ? { assignedCoordinatorId: input.coordinator }
+        : {}),
       whatsappConsent: input.whatsappConsent,
       carePlanTemplate: input.carePlanTemplate,
     });

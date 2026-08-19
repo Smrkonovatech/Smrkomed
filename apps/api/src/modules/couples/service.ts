@@ -88,21 +88,29 @@ async function uniqueSlug(clinicId: string, base: string) {
   return `${base}-${Date.now().toString(36)}`;
 }
 
+function isUnassigned(value?: string) {
+  if (!value) return true;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "unassigned" || normalized === "__unassigned__";
+}
+
 async function staffId(clinicId: string, organizationId: string, id?: string, name?: string) {
-  if (id) {
+  const userId = id && !isUnassigned(id) ? id : undefined;
+  const userName = name && !isUnassigned(name) ? name : undefined;
+  if (userId) {
     const membership = await prisma.clinicMembership.findFirst({
-      where: { clinicId, clinic: { organizationId }, userId: id, status: "ACTIVE" },
+      where: { clinicId, clinic: { organizationId }, userId, status: "ACTIVE" },
       select: { userId: true },
     });
     return membership?.userId ?? null;
   }
-  if (!name) return null;
+  if (!userName) return null;
   const membership = await prisma.clinicMembership.findFirst({
     where: {
       clinicId,
       clinic: { organizationId },
       status: "ACTIVE",
-      user: { name: { equals: name, mode: "insensitive" } },
+      user: { name: { equals: userName, mode: "insensitive" } },
     },
     select: { userId: true },
   });
@@ -143,6 +151,21 @@ export async function createCoupleRecord(
     carePlanTemplate?: string | undefined;
   },
 ) {
+  const clinic = await prisma.clinic.findFirst({
+    where: { id: ctx.clinicId, organizationId: ctx.organizationId },
+    select: { id: true },
+  });
+  if (!clinic) {
+    throw new HttpError(
+      409,
+      "CLINIC_NOT_FOUND",
+      "This login is not linked to a clinic in the database. Sign out and sign in with a clinic staff account.",
+    );
+  }
+  const actor = await prisma.user.findUnique({
+    where: { id: ctx.userId },
+    select: { id: true },
+  });
   const doctorId = await staffId(
     ctx.clinicId,
     ctx.organizationId,
@@ -156,7 +179,10 @@ export async function createCoupleRecord(
     input.coordinatorName,
   );
   const primaryNames = splitName(input.primary.fullName);
-  const partnerNames = input.partner ? splitName(input.partner.fullName) : null;
+  const partnerInput = input.partner?.fullName.trim() ? input.partner : undefined;
+  const partnerNames = partnerInput ? splitName(partnerInput.fullName) : null;
+  const primaryDob = parseDate(input.primary.dob);
+  const partnerDob = partnerInput ? parseDate(partnerInput.dob) : undefined;
   const baseSlug = slugify(
     `${primaryNames.firstName}-${partnerNames?.firstName ?? "patient"}`,
   );
@@ -171,24 +197,24 @@ export async function createCoupleRecord(
         clinicId: ctx.clinicId,
         firstName: primaryNames.firstName,
         lastName: primaryNames.lastName,
-        dateOfBirth: parseDate(input.primary.dob),
+        dateOfBirth: primaryDob,
         phone: input.primary.phone,
         whatsappNumber: input.primary.phone,
         ...(input.primary.email ? { email: input.primary.email } : {}),
         preferredLanguage: languageCode(input.primary.language),
       },
     });
-    const partner = partnerNames && input.partner
+    const partner = partnerNames && partnerInput && partnerDob
       ? await tx.patient.create({
           data: {
             clinicId: ctx.clinicId,
             firstName: partnerNames.firstName,
             lastName: partnerNames.lastName,
-            dateOfBirth: parseDate(input.partner.dob),
-            phone: input.partner.phone,
-            whatsappNumber: input.partner.phone,
-            ...(input.partner.email ? { email: input.partner.email } : {}),
-            preferredLanguage: languageCode(input.partner.language),
+            dateOfBirth: partnerDob,
+            phone: partnerInput.phone,
+            whatsappNumber: partnerInput.phone,
+            ...(partnerInput.email ? { email: partnerInput.email } : {}),
+            preferredLanguage: languageCode(partnerInput.language),
           },
         })
       : null;
@@ -224,7 +250,7 @@ export async function createCoupleRecord(
           name: input.carePlanTemplate === "None" ? `${input.treatment} plan` : (input.carePlanTemplate ?? `${input.treatment} plan`),
           status: "ACTIVE",
           startDate: new Date(),
-          createdById: ctx.userId,
+          ...(actor ? { createdById: actor.id } : {}),
         },
       });
       await tx.careTask.create({
@@ -235,7 +261,7 @@ export async function createCoupleRecord(
           title: "Initial consultation",
           category: "Consultation",
           status: "WAITING",
-          createdById: ctx.userId,
+          ...(actor ? { createdById: actor.id } : {}),
         },
       });
     }

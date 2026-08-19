@@ -22,7 +22,12 @@ export const userRoutes = new Hono<AppEnv>()
       select: userSelect,
     });
     return ok(c, {
-      ...user,
+      id: user?.id ?? tenant.userId,
+      email: user?.email ?? "",
+      name: user?.name ?? user?.email ?? "Clinic staff",
+      phone: user?.phone ?? null,
+      title: user?.title ?? null,
+      isActive: user?.isActive ?? false,
       organizationId: tenant.organizationId,
       organizationName: tenant.organizationName,
       clinicId: tenant.clinicId,
@@ -44,7 +49,7 @@ export const userRoutes = new Hono<AppEnv>()
       c,
       memberships.map((row) => ({
         id: row.user.id,
-        name: row.user.name,
+        name: row.user.name || row.user.email,
         title: row.user.title,
         email: row.user.email,
         role: row.role.key,

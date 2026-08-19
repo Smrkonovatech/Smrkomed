@@ -41,10 +41,14 @@ export const coupleRoutes = new Hono<AppEnv>()
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);
     const body = c.req.valid("json");
     const couple = await createCoupleRecord(tenant, body);
-    await audit(tenant, "couple.create", "Couple", couple.id, {
-      clinicId: tenant.clinicId,
-      patient: `${couple.primaryPatient.firstName} ${couple.primaryPatient.lastName}`.trim(),
-    });
+    try {
+      await audit(tenant, "couple.create", "Couple", couple.id, {
+        clinicId: tenant.clinicId,
+        patient: `${couple.primaryPatient.firstName} ${couple.primaryPatient.lastName}`.trim(),
+      });
+    } catch {
+      // Persistence succeeded; do not fail the request if audit cannot write.
+    }
     return ok(c, serializeCouple(couple), 201);
   })
   .patch("/:id", validate("param", idParam), validate("json", updateCoupleSchema), async (c) => {

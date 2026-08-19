@@ -7,11 +7,10 @@ const personInput = z
     fullName: z.string().trim().min(1).max(160),
     dob: z.string().trim().min(1),
     phone: z.string().trim().min(7).max(32),
-    email: z
-      .string()
-      .trim()
-      .optional()
-      .refine((value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value), "Enter a valid email address"),
+    email: z.preprocess(
+      (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+      z.string().trim().email("Enter a valid email address").optional(),
+    ),
     language: z.string().trim().max(16).optional(),
   })
   .strict();

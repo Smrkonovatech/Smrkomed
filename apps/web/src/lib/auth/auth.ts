@@ -60,6 +60,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const email = parsed.data.email.toLowerCase();
         const password = parsed.data.password;
+        const allowDemoLogin = process.env["NODE_ENV"] !== "production";
 
         try {
           const user = await prisma.user.findUnique({
@@ -94,7 +95,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           // Hosted preview without a reachable database still allows demo login.
         }
 
-        return authorizeDemoUser(email, password);
+        return allowDemoLogin ? authorizeDemoUser(email, password) : null;
       },
     }),
   ],
