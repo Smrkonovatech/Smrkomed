@@ -72,20 +72,24 @@ export function UploadDocumentDialog({
   }, [form, initialCoupleId, open]);
 
   const relatedTasks = tasks.filter((task) => task.coupleId === form.watch("coupleId"));
-  const submit = form.handleSubmit((values) => {
-    addDocument({
-      name: values.file.name,
-      category: values.category,
-      coupleId: values.coupleId,
-      notifyStaff: values.notifyStaff,
-      mimeType: values.file.type,
-      size: values.file.size,
-      ...(values.taskId && values.taskId !== "none" ? { taskId: values.taskId } : {}),
-    });
-    toast.success("Document recorded", {
-      description: "Demo mode stores safe metadata only; the file contents were not uploaded.",
-    });
-    onOpenChange(false);
+  const submit = form.handleSubmit(async (values) => {
+    try {
+      await addDocument({
+        name: values.file.name,
+        category: values.category,
+        coupleId: values.coupleId,
+        notifyStaff: values.notifyStaff,
+        mimeType: values.file.type,
+        size: values.file.size,
+        ...(values.taskId && values.taskId !== "none" ? { taskId: values.taskId } : {}),
+      });
+      toast.success("Document recorded", {
+        description: "Metadata saved. File storage is not configured yet.",
+      });
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save document. Try again.");
+    }
   });
 
   return (

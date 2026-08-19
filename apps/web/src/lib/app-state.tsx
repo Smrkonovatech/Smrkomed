@@ -1,20 +1,32 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import {
-  appointments as seedAppointments,
+  clinicApi,
+  clinicErrorMessage,
+  type ClinicAppointment,
+  type ClinicCouple,
+  type ClinicDocument,
+  type ClinicStaff,
+  type ClinicTask,
+} from "./clinic-api";
+import {
   careContent as seedCareContent,
   clinics,
-  couples as seedCouples,
   cycles as seedCycles,
-  documents as seedDocuments,
   exceptions as seedExceptions,
   invoices as seedInvoices,
   leads as seedLeads,
-  loopActivity as seedActivity,
   loopKpis,
-  tasks as seedTasks,
   type Appointment,
   type CareTask,
   type CareContentItem,
@@ -32,6 +44,7 @@ import {
 export type Role = "doctor" | "coordinator" | "owner";
 
 export interface AppPerson extends Person {
+  id?: string;
   dob?: string;
   email?: string;
   language?: string;
@@ -83,7 +96,7 @@ export interface Enquiry {
 
 export interface AddCoupleInput {
   primary: { fullName: string; dob: string; phone: string; email: string; language: string };
-  partner: { fullName: string; dob: string; phone: string; email: string; language: string };
+  partner?: { fullName: string; dob: string; phone: string; email: string; language: string };
   treatment: Treatment;
   doctor: string;
   coordinator: string;
@@ -118,21 +131,27 @@ export interface AppState {
   clinicId: string;
   setClinicId: (id: string) => void;
   clinicName: string;
+  loadState: "loading" | "ready" | "error";
+  loadError: string | null;
+  reload: () => Promise<void>;
+  staff: ClinicStaff[];
   couples: AppCouple[];
-  addCouple: (input: AddCoupleInput) => AppCouple;
+  addCouple: (input: AddCoupleInput) => Promise<AppCouple>;
+  updatePatient: (patientId: string, patch: { phone?: string; email?: string }) => Promise<void>;
   appointments: AppAppointment[];
-  addAppointment: (input: AddAppointmentInput) => AppAppointment;
+  addAppointment: (input: AddAppointmentInput) => Promise<AppAppointment>;
+  patchAppointmentStatus: (id: string, status: Appointment["status"]) => Promise<void>;
   cycles: AppCycle[];
   addCycle: (input: AddCycleInput) => AppCycle;
   documents: AppDocument[];
-  addDocument: (input: AddDocumentInput) => AppDocument;
+  addDocument: (input: AddDocumentInput) => Promise<AppDocument>;
   invoices: Invoice[];
   enquiries: Enquiry[];
   addEnquiry: (input: AddEnquiryInput) => Enquiry;
   careContent: CareContentItem[];
   tasks: CareTask[];
-  createTask: (task: Omit<CareTask, "id">) => CareTask;
-  setTaskStatus: (id: string, status: TaskStatus) => void;
+  createTask: (task: Omit<CareTask, "id">) => Promise<CareTask>;
+  setTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
   activity: LoopActivity[];
   pushActivity: (a: Omit<LoopActivity, "id">) => void;
   exceptions: ExceptionItem[];
@@ -147,45 +166,95 @@ const AppStateContext = createContext<AppState | null>(null);
 const makeId = (prefix: string) =>
   `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
-const ageFromDob = (dob: string) => {
-  const birth = new Date(`${dob}T00:00:00`);
-  const today = new Date();
-  let age = today.getFullYear() - birth.getFullYear();
-  if (
-    today.getMonth() < birth.getMonth() ||
-    (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())
-  ) {
-    age -= 1;
-  }
-  return age;
+const TASK_API: Record<TaskStatus, string> = {
+  completed: "COMPLETED",
+  in_progress: "IN_PROGRESS",
+  waiting: "WAITING",
+  overdue: "OVERDUE",
+  escalated: "ESCALATED",
 };
 
-const slugify = (value: string) =>
-  value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
+const APPOINTMENT_API: Record<Appointment["status"], string> = {
+  Confirmed: "CONFIRMED",
+  Waiting: "WAITING",
+  Completed: "COMPLETED",
+  "No-show": "NO_SHOW",
+};
+
+function toCouple(row: ClinicCouple): AppCouple {
+  return {
+    id: row.id,
+    slug: row.slug,
+    primary: row.primary,
+    ...(row.partner ? { partner: row.partner } : {}),
+    treatment: row.treatment,
+    cycleLabel: row.cycleLabel,
+    stageIndex: row.stageIndex,
+    cycle: row.cycle,
+    stage: row.stage,
+    doctor: row.doctor,
+    coordinator: row.coordinator,
+    careLoop: row.careLoop,
+    nextStep: row.nextStep,
+    status: row.status,
+    tags: row.tags,
+    since: row.since,
+  };
+}
+
+function toTask(row: ClinicTask): CareTask {
+  return {
+    id: row.id,
+    title: row.title,
+    coupleId: row.coupleId,
+    assignedTo: row.assignedTo,
+    due: row.due,
+    category: row.category,
+    status: row.status,
+    ...(row.note ? { note: row.note } : {}),
+  };
+}
+
+function toAppointment(row: ClinicAppointment): AppAppointment {
+  return {
+    id: row.id,
+    coupleId: row.coupleId,
+    type: row.type,
+    doctor: row.doctor,
+    room: row.room,
+    status: row.status,
+    time: row.time,
+    date: row.date,
+    duration: row.duration,
+    notes: row.notes,
+  };
+}
+
+function toDocument(row: ClinicDocument): AppDocument {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    coupleId: row.coupleId,
+    uploaded: row.uploaded,
+    uploadedBy: row.uploadedBy,
+    status: row.status,
+    mimeType: row.mimeType,
+    size: row.size,
+    ...(row.taskId ? { taskId: row.taskId } : {}),
+  };
+}
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>("doctor");
   const [clinicId, setClinicId] = useState(clinics[0]!.id);
-  const [coupleList, setCoupleList] = useState<AppCouple[]>(() =>
-    seedCouples.map((couple) => ({
-      ...couple,
-      primary: { ...couple.primary },
-      ...(couple.partner ? { partner: { ...couple.partner } } : {}),
-    })),
-  );
-  const [appointmentList, setAppointmentList] = useState<AppAppointment[]>(() =>
-    seedAppointments.map((appointment) => ({ ...appointment })),
-  );
-  const [cycleList, setCycleList] = useState<AppCycle[]>(() =>
-    seedCycles.map((cycle) => ({ ...cycle })),
-  );
-  const [documentList, setDocumentList] = useState<AppDocument[]>(() =>
-    seedDocuments.map((document) => ({ ...document })),
-  );
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [staff, setStaff] = useState<ClinicStaff[]>([]);
+  const [coupleList, setCoupleList] = useState<AppCouple[]>([]);
+  const [appointmentList, setAppointmentList] = useState<AppAppointment[]>([]);
+  const [cycleList, setCycleList] = useState<AppCycle[]>(() => seedCycles.map((cycle) => ({ ...cycle })));
+  const [documentList, setDocumentList] = useState<AppDocument[]>([]);
   const [invoiceList] = useState<Invoice[]>(() => seedInvoices.map((invoice) => ({ ...invoice })));
   const [enquiryList, setEnquiryList] = useState<Enquiry[]>(() =>
     seedLeads.map((lead) => ({
@@ -202,69 +271,107 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       stage: lead.stage,
     })),
   );
-  const [careContentList] = useState<CareContentItem[]>(() =>
-    seedCareContent.map((item) => ({ ...item })),
-  );
-  const [tasks, setTasks] = useState<CareTask[]>(seedTasks);
-  const [activity, setActivity] = useState<LoopActivity[]>(seedActivity);
+  const [careContentList] = useState<CareContentItem[]>(() => seedCareContent.map((item) => ({ ...item })));
+  const [tasks, setTasks] = useState<CareTask[]>([]);
+  const [activity, setActivity] = useState<LoopActivity[]>([]);
   const [exceptionList, setExceptionList] = useState<ExceptionItem[]>(seedExceptions);
   const [kpis, setKpis] = useState(loopKpis);
 
-  const addCouple = useCallback((input: AddCoupleInput) => {
-    const baseSlug = slugify(
-      `${input.primary.fullName.split(" ")[0] ?? input.primary.fullName}-${input.partner.fullName.split(" ")[0] ?? input.partner.fullName}`,
-    );
-    const created: AppCouple = {
-      id: makeId("c"),
-      slug: `${baseSlug}-${Date.now().toString(36).slice(-4)}`,
-      primary: {
-        name: input.primary.fullName,
-        age: ageFromDob(input.primary.dob),
-        phone: input.primary.phone,
-        dob: input.primary.dob,
-        email: input.primary.email,
-        language: input.primary.language,
-      },
-      partner: {
-        name: input.partner.fullName,
-        age: ageFromDob(input.partner.dob),
-        phone: input.partner.phone,
-        dob: input.partner.dob,
-        email: input.partner.email,
-        language: input.partner.language,
-      },
-      treatment: input.treatment,
-      cycleLabel:
-        input.treatment === "Evaluation" ? "Fertility Evaluation" : `${input.treatment} intake`,
-      stageIndex: 0,
-      cycle: "Not started",
-      stage: "Consultation",
-      doctor: input.doctor,
-      coordinator: input.coordinator,
-      careLoop: input.whatsappConsent ? "Active" : "Paused",
-      nextStep: "Initial consultation",
-      status: "Pending",
-      tags: [input.treatment, "New"],
-      since: new Date().toLocaleDateString("en-IN", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }),
-      whatsappConsent: input.whatsappConsent,
-      carePlanTemplate: input.carePlanTemplate,
-    };
-    setCoupleList((previous) => [created, ...previous]);
-    return created;
+  const reload = useCallback(async () => {
+    setLoadState("loading");
+    setLoadError(null);
+    try {
+      const [couples, nextTasks, appointments, documents, nextActivity, nextStaff] = await Promise.all([
+        clinicApi.couples(),
+        clinicApi.tasks(),
+        clinicApi.appointments(),
+        clinicApi.documents(),
+        clinicApi.activity(),
+        clinicApi.staff().catch(() => [] as ClinicStaff[]),
+      ]);
+      setCoupleList(couples.map(toCouple));
+      setTasks(nextTasks.map(toTask));
+      setAppointmentList(appointments.map(toAppointment));
+      setDocumentList(documents.map(toDocument));
+      setActivity(nextActivity);
+      setStaff(nextStaff);
+      setKpis({
+        active: couples.length,
+        completion: loopKpis.completion,
+        automatedToday: loopKpis.automatedToday,
+        needAttention: nextTasks.filter((task) => task.status === "overdue" || task.status === "escalated").length,
+      });
+      setLoadState("ready");
+    } catch (error) {
+      setCoupleList([]);
+      setTasks([]);
+      setAppointmentList([]);
+      setDocumentList([]);
+      setActivity([]);
+      setLoadError(clinicErrorMessage(error, "Unable to load clinic records. Try again."));
+      setLoadState("error");
+    }
   }, []);
 
-  const addAppointment = useCallback((input: AddAppointmentInput) => {
-    const created: AppAppointment = {
-      ...input,
-      id: makeId("a"),
-      status: "Confirmed",
-    };
-    setAppointmentList((previous) => [created, ...previous]);
-    return created;
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load clinic records from the API after mount
+    void reload();
+  }, [reload]);
+
+  const addCouple = useCallback(async (input: AddCoupleInput) => {
+    const partner =
+      input.partner && input.partner.fullName.trim()
+        ? {
+            fullName: input.partner.fullName,
+            dob: input.partner.dob,
+            phone: input.partner.phone,
+            email: input.partner.email,
+            language: input.partner.language,
+          }
+        : undefined;
+    const created = await clinicApi.createCouple({
+      primary: input.primary,
+      ...(partner ? { partner } : {}),
+      treatment: input.treatment,
+      doctorName: input.doctor,
+      coordinatorName: input.coordinator,
+      whatsappConsent: input.whatsappConsent,
+      carePlanTemplate: input.carePlanTemplate,
+    });
+    const couple = toCouple(created);
+    setCoupleList((previous) => [couple, ...previous.filter((row) => row.id !== couple.id)]);
+    await reload();
+    return couple;
+  }, [reload]);
+
+  const updatePatient = useCallback(async (patientId: string, patch: { phone?: string; email?: string }) => {
+    await clinicApi.patchPatient(patientId, patch);
+    await reload();
+  }, [reload]);
+
+  const addAppointment = useCallback(async (input: AddAppointmentInput) => {
+    const startsAt = input.date
+      ? new Date(`${input.date}T${normalizeTime(input.time)}`).toISOString()
+      : new Date().toISOString();
+    const created = await clinicApi.createAppointment({
+      coupleId: input.coupleId,
+      type: input.type,
+      startsAt,
+      durationMin: input.duration ?? 30,
+      doctorName: input.doctor,
+      room: input.room,
+      notes: input.notes || undefined,
+    });
+    const appointment = toAppointment(created);
+    setAppointmentList((previous) => [appointment, ...previous]);
+    return appointment;
+  }, []);
+
+  const patchAppointmentStatus = useCallback(async (id: string, status: Appointment["status"]) => {
+    const updated = await clinicApi.patchAppointment(id, { status: APPOINTMENT_API[status] });
+    setAppointmentList((previous) =>
+      previous.map((row) => (row.id === id ? toAppointment(updated) : row)),
+    );
   }, []);
 
   const addCycle = useCallback((input: AddCycleInput) => {
@@ -291,23 +398,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
-  const addDocument = useCallback((input: AddDocumentInput) => {
-    const created: AppDocument = {
-      id: makeId("d"),
+  const addDocument = useCallback(async (input: AddDocumentInput) => {
+    const created = await clinicApi.createDocument({
+      coupleId: input.coupleId,
       name: input.name,
       category: input.category,
-      coupleId: input.coupleId,
-      uploaded: "Just now",
-      uploadedBy: "Demo staff user",
-      status: "Doctor Review",
-      notifyStaff: input.notifyStaff,
       mimeType: input.mimeType,
-      size: input.size,
-      demoOnly: true,
-      ...(input.taskId ? { taskId: input.taskId } : {}),
-    };
-    setDocumentList((previous) => [created, ...previous]);
-    return created;
+      sizeBytes: input.size,
+      ...(input.taskId ? { careTaskId: input.taskId } : {}),
+    });
+    const document = toDocument(created);
+    setDocumentList((previous) => [document, ...previous]);
+    return document;
   }, []);
 
   const addEnquiry = useCallback((input: AddEnquiryInput) => {
@@ -316,24 +418,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
-  const createTask = useCallback((task: Omit<CareTask, "id">) => {
-    const created: CareTask = { ...task, id: `t${Date.now()}` };
-    setTasks((prev) => [created, ...prev]);
-    setActivity((prev) => [
-      {
-        id: `l${Date.now()}`,
-        patient: task.assignedTo,
-        activity: `New task created — ${task.title}`,
-        time: "just now",
-        tone: "info",
-      },
-      ...prev,
-    ]);
-    return created;
+  const createTask = useCallback(async (task: Omit<CareTask, "id">) => {
+    const created = await clinicApi.createTask({
+      coupleId: task.coupleId,
+      title: task.title,
+      category: task.category,
+      description: task.note,
+    });
+    const next = toTask(created);
+    setTasks((prev) => [next, ...prev]);
+    return next;
   }, []);
 
-  const setTaskStatus = useCallback((id: string, status: TaskStatus) => {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, status } : t)));
+  const setTaskStatus = useCallback(async (id: string, status: TaskStatus) => {
+    const updated = await clinicApi.patchTask(id, { status: TASK_API[status] });
+    setTasks((prev) => prev.map((task) => (task.id === id ? toTask(updated) : task)));
   }, []);
 
   const pushActivity = useCallback((a: Omit<LoopActivity, "id">) => {
@@ -361,10 +460,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       clinicId,
       setClinicId,
       clinicName: clinics.find((c) => c.id === clinicId)?.city ?? clinics[0]!.city,
+      loadState,
+      loadError,
+      reload,
+      staff,
       couples: coupleList,
       addCouple,
+      updatePatient,
       appointments: appointmentList,
       addAppointment,
+      patchAppointmentStatus,
       cycles: cycleList,
       addCycle,
       documents: documentList,
@@ -387,10 +492,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [
       role,
       clinicId,
+      loadState,
+      loadError,
+      reload,
+      staff,
       coupleList,
       addCouple,
+      updatePatient,
       appointmentList,
       addAppointment,
+      patchAppointmentStatus,
       cycleList,
       addCycle,
       documentList,
@@ -415,14 +526,22 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
 }
 
+function normalizeTime(value: string) {
+  if (/^\d{2}:\d{2}$/.test(value)) return `${value}:00`;
+  const match = value.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!match) return "10:00:00";
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const meridiem = match[3]?.toUpperCase();
+  if (meridiem === "PM" && hour < 12) hour += 12;
+  if (meridiem === "AM" && hour === 12) hour = 0;
+  return `${String(hour).padStart(2, "0")}:${minute}:00`;
+}
+
 export function useAppState() {
   const ctx = useContext(AppStateContext);
   if (!ctx) throw new Error("useAppState must be used inside AppStateProvider");
   return ctx;
 }
 
-export const patientOptions = seedCouples.map((c) => ({
-  id: c.id,
-  label: c.partner ? `${c.primary.name} + ${c.partner.name}` : c.primary.name,
-  people: [c.primary.name, c.partner?.name].filter(Boolean) as string[],
-}));
+export const patientOptions: Array<{ id: string; label: string; people: string[] }> = [];

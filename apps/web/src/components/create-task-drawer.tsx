@@ -79,10 +79,14 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
 
   const people = options.find((p) => p.id === coupleId)?.people ?? [];
 
-  const submit = () => {
+  const submit = async () => {
+    if (!coupleId) {
+      toast.error("Select a couple first.");
+      return;
+    }
     setSaving(true);
-    setTimeout(() => {
-      createTask({
+    try {
+      await createTask({
         title,
         coupleId,
         assignedTo: assignee,
@@ -91,14 +95,15 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
         status: "waiting",
         ...(aiFollowUp ? { note: "Care Loop follow-up scheduled" } : {}),
       });
-      setSaving(false);
       setIsOpen(false);
       toast.success("Task created", {
-        description: aiFollowUp
-          ? `Care Loop will follow up with ${assignee} ${reminder.toLowerCase()}.`
-          : `Assigned to ${assignee}.`,
+        description: `Saved to the care plan for ${assignee}.`,
       });
-    }, 600);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to create task. Try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const value = useMemo(() => ({ open }), [open]);

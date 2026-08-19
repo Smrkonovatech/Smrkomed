@@ -62,7 +62,7 @@ const script: ChatMessage[] = [
 export function DemoRunner() {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState(-1);
-  const { pushActivity, bumpKpis, kpis, setTaskStatus } = useAppState();
+  const { pushActivity, bumpKpis, kpis, setTaskStatus, tasks } = useAppState();
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
@@ -96,7 +96,8 @@ export function DemoRunner() {
             tone: "info",
           });
         if (i === 8) {
-          setTaskStatus("t1", "completed");
+          const firstTask = tasks[0];
+          if (firstTask) void setTaskStatus(firstTask.id, "completed");
           pushActivity({
             patient: "Priya Sharma",
             activity: "Ultrasound task resolved",

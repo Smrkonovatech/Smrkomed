@@ -24,18 +24,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppState } from "@/lib/app-state";
-import { coupleLabel, getCouple, type CareTask, type TaskStatus } from "@/lib/demo-data";
+import { coupleLabel, type CareTask, type TaskStatus } from "@/lib/demo-data";
 import { taskStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 const filters = ["All", "Waiting", "In progress", "Overdue", "Escalated", "Completed"] as const;
 const statusOptions = Object.keys(taskStatusMeta) as TaskStatus[];
 
-function taskOwner(task: CareTask) {
+function taskOwner(task: CareTask, couple?: { doctor: string; coordinator: string }) {
+  if (!couple) return task.assignedTo;
   if (task.status === "escalated" || task.category === "Medication") {
-    return getCouple(task.coupleId).doctor;
+    return couple.doctor;
   }
-  return getCouple(task.coupleId).coordinator;
+  return couple.coordinator;
 }
 
 function priorityFor(task: CareTask) {
@@ -45,7 +46,8 @@ function priorityFor(task: CareTask) {
 }
 
 export default function TasksPage() {
-  const { tasks, setTaskStatus } = useAppState();
+  const { tasks, setTaskStatus, couples, loadState, loadError, reload } = useAppState();
+  const coupleById = useMemo(() => new Map(couples.map((couple) => [couple.id, couple])), [couples]);
   const { open } = useCreateTask();
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
   const [query, setQuery] = useState("");
@@ -56,18 +58,18 @@ export default function TasksPage() {
       const statusMatches =
         filter === "All" ||
         taskStatusMeta[task.status].label.toLowerCase() === filter.toLowerCase();
-      const couple = coupleLabel(getCouple(task.coupleId));
+      const couple = coupleById.get(task.coupleId);
       return (
         statusMatches &&
         (!search ||
-          [task.title, couple, taskOwner(task), task.category, task.note]
+          [task.title, couple ? coupleLabel(couple) : "", taskOwner(task, couple), task.category, task.note]
             .filter(Boolean)
             .join(" ")
             .toLowerCase()
             .includes(search))
       );
     });
-  }, [filter, query, tasks]);
+  }, [coupleById, filter, query, tasks]);
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-5">
@@ -119,10 +121,23 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {rows.length === 0 ? (
+        {loadState === "loading" ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading tasks...</p>
+        ) : loadState === "error" ? (
+          <EmptyState
+            title="Unable to load tasks"
+            description={loadError ?? "Try again."}
+            icon={CheckCircle2}
+            action={
+              <Button variant="outline" onClick={() => void reload()}>
+                Try again
+              </Button>
+            }
+          />
+        ) : rows.length === 0 ? (
           <EmptyState
             title="No staff tasks"
-            description="No tasks match the selected status and search."
+            description={tasks.length === 0 ? "No tasks yet." : "No tasks match the selected status and search."}
             icon={CheckCircle2}
           />
         ) : (
@@ -153,9 +168,11 @@ export default function TasksPage() {
                       )}
                     </TableCell>
                     <TableCell className="min-w-36 font-medium">
-                      {coupleLabel(getCouple(task.coupleId))}
+                      {coupleById.get(task.coupleId)
+                        ? coupleLabel(coupleById.get(task.coupleId)!)
+                        : "Unknown couple"}
                     </TableCell>
-                    <TableCell className="min-w-44">{taskOwner(task)}</TableCell>
+                    <TableCell className="min-w-44">{taskOwner(task, coupleById.get(task.coupleId))}</TableCell>
                     <TableCell className="min-w-40 whitespace-nowrap tabular-nums">
                       {task.due}
                     </TableCell>
@@ -167,8 +184,13 @@ export default function TasksPage() {
                       <Select
                         value={task.status}
                         onValueChange={(value: TaskStatus) => {
-                          setTaskStatus(task.id, value);
-                          toast.success(`${task.title} moved to ${taskStatusMeta[value].label}`);
+                          void setTaskStatus(task.id, value)
+                            .then(() =>
+                              toast.success(`${task.title} moved to ${taskStatusMeta[value].label}`),
+                            )
+                            .catch((error: unknown) =>
+                              toast.error(error instanceof Error ? error.message : "Unable to update task."),
+                            );
                         }}
                       >
                         <SelectTrigger className="h-8 border-0 bg-muted/60 shadow-none">

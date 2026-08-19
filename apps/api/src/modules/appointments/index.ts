@@ -7,19 +7,20 @@ import { ok } from "../../lib/http";
 import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
+import { serializeAppointment } from "../clinic-dto";
 import { createAppointmentSchema, idParam, updateAppointmentSchema } from "./schemas";
 
 export const appointmentRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const appointments = await getAppointmentsForClinic(tenant);
-    return ok(c, appointments);
+    return ok(c, appointments.map(serializeAppointment));
   })
   .get("/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const { id } = c.req.valid("param");
     const appointment = await prisma.appointment.findUnique({ where: { id } });
-    return ok(c, await requireClinicOwned(tenant, appointment));
+    return ok(c, serializeAppointment(await requireClinicOwned(tenant, appointment)));
   })
   .post("/", validate("json", createAppointmentSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.APPOINTMENTS_WRITE);
@@ -37,8 +38,8 @@ export const appointmentRoutes = new Hono<AppEnv>()
         ...(body.notes === undefined ? {} : { notes: body.notes }),
       },
     });
-    await audit(tenant, "appointment.create", "Appointment", appointment.id);
-    return ok(c, appointment, 201);
+    await audit(tenant, "appointment.create", "Appointment", appointment.id, { patient: body.type });
+    return ok(c, serializeAppointment(appointment), 201);
   })
   .patch("/:id", validate("param", idParam), validate("json", updateAppointmentSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.APPOINTMENTS_WRITE);
@@ -59,5 +60,5 @@ export const appointmentRoutes = new Hono<AppEnv>()
       },
     });
     await audit(tenant, "appointment.update", "Appointment", appointment.id);
-    return ok(c, appointment);
+    return ok(c, serializeAppointment(appointment));
   });

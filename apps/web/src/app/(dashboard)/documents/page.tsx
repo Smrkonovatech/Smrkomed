@@ -18,9 +18,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAppState } from "@/lib/app-state";
 import {
-  coupleLabel,
-  documents as demoDocuments,
-  getCouple,
   type DocumentItem,
 } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
@@ -34,22 +31,31 @@ function categoryLabel(category: string) {
   return categories.includes(category) ? category : "Other";
 }
 
-function downloadDocument(document: DocumentItem) {
+function coupleName(
+  coupleById: Map<string, { primary: { name: string }; partner?: { name: string } }>,
+  coupleId: string,
+) {
+  const couple = coupleById.get(coupleId);
+  if (!couple) return "Unknown couple";
+  return couple.partner
+    ? `${couple.primary.name.split(" ")[0]!} + ${couple.partner.name.split(" ")[0]!}`
+    : couple.primary.name;
+}
+
+function downloadDocument(document: DocumentItem, couple: string) {
   const content = [
-    "Clinic Flow Pro — demo document",
+    "SmrkoMed document metadata",
     `File: ${document.name}`,
-    `Couple: ${coupleLabel(getCouple(document.coupleId))}`,
+    `Couple: ${couple}`,
     `Category: ${categoryLabel(document.category)}`,
     `Uploaded by: ${document.uploadedBy}`,
     `Date: ${document.uploaded}`,
     `Status: ${document.status}`,
-    "",
-    "This text file represents a secure document download in the product demo.",
   ].join("\n");
   const url = URL.createObjectURL(new Blob([content], { type: "text/plain;charset=utf-8" }));
   const anchor = window.document.createElement("a");
   anchor.href = url;
-  anchor.download = `${document.name.replace(/\.[^.]+$/, "")}-demo.txt`;
+  anchor.download = `${document.name.replace(/\.[^.]+$/, "")}.txt`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
@@ -59,7 +65,12 @@ export default function DocumentsPage() {
   const appState = useAppState() as ReturnType<typeof useAppState> & {
     documents?: DocumentItem[];
   };
-  const documents = appState.documents ?? demoDocuments;
+  const documents = appState.documents;
+  const { loadState, loadError, reload } = appState;
+  const coupleById = useMemo(
+    () => new Map(appState.couples.map((couple) => [couple.id, couple])),
+    [appState.couples],
+  );
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [selected, setSelected] = useState<DocumentItem | null>(null);
@@ -73,7 +84,7 @@ export default function DocumentsPage() {
           category === "All" || categoryLabel(document.category) === category;
         const haystack = [
           document.name,
-          coupleLabel(getCouple(document.coupleId)),
+          coupleName(coupleById, document.coupleId),
           document.uploadedBy,
           document.status,
         ]
@@ -81,7 +92,7 @@ export default function DocumentsPage() {
           .toLowerCase();
         return matchesCategory && haystack.includes(query.trim().toLowerCase());
       }),
-    [category, documents, query],
+    [category, coupleById, documents, query],
   );
 
   return (
@@ -125,20 +136,43 @@ export default function DocumentsPage() {
           </div>
         </div>
 
-        {rows.length === 0 ? (
+        {loadState === "loading" ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading documents...</p>
+        ) : loadState === "error" ? (
           <EmptyState
-            title="No matching documents"
-            description="Try another search term or category."
+            title="Unable to load documents"
+            description={loadError ?? "Try again."}
+            icon={Upload}
             action={
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setQuery("");
-                  setCategory("All");
-                }}
-              >
-                Clear filters
+              <Button variant="outline" className="rounded-lg" onClick={() => void reload()}>
+                Try again
               </Button>
+            }
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={documents.length === 0 ? "No documents yet" : "No matching documents"}
+            description={
+              documents.length === 0
+                ? "Upload metadata to attach a clinic file record."
+                : "Try another search term or category."
+            }
+            action={
+              documents.length === 0 ? (
+                <Button className="rounded-lg" onClick={() => openAction("upload-document")}>
+                  <Upload className="size-4" /> Upload
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setQuery("");
+                    setCategory("All");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )
             }
           />
         ) : (
@@ -172,7 +206,7 @@ export default function DocumentsPage() {
                         <span className="block truncate">{document.name}</span>
                       </td>
                       <td className="px-3 py-2.5">
-                        {coupleLabel(getCouple(document.coupleId))}
+                        {coupleName(coupleById, document.coupleId)}
                       </td>
                       <td className="px-3 py-2.5">{categoryLabel(document.category)}</td>
                       <td className="px-3 py-2.5 text-muted-foreground">
@@ -206,7 +240,7 @@ export default function DocumentsPage() {
                             size="icon"
                             variant="ghost"
                             title="Download"
-                            onClick={() => downloadDocument(document)}
+                            onClick={() => downloadDocument(document, coupleName(coupleById, document.coupleId))}
                           >
                             <Download className="size-3.5" />
                           </Button>
@@ -256,7 +290,7 @@ export default function DocumentsPage() {
           {selected && (
             <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-3 text-sm">
               <dt className="text-muted-foreground">Couple</dt>
-              <dd className="font-medium">{coupleLabel(getCouple(selected.coupleId))}</dd>
+              <dd className="font-medium">{coupleName(coupleById, selected.coupleId)}</dd>
               <dt className="text-muted-foreground">Category</dt>
               <dd>{categoryLabel(selected.category)}</dd>
               <dt className="text-muted-foreground">Uploaded by</dt>
@@ -270,7 +304,7 @@ export default function DocumentsPage() {
             </dl>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => selected && downloadDocument(selected)}>
+            <Button variant="outline" onClick={() => selected && downloadDocument(selected, coupleName(coupleById, selected.coupleId))}>
               <Download className="size-4" /> Download
             </Button>
           </DialogFooter>
@@ -290,7 +324,7 @@ export default function DocumentsPage() {
           </DialogHeader>
           {shareTarget && (
             <div className="rounded-lg border bg-muted/25 p-3 text-sm">
-              <p className="font-medium">{coupleLabel(getCouple(shareTarget.coupleId))}</p>
+              <p className="font-medium">{coupleName(coupleById, shareTarget.coupleId)}</p>
               <p className="text-muted-foreground">Secure patient portal · link expires in 7 days</p>
             </div>
           )}

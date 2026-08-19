@@ -31,23 +31,18 @@ const doctors = team.filter((member) => member.name.startsWith("Dr."));
 export default function AppointmentsPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Today");
   const [view, setView] = useState<(typeof views)[number]>("Day");
-  const [selectedDate, setSelectedDate] = useState("2026-08-17");
-  const [statusOverrides, setStatusOverrides] = useState<Record<string, Appointment["status"]>>({});
+  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [remindedIds, setRemindedIds] = useState<string[]>([]);
   const { openAction } = useGlobalActions();
-  const { appointments, couples, pushActivity } = useAppState();
+  const { appointments, couples, pushActivity, patchAppointmentStatus, loadState } = useAppState();
   const coupleById = useMemo(
     () => new Map(couples.map((couple) => [couple.id, couple])),
     [couples],
   );
 
   const visibleAppointments = appointments
-    .map((appointment) => ({
-      ...appointment,
-      status: statusOverrides[appointment.id] ?? appointment.status,
-    }))
     .filter((appointment) => {
-      const appointmentDate = appointment.date ?? "2026-08-17";
+      const appointmentDate = appointment.date ?? selectedDate;
       if (activeTab === "Today") return appointmentDate === selectedDate;
       if (activeTab === "Upcoming") {
         return (
@@ -86,7 +81,7 @@ export default function AppointmentsPage() {
                 key={tab}
                 onClick={() => {
                   setActiveTab(tab);
-                  if (tab === "Today") setSelectedDate("2026-08-17");
+                  if (tab === "Today") setSelectedDate(new Date().toISOString().slice(0, 10));
                 }}
                 className={cn(
                   "shrink-0 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
@@ -152,6 +147,14 @@ export default function AppointmentsPage() {
           <Availability
             selectedDate={selectedDate}
             onSelectSlot={() => openAction("new-appointment")}
+          />
+        ) : loadState === "loading" ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading appointments...</p>
+        ) : loadState === "error" ? (
+          <EmptyState
+            title="Unable to load appointments"
+            description="Try again."
+            icon={CalendarDays}
           />
         ) : visibleAppointments.length === 0 ? (
           <EmptyState
@@ -229,16 +232,14 @@ export default function AppointmentsPage() {
                                 size="sm"
                                 className="shadow-none"
                                 onClick={() => {
-                                  setStatusOverrides((current) => ({
-                                    ...current,
-                                    [appointment.id]: "Waiting",
-                                  }));
-                                  pushActivity({
-                                    patient,
-                                    activity: `Checked in for ${appointment.type}`,
-                                    time: "just now",
-                                    tone: "success",
-                                  });
+                                  void patchAppointmentStatus(appointment.id, "Waiting").then(() =>
+                                    pushActivity({
+                                      patient,
+                                      activity: `Checked in for ${appointment.type}`,
+                                      time: "just now",
+                                      tone: "success",
+                                    }),
+                                  );
                                 }}
                               >
                                 <CheckCircle2 /> Check in

@@ -24,9 +24,24 @@ const personSchema = z.object({
   language: required("Language"),
 });
 
+const optionalPartnerSchema = z.object({
+  fullName: z.string().trim(),
+  dob: z.string().trim(),
+  phone: z.string().trim(),
+  email: z.string().trim(),
+  language: z.string().trim(),
+});
+
 export const addCoupleSchema = z.object({
   primary: personSchema,
-  partner: personSchema,
+  partner: optionalPartnerSchema.superRefine((partner, ctx) => {
+    if (!partner.fullName) return;
+    if (!partner.dob) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Date of birth is required", path: ["dob"] });
+    if (partner.phone.length < 7) ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid phone number", path: ["phone"] });
+    if (partner.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(partner.email)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid email address", path: ["email"] });
+    }
+  }),
   treatment: z.enum(["IVF", "IUI", "Evaluation", "FET"]),
   doctor: required("Doctor"),
   coordinator: required("Coordinator"),

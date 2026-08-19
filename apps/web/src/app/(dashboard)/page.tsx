@@ -25,9 +25,7 @@ import {
 import { KpiCard, PageHeader, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { useAppState } from "@/lib/app-state";
 import {
-  appointments as demoAppointments,
   coupleLabel,
-  couples as demoCouples,
   findCouple,
   type Couple,
   type ExceptionKind,
@@ -70,15 +68,15 @@ export default function Dashboard() {
   };
   const { activity, exceptions, kpis, tasks } = appState;
   const { open: openTask } = useCreateTask();
-  const couples = appState.couples ?? demoCouples;
-  const appointments = appState.appointments ?? demoAppointments;
+  const couples = appState.couples;
+  const appointments = appState.appointments;
 
   const attentionItems = attentionOrder
     .map((kind) => exceptions.find((exception) => exception.kind === kind))
     .filter((exception): exception is NonNullable<typeof exception> => Boolean(exception));
 
   const tasksDueToday = tasks.filter(
-    (task) => task.due.startsWith("17 Aug") && task.status !== "completed",
+    (task) => task.status !== "completed",
   ).length;
 
   const attentionPatients = new Set(

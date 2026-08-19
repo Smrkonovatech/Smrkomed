@@ -18,7 +18,6 @@ import { Form } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAppState } from "@/lib/app-state";
-import { team } from "@/lib/demo-data";
 import { addCoupleSchema, type AddCoupleValues } from "@/lib/validations/global-actions";
 
 import { FieldGrid, SelectField, TextField } from "./form-fields";
@@ -59,17 +58,21 @@ export function AddCoupleDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const { addCouple } = useAppState();
-  const doctors = team.filter(
-    (member) =>
-      member.role.toLowerCase().includes("fertility") ||
-      member.role.toLowerCase().includes("endocrin"),
+  const { addCouple, staff } = useAppState();
+  const doctors = staff.filter((member) =>
+    /doctor|fertility|endocrin|clinician/i.test(`${member.role} ${member.roleName} ${member.name}`),
   );
-  const coordinators = team.filter(
-    (member) =>
-      member.role.toLowerCase().includes("coordinator") ||
-      member.role.toLowerCase().includes("front"),
+  const coordinators = staff.filter((member) =>
+    /coordinator|nurse|front|admin|counsel/i.test(`${member.role} ${member.roleName}`),
   );
+  const doctorOptions = (doctors.length > 0 ? doctors : staff).map((member) => ({
+    value: member.name,
+    label: member.name,
+  }));
+  const coordinatorOptions = (coordinators.length > 0 ? coordinators : staff).map((member) => ({
+    value: member.name,
+    label: member.name,
+  }));
 
   const form = useForm<AddCoupleValues>({
     resolver: zodResolver(addCoupleSchema),
@@ -77,21 +80,25 @@ export function AddCoupleDialog({
       primary: emptyPerson,
       partner: emptyPerson,
       treatment: "IVF",
-      doctor: doctors[0]?.name ?? "Dr. Ananya Rao",
-      coordinator: coordinators[0]?.name ?? "Meera Iyer",
+      doctor: "Unassigned",
+      coordinator: "Unassigned",
       whatsappConsent: true,
       carePlanTemplate: "IVF",
     },
   });
 
-  const submit = form.handleSubmit((values) => {
-    const couple = addCouple(values);
-    toast.success("Couple created", {
-      description: `${couple.primary.name} + ${couple.partner?.name ?? "partner"} added to the clinic.`,
-    });
-    form.reset();
-    onOpenChange(false);
-    router.push(`/patients/${couple.slug}`);
+  const submit = form.handleSubmit(async (values) => {
+    try {
+      const couple = await addCouple(values);
+      toast.success("Couple created", {
+        description: `${couple.primary.name}${couple.partner ? ` + ${couple.partner.name}` : ""} saved to the clinic.`,
+      });
+      form.reset();
+      onOpenChange(false);
+      router.push(`/patients/${couple.slug}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to create couple. Try again.");
+    }
   });
 
   return (
@@ -162,17 +169,22 @@ export function AddCoupleDialog({
                   name="doctor"
                   label="Assigned doctor"
                   placeholder="Select doctor"
-                  options={doctors.map((member) => ({ value: member.name, label: member.name }))}
+                  options={
+                    doctorOptions.length > 0
+                      ? doctorOptions
+                      : [{ value: "Unassigned", label: "Unassigned" }]
+                  }
                 />
                 <SelectField
                   control={form.control}
                   name="coordinator"
                   label="Assigned coordinator"
                   placeholder="Select coordinator"
-                  options={coordinators.map((member) => ({
-                    value: member.name,
-                    label: member.name,
-                  }))}
+                  options={
+                    coordinatorOptions.length > 0
+                      ? coordinatorOptions
+                      : [{ value: "Unassigned", label: "Unassigned" }]
+                  }
                 />
                 <SelectField
                   control={form.control}

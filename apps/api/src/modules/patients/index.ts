@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { PERMISSIONS, getPatientsForClinic, prisma } from "@smrkomed/database";
+import { PERMISSIONS, prisma } from "@smrkomed/database";
 
 import { audit } from "../../lib/audit";
 import { requirePermission } from "../../lib/authz";
@@ -12,7 +12,30 @@ import { createPatientSchema, idParam, updatePatientSchema } from "./schemas";
 export const patientRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
-    const patients = await getPatientsForClinic(tenant);
+    const q = c.req.query("q")?.trim().toLowerCase();
+    const includeArchived = c.req.query("includeArchived") === "1";
+    const patients = await prisma.patient.findMany({
+      where: {
+        clinicId: tenant.clinicId,
+        clinic: { organizationId: tenant.organizationId },
+        ...(includeArchived ? {} : { status: { not: "ARCHIVED" } }),
+        ...(q
+          ? {
+              OR: [
+                { firstName: { contains: q, mode: "insensitive" } },
+                { lastName: { contains: q, mode: "insensitive" } },
+                { phone: { contains: q } },
+                { email: { contains: q, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        primaryCouples: { select: { id: true, slug: true }, take: 1 },
+        partnerCouples: { select: { id: true, slug: true }, take: 1 },
+      },
+      orderBy: { createdAt: "desc" },
+    });
     return ok(c, patients);
   })
   .get("/:id", validate("param", idParam), async (c) => {
@@ -29,7 +52,7 @@ export const patientRoutes = new Hono<AppEnv>()
         clinicId: tenant.clinicId,
         firstName: body.firstName,
         lastName: body.lastName,
-        ...(body.dateOfBirth === undefined ? {} : { dateOfBirth: new Date(body.dateOfBirth) }),
+        ...(body.dateOfBirth === undefined ? {} : { dateOfBirth: new Date(body.dateOfBirth.includes("T") ? body.dateOfBirth : `${body.dateOfBirth}T00:00:00`) }),
         ...(body.gender === undefined ? {} : { gender: body.gender }),
         ...(body.phone === undefined ? {} : { phone: body.phone }),
         ...(body.whatsappNumber === undefined ? {} : { whatsappNumber: body.whatsappNumber }),
@@ -51,7 +74,7 @@ export const patientRoutes = new Hono<AppEnv>()
       data: {
         ...(body.firstName === undefined ? {} : { firstName: body.firstName }),
         ...(body.lastName === undefined ? {} : { lastName: body.lastName }),
-        ...(body.dateOfBirth === undefined ? {} : { dateOfBirth: new Date(body.dateOfBirth) }),
+        ...(body.dateOfBirth === undefined ? {} : { dateOfBirth: new Date(body.dateOfBirth.includes("T") ? body.dateOfBirth : `${body.dateOfBirth}T00:00:00`) }),
         ...(body.gender === undefined ? {} : { gender: body.gender }),
         ...(body.phone === undefined ? {} : { phone: body.phone }),
         ...(body.whatsappNumber === undefined ? {} : { whatsappNumber: body.whatsappNumber }),

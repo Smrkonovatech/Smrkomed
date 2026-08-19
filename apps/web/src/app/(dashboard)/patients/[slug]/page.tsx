@@ -29,6 +29,7 @@ import { JourneyStrip } from "@/components/journey-strip";
 import { WhatsAppThread, conversationFor } from "@/components/whatsapp-thread";
 import { Avatar, EmptyState, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -38,17 +39,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppState } from "@/lib/app-state";
-import {
-  appointments,
-  carePlanSteps,
-  coupleFullLabel,
-  couples as demoCouples,
-  documents,
-  exceptions as demoExceptions,
-  findCouple,
-  invoices,
-  type Couple,
-} from "@/lib/demo-data";
+import { carePlanSteps, coupleFullLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { appointmentTone, patientStatusTone, taskStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -79,22 +70,38 @@ export default function PatientProfile() {
     couples?: Couple[];
   };
 
-  const couples = appState.couples ?? demoCouples;
+  const couples = appState.couples ?? [];
   const couple = findCouple(slug, couples);
+  const savedPhone = couple?.primary.phone ?? "";
+  const [phoneDraft, setPhoneDraft] = useState<string | undefined>(undefined);
+  const [savingPhone, setSavingPhone] = useState(false);
+  const phoneValue = phoneDraft ?? savedPhone;
+
+  if (appState.loadState === "loading") {
+    return <p className="p-6 text-sm text-muted-foreground">Loading patient...</p>;
+  }
+  if (appState.loadState === "error") {
+    return (
+      <EmptyState
+        title="Unable to load patient"
+        description={appState.loadError ?? "Try again."}
+        icon={Users}
+        action={
+          <Button variant="outline" onClick={() => void appState.reload()}>
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
   if (!couple) notFound();
   const coupleTasks = appState.tasks.filter((task) => task.coupleId === couple.id);
-  const coupleAppointments = (appState.appointments ?? appointments).filter(
+  const coupleAppointments = appState.appointments.filter(
     (appointment) => appointment.coupleId === couple.id,
   );
-  const coupleDocs = (appState.documents ?? documents).filter(
-    (document) => document.coupleId === couple.id,
-  );
-  const coupleInvoices = (appState.invoices ?? invoices).filter(
-    (invoice) => invoice.coupleId === couple.id,
-  );
-  const coupleAlerts = (appState.exceptions ?? demoExceptions).filter(
-    (item) => item.coupleId === couple.id,
-  );
+  const coupleDocs = appState.documents.filter((document) => document.coupleId === couple.id);
+  const coupleInvoices = appState.invoices.filter((invoice) => invoice.coupleId === couple.id);
+  const coupleAlerts = appState.exceptions.filter((item) => item.coupleId === couple.id);
   const people = [couple.primary.name, couple.partner?.name].filter(Boolean) as string[];
   const recentActivity = appState.activity
     .filter((item) => people.includes(item.patient))
@@ -203,15 +210,50 @@ export default function PatientProfile() {
                     {index === 0 ? "Primary partner" : "Partner"}
                   </span>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                   <span>{partner!.age} years</span>
-                  <a
-                    href={`tel:${partner!.phone.replace(/\s/g, "")}`}
-                    className="inline-flex items-center gap-1.5 hover:text-foreground"
-                  >
-                    <Phone className="size-3" />
-                    {partner!.phone}
-                  </a>
+                  {index === 0 && "id" in partner! && partner.id ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <Phone className="size-3" />
+                      <Input
+                        value={phoneValue}
+                        onChange={(event) => setPhoneDraft(event.target.value)}
+                        className="h-7 w-36 text-xs"
+                        aria-label="Primary phone"
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-7 px-2"
+                        disabled={savingPhone || phoneValue === partner.phone}
+                        onClick={() => {
+                          const patientId = (partner as { id?: string }).id;
+                          if (!patientId) return;
+                          setSavingPhone(true);
+                          void appState
+                            .updatePatient(patientId, { phone: phoneValue })
+                            .then(() => {
+                              setPhoneDraft(undefined);
+                              toast.success("Phone number updated");
+                            })
+                            .catch((error: unknown) =>
+                              toast.error(error instanceof Error ? error.message : "Unable to update patient."),
+                            )
+                            .finally(() => setSavingPhone(false));
+                        }}
+                      >
+                        Save
+                      </Button>
+                    </span>
+                  ) : (
+                    <a
+                      href={`tel:${partner!.phone.replace(/\s/g, "")}`}
+                      className="inline-flex items-center gap-1.5 hover:text-foreground"
+                    >
+                      <Phone className="size-3" />
+                      {partner!.phone}
+                    </a>
+                  )}
                 </div>
               </div>
             </div>

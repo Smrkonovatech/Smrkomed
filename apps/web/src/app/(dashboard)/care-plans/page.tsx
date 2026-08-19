@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, Check, Clock3, Copy, Pencil, Plus, Workflow } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader, StatusBadge } from "@/components/ui-kit";
@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { journeyTemplates } from "@/lib/demo-data";
+import { clinicApi, clinicErrorMessage, type ClinicCarePlan } from "@/lib/clinic-api";
 import type { Tone } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,16 @@ export default function CarePlansPage() {
   const [stepsText, setStepsText] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [stageConfigs, setStageConfigs] = useState<Record<string, StageConfig>>({});
+  const [plans, setPlans] = useState<ClinicCarePlan[]>([]);
+  const [plansError, setPlansError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void clinicApi
+      .carePlans()
+      .then(setPlans)
+      .catch((error: unknown) => setPlansError(clinicErrorMessage(error, "Unable to load care plans.")));
+  }, []);
+
   const active = templates.find((template) => template.id === activeId) ?? templates[0]!;
 
   const configuredStages = useMemo(
@@ -133,6 +144,26 @@ export default function CarePlansPage() {
           </Button>
         }
       />
+
+      {plansError ? (
+        <p className="text-sm text-danger">{plansError}</p>
+      ) : (
+        <section className="rounded-xl border bg-background p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Active care plans</p>
+          {plans.length === 0 ? (
+            <p className="mt-2 text-sm text-muted-foreground">No care plans yet. Creating a couple with a template saves a plan here.</p>
+          ) : (
+            <ul className="mt-2 divide-y text-sm">
+              {plans.map((plan) => (
+                <li key={plan.id} className="flex items-center justify-between py-2">
+                  <span className="font-medium">{plan.name}</span>
+                  <span className="text-muted-foreground">{plan.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <PageVisualBanner
         src="/images/care-journey-banner.png"

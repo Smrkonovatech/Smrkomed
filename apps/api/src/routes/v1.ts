@@ -17,6 +17,7 @@ import { crmRoutes } from "../modules/crm";
 import { organizationRoutes } from "../modules/organizations";
 import { patientRoutes } from "../modules/patients";
 import { userRoutes } from "../modules/users";
+import { activityRoutes } from "../modules/activity";
 import { adminRoutes } from "../modules/admin";
 import { publicIntegrationRoutes } from "../modules/integrations/public";
 import type { AppEnv } from "../types";
@@ -37,6 +38,7 @@ protectedRoutes.route("/appointments", appointmentRoutes);
 protectedRoutes.route("/care-plans", carePlanRoutes);
 protectedRoutes.route("/care-tasks", careTaskRoutes);
 protectedRoutes.route("/documents", documentRoutes);
+protectedRoutes.route("/activity", activityRoutes);
 protectedRoutes.route("/analytics", analyticsRoutes);
 protectedRoutes.route("/integrations", integrationRoutes);
 

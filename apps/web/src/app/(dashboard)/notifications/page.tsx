@@ -31,6 +31,9 @@ export default function NotificationsPage() {
           tone="purple"
           action={<StatusBadge label="Live" tone="success" />}
         />
+        {activity.length === 0 ? (
+          <p className="py-3 text-sm text-muted-foreground">No notifications yet.</p>
+        ) : (
         <ul className="divide-y">
           {activity.map((a) => (
             <li key={a.id} className="flex items-start gap-3 py-3">
@@ -51,6 +54,7 @@ export default function NotificationsPage() {
             </li>
           ))}
         </ul>
+        )}
       </section>
     </div>
   );

@@ -28,7 +28,7 @@ export default function PatientsPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
   const { openAction } = useGlobalActions();
-  const { couples } = useAppState();
+  const { couples, loadState, loadError, reload } = useAppState();
 
   const rows = useMemo(
     () =>
@@ -97,22 +97,45 @@ export default function PatientsPage() {
           </div>
         </div>
 
-        {rows.length === 0 ? (
+        {loadState === "loading" ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading patients...</p>
+        ) : loadState === "error" ? (
           <EmptyState
-            title="No matching patients"
-            description="Try a different search term or clear the filters."
+            title="Unable to load patients"
+            description={loadError ?? "Try again."}
             icon={Users}
             action={
-              <Button
-                variant="outline"
-                className="rounded-lg"
-                onClick={() => {
-                  setQ("");
-                  setFilter("All");
-                }}
-              >
-                Clear filters
+              <Button variant="outline" className="rounded-lg" onClick={() => void reload()}>
+                Try again
               </Button>
+            }
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={couples.length === 0 && !q && filter === "All" ? "No patients yet" : "No matching patients"}
+            description={
+              couples.length === 0 && !q && filter === "All"
+                ? "Create a couple to start storing clinic records in PostgreSQL."
+                : "Try a different search term or clear the filters."
+            }
+            icon={Users}
+            action={
+              couples.length === 0 && !q && filter === "All" ? (
+                <Button className="rounded-lg" onClick={() => openAction("add-couple")}>
+                  <UserPlus className="size-4" /> Add Couple
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="rounded-lg"
+                  onClick={() => {
+                    setQ("");
+                    setFilter("All");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )
             }
           />
         ) : (

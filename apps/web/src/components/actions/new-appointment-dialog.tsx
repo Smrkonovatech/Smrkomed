@@ -115,8 +115,9 @@ export function NewAppointmentDialog({
     }
   }, [form, selectedCouple]);
 
-  const submit = form.handleSubmit((values) => {
-    addAppointment({
+  const submit = form.handleSubmit(async (values) => {
+    try {
+    await addAppointment({
       coupleId: values.coupleId,
       type: values.type,
       doctor: values.doctor,
@@ -134,6 +135,9 @@ export function NewAppointmentDialog({
       description: `${values.type} booked for ${values.date} at ${values.time}.`,
     });
     onOpenChange(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to create appointment. Try again.");
+    }
   });
 
   return (

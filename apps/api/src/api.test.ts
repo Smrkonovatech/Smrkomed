@@ -45,6 +45,10 @@ async function cleanup() {
     await prisma.careTask.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.appointment.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.carePlan.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.treatment.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.document.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.documentCategory.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.consent.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.leadActivity.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.couple.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.patient.deleteMany({ where: { clinicId: { in: clinicIds } } });
@@ -366,6 +370,41 @@ test("clinic list does not include another organization's clinics", async () => 
   const rows = body["data"] as { id: string }[];
   assert.equal(rows.some((row) => row.id === fixture.clinicAId), true);
   assert.equal(rows.some((row) => row.id === fixture.clinicBId), false);
+});
+
+test("create couple persists patients in the session clinic", async () => {
+  const created = await app.request("/api/v1/couples", {
+    method: "POST",
+    headers: { ...cookie(fixture.tokenA), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      primary: {
+        fullName: "Test Patient Phase 9",
+        dob: "1992-03-14",
+        phone: "9999999999",
+        email: "phase9@example.test",
+        language: "English",
+      },
+      treatment: "Evaluation",
+      carePlanTemplate: "Fertility Evaluation",
+      whatsappConsent: true,
+    }),
+  });
+  assert.equal(created.status, 201);
+  const body = await json(created);
+  const data = body["data"] as { clinicId: string; primary: { name: string; phone: string }; slug: string };
+  assert.equal(data.clinicId, fixture.clinicAId);
+  assert.equal(data.primary.name, "Test Patient Phase 9");
+  assert.equal(data.primary.phone, "9999999999");
+
+  const listed = await app.request("/api/v1/couples", { headers: cookie(fixture.tokenA) });
+  const listedBody = await json(listed);
+  const rows = listedBody["data"] as { slug: string }[];
+  assert.equal(rows.some((row) => row.slug === data.slug), true);
+
+  const foreign = await app.request("/api/v1/couples", { headers: cookie(fixture.tokenB) });
+  const foreignBody = await json(foreign);
+  const foreignRows = foreignBody["data"] as { slug: string }[];
+  assert.equal(foreignRows.some((row) => row.slug === data.slug), false);
 });
 
 test("mutations write audit logs without clinical payload", async () => {
