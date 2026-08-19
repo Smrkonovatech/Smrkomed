@@ -52,11 +52,18 @@ export function prismaErrorHint(error: unknown): { code: string; message: string
         "Vercel cannot reach Postgres. On Railway, copy the public DATABASE_URL (not *.railway.internal) and set it on the Vercel web project, then Redeploy.",
     };
   }
-  if (code === "P2021" || /does not exist/i.test(text)) {
+  if (code === "P2021") {
     return {
       code: "DB_SCHEMA",
       message:
-        "Postgres is reachable but clinic tables are missing. Run database migrations against this DATABASE_URL, then try again.",
+        "Postgres is reachable but a clinic table is missing. Redeploy so prisma migrate deploy can finish, then try again.",
+    };
+  }
+  if (code === "P2022" || /column .* does not exist/i.test(text)) {
+    return {
+      code: "DB_COLUMN",
+      message:
+        "Postgres is connected and clinic tables exist, but a column the app expects is missing. Redeploy the latest web build so remaining migrations can apply, then try Sign in again.",
     };
   }
   if (code === "P1010" || /authentication failed/i.test(text)) {
