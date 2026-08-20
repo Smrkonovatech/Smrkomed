@@ -13,6 +13,7 @@ import {
 
 import { useCreateTask } from "@/components/create-task-drawer";
 import { DemoRunner } from "@/components/demo-runner";
+import { SmrkoAiBrief } from "@/components/ai/smrko-ai-brief";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -142,6 +143,8 @@ export default function Dashboard() {
           <KpiCard key={card.label} {...card} className="rounded-xl p-3.5" />
         ))}
       </div>
+
+      <SmrkoAiBrief />
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)]">
         <section className="surface-card rounded-xl p-4">

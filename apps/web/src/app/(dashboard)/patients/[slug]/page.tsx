@@ -14,6 +14,7 @@ import {
   HeartHandshake,
   ListChecks,
   MessageCircle,
+  Mic,
   Phone,
   Stethoscope,
   Upload,
@@ -23,9 +24,11 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { PatientJourneySummary } from "@/components/ai/patient-journey-summary";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { useCreateTask } from "@/components/create-task-drawer";
 import { JourneyStrip } from "@/components/journey-strip";
+import { VoiceNotesPanel } from "@/components/voice/voice-notes";
 import { WhatsAppThread, conversationFor } from "@/components/whatsapp-thread";
 import { Avatar, EmptyState, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -56,6 +59,7 @@ const tabs = [
   ["appointments", "Appointments"],
   ["tasks", "Tasks"],
   ["documents", "Documents"],
+  ["consultation", "Consultation"],
   ["conversation", "Conversation"],
   ["billing", "Billing"],
 ] as const;
@@ -273,6 +277,15 @@ export default function PatientProfile() {
         </div>
 
         <TabsContent value="overview" className="mt-4">
+          <div className="mb-4">
+            <PatientJourneySummary
+              couple={couple}
+              tasks={coupleTasks}
+              appointments={coupleAppointments}
+              documents={coupleDocs}
+              activity={recentActivity}
+            />
+          </div>
           <div className="grid gap-4 xl:grid-cols-[1.05fr_.95fr]">
             <div className="grid gap-4 sm:grid-cols-2">
               <OverviewCard
@@ -538,6 +551,18 @@ export default function PatientProfile() {
               </li>
             ))}
           </RecordSection>
+        </TabsContent>
+
+        <TabsContent value="consultation" className="mt-4">
+          <section className="surface-card space-y-4 p-4">
+            <SectionHeading
+              title="Voice consultation notes"
+              subtitle="Record, summarise, and save — audio is never stored"
+              icon={Mic}
+              tone="teal"
+            />
+            <VoiceNotesPanel coupleId={couple.id} coupleLabel={coupleFullLabel(couple)} />
+          </section>
         </TabsContent>
 
         <TabsContent value="conversation" className="mt-4">

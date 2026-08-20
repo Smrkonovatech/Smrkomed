@@ -406,6 +406,7 @@ model Clinic {
   leads        Lead[]
   campaigns    Campaign[]
   leadActivities LeadActivity[]
+  consultationNotes ConsultationNote[]
 
   @@index([organizationId])
 }
@@ -448,6 +449,7 @@ model User {
   doctorCouples      Couple[]    @relation("CoupleDoctor")
   assignedLeads      Lead[]      @relation("LeadAssignee")
   leadActivities     LeadActivity[]
+  consultationNotes  ConsultationNote[] @relation("ConsultationAuthor")
 }
 
 model Role {
@@ -551,6 +553,7 @@ model Couple {
   documents           Document[]
   escalations         Escalation[]
   convertedLeads      Lead[]
+  consultationNotes   ConsultationNote[]
 
   @@unique([clinicId, slug])
   @@index([clinicId])
@@ -764,6 +767,28 @@ model Appointment {
   @@index([clinicId, startsAt])
   @@index([coupleId])
   @@index([leadId])
+}
+
+// ─── Consultation notes (summary only — never store audio) ───────────────────
+
+model ConsultationNote {
+  id               String   @id @default(cuid())
+  clinicId         String
+  coupleId         String
+  createdById      String?
+  consultationDate DateTime @default(now())
+  summary          String
+  reasonForVisit   String?
+  nextSteps        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  clinic    Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple    Couple @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("ConsultationAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, consultationDate])
+  @@index([coupleId, consultationDate])
 }
 
 // ─── Conversations & AI ──────────────────────────────────────────────────────
