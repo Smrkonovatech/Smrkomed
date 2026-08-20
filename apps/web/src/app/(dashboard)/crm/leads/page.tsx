@@ -6,6 +6,7 @@ import { Search, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { AddLeadForm } from "@/components/crm/add-lead-form";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,7 +92,28 @@ export default function CrmLeadsPage() {
             description="Website, WhatsApp and walk-in enquiries will appear in this list."
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <MobileCards>
+            {data.items.map((lead) => (
+              <RecordCard key={lead.id}>
+                <p className="font-semibold">{lead.name}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {lead.sourceLabel} · {lead.campaign ?? "No campaign"}
+                </p>
+                <div className="mt-2">
+                  <StatusBadge label={lead.stageLabel} />
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {lead.assignedTo?.name ?? "Unassigned"} · Next:{" "}
+                  {lead.nextFollowUpAt ? new Date(lead.nextFollowUpAt).toLocaleDateString() : "—"}
+                </p>
+                <Button asChild size="sm" className="mt-3 w-full">
+                  <Link href={`/crm/leads/${lead.id}`}>Open</Link>
+                </Button>
+              </RecordCard>
+            ))}
+          </MobileCards>
+          <MdTableWrap>
             <table className="w-full min-w-[960px] text-sm">
               <thead className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                 <tr>
@@ -123,7 +145,8 @@ export default function CrmLeadsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </MdTableWrap>
+          </>
         )}
         {data && data.totalPages > 1 && (
           <div className="flex items-center justify-between border-t px-4 py-3 text-sm">

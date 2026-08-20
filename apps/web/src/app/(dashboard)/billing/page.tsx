@@ -5,6 +5,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
 import { PageHeader, StatusBadge } from "@/components/ui-kit";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -152,7 +153,34 @@ export default function BillingPage() {
           </div>
           <Receipt className="size-4 text-muted-foreground" />
         </div>
-        <div className="overflow-x-auto">
+        <MobileCards>
+          {localInvoices.map((invoice) => (
+            <RecordCard key={invoice.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold">{invoice.id}</p>
+                  <p className="mt-0.5 text-sm">{coupleLabel(getCouple(invoice.coupleId))}</p>
+                </div>
+                <StatusBadge
+                  label={invoice.status}
+                  tone={
+                    invoice.status === "Paid"
+                      ? "success"
+                      : invoice.status === "Pending"
+                        ? "warning"
+                        : "danger"
+                  }
+                />
+              </div>
+              <p className="mt-2 truncate text-sm text-muted-foreground">{invoice.item}</p>
+              <p className="mt-1 font-semibold tabular-nums">{inr(invoice.amount)}</p>
+              <Button size="sm" className="mt-3 w-full" onClick={() => setSelected(invoice)}>
+                <Eye className="size-3.5" /> View
+              </Button>
+            </RecordCard>
+          ))}
+        </MobileCards>
+        <MdTableWrap>
           <table className="w-full min-w-[980px] text-sm">
             <thead className="bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
               <tr className="border-b">
@@ -234,7 +262,7 @@ export default function BillingPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </MdTableWrap>
       </section>
 
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
@@ -321,7 +349,7 @@ export default function BillingPage() {
             <DialogDescription>Invoice details and payment status</DialogDescription>
           </DialogHeader>
           {selected && (
-            <dl className="grid grid-cols-[110px_1fr] gap-x-4 gap-y-3 text-sm">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-[110px_1fr]">
               <dt className="text-muted-foreground">Couple</dt>
               <dd className="font-medium">{coupleLabel(getCouple(selected.coupleId))}</dd>
               <dt className="text-muted-foreground">Treatment</dt>

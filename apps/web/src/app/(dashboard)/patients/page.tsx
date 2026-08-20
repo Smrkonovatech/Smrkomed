@@ -5,6 +5,7 @@ import { Filter, Search, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge, Avatar } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,14 +79,14 @@ export default function PatientsPage() {
               aria-label="Search patients"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex max-w-full flex-wrap items-center gap-1.5 overflow-x-auto">
             <Filter className="size-4 shrink-0 text-muted-foreground" />
             {filters.map((f) => (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                  "min-h-11 shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors sm:min-h-0",
                   filter === f
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-transparent text-muted-foreground hover:border-border hover:bg-accent",
@@ -139,7 +140,35 @@ export default function PatientsPage() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <MobileCards>
+            {rows.map((c) => (
+              <RecordCard key={c.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{coupleLabel(c)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {c.treatment} · {c.status}
+                    </p>
+                  </div>
+                  <StatusBadge label={c.status} tone={patientStatusTone[c.status] ?? "muted"} />
+                </div>
+                <p className="mt-2 text-sm">{c.stage}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {c.doctor} · Coordinator: {c.coordinator}
+                </p>
+                <p className="mt-2 text-sm">
+                  Next: <span className="font-medium">{c.nextStep}</span>
+                </p>
+                <div className="mt-3">
+                  <Button asChild size="sm" className="w-full sm:w-auto">
+                    <Link href={`/patients/${c.slug}`}>Open</Link>
+                  </Button>
+                </div>
+              </RecordCard>
+            ))}
+          </MobileCards>
+          <MdTableWrap>
             <table className="w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
@@ -200,7 +229,8 @@ export default function PatientsPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </MdTableWrap>
+          </>
         )}
         <div className="border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
           Showing {rows.length} of {couples.length} couples

@@ -91,7 +91,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(91_42_104/0.08),_transparent_55%),hsl(var(--background))] px-4">
-      <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-8 shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)]">
+      <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-5 shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)] sm:p-8">
         <div className="space-y-1 text-center">
           <p className="text-xs font-semibold tracking-[0.18em] text-primary">SMRKOMED</p>
           <h1 className="text-2xl font-bold tracking-tight">Sign in to your clinic</h1>

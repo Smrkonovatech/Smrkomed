@@ -112,7 +112,7 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider value={value}>
       {children}
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
-        <SheetContent className="w-full overflow-y-auto p-0 sm:max-w-md">
+        <SheetContent className="w-full overflow-y-auto overscroll-contain p-0 sm:max-w-md">
           <SheetHeader className="border-b px-5 py-5 pr-12 text-left">
             <SheetTitle className="flex items-center gap-2">
               <span className="grid size-8 place-items-center rounded-xl bg-primary-soft text-primary">

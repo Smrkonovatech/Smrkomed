@@ -19,7 +19,7 @@ export function AuthShell({
     <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(91_42_104/0.08),_transparent_55%),hsl(var(--background))] px-4 py-10">
       <div
         className={cn(
-          "w-full space-y-6 rounded-2xl border bg-card p-8 shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)]",
+          "w-full space-y-6 rounded-2xl border bg-card p-5 shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)] sm:p-8",
           wide ? "max-w-2xl" : "max-w-md",
         )}
       >

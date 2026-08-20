@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import {
@@ -176,7 +177,54 @@ export default function DocumentsPage() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <MobileCards>
+            {rows.map((document) => (
+                <RecordCard key={document.id}>
+                  <p className="font-semibold">{document.name}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {coupleName(coupleById, document.coupleId)} · {categoryLabel(document.category)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">{document.uploaded}</p>
+                  <div className="mt-2">
+                    <StatusBadge
+                      label={document.status}
+                      tone={
+                        document.status === "Reviewed"
+                          ? "success"
+                          : document.status === "Doctor Review"
+                            ? "warning"
+                            : "danger"
+                      }
+                    />
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button size="sm" onClick={() => setSelected(document)}>
+                      <Eye className="size-3.5" /> View
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label="Download"
+                      onClick={() =>
+                        downloadDocument(document, coupleName(coupleById, document.coupleId))
+                      }
+                    >
+                      <Download className="size-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label="Share"
+                      onClick={() => setShareTarget(document)}
+                    >
+                      <Share2 className="size-3.5" />
+                    </Button>
+                  </div>
+                </RecordCard>
+            ))}
+          </MobileCards>
+          <MdTableWrap>
             <table className="w-full min-w-[1180px] text-sm">
               <thead className="bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
                 <tr className="border-b">
@@ -240,6 +288,7 @@ export default function DocumentsPage() {
                             size="icon"
                             variant="ghost"
                             title="Download"
+                            aria-label="Download"
                             onClick={() => downloadDocument(document, coupleName(coupleById, document.coupleId))}
                           >
                             <Download className="size-3.5" />
@@ -248,6 +297,7 @@ export default function DocumentsPage() {
                             size="icon"
                             variant="ghost"
                             title="Share"
+                            aria-label="Share"
                             onClick={() => setShareTarget(document)}
                           >
                             <Share2 className="size-3.5" />
@@ -256,6 +306,7 @@ export default function DocumentsPage() {
                             size="icon"
                             variant="ghost"
                             title="Assign doctor review"
+                            aria-label="Assign doctor review"
                             disabled={assigned}
                             onClick={() => {
                               setReviewAssignments((current) => ({
@@ -274,7 +325,8 @@ export default function DocumentsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </MdTableWrap>
+          </>
         )}
         <div className="border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
           Showing {rows.length} of {documents.length} files
@@ -288,7 +340,7 @@ export default function DocumentsPage() {
             <DialogDescription>Document record details</DialogDescription>
           </DialogHeader>
           {selected && (
-            <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-3 text-sm">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-3 text-sm sm:grid-cols-[120px_1fr]">
               <dt className="text-muted-foreground">Couple</dt>
               <dd className="font-medium">{coupleName(coupleById, selected.coupleId)}</dd>
               <dt className="text-muted-foreground">Category</dt>

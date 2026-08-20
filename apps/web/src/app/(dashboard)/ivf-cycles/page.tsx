@@ -5,6 +5,7 @@ import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,7 +166,35 @@ export default function CyclesPage() {
             }
           />
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          <MobileCards>
+            {list.map((cycle) => {
+              const couple = coupleById.get(cycle.coupleId);
+              return (
+                <RecordCard key={cycle.id}>
+                  <p className="font-semibold">
+                    {couple ? coupleLabel(couple) : "Unknown couple"}
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {cycle.cycleLabel} · {cycle.treatment}
+                  </p>
+                  <p className="mt-2 text-sm">{cycle.stage}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {cycle.doctor} · Next: {cycle.nextStep}
+                  </p>
+                  <div className="mt-2">
+                    <StatusBadge label={cycle.status} tone={statusTone[cycle.status] ?? "muted"} />
+                  </div>
+                  {couple && (
+                    <Button asChild size="sm" className="mt-3 w-full">
+                      <Link href={`/patients/${couple.slug}`}>Open</Link>
+                    </Button>
+                  )}
+                </RecordCard>
+              );
+            })}
+          </MobileCards>
+          <MdTableWrap>
             <table className="w-full min-w-[1120px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
@@ -235,7 +264,8 @@ export default function CyclesPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </MdTableWrap>
+          </>
         )}
         <div className="border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
           Showing {list.length} of {cycles.length} cycles

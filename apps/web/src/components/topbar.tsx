@@ -152,15 +152,19 @@ export function Topbar() {
       <div className="flex h-full items-center gap-3 px-4 lg:px-6">
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open navigation">
+            <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation">
               <Menu />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[232px] p-0">
+          <SheetContent side="left" className="w-[min(90vw,22rem)] p-0">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <SidebarContentBody onNavigate={() => setMobileOpen(false)} />
           </SheetContent>
         </Sheet>
+
+        <p className="min-w-0 max-w-[28vw] truncate text-sm font-semibold md:hidden">
+          {clinic.name}
+        </p>
 
         <Popover open={searchOpen && query.trim().length > 0} onOpenChange={setSearchOpen}>
           <PopoverAnchor asChild>
@@ -180,8 +184,8 @@ export function Topbar() {
                     selectSearchResult(filteredResults[0]);
                   }
                 }}
-                className="h-9 rounded-md border-border bg-muted/40 pl-9 shadow-none"
-                placeholder="Search couples, cycles, tasks, documents, enquiries…"
+                className="h-11 rounded-md border-border bg-muted/40 pl-9 shadow-none sm:h-9"
+                placeholder="Search…"
                 aria-label="Global search"
                 aria-expanded={searchOpen && query.trim().length > 0}
                 aria-controls="global-search-results"
@@ -243,7 +247,7 @@ export function Topbar() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" className="rounded-md">
+              <Button size="sm" className="rounded-md" aria-label="Quick Action">
                 <Plus className="size-4" />
                 <span className="hidden sm:inline">Quick Action</span>
               </Button>
@@ -309,7 +313,7 @@ export function Topbar() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className="flex items-center gap-2 rounded-md p-1 transition-colors hover:bg-muted"
+                className="flex min-h-11 min-w-11 items-center gap-2 rounded-md p-1 transition-colors hover:bg-muted sm:min-h-0"
                 aria-label="User menu"
               >
                 <Avatar initials={sessionInitials} />

@@ -20,6 +20,7 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppState } from "@/lib/app-state";
 import { cn } from "@/lib/utils";
 
@@ -73,7 +74,13 @@ const groups = [
 const linkBase =
   "group relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors";
 
-export function SidebarContentBody({ onNavigate }: { onNavigate?: () => void }) {
+export function SidebarContentBody({
+  onNavigate,
+  compact = false,
+}: {
+  onNavigate?: () => void;
+  compact?: boolean;
+}) {
   const { kpis } = useAppState();
   const pathname = usePathname();
   const isActive = (href: string) =>
@@ -81,59 +88,81 @@ export function SidebarContentBody({ onNavigate }: { onNavigate?: () => void }) 
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
-      <div className="flex h-16 items-center gap-2.5 border-b border-sidebar-border px-4">
+      <div
+        className={cn(
+          "flex h-16 items-center border-b border-sidebar-border",
+          compact ? "justify-center px-2" : "gap-2.5 px-4",
+        )}
+      >
         <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
           <Sparkles className="size-4.5" />
         </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold tracking-[0.16em] text-primary">SMRKOMED</p>
-          <p className="truncate text-[11px] text-muted-foreground">Fertility Care Platform</p>
-        </div>
+        {!compact && (
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold tracking-[0.16em] text-primary">SMRKOMED</p>
+            <p className="truncate text-[11px] text-muted-foreground">Fertility Care Platform</p>
+          </div>
+        )}
       </div>
 
       <nav
-        className="flex-1 space-y-3 overflow-y-auto px-2.5 py-3"
+        className={cn("flex-1 space-y-3 overflow-y-auto py-3", compact ? "px-1.5" : "px-2.5")}
         aria-label="Main navigation"
       >
         {groups.map((group) => (
           <div key={group.label}>
-            <p className="px-2.5 pb-1 text-[9px] font-bold tracking-[0.14em] text-muted-foreground uppercase">
-              {group.label}
-            </p>
+            {!compact && (
+              <p className="px-2.5 pb-1 text-[9px] font-bold tracking-[0.14em] text-muted-foreground uppercase">
+                {group.label}
+              </p>
+            )}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
                 const highlight = "highlight" in item && item.highlight;
                 const active = isActive(item.to);
+                const link = (
+                  <Link
+                    href={item.to}
+                    {...(onNavigate ? { onClick: onNavigate } : {})}
+                    aria-label={compact ? item.label : undefined}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      linkBase,
+                      compact && "min-h-11 justify-center px-0",
+                      active
+                        ? highlight
+                          ? "bg-primary-soft text-primary"
+                          : "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : highlight
+                          ? "text-primary hover:bg-primary-soft/70"
+                          : "text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {highlight && !compact && (
+                      <span
+                        className="gradient-loop absolute inset-y-1.5 left-0 w-0.5 rounded-full"
+                        aria-hidden
+                      />
+                    )}
+                    <item.icon className="size-4.5 shrink-0" aria-hidden />
+                    {!compact && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+                    {!compact && highlight && (
+                      <span className="rounded-full bg-rose-soft px-1.5 py-0.5 text-[9px] font-bold text-rose">
+                        {kpis.needAttention}
+                      </span>
+                    )}
+                  </Link>
+                );
                 return (
                   <li key={item.to}>
-                    <Link
-                      href={item.to}
-                      {...(onNavigate ? { onClick: onNavigate } : {})}
-                      className={cn(
-                        linkBase,
-                        active
-                          ? highlight
-                            ? "bg-primary-soft text-primary"
-                            : "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : highlight
-                            ? "text-primary hover:bg-primary-soft/70"
-                            : "text-muted-foreground hover:bg-muted",
-                      )}
-                    >
-                      {highlight && (
-                        <span
-                          className="gradient-loop absolute inset-y-1.5 left-0 w-0.5 rounded-full"
-                          aria-hidden
-                        />
-                      )}
-                      <item.icon className="size-4.5 shrink-0" aria-hidden />
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      {highlight && (
-                        <span className="rounded-full bg-rose-soft px-1.5 py-0.5 text-[9px] font-bold text-rose">
-                          {kpis.needAttention}
-                        </span>
-                      )}
-                    </Link>
+                    {compact ? (
+                      <Tooltip>
+                        <TooltipTrigger asChild>{link}</TooltipTrigger>
+                        <TooltipContent side="right">{item.label}</TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      link
+                    )}
                   </li>
                 );
               })}
@@ -147,10 +176,19 @@ export function SidebarContentBody({ onNavigate }: { onNavigate?: () => void }) 
 
 export function AppSidebar() {
   return (
-    <aside className="hidden w-[232px] shrink-0 border-r border-sidebar-border lg:block">
-      <div className="sticky top-0 h-screen">
-        <SidebarContentBody />
-      </div>
-    </aside>
+    <>
+      <aside className="hidden w-[4.5rem] shrink-0 border-r border-sidebar-border md:block lg:hidden">
+        <div className="sticky top-0 h-screen">
+          <TooltipProvider delayDuration={0}>
+            <SidebarContentBody compact />
+          </TooltipProvider>
+        </div>
+      </aside>
+      <aside className="hidden w-[232px] shrink-0 border-r border-sidebar-border lg:block">
+        <div className="sticky top-0 h-screen">
+          <SidebarContentBody />
+        </div>
+      </aside>
+    </>
   );
 }

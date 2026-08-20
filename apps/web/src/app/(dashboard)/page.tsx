@@ -143,7 +143,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)]">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)]">
         <section className="surface-card rounded-xl p-4">
           <SectionHeading
             title="Today's clinic activity"

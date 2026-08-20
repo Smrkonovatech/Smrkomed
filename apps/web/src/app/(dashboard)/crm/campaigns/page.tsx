@@ -72,13 +72,13 @@ export default function CampaignsPage() {
         </div>
         <div className="space-y-1">
           <Label>Source</Label>
-          <select className="h-9 w-full rounded-md border px-2 text-sm" value={source} onChange={(e) => setSource(e.target.value as (typeof SOURCE_OPTIONS)[number])}>
+          <select className="h-11 w-full min-h-11 rounded-md border px-2 text-sm sm:h-9 sm:min-h-9" value={source} onChange={(e) => setSource(e.target.value as (typeof SOURCE_OPTIONS)[number])}>
             {SOURCE_OPTIONS.map((item) => <option key={item} value={item}>{item.replaceAll("_", " ")}</option>)}
           </select>
         </div>
         <div className="space-y-1">
           <Label>Treatment</Label>
-          <select className="h-9 w-full rounded-md border px-2 text-sm" value={treatmentFocus} onChange={(e) => setTreatmentFocus(e.target.value)}>
+          <select className="h-11 w-full min-h-11 rounded-md border px-2 text-sm sm:h-9 sm:min-h-9" value={treatmentFocus} onChange={(e) => setTreatmentFocus(e.target.value)}>
             {TREATMENT_OPTIONS.map((item) => <option key={item}>{item}</option>)}
           </select>
         </div>
@@ -93,7 +93,8 @@ export default function CampaignsPage() {
       {!data?.items.length ? (
         <EmptyState title="No campaigns created." description="Create IVF September Campaign or a fertility evaluation campaign to start attribution." />
       ) : (
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-sm">
           <thead className="text-left text-xs text-muted-foreground">
             <tr>
               <th className="py-2">Name</th>
@@ -113,6 +114,7 @@ export default function CampaignsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

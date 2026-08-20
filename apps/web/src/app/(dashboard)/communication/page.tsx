@@ -100,7 +100,7 @@ export default function CommunicationPage() {
         subtitle="WhatsApp conversations belong to this clinic. Unknown numbers stay unmatched until staff associate them."
       />
 
-      <div className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px]">
         <section className="surface-card p-3">
           <SectionHeading title="Conversations" subtitle="WhatsApp channel" icon={MessageCircle} />
           <ul className="space-y-1.5">

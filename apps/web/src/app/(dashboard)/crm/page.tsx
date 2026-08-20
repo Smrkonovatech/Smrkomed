@@ -106,7 +106,7 @@ export default function CrmDashboardPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <KpiCard label="Total leads" value={String(t.totalLeads)} icon={Users} tone="primary" />
         <KpiCard label="New leads" value={String(t.newLeads)} icon={UserPlus} tone="info" />
         <KpiCard label="Qualified" value={String(t.qualifiedLeads)} icon={Heart} tone="teal" />

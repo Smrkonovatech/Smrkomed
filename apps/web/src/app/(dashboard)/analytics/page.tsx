@@ -18,7 +18,7 @@ function Bars({
 }) {
   const max = Math.max(...data.map((d) => Math.max(Number(d[keyA]), Number(d[keyB]))));
   return (
-    <div className="flex h-48 items-end gap-3">
+    <div className="flex h-48 min-h-48 items-end gap-3 overflow-x-auto">
       {data.map((d) => (
         <div
           key={String(d[labelKey])}

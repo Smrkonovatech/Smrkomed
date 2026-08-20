@@ -141,7 +141,7 @@ export default function PatientProfile() {
                   tone={automationPaused || couple.careLoop === "Paused" ? "warning" : "purple"}
                 />
               </div>
-              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+              <h1 className="text-xl font-bold tracking-tight sm:text-2xl lg:text-3xl">
                 {coupleFullLabel(couple)}
               </h1>
               <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
@@ -183,7 +183,7 @@ export default function PatientProfile() {
                 className="rounded-lg"
                 onClick={() => openAction("upload-document", { coupleId: couple.id })}
               >
-                <Upload className="size-4" /> Upload Document
+                <Upload className="size-4" /> Upload
               </Button>
             </div>
           </div>
@@ -218,7 +218,7 @@ export default function PatientProfile() {
                       <Input
                         value={phoneValue}
                         onChange={(event) => setPhoneDraft(event.target.value)}
-                        className="h-7 w-36 text-xs"
+                        className="h-11 w-full max-w-xs text-sm sm:h-7 sm:w-36 sm:text-xs"
                         aria-label="Primary phone"
                       />
                       <Button
@@ -263,7 +263,7 @@ export default function PatientProfile() {
 
       <Tabs defaultValue="overview">
         <div className="overflow-x-auto rounded-xl border bg-card p-1">
-          <TabsList className="h-9 min-w-max justify-start bg-transparent">
+          <TabsList className="h-11 min-w-max justify-start bg-transparent sm:h-9">
             {tabs.map(([value, label]) => (
               <TabsTrigger key={value} value={value} className="h-8 rounded-lg px-3 text-xs">
                 {label}
@@ -541,7 +541,7 @@ export default function PatientProfile() {
         </TabsContent>
 
         <TabsContent value="conversation" className="mt-4">
-          <div className="grid min-h-[560px] gap-4 xl:grid-cols-[minmax(0,1.4fr)_360px]">
+          <div className="grid min-h-0 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,360px)]">
             <WhatsAppThread messages={messages} patientName={couple.primary.name} />
             <section className="surface-card h-fit p-4">
               <SectionHeading

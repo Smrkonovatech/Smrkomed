@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useCreateTask } from "@/components/create-task-drawer";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -141,6 +142,56 @@ export default function TasksPage() {
             icon={CheckCircle2}
           />
         ) : (
+          <>
+          <MobileCards>
+            {rows.map((task) => {
+              const priority = priorityFor(task);
+              const couple = coupleById.get(task.coupleId);
+              return (
+                <RecordCard key={task.id}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-semibold">{task.title}</p>
+                      <p className="mt-0.5 text-sm text-muted-foreground">
+                        {couple ? coupleLabel(couple) : "Unknown couple"}
+                      </p>
+                    </div>
+                    <StatusBadge label={priority.label} tone={priority.tone} />
+                  </div>
+                  <p className="mt-2 text-sm">Due {task.due}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Assigned: {taskOwner(task, couple)} · {task.category}
+                  </p>
+                  <div className="mt-3">
+                    <Select
+                      value={task.status}
+                      onValueChange={(value: TaskStatus) => {
+                        void setTaskStatus(task.id, value)
+                          .then(() =>
+                            toast.success(`${task.title} moved to ${taskStatusMeta[value].label}`),
+                          )
+                          .catch((error: unknown) =>
+                            toast.error(error instanceof Error ? error.message : "Unable to update task."),
+                          );
+                      }}
+                    >
+                      <SelectTrigger aria-label="Update task status">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {taskStatusMeta[status].label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </RecordCard>
+              );
+            })}
+          </MobileCards>
+          <MdTableWrap>
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
@@ -210,6 +261,8 @@ export default function TasksPage() {
               })}
             </TableBody>
           </Table>
+          </MdTableWrap>
+          </>
         )}
       </section>
     </div>

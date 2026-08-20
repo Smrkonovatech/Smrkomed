@@ -14,6 +14,7 @@ import {
 import { useMemo, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import {
@@ -186,7 +187,36 @@ export default function CareContentPage() {
       </div>
 
       <section className="overflow-hidden rounded-xl border bg-background">
-        <div className="overflow-x-auto">
+        <MobileCards>
+          {list.map((item) => {
+            const Icon = typeIcon[item.type];
+            return (
+              <RecordCard key={item.id}>
+                <div className="flex items-start gap-2.5">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-rose-soft text-rose">
+                    <Icon className="size-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-semibold">{item.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {item.type} · {item.language}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <StatusBadge
+                    label={item.status}
+                    tone={item.status === "Active" ? "success" : "muted"}
+                  />
+                </div>
+                <Button size="sm" className="mt-3 w-full" onClick={() => setPreview(item)}>
+                  <Eye className="size-3.5" /> Preview
+                </Button>
+              </RecordCard>
+            );
+          })}
+        </MobileCards>
+        <MdTableWrap>
           <table className="w-full min-w-[1080px] text-sm">
             <thead className="bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
               <tr className="border-b">
@@ -273,7 +303,7 @@ export default function CareContentPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </MdTableWrap>
         <div className="border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
           {list.length} education items · Archived content is hidden
         </div>

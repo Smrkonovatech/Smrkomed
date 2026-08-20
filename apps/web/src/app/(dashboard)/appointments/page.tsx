@@ -15,6 +15,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,7 +103,8 @@ export default function AppointmentsPage() {
                   key={item}
                   onClick={() => setView(item)}
                   className={cn(
-                    "rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
+                    "min-h-11 rounded-md px-2.5 py-1 text-xs font-medium transition-colors sm:min-h-0",
+                    item === "Day" ? "inline-flex" : "hidden md:inline-flex",
                     view === item
                       ? "bg-muted text-foreground"
                       : "text-muted-foreground hover:text-foreground",
@@ -177,7 +179,75 @@ export default function AppointmentsPage() {
                 {visibleAppointments.length} appointments · {waitingCount} waiting
               </span>
             </div>
-            <div className="overflow-x-auto">
+            <MobileCards>
+              {visibleAppointments.map((appointment) => {
+                const couple = coupleById.get(appointment.coupleId);
+                const reminded = remindedIds.includes(appointment.id);
+                const patient = couple ? coupleLabel(couple) : "Patient";
+                return (
+                  <RecordCard key={appointment.id}>
+                    <p className="text-sm font-semibold tabular-nums">{appointment.time}</p>
+                    <p className="mt-1 font-semibold">{patient}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {appointment.type} · {appointment.doctor}
+                    </p>
+                    <div className="mt-2">
+                      <StatusBadge
+                        label={appointment.status}
+                        tone={appointmentTone[appointment.status] ?? "muted"}
+                      />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {appointment.status === "Confirmed" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            void patchAppointmentStatus(appointment.id, "Waiting").then(() =>
+                              pushActivity({
+                                patient,
+                                activity: `Checked in for ${appointment.type}`,
+                                time: "just now",
+                                tone: "success",
+                              }),
+                            );
+                          }}
+                        >
+                          <CheckCircle2 /> Check in
+                        </Button>
+                      )}
+                      {(appointment.status === "Confirmed" || appointment.status === "Waiting") && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={reminded}
+                          onClick={() => {
+                            setRemindedIds((current) => [...current, appointment.id]);
+                            pushActivity({
+                              patient,
+                              activity: `Appointment reminder sent — ${appointment.type}`,
+                              time: "just now",
+                              tone: "info",
+                            });
+                          }}
+                        >
+                          {reminded ? <Check /> : <Bell />}
+                          {reminded ? "Sent" : "Remind"}
+                        </Button>
+                      )}
+                      {couple && (
+                        <Button variant="ghost" size="sm" asChild>
+                          <Link href={`/patients/${couple.slug}`}>
+                            <ExternalLink /> Open
+                          </Link>
+                        </Button>
+                      )}
+                    </div>
+                  </RecordCard>
+                );
+              })}
+            </MobileCards>
+            <MdTableWrap>
               <table className="w-full min-w-[1040px] text-sm">
                 <thead>
                   <tr className="border-b bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
@@ -279,7 +349,7 @@ export default function AppointmentsPage() {
                   })}
                 </tbody>
               </table>
-            </div>
+            </MdTableWrap>
           </>
         )}
       </section>

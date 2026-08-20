@@ -132,11 +132,11 @@ export default function LeadDetailPage() {
         <div><p className="text-muted-foreground">Interest</p><p>{lead.treatmentInterest ?? "—"}</p></div>
       </section>
 
-      <div className="flex flex-wrap gap-1">
+      <div className="flex gap-1 overflow-x-auto pb-1">
         {tabs.map((item) => (
           <button
             key={item}
-            className={`rounded-md px-3 py-1.5 text-sm ${tab === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+            className={`min-h-11 shrink-0 rounded-md px-3 py-1.5 text-sm ${tab === item ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             onClick={() => setTab(item)}
           >
             {item}
@@ -203,7 +203,7 @@ export default function LeadDetailPage() {
           {tasks.length === 0 ? <EmptyState title="No follow-ups due today." description="Schedule a counsellor call or WhatsApp follow-up." /> : (
             <ul className="space-y-2 text-sm">
               {tasks.map((task) => (
-                <li key={task.id} className="flex justify-between rounded-md border px-3 py-2">
+                <li key={task.id} className="flex flex-col gap-1 rounded-md border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
                   <span>{task.title} · {task.owner?.name ?? "Unassigned"}</span>
                   <StatusBadge label={task.status} />
                 </li>

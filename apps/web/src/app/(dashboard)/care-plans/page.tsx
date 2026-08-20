@@ -173,7 +173,7 @@ export default function CarePlansPage() {
         description="Build reusable fertility workflows your team controls. Care Loop turns each approved stage into timely patient actions and staff follow-through."
       />
 
-      <div className="grid min-h-[620px] border bg-background lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid border bg-background lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)]">
         <aside className="border-b lg:border-b-0 lg:border-r">
           <div className="border-b px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -236,7 +236,7 @@ export default function CarePlansPage() {
 
           <div className="divide-y">
             {configuredStages.map(({ name: step, config }, index) => (
-              <div key={step} className="grid gap-4 px-5 py-4 xl:grid-cols-[48px_180px_1fr]">
+              <div key={step} className="grid gap-4 px-4 py-4 sm:px-5 xl:grid-cols-[48px_180px_1fr]">
                 <span className="grid size-8 place-items-center rounded-full bg-muted text-xs font-semibold">
                   {String(index + 1).padStart(2, "0")}
                 </span>

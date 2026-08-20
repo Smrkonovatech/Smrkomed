@@ -143,6 +143,14 @@
 }
 
 :root {
+  --page-padding-mobile: 1rem;
+  --page-padding-tablet: 1.25rem;
+  --page-padding-desktop: 1.5rem;
+  --card-padding-mobile: 0.875rem;
+  --card-padding-desktop: 1rem;
+  --section-gap-mobile: 0.75rem;
+  --section-gap-desktop: 1.25rem;
+  --touch-min: 2.75rem;
   --radius: 0.625rem;
 
   /* Brand — fertility / IVF */
@@ -293,5 +301,15 @@
   transition: background-color 0.18s ease;
   &:hover {
     background-color: var(--color-muted);
+  }
+}
+
+@layer base {
+  html {
+    overflow-x: clip;
+  }
+
+  body {
+    max-width: 100%;
   }
 }
