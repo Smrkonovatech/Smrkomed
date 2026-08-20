@@ -135,6 +135,8 @@ export interface AppState {
   loadError: string | null;
   reload: () => Promise<void>;
   staff: ClinicStaff[];
+  staffError: string | null;
+  reloadStaff: () => Promise<void>;
   couples: AppCouple[];
   addCouple: (input: AddCoupleInput) => Promise<AppCouple>;
   updatePatient: (patientId: string, patch: { phone?: string; email?: string }) => Promise<void>;
@@ -251,6 +253,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staff, setStaff] = useState<ClinicStaff[]>([]);
+  const [staffError, setStaffError] = useState<string | null>(null);
   const [coupleList, setCoupleList] = useState<AppCouple[]>([]);
   const [appointmentList, setAppointmentList] = useState<AppAppointment[]>([]);
   const [cycleList, setCycleList] = useState<AppCycle[]>(() => seedCycles.map((cycle) => ({ ...cycle })));
@@ -277,34 +280,55 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [exceptionList, setExceptionList] = useState<ExceptionItem[]>(seedExceptions);
   const [kpis, setKpis] = useState(loopKpis);
 
+  const reloadStaff = useCallback(async () => {
+    setStaffError(null);
+    try {
+      const nextStaff = await clinicApi.staff();
+      setStaff(nextStaff);
+    } catch (error) {
+      setStaff([]);
+      setStaffError(clinicErrorMessage(error, "Unable to load clinic staff. Try again."));
+    }
+  }, []);
+
   const reload = useCallback(async () => {
     setLoadState("loading");
     setLoadError(null);
+    setStaffError(null);
     try {
-      const [couples, nextTasks, appointments, documents, nextActivity, nextStaff] = await Promise.all([
-        clinicApi.couples(),
-        clinicApi.tasks(),
-        clinicApi.appointments(),
-        clinicApi.documents(),
-        clinicApi.activity(),
-        clinicApi.staff().catch(async () => {
-          const me = await clinicApi.me().catch(() => null);
-          return me
-            ? [{ id: me.id, name: me.name || me.email, email: me.email, role: me.role, roleName: me.role }]
-            : [];
-        }),
-      ]);
+      const [couples, nextTasks, appointments, documents, nextActivity, staffOutcome] =
+        await Promise.all([
+          clinicApi.couples(),
+          clinicApi.tasks(),
+          clinicApi.appointments(),
+          clinicApi.documents(),
+          clinicApi.activity(),
+          clinicApi
+            .staff()
+            .then((rows) => ({ ok: true as const, rows }))
+            .catch((error: unknown) => ({
+              ok: false as const,
+              error: clinicErrorMessage(error, "Unable to load clinic staff."),
+            })),
+        ]);
       setCoupleList(couples.map(toCouple));
       setTasks(nextTasks.map(toTask));
       setAppointmentList(appointments.map(toAppointment));
       setDocumentList(documents.map(toDocument));
       setActivity(nextActivity);
-      setStaff(nextStaff);
+      if (staffOutcome.ok) {
+        setStaff(staffOutcome.rows);
+        setStaffError(null);
+      } else {
+        setStaff([]);
+        setStaffError(staffOutcome.error);
+      }
       setKpis({
         active: couples.length,
         completion: loopKpis.completion,
         automatedToday: loopKpis.automatedToday,
-        needAttention: nextTasks.filter((task) => task.status === "overdue" || task.status === "escalated").length,
+        needAttention: nextTasks.filter((task) => task.status === "overdue" || task.status === "escalated")
+          .length,
       });
       setLoadState("ready");
     } catch (error) {
@@ -487,6 +511,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       loadError,
       reload,
       staff,
+      staffError,
+      reloadStaff,
       couples: coupleList,
       addCouple,
       updatePatient,
@@ -519,6 +545,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       loadError,
       reload,
       staff,
+      staffError,
+      reloadStaff,
       coupleList,
       addCouple,
       updatePatient,

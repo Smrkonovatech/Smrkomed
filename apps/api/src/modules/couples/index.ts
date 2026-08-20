@@ -3,7 +3,7 @@ import { PERMISSIONS, prisma } from "@smrkomed/database";
 
 import { audit } from "../../lib/audit";
 import { requirePermission } from "../../lib/authz";
-import { notFound } from "../../lib/errors";
+import { CreateCoupleFailedError, newCreateCoupleRequestId, notFound } from "../../lib/errors";
 import { ok } from "../../lib/http";
 import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
@@ -41,6 +41,18 @@ export const coupleRoutes = new Hono<AppEnv>()
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);
     const body = c.req.valid("json");
     const couple = await createCoupleRecord(tenant, body);
+    let payload;
+    try {
+      payload = serializeCouple(couple);
+    } catch (error) {
+      throw new CreateCoupleFailedError({
+        requestId: newCreateCoupleRequestId(),
+        step: "SERIALIZE",
+        clinicId: tenant.clinicId,
+        userId: tenant.userId,
+        cause: error,
+      });
+    }
     try {
       await audit(tenant, "couple.create", "Couple", couple.id, {
         clinicId: tenant.clinicId,
@@ -49,7 +61,7 @@ export const coupleRoutes = new Hono<AppEnv>()
     } catch {
       // Persistence succeeded; do not fail the request if audit cannot write.
     }
-    return ok(c, serializeCouple(couple), 201);
+    return ok(c, payload, 201);
   })
   .patch("/:id", validate("param", idParam), validate("json", updateCoupleSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);

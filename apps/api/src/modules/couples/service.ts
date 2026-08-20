@@ -6,7 +6,16 @@ import {
   type TreatmentKind,
 } from "@smrkomed/database";
 
-import { HttpError, notFound } from "../../lib/errors";
+import {
+  CreateCoupleFailedError,
+  HttpError,
+  newCreateCoupleRequestId,
+  notFound,
+  type CreateCoupleStep,
+} from "../../lib/errors";
+
+export { CreateCoupleFailedError } from "../../lib/errors";
+export type { CreateCoupleStep } from "../../lib/errors";
 
 export const coupleInclude = {
   primaryPatient: true,
@@ -94,35 +103,80 @@ function isUnassigned(value?: string) {
   return normalized === "unassigned" || normalized === "__unassigned__";
 }
 
-async function staffId(clinicId: string, organizationId: string, id?: string, name?: string) {
+async function resolveStaffMember(
+  clinicId: string,
+  organizationId: string,
+  id: string | undefined,
+  name: string | undefined,
+  label: "doctor" | "coordinator",
+) {
   const userId = id && !isUnassigned(id) ? id : undefined;
   const userName = name && !isUnassigned(name) ? name : undefined;
+  if (!userId && !userName) return null;
+
   if (userId) {
     const membership = await prisma.clinicMembership.findFirst({
       where: { clinicId, clinic: { organizationId }, userId, status: "ACTIVE" },
       select: { userId: true },
     });
-    return membership?.userId ?? null;
+    if (!membership) {
+      throw new HttpError(
+        409,
+        label === "doctor" ? "DOCTOR_NOT_FOUND" : "COORDINATOR_NOT_FOUND",
+        label === "doctor"
+          ? "Selected doctor is no longer available. Please select another."
+          : "Selected coordinator is no longer available. Please select another.",
+      );
+    }
+    return membership.userId;
   }
-  if (!userName) return null;
+
   const membership = await prisma.clinicMembership.findFirst({
     where: {
       clinicId,
       clinic: { organizationId },
       status: "ACTIVE",
-      user: { name: { equals: userName, mode: "insensitive" } },
+      user: { name: { equals: userName!, mode: "insensitive" } },
     },
     select: { userId: true },
   });
-  return membership?.userId ?? null;
+  if (!membership) {
+    throw new HttpError(
+      409,
+      label === "doctor" ? "DOCTOR_NOT_FOUND" : "COORDINATOR_NOT_FOUND",
+      label === "doctor"
+        ? "Selected doctor is no longer available. Please select another."
+        : "Selected coordinator is no longer available. Please select another.",
+    );
+  }
+  return membership.userId;
+}
+
+async function runStep<T>(
+  step: CreateCoupleStep,
+  requestId: string,
+  ctx: TenantContext,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (error) {
+    if (error instanceof HttpError || error instanceof CreateCoupleFailedError) throw error;
+    throw new CreateCoupleFailedError({
+      requestId,
+      step,
+      clinicId: ctx.clinicId,
+      userId: ctx.userId,
+      cause: error,
+    });
+  }
 }
 
 export async function loadCouple(ctx: TenantContext, id: string) {
-  const couple = await prisma.couple.findFirst({
+  return prisma.couple.findFirst({
     where: { id, clinicId: ctx.clinicId, clinic: { organizationId: ctx.organizationId } },
     include: coupleInclude,
   });
-  return couple;
 }
 
 export async function listCouples(ctx: TenantContext) {
@@ -137,151 +191,237 @@ export async function listCouples(ctx: TenantContext) {
   });
 }
 
-export async function createCoupleRecord(
-  ctx: TenantContext,
-  input: {
-    primary: { fullName: string; dob: string; phone: string; email?: string | undefined; language?: string | undefined };
-    partner?: { fullName: string; dob: string; phone: string; email?: string | undefined; language?: string | undefined } | undefined;
-    treatment: "IVF" | "IUI" | "Evaluation" | "FET";
-    assignedDoctorId?: string | undefined;
-    assignedCoordinatorId?: string | undefined;
-    doctorName?: string | undefined;
-    coordinatorName?: string | undefined;
-    whatsappConsent?: boolean | undefined;
-    carePlanTemplate?: string | undefined;
-  },
-) {
-  const clinic = await prisma.clinic.findFirst({
-    where: { id: ctx.clinicId, organizationId: ctx.organizationId },
-    select: { id: true },
-  });
-  if (!clinic) {
-    throw new HttpError(
-      409,
-      "CLINIC_NOT_FOUND",
-      "This login is not linked to a clinic in the database. Sign out and sign in with a clinic staff account.",
-    );
-  }
-  const actor = await prisma.user.findUnique({
-    where: { id: ctx.userId },
-    select: { id: true },
-  });
-  const doctorId = await staffId(
-    ctx.clinicId,
-    ctx.organizationId,
-    input.assignedDoctorId,
-    input.doctorName,
-  );
-  const coordinatorId = await staffId(
-    ctx.clinicId,
-    ctx.organizationId,
-    input.assignedCoordinatorId,
-    input.coordinatorName,
-  );
-  const primaryNames = splitName(input.primary.fullName);
-  const partnerInput = input.partner?.fullName.trim() ? input.partner : undefined;
-  const partnerNames = partnerInput ? splitName(partnerInput.fullName) : null;
-  const primaryDob = parseDate(input.primary.dob);
-  const partnerDob = partnerInput ? parseDate(partnerInput.dob) : undefined;
-  const baseSlug = slugify(
-    `${primaryNames.firstName}-${partnerNames?.firstName ?? "patient"}`,
-  );
-  const slug = await uniqueSlug(ctx.clinicId, baseSlug);
-  const kind = TREATMENT_KIND[input.treatment];
-  const planType = CARE_PLAN_TYPE[input.treatment];
-  const createPlan = Boolean(input.carePlanTemplate && input.carePlanTemplate !== "None");
+export type CreateCoupleInput = {
+  primary: {
+    fullName: string;
+    dob: string;
+    phone: string;
+    email?: string | undefined;
+    language?: string | undefined;
+  };
+  partner?:
+    | {
+        fullName: string;
+        dob: string;
+        phone: string;
+        email?: string | undefined;
+        language?: string | undefined;
+      }
+    | undefined;
+  treatment: "IVF" | "IUI" | "Evaluation" | "FET";
+  assignedDoctorId?: string | undefined;
+  assignedCoordinatorId?: string | undefined;
+  doctorName?: string | undefined;
+  coordinatorName?: string | undefined;
+  whatsappConsent?: boolean | undefined;
+  carePlanTemplate?: string | undefined;
+};
 
-  const created = await prisma.$transaction(async (tx) => {
-    const primary = await tx.patient.create({
-      data: {
-        clinicId: ctx.clinicId,
-        firstName: primaryNames.firstName,
-        lastName: primaryNames.lastName,
-        dateOfBirth: primaryDob,
-        phone: input.primary.phone,
-        whatsappNumber: input.primary.phone,
-        ...(input.primary.email ? { email: input.primary.email } : {}),
-        preferredLanguage: languageCode(input.primary.language),
-      },
-    });
-    const partner = partnerNames && partnerInput && partnerDob
-      ? await tx.patient.create({
+export async function createCoupleRecord(ctx: TenantContext, input: CreateCoupleInput) {
+  const requestId = newCreateCoupleRequestId();
+  let step: CreateCoupleStep = "CLINIC_LOOKUP";
+
+  try {
+    const clinic = await runStep("CLINIC_LOOKUP", requestId, ctx, () =>
+      prisma.clinic.findFirst({
+        where: { id: ctx.clinicId, organizationId: ctx.organizationId },
+        select: { id: true },
+      }),
+    );
+    if (!clinic) {
+      throw new HttpError(
+        409,
+        "CLINIC_NOT_FOUND",
+        "This login is not linked to a clinic in the database. Sign out and sign in with a clinic staff account.",
+      );
+    }
+
+    step = "AUTH";
+    const actor = await runStep("AUTH", requestId, ctx, () =>
+      prisma.user.findUnique({
+        where: { id: ctx.userId },
+        select: { id: true },
+      }),
+    );
+
+    step = "STAFF_RESOLVE";
+    const doctorId = await runStep("STAFF_RESOLVE", requestId, ctx, () =>
+      resolveStaffMember(
+        ctx.clinicId,
+        ctx.organizationId,
+        input.assignedDoctorId,
+        input.doctorName,
+        "doctor",
+      ),
+    );
+    const coordinatorId = await runStep("STAFF_RESOLVE", requestId, ctx, () =>
+      resolveStaffMember(
+        ctx.clinicId,
+        ctx.organizationId,
+        input.assignedCoordinatorId,
+        input.coordinatorName,
+        "coordinator",
+      ),
+    );
+
+    step = "VALIDATE_INPUT";
+    const primaryNames = splitName(input.primary.fullName);
+    const partnerInput = input.partner?.fullName.trim() ? input.partner : undefined;
+    const partnerNames = partnerInput ? splitName(partnerInput.fullName) : null;
+    const primaryDob = parseDate(input.primary.dob);
+    const partnerDob = partnerInput ? parseDate(partnerInput.dob) : undefined;
+    const baseSlug = slugify(`${primaryNames.firstName}-${partnerNames?.firstName ?? "patient"}`);
+    const slug = await uniqueSlug(ctx.clinicId, baseSlug);
+    const kind = TREATMENT_KIND[input.treatment];
+    const planType = CARE_PLAN_TYPE[input.treatment];
+    const createPlan = Boolean(input.carePlanTemplate && input.carePlanTemplate !== "None");
+
+    const created = await prisma.$transaction(async (tx) => {
+      step = "PATIENT_PRIMARY";
+      const primary = await runStep("PATIENT_PRIMARY", requestId, ctx, () =>
+        tx.patient.create({
           data: {
             clinicId: ctx.clinicId,
-            firstName: partnerNames.firstName,
-            lastName: partnerNames.lastName,
-            dateOfBirth: partnerDob,
-            phone: partnerInput.phone,
-            whatsappNumber: partnerInput.phone,
-            ...(partnerInput.email ? { email: partnerInput.email } : {}),
-            preferredLanguage: languageCode(partnerInput.language),
+            firstName: primaryNames.firstName,
+            lastName: primaryNames.lastName,
+            dateOfBirth: primaryDob,
+            phone: input.primary.phone,
+            whatsappNumber: input.primary.phone,
+            ...(input.primary.email ? { email: input.primary.email } : {}),
+            preferredLanguage: languageCode(input.primary.language),
           },
-        })
-      : null;
-    const couple = await tx.couple.create({
-      data: {
-        clinicId: ctx.clinicId,
-        slug,
-        primaryPatientId: primary.id,
-        partnerPatientId: partner?.id ?? null,
-        assignedDoctorId: doctorId,
-        assignedCoordinatorId: coordinatorId,
-        careLoopActive: input.whatsappConsent !== false,
-      },
-    });
-    await tx.treatment.create({
-      data: {
-        clinicId: ctx.clinicId,
-        coupleId: couple.id,
-        kind,
-        label: input.treatment === "Evaluation" ? "Fertility Evaluation" : `${input.treatment} intake`,
-        status: "ACTIVE",
-        stageIndex: 0,
-        stageName: "Consultation",
-        startedAt: new Date(),
-      },
-    });
-    if (createPlan) {
-      const plan = await tx.carePlan.create({
-        data: {
-          clinicId: ctx.clinicId,
-          coupleId: couple.id,
-          type: planType,
-          name: input.carePlanTemplate === "None" ? `${input.treatment} plan` : (input.carePlanTemplate ?? `${input.treatment} plan`),
-          status: "ACTIVE",
-          startDate: new Date(),
-          ...(actor ? { createdById: actor.id } : {}),
-        },
-      });
-      await tx.careTask.create({
-        data: {
-          clinicId: ctx.clinicId,
-          coupleId: couple.id,
-          carePlanId: plan.id,
-          title: "Initial consultation",
-          category: "Consultation",
-          status: "WAITING",
-          ...(actor ? { createdById: actor.id } : {}),
-        },
-      });
-    }
-    if (input.whatsappConsent) {
-      await tx.consent.createMany({
-        data: [primary, partner].filter(Boolean).map((patient) => ({
-          clinicId: ctx.clinicId,
-          patientId: patient!.id,
-          channel: "WHATSAPP" as const,
-          consentType: "WHATSAPP_COMMUNICATION" as const,
-          status: "GRANTED" as const,
-          consentedAt: new Date(),
-          source: "couple.create",
-        })),
-      });
-    }
-    return couple.id;
-  });
+          select: { id: true },
+        }),
+      );
 
-  const loaded = await loadCouple(ctx, created);
-  if (!loaded) throw notFound();
-  return loaded;
+      let partnerId: string | null = null;
+      if (partnerNames && partnerInput && partnerDob) {
+        step = "PATIENT_PARTNER";
+        const partner = await runStep("PATIENT_PARTNER", requestId, ctx, () =>
+          tx.patient.create({
+            data: {
+              clinicId: ctx.clinicId,
+              firstName: partnerNames.firstName,
+              lastName: partnerNames.lastName,
+              dateOfBirth: partnerDob,
+              phone: partnerInput.phone,
+              whatsappNumber: partnerInput.phone,
+              ...(partnerInput.email ? { email: partnerInput.email } : {}),
+              preferredLanguage: languageCode(partnerInput.language),
+            },
+            select: { id: true },
+          }),
+        );
+        partnerId = partner.id;
+      }
+
+      step = "COUPLE";
+      const couple = await runStep("COUPLE", requestId, ctx, () =>
+        tx.couple.create({
+          data: {
+            clinicId: ctx.clinicId,
+            slug,
+            primaryPatientId: primary.id,
+            partnerPatientId: partnerId,
+            assignedDoctorId: doctorId,
+            assignedCoordinatorId: coordinatorId,
+            careLoopActive: input.whatsappConsent === true,
+          },
+          select: { id: true },
+        }),
+      );
+
+      step = "TREATMENT";
+      await runStep("TREATMENT", requestId, ctx, () =>
+        tx.treatment.create({
+          data: {
+            clinicId: ctx.clinicId,
+            coupleId: couple.id,
+            kind,
+            label:
+              input.treatment === "Evaluation"
+                ? "Fertility Evaluation"
+                : `${input.treatment} intake`,
+            status: "ACTIVE",
+            stageIndex: 0,
+            stageName: "Consultation",
+            startedAt: new Date(),
+          },
+          select: { id: true },
+        }),
+      );
+
+      if (createPlan) {
+        step = "CARE_PLAN";
+        const plan = await runStep("CARE_PLAN", requestId, ctx, () =>
+          tx.carePlan.create({
+            data: {
+              clinicId: ctx.clinicId,
+              coupleId: couple.id,
+              type: planType,
+              name:
+                input.carePlanTemplate && input.carePlanTemplate !== "None"
+                  ? input.carePlanTemplate
+                  : `${input.treatment} plan`,
+              status: "ACTIVE",
+              startDate: new Date(),
+              ...(actor ? { createdById: actor.id } : {}),
+            },
+            select: { id: true },
+          }),
+        );
+
+        step = "CARE_TASK";
+        await runStep("CARE_TASK", requestId, ctx, () =>
+          tx.careTask.create({
+            data: {
+              clinicId: ctx.clinicId,
+              coupleId: couple.id,
+              carePlanId: plan.id,
+              title: "Initial consultation",
+              category: "Consultation",
+              status: "WAITING",
+              ...(actor ? { createdById: actor.id } : {}),
+            },
+            select: { id: true },
+          }),
+        );
+      }
+
+      if (input.whatsappConsent === true) {
+        step = "CONSENT";
+        const patientIds = [primary.id, partnerId].filter((id): id is string => Boolean(id));
+        await runStep("CONSENT", requestId, ctx, () =>
+          tx.consent.createMany({
+            data: patientIds.map((patientId) => ({
+              clinicId: ctx.clinicId,
+              patientId,
+              channel: "WHATSAPP" as const,
+              consentType: "WHATSAPP_COMMUNICATION" as const,
+              status: "GRANTED" as const,
+              consentedAt: new Date(),
+              source: "couple.create",
+            })),
+          }),
+        );
+      }
+
+      return couple.id;
+    });
+
+    step = "LOAD_COUPLE";
+    const loaded = await runStep("LOAD_COUPLE", requestId, ctx, () => loadCouple(ctx, created));
+    if (!loaded) throw notFound();
+    return loaded;
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    if (error instanceof CreateCoupleFailedError) throw error;
+    throw new CreateCoupleFailedError({
+      requestId,
+      step: step || "UNKNOWN",
+      clinicId: ctx.clinicId,
+      userId: ctx.userId,
+      cause: error,
+    });
+  }
 }

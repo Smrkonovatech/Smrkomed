@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 
 import { useCreateTask } from "@/components/create-task-drawer";
+import { SmrkoAiCommandCenter } from "@/components/ai/smrko-ai-command-center";
 import { DemoRunner } from "@/components/demo-runner";
-import { SmrkoAiBrief } from "@/components/ai/smrko-ai-brief";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -144,7 +144,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <SmrkoAiBrief />
+      <SmrkoAiCommandCenter />
 
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.85fr)]">
         <section className="surface-card rounded-xl p-4">

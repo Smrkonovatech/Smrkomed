@@ -251,6 +251,7 @@ export function SmrkoAiPanel({ open, onOpenChange, coupleId, coupleSlug }: Props
               onCopy={copy}
               onConfirmAction={confirmAction}
               onCancelAction={cancelAction}
+              onRegenerateDraft={() => void send("Regenerate that patient message draft with a clearer, warmer tone. Keep only facts from SmrkoMed.")}
               actionBusy={actionBusyId === message.id}
             />
           ))}

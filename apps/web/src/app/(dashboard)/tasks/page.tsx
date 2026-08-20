@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useCreateTask } from "@/components/create-task-drawer";
+import { AiInsightCard } from "@/components/ai/ai-insight-card";
+import { FollowUpQueuePanel } from "@/components/ai/follow-up-queue";
 import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -25,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppState } from "@/lib/app-state";
+import { buildClientAttention, buildClientFollowUpQueue } from "@/lib/ai/attention";
 import { coupleLabel, type CareTask, type TaskStatus } from "@/lib/demo-data";
 import { taskStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -47,11 +50,18 @@ function priorityFor(task: CareTask) {
 }
 
 export default function TasksPage() {
-  const { tasks, setTaskStatus, couples, loadState, loadError, reload } = useAppState();
+  const { tasks, setTaskStatus, couples, loadState, loadError, reload, documents, appointments } =
+    useAppState();
   const coupleById = useMemo(() => new Map(couples.map((couple) => [couple.id, couple])), [couples]);
   const { open } = useCreateTask();
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
   const [query, setQuery] = useState("");
+
+  const overdueCount = tasks.filter((t) => t.status === "overdue" || t.status === "escalated").length;
+  const followUpItems = useMemo(() => {
+    const attention = buildClientAttention({ couples, tasks, appointments, documents });
+    return buildClientFollowUpQueue({ couples, tasks, attention, appointments });
+  }, [couples, tasks, appointments, documents]);
 
   const rows = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -83,6 +93,15 @@ export default function TasksPage() {
           </Button>
         }
       />
+
+      {overdueCount > 0 && (
+        <AiInsightCard
+          message={`${overdueCount} task${overdueCount === 1 ? "" : "s"} are overdue.`}
+          askPrompt="Which tasks are overdue?"
+        />
+      )}
+
+      <FollowUpQueuePanel items={followUpItems} />
 
       <section className="border bg-background">
         <div className="flex flex-col gap-3 border-b p-3 lg:flex-row lg:items-center lg:justify-between">

@@ -7,6 +7,7 @@ const READ_TOOLS: AiToolName[] = [
   "getClinicPriorities",
   "getCouple",
   "getCoupleSummary",
+  "getPatientJourney",
   "searchPatients",
   "getOverdueTasks",
   "getCoupleTasks",
@@ -16,6 +17,12 @@ const READ_TOOLS: AiToolName[] = [
   "getRecentActivity",
   "getConsultationNotes",
   "getCarePlanStatus",
+  "getFollowUpQueue",
+  "getInactivePatients",
+  "getStaff",
+  "getTeamWorkload",
+  "getPrepareMyDay",
+  "getPatientAttentionScore",
   "getNavigationHelp",
   "draftPatientMessage",
   "proposeCreateTask",
@@ -33,6 +40,12 @@ export function allowedTools(tenant: TenantContext): AiToolName[] {
   if (!canUseAi(tenant)) return [];
   return READ_TOOLS.filter((tool) => {
     if (tool === "proposeCreateTask") return canProposeMutations(tenant);
+    if (tool === "getStaff") {
+      return (
+        roleHasPermission(tenant.role, PERMISSIONS.PATIENTS_READ) ||
+        roleHasPermission(tenant.role, PERMISSIONS.CARE_TASKS_WRITE)
+      );
+    }
     return true;
   });
 }

@@ -15,6 +15,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { AiInsightCard } from "@/components/ai/ai-insight-card";
 import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,13 @@ export default function AppointmentsPage() {
           </Button>
         }
       />
+
+      <div className="mb-4">
+        <AiInsightCard
+          message={`${appointments.filter((a) => (a.date ?? selectedDate) === selectedDate && a.status !== "Completed").length} appointments on the selected day may need preparation or arrival checks.`}
+          askPrompt="Who has appointments today?"
+        />
+      </div>
 
       <section className="overflow-hidden rounded-xl border bg-background">
         <div className="flex flex-col gap-3 border-b p-3 xl:flex-row xl:items-center xl:justify-between">

@@ -7,11 +7,23 @@ export function ok<T>(c: Context, data: T, status: 200 | 201 = 200) {
   return c.json({ success: true as const, data }, status);
 }
 
-export function fail(c: Context, status: ApiErrorStatus, code: string, message: string, details?: unknown) {
+export function fail(
+  c: Context,
+  status: ApiErrorStatus,
+  code: string,
+  message: string,
+  details?: unknown,
+  extras?: { requestId?: string },
+) {
   return c.json(
     {
       success: false as const,
-      error: details === undefined ? { code, message } : { code, message, details },
+      error: {
+        code,
+        message,
+        ...(extras?.requestId ? { requestId: extras.requestId } : {}),
+        ...(details === undefined ? {} : { details }),
+      },
     },
     status,
   );

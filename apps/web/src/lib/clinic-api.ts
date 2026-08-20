@@ -96,7 +96,12 @@ export type ClinicCarePlan = {
 };
 
 export function clinicErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof ApiError) return error.message || fallback;
+  if (error instanceof ApiError) {
+    if (error.requestId && !error.message.includes(error.requestId)) {
+      return `${error.message} Reference: ${error.requestId}`;
+    }
+    return error.message || fallback;
+  }
   if (error instanceof Error && error.message) return error.message;
   return fallback;
 }

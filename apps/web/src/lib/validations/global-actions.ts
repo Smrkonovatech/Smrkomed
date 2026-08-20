@@ -20,7 +20,12 @@ const personSchema = z.object({
     "Date of birth cannot be in the future",
   ),
   phone,
-  email,
+  email: z
+    .string()
+    .trim()
+    .refine((value) => value === "" || z.string().email().safeParse(value).success, {
+      message: "Enter a valid email address",
+    }),
   language: required("Language"),
 });
 

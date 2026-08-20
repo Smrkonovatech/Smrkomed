@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -66,23 +67,34 @@ export function AddCoupleDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const { addCouple, staff } = useAppState();
+  const { addCouple, staff, staffError, reloadStaff } = useAppState();
   const doctors = staff.filter((member) =>
-    /doctor|fertility|endocrin|clinician|^DOCTOR$/i.test(`${member.role} ${member.roleName} ${member.name}`),
+    /doctor|fertility|endocrin|clinician|DOCTOR/i.test(`${member.role} ${member.roleName} ${member.name}`),
   );
   const coordinators = staff.filter((member) =>
-    /coordinator|nurse|front|admin|counsel|CLINIC_ADMIN|CARE_COORDINATOR/i.test(
+    /coordinator|nurse|front|admin|counsel|CLINIC_ADMIN|CARE_COORDINATOR|RECEPTIONIST/i.test(
       `${member.role} ${member.roleName}`,
     ),
   );
+  const hasStaffDirectory = staff.length > 0 && !staffError;
   const doctorOptions = [
     UNASSIGNED,
-    ...(doctors.length > 0 ? doctors : staff).map(staffOption).filter((option) => option.value),
+    ...(hasStaffDirectory
+      ? (doctors.length > 0 ? doctors : staff).map(staffOption).filter((option) => option.value)
+      : []),
   ];
   const coordinatorOptions = [
     UNASSIGNED,
-    ...(coordinators.length > 0 ? coordinators : staff).map(staffOption).filter((option) => option.value),
+    ...(hasStaffDirectory
+      ? (coordinators.length > 0 ? coordinators : staff)
+          .map(staffOption)
+          .filter((option) => option.value)
+      : []),
   ];
+  const staffEmptyMessage =
+    !staffError && staff.length === 0
+      ? "No doctors or coordinators available. Add staff from Settings."
+      : null;
 
   const form = useForm<AddCoupleValues>({
     resolver: zodResolver(addCoupleSchema),
@@ -92,10 +104,14 @@ export function AddCoupleDialog({
       treatment: "IVF",
       doctor: "__unassigned__",
       coordinator: "__unassigned__",
-      whatsappConsent: true,
-      carePlanTemplate: "IVF",
+      whatsappConsent: false,
+      carePlanTemplate: "None",
     },
   });
+
+  useEffect(() => {
+    if (open) void reloadStaff();
+  }, [open, reloadStaff]);
 
   const submit = form.handleSubmit(async (values) => {
     try {
@@ -107,7 +123,7 @@ export function AddCoupleDialog({
       onOpenChange(false);
       router.push(`/patients/${couple.slug}`);
     } catch (error) {
-      toast.error(clinicErrorMessage(error, "Unable to create couple. Try again."));
+      toast.error(clinicErrorMessage(error, "Unable to create the patient. Please try again."));
     }
   });
 
@@ -166,6 +182,25 @@ export function AddCoupleDialog({
             </section>
             <section className="space-y-3">
               <h3 className="text-sm font-semibold">Treatment</h3>
+              {staffError ? (
+                <div className="rounded-lg border border-danger/30 bg-danger-soft/40 p-3 text-sm">
+                  <p className="font-medium text-danger">Unable to load clinic staff</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{staffError}</p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="mt-2"
+                    onClick={() => void reloadStaff()}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : staffEmptyMessage ? (
+                <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                  {staffEmptyMessage}
+                </p>
+              ) : null}
               <FieldGrid>
                 <SelectField
                   control={form.control}

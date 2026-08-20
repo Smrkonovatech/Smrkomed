@@ -24,7 +24,9 @@ import {
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { AiPatientSummary } from "@/components/ai/ai-patient-summary";
 import { PatientJourneySummary } from "@/components/ai/patient-journey-summary";
+import { PrepareConsultation } from "@/components/ai/prepare-consultation";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { useCreateTask } from "@/components/create-task-drawer";
 import { JourneyStrip } from "@/components/journey-strip";
@@ -68,6 +70,8 @@ export default function PatientProfile() {
   const { slug } = useParams<{ slug: string }>();
   const [messageOpen, setMessageOpen] = useState(false);
   const [automationPaused, setAutomationPaused] = useState(false);
+  const [voiceConsentOpen, setVoiceConsentOpen] = useState(false);
+  const [consultTab, setConsultTab] = useState("overview");
   const { open: openTask } = useCreateTask();
   const { openAction } = useGlobalActions();
   const appState = useAppState() as ReturnType<typeof useAppState> & {
@@ -265,7 +269,7 @@ export default function PatientProfile() {
         </div>
       </section>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={consultTab} onValueChange={setConsultTab}>
         <div className="overflow-x-auto rounded-xl border bg-card p-1">
           <TabsList className="h-11 min-w-max justify-start bg-transparent sm:h-9">
             {tabs.map(([value, label]) => (
@@ -277,7 +281,14 @@ export default function PatientProfile() {
         </div>
 
         <TabsContent value="overview" className="mt-4">
-          <div className="mb-4">
+          <div className="mb-4 space-y-4">
+            <AiPatientSummary
+              couple={couple}
+              tasks={coupleTasks}
+              appointments={coupleAppointments}
+              activity={recentActivity}
+              noResponse={coupleAlerts.some((a) => a.kind === "no_response")}
+            />
             <PatientJourneySummary
               couple={couple}
               tasks={coupleTasks}
@@ -553,7 +564,18 @@ export default function PatientProfile() {
           </RecordSection>
         </TabsContent>
 
-        <TabsContent value="consultation" className="mt-4">
+        <TabsContent value="consultation" className="mt-4 space-y-4">
+          <PrepareConsultation
+            couple={couple}
+            tasks={coupleTasks}
+            appointments={coupleAppointments}
+            documents={coupleDocs}
+            activity={recentActivity}
+            onStartVoice={() => {
+              setConsultTab("consultation");
+              setVoiceConsentOpen(true);
+            }}
+          />
           <section className="surface-card space-y-4 p-4">
             <SectionHeading
               title="Voice consultation notes"
@@ -561,7 +583,12 @@ export default function PatientProfile() {
               icon={Mic}
               tone="teal"
             />
-            <VoiceNotesPanel coupleId={couple.id} coupleLabel={coupleFullLabel(couple)} />
+            <VoiceNotesPanel
+              coupleId={couple.id}
+              coupleLabel={coupleFullLabel(couple)}
+              consentOpen={voiceConsentOpen}
+              onConsentOpenChange={setVoiceConsentOpen}
+            />
           </section>
         </TabsContent>
 

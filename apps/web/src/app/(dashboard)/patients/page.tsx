@@ -5,6 +5,7 @@ import { Filter, Search, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { AiInsightCard } from "@/components/ai/ai-insight-card";
 import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader, StatusBadge, Avatar } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,8 @@ export default function PatientsPage() {
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
   const { openAction } = useGlobalActions();
   const { couples, loadState, loadError, reload } = useAppState();
+  const inactiveHint = couples.filter((c) => c.careLoop === "Paused" || c.status === "Needs Attention")
+    .length;
 
   const rows = useMemo(
     () =>
@@ -66,6 +69,15 @@ export default function PatientsPage() {
           </Button>
         }
       />
+
+      {inactiveHint > 0 && (
+        <div className="mb-4">
+          <AiInsightCard
+            message={`${inactiveHint} patient${inactiveHint === 1 ? "" : "s"} may need follow-up (paused Care Loop or Needs Attention).`}
+            askPrompt="Which patients need follow-up?"
+          />
+        </div>
+      )}
 
       <section className="overflow-hidden rounded-xl border bg-background">
         <div className="grid gap-3 border-b p-3 lg:grid-cols-[minmax(280px,1fr)_auto] lg:items-center">

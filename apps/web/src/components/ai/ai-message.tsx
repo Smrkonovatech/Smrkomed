@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Bot, ClipboardCopy, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import type { AiProposedAction } from "@/lib/ai/types";
 import { cn } from "@/lib/utils";
 
@@ -23,15 +25,20 @@ export function AiMessage({
   onCopy,
   onConfirmAction,
   onCancelAction,
+  onRegenerateDraft,
   actionBusy,
 }: {
   message: ChatBubble;
   onCopy?: (text: string) => void;
   onConfirmAction?: (action: AiProposedAction, messageId: string) => void;
   onCancelAction?: (messageId: string) => void;
+  onRegenerateDraft?: (messageId: string) => void;
   actionBusy?: boolean;
 }) {
   const isUser = message.role === "user";
+  const [editingDraft, setEditingDraft] = useState(false);
+  const [draftText, setDraftText] = useState(message.draftMessage ?? "");
+
   return (
     <div className={cn("flex gap-2", isUser ? "justify-end" : "justify-start")}>
       {!isUser && (
@@ -59,24 +66,51 @@ export function AiMessage({
         {!isUser && message.draftMessage && (
           <div className="mt-3 rounded-xl border bg-muted/40 p-3">
             <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-              AI Draft
+              AI Draft — review before sending
             </p>
-            <p className="whitespace-pre-wrap text-sm">{message.draftMessage}</p>
+            {editingDraft ? (
+              <Textarea
+                value={draftText}
+                onChange={(event) => setDraftText(event.target.value)}
+                className="min-h-28 text-sm"
+              />
+            ) : (
+              <p className="whitespace-pre-wrap text-sm">{draftText || message.draftMessage}</p>
+            )}
             <div className="mt-2 flex flex-wrap gap-2">
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => onCopy?.(message.draftMessage!)}
+                onClick={() => onCopy?.(draftText || message.draftMessage!)}
               >
                 <ClipboardCopy className="size-3.5" /> Copy
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => {
+                  if (!editingDraft) setDraftText(message.draftMessage ?? "");
+                  setEditingDraft((value) => !value);
+                }}
+              >
+                {editingDraft ? "Done" : "Edit"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => onRegenerateDraft?.(message.id)}
+              >
+                Regenerate
               </Button>
               <Button type="button" size="sm" variant="secondary" disabled>
                 Send manually
               </Button>
             </div>
             <p className="mt-2 text-[11px] text-muted-foreground">
-              Not sent. Review, edit if needed, then send from your messaging workflow.
+              Not sent automatically. Use Regenerate by asking Smrko again, or Edit then Copy.
             </p>
           </div>
         )}

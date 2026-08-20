@@ -41,6 +41,9 @@ type Props = {
   coupleId: string;
   coupleLabel: string;
   onSaved?: () => void;
+  /** Parent can open consent (e.g. Prepare Consultation CTA). */
+  consentOpen?: boolean;
+  onConsentOpenChange?: (open: boolean) => void;
 };
 
 type ProcessStage = "idle" | "uploading" | "transcribing" | "summarizing" | "preparing";
@@ -52,8 +55,16 @@ const STAGE_LABEL: Record<Exclude<ProcessStage, "idle">, string> = {
   preparing: "Preparing notes…",
 };
 
-export function VoiceNotesPanel({ coupleId, coupleLabel, onSaved }: Props) {
-  const [consentOpen, setConsentOpen] = useState(false);
+export function VoiceNotesPanel({
+  coupleId,
+  coupleLabel,
+  onSaved,
+  consentOpen: consentOpenProp,
+  onConsentOpenChange,
+}: Props) {
+  const [consentOpenInternal, setConsentOpenInternal] = useState(false);
+  const consentOpen = consentOpenProp ?? consentOpenInternal;
+  const setConsentOpen = onConsentOpenChange ?? setConsentOpenInternal;
   const [consentChecked, setConsentChecked] = useState(false);
   const [language, setLanguage] = useState<ConsultationLanguageCode>("en");
   const [recording, setRecording] = useState(false);
@@ -401,6 +412,9 @@ export function VoiceNotesPanel({ coupleId, coupleLabel, onSaved }: Props) {
             <DialogDescription>
               Review and edit before saving. Nothing is stored until you confirm. Audio was not
               saved.
+              <span className="mt-1 block text-xs">
+                AI-generated summary. Please review before saving.
+              </span>
             </DialogDescription>
           </DialogHeader>
           <Textarea

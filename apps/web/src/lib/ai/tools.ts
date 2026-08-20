@@ -7,6 +7,11 @@ import {
 import { AI_LIMITS } from "./config";
 import { assertToolAllowed } from "./permissions";
 import { buildClinicPriorities } from "./priorities";
+import {
+  buildFollowUpQueue,
+  buildPatientAttention,
+  scorePatientAttention,
+} from "./attention";
 import { clipText } from "./safety";
 import type { AiPageContext, AiProposedAction, AiToolName } from "./types";
 
@@ -136,6 +141,15 @@ export const AI_TOOL_DEFINITIONS = [
   {
     type: "function" as const,
     function: {
+      name: "getPatientJourney",
+      description:
+        "Compact patient journey for summaries and consultation prep (stage, tasks, last consult, next steps).",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "searchPatients",
       description: "Search couples/patients in the current clinic by name, phone, email, or slug.",
       parameters: {
@@ -213,6 +227,66 @@ export const AI_TOOL_DEFINITIONS = [
   {
     type: "function" as const,
     function: {
+      name: "getFollowUpQueue",
+      description:
+        "Operational follow-up queue grouped as URGENT, DUE_SOON, INACTIVE, UPCOMING.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getInactivePatients",
+      description: "Couples with no recent clinic activity (default 7 days). Operational only.",
+      parameters: {
+        type: "object",
+        properties: { days: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getStaff",
+      description: "List active clinic staff (name, role) for assignment questions.",
+      parameters: {
+        type: "object",
+        properties: { query: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getTeamWorkload",
+      description:
+        "Deterministic staff workload: active patients, today's appointments, overdue tasks, follow-ups due.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPrepareMyDay",
+      description:
+        "Today's appointment prep checklist with operational warnings from clinic records.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientAttentionScore",
+      description:
+        "Deterministic operational attention score (LOW/MEDIUM/HIGH/CRITICAL). Never medical risk.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "getNavigationHelp",
       description: "Return SmrkoMed navigation routes for a topic.",
       parameters: {
@@ -227,13 +301,15 @@ export const AI_TOOL_DEFINITIONS = [
     type: "function" as const,
     function: {
       name: "draftPatientMessage",
-      description: "Create a WhatsApp/SMS draft reminder. Does not send.",
+      description:
+        "Create WhatsApp, SMS, call-script, or follow-up draft. Does not send. channel: whatsapp|sms|call|reminder.",
       parameters: {
         type: "object",
         properties: {
           coupleSlug: { type: "string" },
           coupleId: { type: "string" },
           intent: { type: "string" },
+          channel: { type: "string" },
         },
         additionalProperties: false,
       },
@@ -556,6 +632,71 @@ export async function runAiTool(
       };
     }
 
+    case "getPatientJourney": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I couldn't find that information in SmrkoMed." };
+      const [tasks, notes, upcomingAppt] = await Promise.all([
+        prisma.careTask.findMany({
+          where: { coupleId: couple.id, clinicId: tenant.clinicId },
+          orderBy: { updatedAt: "desc" },
+          take: 15,
+        }),
+        prisma.consultationNote.findMany({
+          where: { coupleId: couple.id, clinicId: tenant.clinicId },
+          orderBy: { consultationDate: "desc" },
+          take: 3,
+          include: { createdBy: { select: { name: true } } },
+        }),
+        prisma.appointment.findFirst({
+          where: {
+            coupleId: couple.id,
+            clinicId: tenant.clinicId,
+            startsAt: { gte: new Date() },
+            status: { notIn: ["CANCELLED", "NO_SHOW"] },
+          },
+          orderBy: { startsAt: "asc" },
+        }),
+      ]);
+      const treatment = couple.treatments[0];
+      const plan = couple.carePlans[0];
+      const currentStep = plan?.steps.find((s) => s.sortOrder === plan.currentStep) ?? plan?.steps[0];
+      const openTasks = tasks.filter((t) =>
+        ["WAITING", "IN_PROGRESS", "OVERDUE", "ESCALATED"].includes(t.status),
+      );
+      const completed = tasks.filter((t) => t.status === "COMPLETED");
+      const lastNote = notes[0];
+      return {
+        couple: coupleLabel(couple),
+        slug: couple.slug,
+        treatment: treatment?.kind ?? null,
+        stage: treatment?.stageName ?? currentStep?.name ?? null,
+        doctor: couple.assignedDoctor?.name ?? "Unassigned",
+        coordinator: couple.assignedCoordinator?.name ?? "Unassigned",
+        openTasks: openTasks.map((t) => t.title).slice(0, 8),
+        completedTaskCount: completed.length,
+        lastConsultation: lastNote
+          ? {
+              date: lastNote.consultationDate,
+              reasonForVisit: lastNote.reasonForVisit,
+              nextSteps: lastNote.nextSteps,
+              summaryPreview: lastNote.summary.slice(0, 500),
+            }
+          : null,
+        nextAppointment: upcomingAppt
+          ? {
+              type: upcomingAppt.type,
+              startsAt: upcomingAppt.startsAt,
+              doctor: upcomingAppt.doctorName,
+            }
+          : null,
+        nextExpectedAction:
+          openTasks[0]?.title ??
+          lastNote?.nextSteps ??
+          (couple.assignedCoordinator?.name ? "Review open items with coordinator" : null),
+        note: "Operational summary from SmrkoMed records only — not a clinical assessment.",
+      };
+    }
+
     case "searchPatients": {
       const query = (optionalString(rawArgs, "query") ?? "").trim().slice(0, 80);
       if (!query) return { items: [], note: "No patients yet." };
@@ -830,18 +971,594 @@ export async function runAiTool(
       };
     }
 
+    case "getFollowUpQueue": {
+      const endSoon = new Date(startOfToday());
+      endSoon.setDate(endSoon.getDate() + 7);
+      const [overdueTasks, todayTasks, upcomingTasks, couples] = await Promise.all([
+        prisma.careTask.findMany({
+          where: {
+            ...clinicScope(tenant),
+            OR: [
+              { status: "OVERDUE" },
+              {
+                status: { in: ["WAITING", "IN_PROGRESS"] },
+                dueDate: { lt: startOfToday() },
+              },
+            ],
+          },
+          take: 20,
+          orderBy: { dueDate: "asc" },
+          include: {
+            couple: {
+              include: {
+                primaryPatient: true,
+                partnerPatient: true,
+                treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+              },
+            },
+            assignments: { include: { user: { select: { name: true } } }, take: 1 },
+          },
+        }),
+        prisma.careTask.findMany({
+          where: {
+            ...clinicScope(tenant),
+            status: { in: ["WAITING", "IN_PROGRESS"] },
+            dueDate: { gte: startOfToday(), lte: endOfToday() },
+          },
+          take: 20,
+          include: {
+            couple: {
+              include: {
+                primaryPatient: true,
+                partnerPatient: true,
+                treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+              },
+            },
+            assignments: { include: { user: { select: { name: true } } }, take: 1 },
+          },
+        }),
+        prisma.careTask.findMany({
+          where: {
+            ...clinicScope(tenant),
+            status: { in: ["WAITING", "IN_PROGRESS"] },
+            dueDate: { gt: endOfToday(), lte: endSoon },
+          },
+          take: 15,
+          include: {
+            couple: {
+              include: {
+                primaryPatient: true,
+                partnerPatient: true,
+                treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+              },
+            },
+            assignments: { include: { user: { select: { name: true } } }, take: 1 },
+          },
+        }),
+        prisma.couple.findMany({
+          where: { ...clinicScope(tenant), status: "ACTIVE" },
+          take: 80,
+          include: {
+            primaryPatient: true,
+            partnerPatient: true,
+            assignedDoctor: { select: { name: true } },
+            assignedCoordinator: { select: { name: true } },
+            treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+            careTasks: {
+              where: {
+                OR: [
+                  { status: "OVERDUE" },
+                  {
+                    status: { in: ["WAITING", "IN_PROGRESS"] },
+                    dueDate: { lt: startOfToday() },
+                  },
+                ],
+              },
+              take: 5,
+            },
+            appointments: {
+              where: {
+                OR: [
+                  { status: "NO_SHOW" },
+                  {
+                    startsAt: { gte: new Date() },
+                    status: { notIn: ["CANCELLED", "NO_SHOW", "COMPLETED"] },
+                  },
+                ],
+              },
+              take: 5,
+            },
+            documents: { where: { status: "AWAITING_UPLOAD" }, take: 3 },
+            consultationNotes: { orderBy: { consultationDate: "desc" }, take: 1 },
+          },
+        }),
+      ]);
+
+      const mapTask = (
+        t: (typeof overdueTasks)[number],
+      ) => ({
+        id: t.id,
+        title: t.title,
+        dueDate: t.dueDate,
+        coupleId: t.coupleId,
+        coupleSlug: t.couple?.slug ?? null,
+        coupleLabel: t.couple ? coupleLabel(t.couple) : null,
+        treatment: t.couple?.treatments[0]?.kind ?? null,
+        assignedStaff: t.assignments[0]?.user.name ?? null,
+      });
+
+      const attention = buildPatientAttention({
+        couples: couples.map((c) => ({
+          id: c.id,
+          slug: c.slug,
+          label: coupleLabel(c),
+          treatment: c.treatments[0]?.kind ?? null,
+          stage: c.treatments[0]?.stageName ?? null,
+          careLoopActive: c.careLoopActive,
+          doctorName: c.assignedDoctor?.name ?? null,
+          coordinatorName: c.assignedCoordinator?.name ?? null,
+          updatedAt: c.updatedAt,
+          overdueTaskCount: c.careTasks.length,
+          pendingTaskCount: c.careTasks.length,
+          missedAppointmentCount: c.appointments.filter((a) => a.status === "NO_SHOW").length,
+          upcomingAppointmentCount: c.appointments.filter((a) => a.status !== "NO_SHOW").length,
+          pendingDocumentCount: c.documents.length,
+          lastConsultationAt: c.consultationNotes[0]?.consultationDate ?? null,
+        })),
+      });
+
+      const queue = buildFollowUpQueue({
+        overdueTasks: overdueTasks.map(mapTask),
+        todayTasks: todayTasks.map(mapTask),
+        upcomingTasks: upcomingTasks.map(mapTask),
+        noResponse: attention.filter((a) => a.category === "Needs Attention"),
+        inactive: attention.filter((a) => a.category === "No Recent Activity"),
+      });
+
+      return {
+        count: queue.length,
+        groups: {
+          URGENT: queue.filter((q) => q.bucket === "URGENT").length,
+          DUE_SOON: queue.filter((q) => q.bucket === "DUE_SOON").length,
+          INACTIVE: queue.filter((q) => q.bucket === "INACTIVE").length,
+          UPCOMING: queue.filter((q) => q.bucket === "UPCOMING").length,
+        },
+        items: queue,
+        note: queue.length === 0 ? "No follow-ups queued from clinic records." : undefined,
+      };
+    }
+
+    case "getInactivePatients": {
+      const daysRaw = rawArgs["days"];
+      const days =
+        typeof daysRaw === "number" && Number.isFinite(daysRaw)
+          ? Math.min(Math.max(Math.floor(daysRaw), 3), 90)
+          : 7;
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const couples = await prisma.couple.findMany({
+        where: {
+          ...clinicScope(tenant),
+          status: "ACTIVE",
+          updatedAt: { lt: cutoff },
+        },
+        take: 25,
+        orderBy: { updatedAt: "asc" },
+        include: {
+          primaryPatient: true,
+          partnerPatient: true,
+          treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+          assignedDoctor: { select: { name: true } },
+          assignedCoordinator: { select: { name: true } },
+        },
+      });
+      return {
+        inactiveDays: days,
+        count: couples.length,
+        items: couples.map((c) => ({
+          id: c.id,
+          slug: c.slug,
+          label: coupleLabel(c),
+          treatment: c.treatments[0]?.kind ?? null,
+          doctor: c.assignedDoctor?.name ?? "Unassigned",
+          coordinator: c.assignedCoordinator?.name ?? "Unassigned",
+          lastUpdatedAt: c.updatedAt,
+          href: `/patients/${c.slug}`,
+        })),
+        note:
+          couples.length === 0
+            ? `No patients inactive for ${days}+ days in clinic records.`
+            : "Operational inactivity based on couple record update time — not medical risk.",
+      };
+    }
+
+    case "getStaff": {
+      const query = (optionalString(rawArgs, "query") ?? "").trim().toLowerCase();
+      const memberships = await prisma.clinicMembership.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          status: "ACTIVE",
+          clinic: { organizationId: tenant.organizationId },
+        },
+        take: 40,
+        include: {
+          user: { select: { id: true, name: true, title: true, email: true } },
+          role: { select: { key: true, name: true } },
+        },
+      });
+      const items = memberships
+        .map((m) => ({
+          id: m.user.id,
+          name: m.user.name,
+          title: m.user.title,
+          role: m.role.name,
+          roleKey: m.role.key,
+        }))
+        .filter(
+          (s) =>
+            !query ||
+            s.name.toLowerCase().includes(query) ||
+            s.role.toLowerCase().includes(query) ||
+            (s.title ?? "").toLowerCase().includes(query),
+        );
+      return {
+        count: items.length,
+        items,
+        note: items.length === 0 ? "No staff found for this clinic." : undefined,
+      };
+    }
+
+    case "getTeamWorkload": {
+      const memberships = await prisma.clinicMembership.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          status: "ACTIVE",
+          clinic: { organizationId: tenant.organizationId },
+        },
+        take: 40,
+        include: {
+          user: { select: { id: true, name: true, title: true } },
+          role: { select: { key: true, name: true } },
+        },
+      });
+      const couples = await prisma.couple.findMany({
+        where: { ...clinicScope(tenant), status: "ACTIVE" },
+        take: 200,
+        include: {
+          assignedDoctor: { select: { id: true, name: true } },
+          assignedCoordinator: { select: { id: true, name: true } },
+        },
+      });
+      const [todayAppts, openTasks, overdueTasks] = await Promise.all([
+        prisma.appointment.findMany({
+          where: {
+            ...clinicScope(tenant),
+            startsAt: { gte: startOfToday(), lte: endOfToday() },
+            status: { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] },
+          },
+          take: 100,
+        }),
+        prisma.careTask.findMany({
+          where: {
+            ...clinicScope(tenant),
+            status: { in: ["WAITING", "IN_PROGRESS", "OVERDUE", "ESCALATED"] },
+          },
+          take: 200,
+        }),
+        prisma.careTask.findMany({
+          where: {
+            ...clinicScope(tenant),
+            OR: [
+              { status: "OVERDUE" },
+              {
+                status: { in: ["WAITING", "IN_PROGRESS"] },
+                dueDate: { lt: startOfToday() },
+              },
+            ],
+          },
+          take: 100,
+        }),
+      ]);
+      const items = memberships.map((m) => {
+        const isDoctor = /DOCTOR|doctor/i.test(m.role.key);
+        const assignedCouples = couples.filter((c) =>
+          isDoctor
+            ? c.assignedDoctorId === m.user.id
+            : c.assignedCoordinatorId === m.user.id,
+        );
+        const activePatients = assignedCouples.length;
+        const appointmentsToday = todayAppts.filter((a) => a.doctorName === m.user.name).length;
+        const coupleIds = new Set(assignedCouples.map((c) => c.id));
+        const open = openTasks.filter((t) => t.coupleId && coupleIds.has(t.coupleId)).length;
+        const overdue = overdueTasks.filter((t) => t.coupleId && coupleIds.has(t.coupleId)).length;
+        const followUpsDue = openTasks.filter(
+          (t) =>
+            t.coupleId &&
+            coupleIds.has(t.coupleId) &&
+            t.dueDate &&
+            t.dueDate >= startOfToday() &&
+            t.dueDate <= endOfToday(),
+        ).length;
+        return {
+          id: m.user.id,
+          name: m.user.name,
+          role: m.role.name,
+          activePatients,
+          openTasks: open,
+          appointmentsToday,
+          overdueTasks: overdue,
+          followUpsDue,
+        };
+      });
+      return {
+        count: items.length,
+        items: items
+          .filter((i) => i.activePatients || i.appointmentsToday || i.overdueTasks || i.openTasks)
+          .sort(
+            (a, b) =>
+              b.overdueTasks + b.followUpsDue + b.appointmentsToday -
+              (a.overdueTasks + a.followUpsDue + a.appointmentsToday),
+          )
+          .slice(0, 12),
+        note: "Workload is calculated from clinic records, not estimated by AI.",
+      };
+    }
+
+    case "getPrepareMyDay": {
+      const [appts, overdueTasks, attentionCouples] = await Promise.all([
+        prisma.appointment.findMany({
+          where: {
+            ...clinicScope(tenant),
+            startsAt: { gte: startOfToday(), lte: endOfToday() },
+            status: { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] },
+          },
+          orderBy: { startsAt: "asc" },
+          take: 20,
+          include: {
+            couple: {
+              include: {
+                primaryPatient: true,
+                partnerPatient: true,
+                treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+                careTasks: {
+                  where: {
+                    OR: [
+                      { status: "OVERDUE" },
+                      {
+                        status: { in: ["WAITING", "IN_PROGRESS"] },
+                        dueDate: { lt: startOfToday() },
+                      },
+                    ],
+                  },
+                  take: 5,
+                },
+                consultationNotes: { orderBy: { consultationDate: "desc" }, take: 1 },
+              },
+            },
+          },
+        }),
+        prisma.careTask.findMany({
+          where: {
+            ...clinicScope(tenant),
+            OR: [
+              { status: "OVERDUE" },
+              {
+                status: { in: ["WAITING", "IN_PROGRESS"] },
+                dueDate: { lt: startOfToday() },
+              },
+            ],
+          },
+          take: 8,
+          include: {
+            couple: {
+              include: {
+                primaryPatient: true,
+                partnerPatient: true,
+                treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+              },
+            },
+          },
+        }),
+        prisma.couple.findMany({
+          where: {
+            ...clinicScope(tenant),
+            status: "ACTIVE",
+            OR: [{ careLoopActive: false }],
+          },
+          take: 5,
+          include: {
+            primaryPatient: true,
+            partnerPatient: true,
+            treatments: { orderBy: { updatedAt: "desc" }, take: 1 },
+          },
+        }),
+      ]);
+
+      const items: Array<{
+        time: string;
+        kind: string;
+        type: string;
+        couple: string | null;
+        coupleSlug: string | null;
+        treatment: string | null;
+        checklist: string[];
+        href: string;
+      }> = [];
+
+      for (const a of appts) {
+        const couple = a.couple;
+        const overdue = couple?.careTasks.length ?? 0;
+        items.push({
+          time: a.startsAt.toLocaleTimeString("en-IN", {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+          kind: "appointment",
+          type: a.type,
+          couple: couple ? coupleLabel(couple) : null,
+          coupleSlug: couple?.slug ?? null,
+          treatment: couple?.treatments[0]?.kind ?? null,
+          checklist: [
+            couple?.consultationNotes[0]
+              ? "Review previous consultation summary"
+              : "No previous consultation summary on record",
+            couple?.treatments[0]?.stageName
+              ? `Current stage: ${couple.treatments[0].stageName}`
+              : "Review current treatment stage",
+            overdue > 0
+              ? `${overdue} overdue care task(s) — follow up`
+              : "No overdue care tasks on record",
+            "Review recent communication / activity",
+            "Confirm next planned action",
+          ],
+          href: couple ? `/patients/${couple.slug}` : "/appointments",
+        });
+      }
+
+      for (const task of overdueTasks) {
+        const couple = task.couple;
+        if (!couple) continue;
+        items.push({
+          time: "Overdue",
+          kind: "overdue_task",
+          type: task.title,
+          couple: coupleLabel(couple),
+          coupleSlug: couple.slug,
+          treatment: couple.treatments[0]?.kind ?? null,
+          checklist: [
+            `Task: ${task.title}`,
+            task.dueDate
+              ? `Due: ${task.dueDate.toLocaleDateString("en-IN")}`
+              : "Due date not recorded",
+            couple.treatments[0]?.stageName
+              ? `Stage: ${couple.treatments[0].stageName}`
+              : "Stage not available in SmrkoMed",
+          ],
+          href: `/patients/${couple.slug}`,
+        });
+      }
+
+      for (const couple of attentionCouples) {
+        if (items.some((i) => i.coupleSlug === couple.slug && i.kind === "follow_up")) continue;
+        items.push({
+          time: "Follow-up",
+          kind: "follow_up",
+          type: "Follow-up required",
+          couple: coupleLabel(couple),
+          coupleSlug: couple.slug,
+          treatment: couple.treatments[0]?.kind ?? null,
+          checklist: [
+            "Reason: Care Loop inactive / no recent activity signal",
+            "Suggested action: Coordinator follow-up",
+          ],
+          href: `/patients/${couple.slug}`,
+        });
+      }
+
+      return {
+        count: items.length,
+        items: items.slice(0, 16),
+        note:
+          items.length === 0
+            ? "No appointments, overdue tasks, or follow-ups queued for today."
+            : "Prep checklist is operational and based on SmrkoMed records only.",
+      };
+    }
+
+    case "getPatientAttentionScore": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) {
+        return {
+          found: false,
+          note: "I couldn't find that patient in SmrkoMed.",
+        };
+      }
+      const [overdueTaskCount, pendingTaskCount, missedAppointmentCount, upcomingAppointmentCount, exceptionCount] =
+        await Promise.all([
+          prisma.careTask.count({
+            where: {
+              clinicId: tenant.clinicId,
+              coupleId: couple.id,
+              OR: [
+                { status: "OVERDUE" },
+                {
+                  status: { in: ["WAITING", "IN_PROGRESS"] },
+                  dueDate: { lt: startOfToday() },
+                },
+              ],
+            },
+          }),
+          prisma.careTask.count({
+            where: {
+              clinicId: tenant.clinicId,
+              coupleId: couple.id,
+              status: { in: ["WAITING", "IN_PROGRESS", "OVERDUE", "ESCALATED"] },
+            },
+          }),
+          prisma.appointment.count({
+            where: {
+              clinicId: tenant.clinicId,
+              coupleId: couple.id,
+              status: "NO_SHOW",
+            },
+          }),
+          prisma.appointment.count({
+            where: {
+              clinicId: tenant.clinicId,
+              coupleId: couple.id,
+              startsAt: { gte: new Date() },
+              status: { notIn: ["CANCELLED", "COMPLETED", "NO_SHOW"] },
+            },
+          }),
+          prisma.escalation.count({
+            where: {
+              clinicId: tenant.clinicId,
+              coupleId: couple.id,
+              type: "NO_RESPONSE",
+              status: { in: ["OPEN", "IN_PROGRESS"] },
+            },
+          }),
+        ]);
+
+      const inactiveDays = couple.updatedAt
+        ? Math.floor((Date.now() - couple.updatedAt.getTime()) / (24 * 60 * 60 * 1000))
+        : 0;
+
+      const score = scorePatientAttention({
+        coupleId: couple.id,
+        coupleSlug: couple.slug,
+        coupleLabel: coupleLabel(couple),
+        ...(couple.treatments?.[0]?.kind ? { treatment: couple.treatments[0].kind } : {}),
+        careLoopPaused: couple.careLoopActive === false,
+        statusNeedsAttention: false,
+        overdueTaskCount,
+        pendingTaskCount,
+        missedAppointmentCount,
+        upcomingAppointmentCount,
+        unassignedDoctor: !couple.assignedDoctorId,
+        unassignedCoordinator: !couple.assignedCoordinatorId,
+        noResponseException: exceptionCount > 0,
+        ...(inactiveDays >= 7 ? { inactiveDays } : {}),
+      });
+
+      return {
+        ...score,
+        note: "Operational engagement score only — not medical or clinical risk.",
+      };
+    }
+
     case "getNavigationHelp": {
       const topic = (optionalString(rawArgs, "topic") ?? "").toLowerCase();
       const routes = [
-        { label: "Dashboard", href: "/", keywords: ["dashboard", "home", "summary", "priorit"] },
-        { label: "Patients", href: "/patients", keywords: ["patient", "couple", "add couple"] },
-        { label: "Tasks", href: "/tasks", keywords: ["task", "overdue", "follow"] },
-        { label: "Appointments", href: "/appointments", keywords: ["appointment", "schedule"] },
+        { label: "Dashboard / Command Center", href: "/", keywords: ["dashboard", "home", "summary", "priorit", "attention", "command"] },
+        { label: "Patients", href: "/patients", keywords: ["patient", "couple", "add couple", "inactive"] },
+        { label: "Tasks / Follow-up Queue", href: "/tasks", keywords: ["task", "overdue", "follow"] },
+        { label: "Appointments", href: "/appointments", keywords: ["appointment", "schedule", "today"] },
         { label: "Documents", href: "/documents", keywords: ["document", "file", "report"] },
         { label: "Care Plans", href: "/care-plans", keywords: ["care plan", "journey"] },
-        { label: "Care Loop", href: "/care-loop", keywords: ["care loop", "exception"] },
+        { label: "Care Loop", href: "/care-loop", keywords: ["care loop", "exception", "unanswered", "no response"] },
         { label: "CRM", href: "/crm", keywords: ["crm", "lead", "enquiry"] },
-        { label: "Settings", href: "/settings", keywords: ["setting", "staff", "coordinator"] },
+        { label: "Settings", href: "/settings", keywords: ["setting", "staff", "coordinator", "workload"] },
       ];
       const matches = routes.filter((r) =>
         r.keywords.some((k) => topic.includes(k) || k.includes(topic)),
@@ -852,10 +1569,12 @@ export async function runAiTool(
     case "draftPatientMessage": {
       const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
       const intent = (optionalString(rawArgs, "intent") ?? "appointment reminder").slice(0, 200);
+      const channel = (optionalString(rawArgs, "channel") ?? "whatsapp").toLowerCase();
       if (!couple) {
         return {
           draft: `Hi, this is a message from ${tenant.clinicName}. ${intent}. Please contact the clinic if you have questions.`,
           sent: false,
+          channel,
           note: "Draft only — not sent. Couple context unavailable.",
         };
       }
@@ -879,10 +1598,38 @@ export async function runAiTool(
         : null;
       const patientFirst = couple.primaryPatient.firstName;
       const doctor = nextAppt?.doctorName ?? couple.assignedDoctor?.name ?? "your doctor";
-      const draft = when
-        ? `Hi ${patientFirst}, this is a reminder from ${tenant.clinicName} regarding your appointment on ${when} with ${doctor}. Please reply if you need to reschedule.`
-        : `Hi ${patientFirst}, this is ${tenant.clinicName}. ${intent}. Please reply if you have any questions.`;
-      return { draft, sent: false, intent, couple: coupleLabel(couple) };
+      const intentLower = intent.toLowerCase();
+      let draft: string;
+      if (/call|script|phone/.test(channel) || /call script/.test(intentLower)) {
+        draft = [
+          `Call script — ${tenant.clinicName}`,
+          `Patient: ${patientFirst}`,
+          `Opening: Hi ${patientFirst}, this is calling from ${tenant.clinicName}.`,
+          `Purpose: ${intent}`,
+          when ? `Reference: Next recorded appointment is ${when} with ${doctor}.` : "Reference: Confirm any open follow-ups from clinic records.",
+          "Close: Thank you — please let us know if you need anything from the care team.",
+          "",
+          "Draft only — not dialed or sent.",
+        ].join("\n");
+      } else if (when && /appointment|reminder|schedule/.test(intentLower)) {
+        draft = `Hi ${patientFirst}, this is a reminder from ${tenant.clinicName} regarding your appointment on ${when} with ${doctor}. Please reply if you need to reschedule.`;
+      } else if (/follow|check in|check-in/.test(intentLower)) {
+        draft = `Hi ${patientFirst}, this is ${tenant.clinicName}. We wanted to check in after your recent visit and see if you need any support from the care team. Please reply if you have questions.`;
+      } else if (/task|scan|test|prep/.test(intentLower) && when) {
+        draft = `Hi ${patientFirst}, this is ${tenant.clinicName}. A reminder about your upcoming care item ahead of your appointment on ${when}. Please contact us if you need help.`;
+      } else if (when) {
+        draft = `Hi ${patientFirst}, this is ${tenant.clinicName}. ${intent}. Your next recorded appointment is on ${when}. Please reply if you have questions.`;
+      } else {
+        draft = `Hi ${patientFirst}, this is ${tenant.clinicName}. ${intent}. Please reply if you have any questions.`;
+      }
+      return {
+        draft,
+        sent: false,
+        intent,
+        channel,
+        couple: coupleLabel(couple),
+        label: "AI Draft",
+      };
     }
 
     case "proposeCreateTask": {
