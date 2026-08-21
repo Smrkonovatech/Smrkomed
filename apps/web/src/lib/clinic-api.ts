@@ -97,10 +97,13 @@ export type ClinicCarePlan = {
 
 export function clinicErrorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiError) {
-    if (error.requestId && !error.message.includes(error.requestId)) {
-      return `${error.message} Reference: ${error.requestId}`;
+    const base = error.message || fallback;
+    const withRef =
+      error.requestId && !base.includes(error.requestId) ? `${base} Reference: ${error.requestId}` : base;
+    if (error.status > 0 && !withRef.includes(`(${error.status})`)) {
+      return `${withRef} (${error.status}${error.code ? ` ${error.code}` : ""})`;
     }
-    return error.message || fallback;
+    return withRef;
   }
   if (error instanceof Error && error.message) return error.message;
   return fallback;

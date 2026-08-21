@@ -39,7 +39,8 @@ async function proxy(req: NextRequest, path: string[]) {
         success: false,
         error: {
           code: "API_UNAVAILABLE",
-          message: "Unable to reach the clinic API. Confirm the API is running and try again.",
+          message:
+            "Unable to reach the clinic API. Confirm the API is running (npm run dev:api) and API_URL points at it.",
         },
       },
       { status: 503 },

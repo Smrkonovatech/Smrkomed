@@ -144,6 +144,16 @@ export const onError: ErrorHandler = (error, c) => {
         { requestId: error.requestId },
       );
     }
+    if (fields.code === "P2011" || fields.code === "P2022") {
+      return fail(
+        c,
+        500,
+        "CREATE_COUPLE_FAILED",
+        `${createCoupleUserMessage(error.step)} Reference: ${error.requestId}`,
+        { step: error.step, prismaCode: fields.code },
+        { requestId: error.requestId },
+      );
+    }
 
     const message = `${createCoupleUserMessage(error.step)} Reference: ${error.requestId}`;
     return fail(

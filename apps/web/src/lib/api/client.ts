@@ -52,7 +52,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       0,
       "NETWORK",
-      "Unable to reach the clinic API. Confirm the API is running and try again.",
+      "Unable to reach the clinic API. Confirm the API is running (npm run dev:api) and API_URL points at it.",
     );
   }
 

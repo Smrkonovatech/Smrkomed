@@ -116,7 +116,13 @@ async function resolveStaffMember(
 
   if (userId) {
     const membership = await prisma.clinicMembership.findFirst({
-      where: { clinicId, clinic: { organizationId }, userId, status: "ACTIVE" },
+      where: {
+        clinicId,
+        clinic: { organizationId },
+        userId,
+        status: "ACTIVE",
+        user: { isActive: true },
+      },
       select: { userId: true },
     });
     if (!membership) {
@@ -136,7 +142,7 @@ async function resolveStaffMember(
       clinicId,
       clinic: { organizationId },
       status: "ACTIVE",
-      user: { name: { equals: userName!, mode: "insensitive" } },
+      user: { isActive: true, name: { equals: userName!, mode: "insensitive" } },
     },
     select: { userId: true },
   });
@@ -391,19 +397,23 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
       if (input.whatsappConsent === true) {
         step = "CONSENT";
         const patientIds = [primary.id, partnerId].filter((id): id is string => Boolean(id));
-        await runStep("CONSENT", requestId, ctx, () =>
-          tx.consent.createMany({
-            data: patientIds.map((patientId) => ({
-              clinicId: ctx.clinicId,
-              patientId,
-              channel: "WHATSAPP" as const,
-              consentType: "WHATSAPP_COMMUNICATION" as const,
-              status: "GRANTED" as const,
-              consentedAt: new Date(),
-              source: "couple.create",
-            })),
-          }),
-        );
+        // Use create() (not createMany) so Prisma applies @id/@updatedAt defaults.
+        await runStep("CONSENT", requestId, ctx, async () => {
+          for (const patientId of patientIds) {
+            await tx.consent.create({
+              data: {
+                clinicId: ctx.clinicId,
+                patientId,
+                channel: "WHATSAPP",
+                consentType: "WHATSAPP_COMMUNICATION",
+                status: "GRANTED",
+                consentedAt: new Date(),
+                source: "couple.create",
+              },
+              select: { id: true },
+            });
+          }
+        });
       }
 
       return couple.id;

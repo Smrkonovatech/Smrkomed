@@ -136,6 +136,7 @@ export interface AppState {
   reload: () => Promise<void>;
   staff: ClinicStaff[];
   staffError: string | null;
+  staffLoading: boolean;
   reloadStaff: () => Promise<void>;
   couples: AppCouple[];
   addCouple: (input: AddCoupleInput) => Promise<AppCouple>;
@@ -254,6 +255,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staff, setStaff] = useState<ClinicStaff[]>([]);
   const [staffError, setStaffError] = useState<string | null>(null);
+  const [staffLoading, setStaffLoading] = useState(false);
   const [coupleList, setCoupleList] = useState<AppCouple[]>([]);
   const [appointmentList, setAppointmentList] = useState<AppAppointment[]>([]);
   const [cycleList, setCycleList] = useState<AppCycle[]>(() => seedCycles.map((cycle) => ({ ...cycle })));
@@ -281,20 +283,26 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [kpis, setKpis] = useState(loopKpis);
 
   const reloadStaff = useCallback(async () => {
+    setStaffLoading(true);
     setStaffError(null);
     try {
       const nextStaff = await clinicApi.staff();
       setStaff(nextStaff);
+      setStaffError(null);
     } catch (error) {
-      setStaff([]);
+      // Keep prior staff on transient failures so a flaky retry does not blank dropdowns
+      // after a successful load. Clear only when we never had staff.
       setStaffError(clinicErrorMessage(error, "Unable to load clinic staff. Try again."));
+      setStaff((previous) => (previous.length > 0 ? previous : []));
+    } finally {
+      setStaffLoading(false);
     }
   }, []);
 
   const reload = useCallback(async () => {
     setLoadState("loading");
     setLoadError(null);
-    setStaffError(null);
+    setStaffLoading(true);
     try {
       const [couples, nextTasks, appointments, documents, nextActivity, staffOutcome] =
         await Promise.all([
@@ -320,8 +328,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setStaff(staffOutcome.rows);
         setStaffError(null);
       } else {
-        setStaff([]);
         setStaffError(staffOutcome.error);
+        // Do not clear previously loaded staff when only the staff request failed.
+        setStaff((previous) => previous);
       }
       setKpis({
         active: couples.length,
@@ -339,6 +348,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setActivity([]);
       setLoadError(clinicErrorMessage(error, "Unable to load clinic records. Try again."));
       setLoadState("error");
+    } finally {
+      setStaffLoading(false);
     }
   }, []);
 
@@ -385,11 +396,23 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       whatsappConsent: input.whatsappConsent,
       carePlanTemplate: input.carePlanTemplate,
     });
+    // Use the real API create response, then refetch the clinic couple list.
+    // Never wipe the list if the follow-up refetch fails.
     const couple = toCouple(created);
     setCoupleList((previous) => [couple, ...previous.filter((row) => row.id !== couple.id)]);
-    await reload();
+    setKpis((prev) => ({ ...prev, active: Math.max(prev.active, 1) }));
+    try {
+      const couples = await clinicApi.couples();
+      setCoupleList(couples.map(toCouple));
+      setKpis((prev) => ({ ...prev, active: couples.length }));
+    } catch (error) {
+      console.warn(
+        "Couple created but patient list refresh failed:",
+        clinicErrorMessage(error, "list refresh failed"),
+      );
+    }
     return couple;
-  }, [reload]);
+  }, []);
 
   const updatePatient = useCallback(async (patientId: string, patch: { phone?: string; email?: string }) => {
     await clinicApi.patchPatient(patientId, patch);
@@ -512,6 +535,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       reload,
       staff,
       staffError,
+      staffLoading,
       reloadStaff,
       couples: coupleList,
       addCouple,
@@ -546,6 +570,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       reload,
       staff,
       staffError,
+      staffLoading,
       reloadStaff,
       coupleList,
       addCouple,

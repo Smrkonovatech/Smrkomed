@@ -19,7 +19,7 @@ import { Form } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
 import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAppState } from "@/lib/app-state";
-import { clinicErrorMessage } from "@/lib/clinic-api";
+import { clinicErrorMessage, type ClinicStaff } from "@/lib/clinic-api";
 import { addCoupleSchema, type AddCoupleValues } from "@/lib/validations/global-actions";
 
 import { FieldGrid, SelectField, TextField } from "./form-fields";
@@ -46,6 +46,17 @@ const templates = [
 
 const UNASSIGNED = { value: "__unassigned__", label: "Unassigned" };
 
+const DOCTOR_ROLES = new Set(["DOCTOR"]);
+const COORDINATOR_ROLES = new Set(["CARE_COORDINATOR"]);
+
+function isDoctor(member: ClinicStaff) {
+  return DOCTOR_ROLES.has(member.role);
+}
+
+function isCoordinator(member: ClinicStaff) {
+  return COORDINATOR_ROLES.has(member.role);
+}
+
 function staffOption(member: { id: string; name: string; email?: string; roleName: string }) {
   const label = member.name?.trim() || member.email?.trim() || member.roleName;
   return { value: member.id, label };
@@ -67,34 +78,24 @@ export function AddCoupleDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const router = useRouter();
-  const { addCouple, staff, staffError, reloadStaff } = useAppState();
-  const doctors = staff.filter((member) =>
-    /doctor|fertility|endocrin|clinician|DOCTOR/i.test(`${member.role} ${member.roleName} ${member.name}`),
-  );
-  const coordinators = staff.filter((member) =>
-    /coordinator|nurse|front|admin|counsel|CLINIC_ADMIN|CARE_COORDINATOR|RECEPTIONIST/i.test(
-      `${member.role} ${member.roleName}`,
-    ),
-  );
-  const hasStaffDirectory = staff.length > 0 && !staffError;
+  const { addCouple, staff, staffError, staffLoading, reloadStaff } = useAppState();
+  const doctors = staff.filter(isDoctor);
+  const coordinators = staff.filter(isCoordinator);
+  const staffReady = !staffError && !staffLoading;
   const doctorOptions = [
     UNASSIGNED,
-    ...(hasStaffDirectory
-      ? (doctors.length > 0 ? doctors : staff).map(staffOption).filter((option) => option.value)
-      : []),
+    ...(staffReady ? doctors.map(staffOption).filter((option) => option.value) : []),
   ];
   const coordinatorOptions = [
     UNASSIGNED,
-    ...(hasStaffDirectory
-      ? (coordinators.length > 0 ? coordinators : staff)
-          .map(staffOption)
-          .filter((option) => option.value)
-      : []),
+    ...(staffReady ? coordinators.map(staffOption).filter((option) => option.value) : []),
   ];
   const staffEmptyMessage =
-    !staffError && staff.length === 0
-      ? "No doctors or coordinators available. Add staff from Settings."
-      : null;
+    staffReady && staff.length === 0
+      ? "No doctors or coordinators are available for this clinic."
+      : staffReady && doctors.length === 0 && coordinators.length === 0
+        ? "No doctors or coordinators are available for this clinic."
+        : null;
 
   const form = useForm<AddCoupleValues>({
     resolver: zodResolver(addCoupleSchema),
@@ -182,7 +183,11 @@ export function AddCoupleDialog({
             </section>
             <section className="space-y-3">
               <h3 className="text-sm font-semibold">Treatment</h3>
-              {staffError ? (
+              {staffLoading ? (
+                <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                  Loading clinic staff…
+                </p>
+              ) : staffError ? (
                 <div className="rounded-lg border border-danger/30 bg-danger-soft/40 p-3 text-sm">
                   <p className="font-medium text-danger">Unable to load clinic staff</p>
                   <p className="mt-1 text-xs text-muted-foreground">{staffError}</p>
@@ -255,7 +260,7 @@ export function AddCoupleDialog({
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
+              <Button type="submit" disabled={form.formState.isSubmitting || staffLoading}>
                 Create Couple
               </Button>
             </DialogFooter>
