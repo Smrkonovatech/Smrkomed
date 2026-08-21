@@ -1,4 +1,4 @@
-import { compare, hash } from "bcryptjs";
+﻿import { hash } from "bcryptjs";
 import type { StaffRole } from "@prisma/client";
 
 import { prisma } from "./client";
@@ -29,15 +29,29 @@ const DEMO_STAFF: Array<{
   },
   {
     email: "ravi@abcfertility.demo",
-    name: "Dr. Ravi Menon",
+    name: "Dr. Rahul Menon",
     initials: "RM",
     title: "Reproductive Endocrinologist",
+    role: "DOCTOR",
+  },
+  {
+    email: "priya@abcfertility.demo",
+    name: "Dr. Priya Nair",
+    initials: "PN",
+    title: "Fertility Specialist",
     role: "DOCTOR",
   },
   {
     email: "meera@abcfertility.demo",
     name: "Meera Iyer",
     initials: "MI",
+    title: "Care Coordinator",
+    role: "CARE_COORDINATOR",
+  },
+  {
+    email: "kavya@abcfertility.demo",
+    name: "Kavya Sharma",
+    initials: "KS",
     title: "Care Coordinator",
     role: "CARE_COORDINATOR",
   },
@@ -54,19 +68,6 @@ const DEMO_EMAILS = new Set(DEMO_STAFF.map((person) => person.email));
 
 export function isDemoLogin(email: string, password: string) {
   return password === DEMO_PASSWORD && DEMO_EMAILS.has(email.toLowerCase());
-}
-
-function isBcryptHash(value: string) {
-  return /^\$2[aby]\$\d{2}\$/.test(value);
-}
-
-async function demoPasswordMatches(passwordHash: string) {
-  if (!isBcryptHash(passwordHash)) return false;
-  try {
-    return await compare(DEMO_PASSWORD, passwordHash);
-  } catch {
-    return false;
-  }
 }
 
 export async function ensureDefaultRoles() {
@@ -101,24 +102,7 @@ export async function ensureDefaultRoles() {
 
 /** Creates the ABC Fertility demo clinic and staff in PostgreSQL. Does not create patients. */
 export async function ensureDemoWorkspace() {
-  const admin = await prisma.user.findFirst({
-    where: {
-      email: "admin@abcfertility.demo",
-      isActive: true,
-      memberships: { some: { status: "ACTIVE" } },
-    },
-  });
-  if (admin) {
-    const passwordMatches = await demoPasswordMatches(admin.passwordHash);
-    if (passwordMatches) return;
-    const passwordHash = await hash(DEMO_PASSWORD, 10);
-    await prisma.user.updateMany({
-      where: { email: { in: [...DEMO_EMAILS] } },
-      data: { passwordHash, isActive: true },
-    });
-    return;
-  }
-
+  // Always upsert demo staff so new roles appear after seed updates.
   const roles = await ensureDefaultRoles();
   const roleByKey = Object.fromEntries(roles.map((role) => [role.key, role]));
   const adminRole = roleByKey["CLINIC_ADMIN"];

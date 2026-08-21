@@ -15,12 +15,22 @@ export const DEMO_STAFF = [
   },
   {
     email: "ravi@abcfertility.demo",
-    name: "Dr. Ravi Menon",
+    name: "Dr. Rahul Menon",
+    role: "DOCTOR" as StaffRole,
+  },
+  {
+    email: "priya@abcfertility.demo",
+    name: "Dr. Priya Nair",
     role: "DOCTOR" as StaffRole,
   },
   {
     email: "meera@abcfertility.demo",
     name: "Meera Iyer",
+    role: "CARE_COORDINATOR" as StaffRole,
+  },
+  {
+    email: "kavya@abcfertility.demo",
+    name: "Kavya Sharma",
     role: "CARE_COORDINATOR" as StaffRole,
   },
   {

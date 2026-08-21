@@ -79,11 +79,13 @@ function parseClaims(payload: Record<string, unknown> | null): AuthClaims | null
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   let token: string | undefined;
   let salt = sessionCookieName();
+  let cookieName: string | null = null;
   for (const name of cookieNames) {
     const value = getCookie(c, name);
     if (value) {
       token = value;
       salt = name;
+      cookieName = name;
       break;
     }
   }
@@ -92,13 +94,33 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     if (header?.startsWith("Bearer ")) {
       token = header.slice("Bearer ".length);
       salt = sessionCookieName();
+      cookieName = "authorization";
     }
   }
   if (!token) throw unauthenticated();
 
-  const payload = await decodeSessionToken(token, salt);
-  const claims = parseClaims(payload as Record<string, unknown> | null);
-  if (!claims) throw unauthenticated("Invalid session.");
+  let payload: Record<string, unknown> | null = null;
+  try {
+    payload = (await decodeSessionToken(token, salt)) as Record<string, unknown> | null;
+  } catch (error) {
+    console.error("AUTH_DECODE_FAILED", {
+      path: c.req.path,
+      cookieName,
+      errorName: error instanceof Error ? error.name : "unknown",
+      // Never log token, secret, or cookie value.
+    });
+    throw unauthenticated("Session could not be verified. Sign out and sign in again.");
+  }
+
+  const claims = parseClaims(payload);
+  if (!claims) {
+    console.error("AUTH_CLAIMS_INVALID", {
+      path: c.req.path,
+      cookieName,
+      hasPayload: Boolean(payload),
+    });
+    throw unauthenticated("Invalid session.");
+  }
   c.set("claims", claims);
   await next();
 });

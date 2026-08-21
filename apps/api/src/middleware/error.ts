@@ -130,7 +130,11 @@ export const onError: ErrorHandler = (error, c) => {
         409,
         mapped.code,
         `${mapped.message} Reference: ${error.requestId}`,
-        { step: error.step, prismaCode: fields.code },
+        {
+          debugCode: "CREATE_COUPLE_FAILED",
+          step: error.step,
+          prismaCode: fields.code,
+        },
         { requestId: error.requestId },
       );
     }
@@ -140,7 +144,11 @@ export const onError: ErrorHandler = (error, c) => {
         409,
         "CONFLICT",
         `A matching record already exists. Reference: ${error.requestId}`,
-        { step: error.step, prismaCode: fields.code },
+        {
+          debugCode: "CREATE_COUPLE_FAILED",
+          step: error.step,
+          prismaCode: fields.code,
+        },
         { requestId: error.requestId },
       );
     }
@@ -150,7 +158,11 @@ export const onError: ErrorHandler = (error, c) => {
         500,
         "CREATE_COUPLE_FAILED",
         `${createCoupleUserMessage(error.step)} Reference: ${error.requestId}`,
-        { step: error.step, prismaCode: fields.code },
+        {
+          debugCode: "CREATE_COUPLE_FAILED",
+          step: error.step,
+          prismaCode: fields.code,
+        },
         { requestId: error.requestId },
       );
     }
@@ -161,7 +173,11 @@ export const onError: ErrorHandler = (error, c) => {
       500,
       "CREATE_COUPLE_FAILED",
       message,
-      { step: error.step, prismaCode: fields.code || null },
+      {
+        debugCode: "CREATE_COUPLE_FAILED",
+        step: error.step,
+        prismaCode: fields.code || null,
+      },
       { requestId: error.requestId },
     );
   }
@@ -186,10 +202,22 @@ export const onError: ErrorHandler = (error, c) => {
   }
 
   console.error("API error:", {
+    path: c.req.path,
+    method: c.req.method,
     name: fields.name || (error instanceof Error ? error.name : "unknown"),
     code: fields.code || null,
     message: fields.message || (error instanceof Error ? error.message : "unknown"),
     meta: safeMeta(fields.meta),
   });
-  return fail(c, 500, "INTERNAL_ERROR", "Unable to create the patient. Please try again.");
+  return fail(
+    c,
+    500,
+    "INTERNAL_ERROR",
+    "Something went wrong while processing this request. Please try again.",
+    {
+      debugCode: fields.code ? "PRISMA_ERROR" : "UNHANDLED_ERROR",
+      path: c.req.path,
+      ...(fields.code ? { prismaCode: fields.code } : {}),
+    },
+  );
 };

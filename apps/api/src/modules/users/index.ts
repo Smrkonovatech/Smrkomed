@@ -68,6 +68,7 @@ export const userRoutes = new Hono<AppEnv>()
       console.info("STAFF_LIST", {
         clinicId: tenant.clinicId,
         userId: tenant.userId,
+        status: "ok",
         staffCount: staff.length,
         roleCounts,
       });
@@ -76,6 +77,8 @@ export const userRoutes = new Hono<AppEnv>()
       console.error("STAFF_LIST_FAILED", {
         clinicId: tenant.clinicId,
         userId: tenant.userId,
+        status: "error",
+        errorCode: error instanceof Error ? error.name : "unknown",
         message: error instanceof Error ? error.message : "unknown",
       });
       throw error;
