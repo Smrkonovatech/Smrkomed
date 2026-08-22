@@ -1,7 +1,7 @@
 export function OnboardingBackdrop() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgb(91_42_104/0.10),_transparent_52%),hsl(var(--background))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgb(123_79_224/0.12),_transparent_52%),var(--background)]" />
       <div className="absolute -left-24 top-10 size-[28rem] rounded-full bg-pink-soft/70 blur-3xl" />
       <div className="absolute -right-20 bottom-0 size-[32rem] rounded-full bg-primary-soft blur-3xl" />
       <svg

@@ -10,7 +10,8 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth?.user;
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isOnboarding = pathname.startsWith("/onboarding");
-  const isPublicPage = pathname.startsWith("/book/");
+  const isMarketingHome = pathname === "/";
+  const isPublicPage = isMarketingHome || pathname.startsWith("/book/");
   const isPublicApi =
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/v1") ||
@@ -31,7 +32,7 @@ export default auth((req) => {
   }
 
   if (isLoggedIn && isAuthPage) {
-    return NextResponse.redirect(new URL("/", req.nextUrl.origin));
+    return NextResponse.redirect(new URL("/home", req.nextUrl.origin));
   }
 
   return NextResponse.next();

@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") || "/";
+  const callbackUrl = searchParams.get("callbackUrl") || "/home";
   const [email, setEmail] = useState("meera@abcfertility.demo");
   const [password, setPassword] = useState("Demo@12345");
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +90,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(91_42_104/0.08),_transparent_55%),hsl(var(--background))] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(123_79_224/0.12),_transparent_55%),var(--background)] px-4">
       <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-5 shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)] sm:p-8">
         <div className="space-y-1 text-center">
           <p className="text-xs font-semibold tracking-[0.18em] text-primary">SMRKOMED</p>

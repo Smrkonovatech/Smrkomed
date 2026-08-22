@@ -36,7 +36,7 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(91_42_104/0.10),_transparent_55%),hsl(var(--background))] px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(123_79_224/0.12),_transparent_55%),var(--background)] px-4 py-8">
       <div className="grid w-full max-w-5xl overflow-hidden rounded-2xl border bg-card shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)] lg:grid-cols-[1.05fr_1fr]">
         <div className="flex flex-col justify-center px-6 py-8 sm:px-10">
           <div className="mx-auto mb-6 grid size-11 place-items-center rounded-xl border bg-primary-soft text-primary">

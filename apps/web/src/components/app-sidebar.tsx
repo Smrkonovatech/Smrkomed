@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 const groups = [
   {
     label: "Overview",
-    items: [{ to: "/", label: "Dashboard", icon: Gauge }],
+    items: [{ to: "/home", label: "Dashboard", icon: Gauge }],
   },
   {
     label: "Patient Care",
@@ -84,7 +84,7 @@ export function SidebarContentBody({
   const { kpis } = useAppState();
   const pathname = usePathname();
   const isActive = (href: string) =>
-    href === "/" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
+    href === "/home" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
     <div className="flex h-full flex-col bg-sidebar">
@@ -94,13 +94,13 @@ export function SidebarContentBody({
           compact ? "justify-center px-2" : "gap-2.5 px-4",
         )}
       >
-        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-primary text-primary-foreground">
-          <Sparkles className="size-4.5" />
+        <span className="grid size-8 shrink-0 place-items-center overflow-hidden rounded-md bg-primary/10">
+          <img src="/branding/smrkomed-mark.png" alt="" width={32} height={32} className="size-8 object-cover" />
         </span>
         {!compact && (
           <div className="min-w-0">
             <p className="truncate text-sm font-bold tracking-[0.16em] text-primary">SMRKOMED</p>
-            <p className="truncate text-[11px] text-muted-foreground">Fertility Care Platform</p>
+            <p className="truncate text-[11px] text-muted-foreground">Powered by Smrkonova</p>
           </div>
         )}
       </div>

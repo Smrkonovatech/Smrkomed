@@ -1,14 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Poppins } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AuthSessionProvider } from "@/components/auth-session-provider";
 import "@/styles.css";
 
-const inter = Inter({
+const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-inter",
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-poppins",
   display: "swap",
 });
 
@@ -20,15 +20,18 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "SmrkoMed — Fertility Care Platform",
-    template: "%s | SmrkoMed",
+    default: "SMRKOMED — Connected Healthcare Technology",
+    template: "%s | SMRKOMED",
   },
   description:
-    "SmrkoMed manages the clinic. Care Loop makes sure patients actually follow their doctor's plan.",
+    "SMRKOMED connects clinics, care teams and patients through modular healthcare workflows. Start with Care Loop.",
   openGraph: {
-    title: "SmrkoMed — Fertility Care Platform",
-    description: "AI-powered patient care coordination for modern fertility clinics.",
+    title: "SMRKOMED — Building the connected future of healthcare",
+    description: "Modular healthcare technology connecting clinics, care teams and patients.",
     type: "website",
+  },
+  icons: {
+    icon: "/branding/favicon.png",
   },
   robots: {
     index: false,
@@ -38,7 +41,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={poppins.variable}>
       <body className="min-h-screen font-sans antialiased">
         <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>

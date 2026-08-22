@@ -28,7 +28,7 @@ export default function SetupPage() {
         subtitle="Recommended fertility setup. Connect accounts — never paste API keys."
         actions={
           <Button asChild>
-            <Link href="/">Start using SmrkoMed</Link>
+            <Link href="/home">Start using SmrkoMed</Link>
           </Button>
         }
       />

@@ -20,7 +20,7 @@ export function normalizePageContext(raw: unknown): AiPageContext {
 
 export function describePageContext(ctx: AiPageContext): string {
   const page =
-    ctx.pathname === "/" || ctx.pathname === ""
+    ctx.pathname === "/home" || ctx.pathname === "/" || ctx.pathname === ""
       ? "Dashboard"
       : ctx.pathname.startsWith("/patients/")
         ? "Patient profile"
