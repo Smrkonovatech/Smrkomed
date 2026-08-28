@@ -12,6 +12,7 @@ import {
   Heart,
   Link2,
   ListChecks,
+  Pill,
   PlayCircle,
   RefreshCw,
   Settings,
@@ -19,12 +20,27 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useMemo } from "react";
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppState } from "@/lib/app-state";
+import { PERMISSIONS, roleHasPermission } from "@/lib/permissions/rbac";
 import { cn } from "@/lib/utils";
 
-const groups = [
+type NavItem = {
+  to: string;
+  label: string;
+  icon: typeof Gauge;
+  highlight?: boolean;
+};
+
+type NavGroup = {
+  label: string;
+  items: NavItem[];
+};
+
+const baseGroups: NavGroup[] = [
   {
     label: "Overview",
     items: [{ to: "/home", label: "Dashboard", icon: Gauge }],
@@ -69,7 +85,23 @@ const groups = [
       { to: "/integrations", label: "Integrations", icon: Link2 },
     ],
   },
-] as const;
+];
+
+const pharmacyGroup: NavGroup = {
+  label: "Pharmacy",
+  items: [
+    { to: "/pharmacy", label: "Pharmacy Dashboard", icon: Pill },
+    { to: "/pharmacy/inventory", label: "Inventory", icon: ClipboardList },
+    { to: "/pharmacy/products", label: "Products", icon: Pill },
+    { to: "/pharmacy/sales", label: "Sales / Billing", icon: Wallet },
+    { to: "/pharmacy/prescriptions", label: "Prescriptions", icon: FileText },
+    { to: "/pharmacy/suppliers", label: "Suppliers", icon: Users },
+    { to: "/pharmacy/purchase-orders", label: "Purchase Orders", icon: FolderOpen },
+    { to: "/pharmacy/adjustments", label: "Stock Adjustments", icon: ListChecks },
+    { to: "/pharmacy/alerts", label: "Expiry / Alerts", icon: BarChart3 },
+    { to: "/pharmacy/reports", label: "Pharmacy Reports", icon: FileText },
+  ],
+};
 
 const linkBase =
   "group relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors";
@@ -82,7 +114,17 @@ export function SidebarContentBody({
   compact?: boolean;
 }) {
   const { kpis } = useAppState();
+  const { data: session } = useSession();
   const pathname = usePathname();
+  const groups = useMemo(() => {
+    const role = session?.user?.role;
+    const showPharmacy = role && roleHasPermission(role, PERMISSIONS.PHARMACY_VIEW);
+    if (!showPharmacy) return baseGroups;
+    const next = [...baseGroups];
+    const operationsIndex = next.findIndex((group) => group.label === "Operations");
+    next.splice(operationsIndex + 1, 0, pharmacyGroup);
+    return next;
+  }, [session?.user?.role]);
   const isActive = (href: string) =>
     href === "/home" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
 

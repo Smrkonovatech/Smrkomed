@@ -62,6 +62,27 @@ const DEMO_STAFF: Array<{
     title: "Front Desk",
     role: "RECEPTIONIST",
   },
+  {
+    email: "pharmamanager@abcfertility.demo",
+    name: "Sanjay Mehta",
+    initials: "SM",
+    title: "Pharmacy Manager",
+    role: "PHARMACY_MANAGER",
+  },
+  {
+    email: "pharmacist@abcfertility.demo",
+    name: "Anita Desai",
+    initials: "AD",
+    title: "Pharmacist",
+    role: "PHARMACIST",
+  },
+  {
+    email: "pharmastaff@abcfertility.demo",
+    name: "Rohit Kumar",
+    initials: "RK",
+    title: "Pharmacy Staff",
+    role: "PHARMACY_STAFF",
+  },
 ];
 
 const DEMO_EMAILS = new Set(DEMO_STAFF.map((person) => person.email));
@@ -88,12 +109,13 @@ export async function ensureDefaultRoles() {
       update: { name: def.name, description: def.description },
       create: { key: def.key, name: def.name, description: def.description },
     });
+    await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
     const links = ROLE_PERMISSIONS[def.key]
       .map((key) => byKey[key])
       .filter((permissionId): permissionId is string => Boolean(permissionId))
       .map((permissionId) => ({ roleId: role.id, permissionId }));
     if (links.length > 0) {
-      await prisma.rolePermission.createMany({ data: links, skipDuplicates: true });
+      await prisma.rolePermission.createMany({ data: links });
     }
   }
 

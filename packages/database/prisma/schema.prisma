@@ -22,6 +22,9 @@ enum StaffRole {
   COUNSELOR
   MARKETING
   READ_ONLY
+  PHARMACY_MANAGER
+  PHARMACIST
+  PHARMACY_STAFF
 }
 
 enum OrganizationStatus {
@@ -407,6 +410,14 @@ model Clinic {
   campaigns    Campaign[]
   leadActivities LeadActivity[]
   consultationNotes ConsultationNote[]
+  pharmacyProducts PharmacyProduct[]
+  pharmacyBatches PharmacyBatch[]
+  pharmacyStockMovements PharmacyStockMovement[]
+  pharmacySuppliers PharmacySupplier[]
+  pharmacyPurchaseOrders PharmacyPurchaseOrder[]
+  pharmacySales PharmacySale[]
+  pharmacyPrescriptions PharmacyPrescription[]
+  pharmacySettings PharmacySetting?
 
   @@index([organizationId])
 }
@@ -450,6 +461,10 @@ model User {
   assignedLeads      Lead[]      @relation("LeadAssignee")
   leadActivities     LeadActivity[]
   consultationNotes  ConsultationNote[] @relation("ConsultationAuthor")
+  pharmacyStockMovements PharmacyStockMovement[] @relation("PharmacyStockActor")
+  pharmacySales          PharmacySale[]          @relation("PharmacySaleCreator")
+  pharmacyPrescriptions  PharmacyPrescription[]  @relation("PharmacyPrescriptionDoctor")
+  pharmacyDispenses      PharmacyPrescription[]  @relation("PharmacyPrescriptionDispenser")
 }
 
 model Role {
@@ -521,6 +536,8 @@ model Patient {
   consents      Consent[]
   escalations   Escalation[]
   convertedLeads Lead[]
+  pharmacySales PharmacySale[]
+  pharmacyPrescriptions PharmacyPrescription[]
 
   @@index([clinicId])
   @@index([clinicId, whatsappNumber])
@@ -554,6 +571,8 @@ model Couple {
   escalations         Escalation[]
   convertedLeads      Lead[]
   consultationNotes   ConsultationNote[]
+  pharmacySales       PharmacySale[]
+  pharmacyPrescriptions PharmacyPrescription[]
 
   @@unique([clinicId, slug])
   @@index([clinicId])
@@ -1258,4 +1277,341 @@ model IntegrationOauthState {
 
   @@index([expiresAt])
   @@index([clinicId, provider])
+}
+
+// ─── Pharmacy ────────────────────────────────────────────────────────────────
+
+enum PharmacyProductStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum PharmacySupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PharmacyStockMovementType {
+  PURCHASE
+  SALE
+  DISPENSE
+  ADJUSTMENT
+  DAMAGED
+  EXPIRED
+  RETURNED
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum PharmacyPurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum PharmacySalePaymentMethod {
+  CASH
+  UPI
+  CARD
+  OTHER
+}
+
+enum PharmacySalePaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  REFUNDED
+}
+
+enum PharmacyPrescriptionStatus {
+  PENDING
+  PARTIALLY_DISPENSED
+  DISPENSED
+  CANCELLED
+}
+
+model PharmacySetting {
+  id                String   @id @default(cuid())
+  clinicId          String   @unique
+  expiryWarningDays Int      @default(30)
+  lowStockEnabled   Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+}
+
+model PharmacyProduct {
+  id                   String                @id @default(cuid())
+  clinicId             String
+  name                 String
+  genericName          String?
+  brandName            String?
+  category             String?
+  subCategory          String?
+  description          String?
+  manufacturer         String?
+  unit                 String                @default("unit")
+  packSize             String?
+  medicineType         String?
+  imageUrl             String?
+  prescriptionRequired Boolean               @default(false)
+  minimumStock         Int                   @default(0)
+  reorderLevel         Int                   @default(0)
+  defaultPurchasePrice Decimal               @default(0) @db.Decimal(12, 2)
+  defaultSellingPrice  Decimal               @default(0) @db.Decimal(12, 2)
+  defaultMrp           Decimal               @default(0) @db.Decimal(12, 2)
+  gstPercent           Decimal               @default(0) @db.Decimal(5, 2)
+  status               PharmacyProductStatus @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+
+  clinic            Clinic                      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  batches           PharmacyBatch[]
+  stockMovements    PharmacyStockMovement[]
+  purchaseItems     PharmacyPurchaseOrderItem[]
+  saleItems         PharmacySaleItem[]
+  prescriptionItems PharmacyPrescriptionItem[]
+
+  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([clinicId, category])
+  @@index([clinicId, manufacturer])
+  @@index([clinicId, name])
+}
+
+model PharmacySupplier {
+  id            String                 @id @default(cuid())
+  clinicId      String
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  address       String?
+  gstNumber     String?
+  licenseInfo   String?
+  notes         String?
+  status        PharmacySupplierStatus @default(ACTIVE)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+
+  clinic         Clinic                  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  batches        PharmacyBatch[]
+  purchaseOrders PharmacyPurchaseOrder[]
+
+  @@index([clinicId])
+  @@index([clinicId, status])
+  @@index([clinicId, name])
+}
+
+model PharmacyBatch {
+  id                String    @id @default(cuid())
+  clinicId          String
+  productId         String
+  supplierId        String?
+  batchNumber       String
+  quantity          Int       @default(0)
+  availableQuantity Int       @default(0)
+  reservedQuantity  Int       @default(0)
+  purchasePrice     Decimal   @default(0) @db.Decimal(12, 2)
+  sellingPrice      Decimal   @default(0) @db.Decimal(12, 2)
+  mrp               Decimal   @default(0) @db.Decimal(12, 2)
+  gstPercent        Decimal   @default(0) @db.Decimal(5, 2)
+  manufacturingDate DateTime?
+  expiryDate        DateTime?
+  purchaseDate      DateTime?
+  storageLocation   String?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  clinic            Clinic                      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  product           PharmacyProduct             @relation(fields: [productId], references: [id])
+  supplier          PharmacySupplier?           @relation(fields: [supplierId], references: [id])
+  stockMovements    PharmacyStockMovement[]
+  saleItems         PharmacySaleItem[]
+  purchaseItems     PharmacyPurchaseOrderItem[]
+  prescriptionItems PharmacyPrescriptionItem[]
+
+  @@unique([clinicId, productId, batchNumber])
+  @@index([clinicId])
+  @@index([clinicId, productId])
+  @@index([clinicId, expiryDate])
+  @@index([supplierId])
+}
+
+model PharmacyStockMovement {
+  id            String                    @id @default(cuid())
+  clinicId      String
+  productId     String
+  batchId       String
+  type          PharmacyStockMovementType
+  quantity      Int
+  balanceAfter  Int
+  reason        String?
+  referenceType String?
+  referenceId   String?
+  actorUserId   String?
+  createdAt     DateTime                  @default(now())
+
+  clinic  Clinic          @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  product PharmacyProduct @relation(fields: [productId], references: [id])
+  batch   PharmacyBatch   @relation(fields: [batchId], references: [id])
+  actor   User?           @relation("PharmacyStockActor", fields: [actorUserId], references: [id])
+
+  @@index([clinicId, createdAt])
+  @@index([clinicId, productId])
+  @@index([clinicId, batchId])
+  @@index([referenceType, referenceId])
+}
+
+model PharmacyPurchaseOrder {
+  id               String                      @id @default(cuid())
+  clinicId         String
+  supplierId       String
+  orderNumber      String
+  orderDate        DateTime                    @default(now())
+  expectedDelivery DateTime?
+  status           PharmacyPurchaseOrderStatus @default(DRAFT)
+  taxAmount        Decimal                     @default(0) @db.Decimal(12, 2)
+  totalAmount      Decimal                     @default(0) @db.Decimal(12, 2)
+  notes            String?
+  createdAt        DateTime                    @default(now())
+  updatedAt        DateTime                    @updatedAt
+
+  clinic   Clinic                      @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  supplier PharmacySupplier            @relation(fields: [supplierId], references: [id])
+  items    PharmacyPurchaseOrderItem[]
+
+  @@unique([clinicId, orderNumber])
+  @@index([clinicId, status])
+  @@index([clinicId, supplierId])
+}
+
+model PharmacyPurchaseOrderItem {
+  id               String    @id @default(cuid())
+  purchaseOrderId  String
+  productId        String
+  batchId          String?
+  quantityOrdered  Int
+  quantityReceived Int       @default(0)
+  purchasePrice    Decimal   @default(0) @db.Decimal(12, 2)
+  mrp              Decimal   @default(0) @db.Decimal(12, 2)
+  batchNumber      String?
+  expiryDate       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  purchaseOrder PharmacyPurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       PharmacyProduct       @relation(fields: [productId], references: [id])
+  batch         PharmacyBatch?        @relation(fields: [batchId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+}
+
+model PharmacySale {
+  id             String                    @id @default(cuid())
+  clinicId       String
+  invoiceNumber  String
+  patientId      String?
+  coupleId       String?
+  doctorName     String?
+  subtotal       Decimal                   @default(0) @db.Decimal(12, 2)
+  discountAmount Decimal                   @default(0) @db.Decimal(12, 2)
+  taxAmount      Decimal                   @default(0) @db.Decimal(12, 2)
+  totalAmount    Decimal                   @default(0) @db.Decimal(12, 2)
+  paymentMethod  PharmacySalePaymentMethod @default(CASH)
+  paymentStatus  PharmacySalePaymentStatus @default(PAID)
+  notes          String?
+  createdById    String?
+  soldAt         DateTime                  @default(now())
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  clinic    Clinic             @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient   Patient?           @relation(fields: [patientId], references: [id])
+  couple    Couple?            @relation(fields: [coupleId], references: [id])
+  createdBy User?              @relation("PharmacySaleCreator", fields: [createdById], references: [id])
+  items     PharmacySaleItem[]
+
+  @@unique([clinicId, invoiceNumber])
+  @@index([clinicId, soldAt])
+  @@index([clinicId, patientId])
+  @@index([clinicId, coupleId])
+}
+
+model PharmacySaleItem {
+  id             String   @id @default(cuid())
+  saleId         String
+  productId      String
+  batchId        String
+  quantity       Int
+  unitPrice      Decimal  @db.Decimal(12, 2)
+  taxAmount      Decimal  @default(0) @db.Decimal(12, 2)
+  discountAmount Decimal  @default(0) @db.Decimal(12, 2)
+  lineTotal      Decimal  @db.Decimal(12, 2)
+  createdAt      DateTime @default(now())
+
+  sale    PharmacySale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product PharmacyProduct @relation(fields: [productId], references: [id])
+  batch   PharmacyBatch   @relation(fields: [batchId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([batchId])
+}
+
+model PharmacyPrescription {
+  id               String                     @id @default(cuid())
+  clinicId         String
+  patientId        String
+  coupleId         String?
+  doctorId         String?
+  doctorName       String?
+  prescriptionDate DateTime                   @default(now())
+  status           PharmacyPrescriptionStatus @default(PENDING)
+  notes            String?
+  dispensedById    String?
+  dispensedAt      DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  clinic      Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient     Patient                    @relation(fields: [patientId], references: [id])
+  couple      Couple?                    @relation(fields: [coupleId], references: [id])
+  doctor      User?                      @relation("PharmacyPrescriptionDoctor", fields: [doctorId], references: [id])
+  dispensedBy User?                      @relation("PharmacyPrescriptionDispenser", fields: [dispensedById], references: [id])
+  items       PharmacyPrescriptionItem[]
+
+  @@index([clinicId, status])
+  @@index([clinicId, patientId])
+  @@index([clinicId, coupleId])
+  @@index([clinicId, prescriptionDate])
+}
+
+model PharmacyPrescriptionItem {
+  id                 String   @id @default(cuid())
+  prescriptionId     String
+  productId          String
+  batchId            String?
+  medicineName       String
+  dosage             String?
+  frequency          String?
+  duration           String?
+  instructions       String?
+  quantityPrescribed Int
+  quantityDispensed  Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  prescription PharmacyPrescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  product      PharmacyProduct      @relation(fields: [productId], references: [id])
+  batch        PharmacyBatch?       @relation(fields: [batchId], references: [id])
+
+  @@index([prescriptionId])
+  @@index([productId])
 }

@@ -19,11 +19,30 @@ export const PERMISSIONS = {
   LEADS_EXPORT: "leads:export",
   CAMPAIGNS_READ: "campaigns:read",
   CAMPAIGNS_MANAGE: "campaigns:manage",
+  PHARMACY_VIEW: "pharmacy:view",
+  PHARMACY_MANAGE: "pharmacy:manage",
+  PHARMACY_INVENTORY: "pharmacy:inventory",
+  PHARMACY_SALES: "pharmacy:sales",
+  PHARMACY_PRESCRIPTIONS: "pharmacy:prescriptions",
+  PHARMACY_PURCHASE: "pharmacy:purchase",
+  PHARMACY_REPORTS: "pharmacy:reports",
+  PHARMACY_SETTINGS: "pharmacy:settings",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 const ALL_PERMISSIONS = Object.values(PERMISSIONS);
+
+const PHARMACY_ALL = [
+  PERMISSIONS.PHARMACY_VIEW,
+  PERMISSIONS.PHARMACY_MANAGE,
+  PERMISSIONS.PHARMACY_INVENTORY,
+  PERMISSIONS.PHARMACY_SALES,
+  PERMISSIONS.PHARMACY_PRESCRIPTIONS,
+  PERMISSIONS.PHARMACY_PURCHASE,
+  PERMISSIONS.PHARMACY_REPORTS,
+  PERMISSIONS.PHARMACY_SETTINGS,
+] as const;
 
 export const ROLE_PERMISSIONS = {
   CLINIC_ADMIN: ALL_PERMISSIONS,
@@ -36,6 +55,8 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.DOCUMENTS_WRITE,
     PERMISSIONS.APPOINTMENTS_WRITE,
     PERMISSIONS.LEADS_READ,
+    PERMISSIONS.PHARMACY_VIEW,
+    PERMISSIONS.PHARMACY_PRESCRIPTIONS,
   ],
   CARE_COORDINATOR: [
     PERMISSIONS.PATIENTS_READ,
@@ -47,6 +68,7 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.LEADS_READ,
     PERMISSIONS.LEADS_UPDATE,
     PERMISSIONS.LEADS_ASSIGN,
+    PERMISSIONS.PHARMACY_VIEW,
   ],
   NURSE: [
     PERMISSIONS.PATIENTS_READ,
@@ -54,6 +76,7 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.APPOINTMENTS_WRITE,
     PERMISSIONS.DOCUMENTS_WRITE,
     PERMISSIONS.LEADS_READ,
+    PERMISSIONS.PHARMACY_VIEW,
   ],
   RECEPTIONIST: [
     PERMISSIONS.PATIENTS_READ,
@@ -85,6 +108,23 @@ export const ROLE_PERMISSIONS = {
     PERMISSIONS.CAMPAIGNS_MANAGE,
   ],
   READ_ONLY: [PERMISSIONS.PATIENTS_READ, PERMISSIONS.LEADS_READ, PERMISSIONS.CAMPAIGNS_READ],
+  PHARMACY_MANAGER: [
+    PERMISSIONS.PATIENTS_READ,
+    ...PHARMACY_ALL,
+  ],
+  PHARMACIST: [
+    PERMISSIONS.PATIENTS_READ,
+    PERMISSIONS.PHARMACY_VIEW,
+    PERMISSIONS.PHARMACY_INVENTORY,
+    PERMISSIONS.PHARMACY_SALES,
+    PERMISSIONS.PHARMACY_PRESCRIPTIONS,
+  ],
+  PHARMACY_STAFF: [
+    PERMISSIONS.PATIENTS_READ,
+    PERMISSIONS.PHARMACY_VIEW,
+    PERMISSIONS.PHARMACY_INVENTORY,
+    PERMISSIONS.PHARMACY_SALES,
+  ],
 } as const;
 
 export const ROLE_DEFS = [
@@ -98,6 +138,9 @@ export const ROLE_DEFS = [
   { key: "COUNSELOR", name: "Counselor", description: "Patient counselling and follow-through" },
   { key: "MARKETING", name: "Marketing", description: "Marketing and enquiry visibility" },
   { key: "READ_ONLY", name: "Read only", description: "View patient records without write access" },
+  { key: "PHARMACY_MANAGER", name: "Pharmacy Manager", description: "Full pharmacy operations and procurement" },
+  { key: "PHARMACIST", name: "Pharmacist", description: "Dispensing, prescriptions, and pharmacy sales" },
+  { key: "PHARMACY_STAFF", name: "Pharmacy Staff", description: "Inventory view and pharmacy sales" },
 ] as const;
 
 export function roleHasPermission(

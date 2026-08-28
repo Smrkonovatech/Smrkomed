@@ -38,6 +38,21 @@ export const DEMO_STAFF = [
     name: "Nisha Fernandes",
     role: "RECEPTIONIST" as StaffRole,
   },
+  {
+    email: "pharmamanager@abcfertility.demo",
+    name: "Sanjay Mehta",
+    role: "PHARMACY_MANAGER" as StaffRole,
+  },
+  {
+    email: "pharmacist@abcfertility.demo",
+    name: "Anita Desai",
+    role: "PHARMACIST" as StaffRole,
+  },
+  {
+    email: "pharmastaff@abcfertility.demo",
+    name: "Rohit Kumar",
+    role: "PHARMACY_STAFF" as StaffRole,
+  },
 ] as const;
 
 export function isDemoLogin(email: string, password: string) {

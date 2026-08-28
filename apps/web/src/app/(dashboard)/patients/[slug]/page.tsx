@@ -16,12 +16,13 @@ import {
   MessageCircle,
   Mic,
   Phone,
+  Pill,
   Stethoscope,
   Upload,
   UserRound,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { AiPatientSummary } from "@/components/ai/ai-patient-summary";
@@ -32,7 +33,7 @@ import { useCreateTask } from "@/components/create-task-drawer";
 import { JourneyStrip } from "@/components/journey-strip";
 import { VoiceNotesPanel } from "@/components/voice/voice-notes";
 import { WhatsAppThread, conversationFor } from "@/components/whatsapp-thread";
-import { Avatar, EmptyState, SectionHeading, StatusBadge } from "@/components/ui-kit";
+import { Avatar, EmptyState, LoadingRows, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,6 +45,8 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppState } from "@/lib/app-state";
+import { ApiError, apiGet } from "@/lib/api/client";
+import { formatDate, formatINR, prescriptionStatusTone } from "@/components/pharmacy/format";
 import { carePlanSteps, coupleFullLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { appointmentTone, patientStatusTone, taskStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -64,6 +67,7 @@ const tabs = [
   ["consultation", "Consultation"],
   ["conversation", "Conversation"],
   ["billing", "Billing"],
+  ["pharmacy", "Pharmacy"],
 ] as const;
 
 export default function PatientProfile() {
@@ -670,6 +674,10 @@ export default function PatientProfile() {
             ))}
           </RecordSection>
         </TabsContent>
+
+        <TabsContent value="pharmacy" className="mt-4">
+          <PatientPharmacyTab coupleId={couple.id} />
+        </TabsContent>
       </Tabs>
 
       <Sheet open={messageOpen} onOpenChange={setMessageOpen}>
@@ -685,6 +693,106 @@ export default function PatientProfile() {
           </div>
         </SheetContent>
       </Sheet>
+    </div>
+  );
+}
+
+function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<{
+    prescriptions: Array<{
+      id: string;
+      prescriptionDate: string;
+      status: string;
+      doctorName: string | null;
+      items: Array<{ medicineName: string; quantityPrescribed: number }>;
+    }>;
+    sales: Array<{
+      id: string;
+      invoiceNumber: string;
+      soldAt: string;
+      totalAmount: number;
+      itemCount: number;
+    }>;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!coupleId) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const next = await apiGet<NonNullable<typeof history>>(`/api/v1/pharmacy/couples/${coupleId}/history`);
+        if (!cancelled) setHistory(next);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof ApiError ? err.message : "Unable to load pharmacy history.");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [coupleId]);
+
+  if (loading) return <LoadingRows rows={3} />;
+
+  if (error || !history) {
+    return (
+      <EmptyState
+        title="Pharmacy history will appear for patients linked in clinic records."
+        description={error ?? "No pharmacy records are linked to this couple yet."}
+        icon={Pill}
+      />
+    );
+  }
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-2">
+      <RecordSection
+        title="Prescriptions"
+        subtitle={`${history.prescriptions.length} prescription${history.prescriptions.length === 1 ? "" : "s"}`}
+        icon={Pill}
+        empty="No prescriptions for this couple."
+        count={history.prescriptions.length}
+      >
+        {history.prescriptions.map((rx) => (
+          <li key={rx.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">{rx.items.map((i) => i.medicineName).join(", ") || "Prescription"}</p>
+              <p className="text-xs text-muted-foreground">
+                {rx.doctorName ?? "Doctor"} · {formatDate(rx.prescriptionDate)}
+              </p>
+            </div>
+            <StatusBadge label={rx.status.replaceAll("_", " ")} tone={prescriptionStatusTone(rx.status)} />
+          </li>
+        ))}
+      </RecordSection>
+
+      <RecordSection
+        title="Pharmacy sales"
+        subtitle={`${history.sales.length} sale${history.sales.length === 1 ? "" : "s"}`}
+        icon={CircleDollarSign}
+        empty="No pharmacy sales for this couple."
+        count={history.sales.length}
+      >
+        {history.sales.map((sale) => (
+          <li key={sale.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{sale.invoiceNumber}</p>
+              <p className="text-xs text-muted-foreground">
+                {sale.itemCount} item{sale.itemCount === 1 ? "" : "s"} · {formatDate(sale.soldAt)}
+              </p>
+            </div>
+            <span className="text-sm font-semibold tabular-nums">{formatINR(sale.totalAmount)}</span>
+          </li>
+        ))}
+      </RecordSection>
     </div>
   );
 }

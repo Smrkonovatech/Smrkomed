@@ -20,6 +20,9 @@ const STAFF_ROLES = new Set<StaffRole>([
   "COUNSELOR",
   "MARKETING",
   "READ_ONLY",
+  "PHARMACY_MANAGER",
+  "PHARMACIST",
+  "PHARMACY_STAFF",
 ]);
 
 const cookieNames = ["authjs.session-token", "__Secure-authjs.session-token"] as const;
