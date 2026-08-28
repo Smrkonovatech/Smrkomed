@@ -418,6 +418,7 @@ model Clinic {
   pharmacySales PharmacySale[]
   pharmacyPrescriptions PharmacyPrescription[]
   pharmacySettings PharmacySetting?
+  medicationReminders MedicationReminder[]
 
   @@index([organizationId])
 }
@@ -538,6 +539,7 @@ model Patient {
   convertedLeads Lead[]
   pharmacySales PharmacySale[]
   pharmacyPrescriptions PharmacyPrescription[]
+  medicationReminders MedicationReminder[]
 
   @@index([clinicId])
   @@index([clinicId, whatsappNumber])
@@ -685,6 +687,8 @@ model CareTask {
   escalations  Escalation[]
   documents    Document[]
   aiInteractions AIInteraction[]
+  medicationReminders MedicationReminder[]
+  pharmacyPrescriptionItems PharmacyPrescriptionItem[]
 
   @@index([clinicId, status])
   @@index([coupleId])
@@ -741,6 +745,7 @@ model Treatment {
   carePlan CarePlan? @relation(fields: [carePlanId], references: [id])
   ivfCycle IVFCycle?
   iuiCycle IUICycle?
+  pharmacyPrescriptions PharmacyPrescription[]
 
   @@index([clinicId])
   @@index([coupleId])
@@ -782,6 +787,7 @@ model Appointment {
   clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   couple Couple? @relation(fields: [coupleId], references: [id], onDelete: Cascade)
   lead   Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  pharmacyPrescriptions PharmacyPrescription[]
 
   @@index([clinicId, startsAt])
   @@index([coupleId])
@@ -1333,6 +1339,16 @@ enum PharmacyPrescriptionStatus {
   CANCELLED
 }
 
+enum MedicationReminderStatus {
+  PENDING
+  SCHEDULED
+  SENT
+  DELIVERED
+  FAILED
+  CANCELLED
+  SKIPPED_NO_CONSENT
+}
+
 model PharmacySetting {
   id                String   @id @default(cuid())
   clinicId          String   @unique
@@ -1572,6 +1588,8 @@ model PharmacyPrescription {
   coupleId         String?
   doctorId         String?
   doctorName       String?
+  appointmentId    String?
+  treatmentId      String?
   prescriptionDate DateTime                   @default(now())
   status           PharmacyPrescriptionStatus @default(PENDING)
   notes            String?
@@ -1585,16 +1603,20 @@ model PharmacyPrescription {
   couple      Couple?                    @relation(fields: [coupleId], references: [id])
   doctor      User?                      @relation("PharmacyPrescriptionDoctor", fields: [doctorId], references: [id])
   dispensedBy User?                      @relation("PharmacyPrescriptionDispenser", fields: [dispensedById], references: [id])
+  appointment Appointment?               @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  treatment   Treatment?                 @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
   items       PharmacyPrescriptionItem[]
 
   @@index([clinicId, status])
   @@index([clinicId, patientId])
   @@index([clinicId, coupleId])
   @@index([clinicId, prescriptionDate])
+  @@index([appointmentId])
+  @@index([treatmentId])
 }
 
 model PharmacyPrescriptionItem {
-  id                 String   @id @default(cuid())
+  id                 String    @id @default(cuid())
   prescriptionId     String
   productId          String
   batchId            String?
@@ -1603,15 +1625,50 @@ model PharmacyPrescriptionItem {
   frequency          String?
   duration           String?
   instructions       String?
+  timeOfDay          String?
+  beforeAfterFood    String?
+  startDate          DateTime?
+  endDate            DateTime?
   quantityPrescribed Int
-  quantityDispensed  Int      @default(0)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  quantityDispensed  Int       @default(0)
+  careTaskId         String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  prescription PharmacyPrescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
-  product      PharmacyProduct      @relation(fields: [productId], references: [id])
-  batch        PharmacyBatch?       @relation(fields: [batchId], references: [id])
+  prescription PharmacyPrescription  @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  product      PharmacyProduct       @relation(fields: [productId], references: [id])
+  batch        PharmacyBatch?        @relation(fields: [batchId], references: [id])
+  careTask     CareTask?             @relation(fields: [careTaskId], references: [id], onDelete: SetNull)
+  reminders    MedicationReminder[]
 
   @@index([prescriptionId])
   @@index([productId])
+  @@index([careTaskId])
+}
+
+model MedicationReminder {
+  id                 String                   @id @default(cuid())
+  clinicId           String
+  prescriptionItemId String
+  patientId          String
+  careTaskId         String?
+  scheduledAt        DateTime
+  status             MedicationReminderStatus @default(SCHEDULED)
+  channel            ConversationChannel      @default(WHATSAPP)
+  demoMode           Boolean                  @default(true)
+  demoMessageBody    String?
+  failureReason      String?
+  sentAt             DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  clinic           Clinic                   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  prescriptionItem PharmacyPrescriptionItem @relation(fields: [prescriptionItemId], references: [id], onDelete: Cascade)
+  patient          Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  careTask         CareTask?                @relation(fields: [careTaskId], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, scheduledAt, status])
+  @@index([prescriptionItemId])
+  @@index([patientId, scheduledAt])
+  @@index([careTaskId])
 }

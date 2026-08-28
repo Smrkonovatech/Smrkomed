@@ -10,10 +10,12 @@ export function ProductThumb({
 }: {
   name: string;
   imageUrl?: string | null;
-  size?: "sm" | "lg";
+  size?: "sm" | "md" | "lg";
   className?: string;
 }) {
-  const dim = size === "lg" ? "size-16 rounded-xl" : "size-9 rounded-lg";
+  const dim =
+    size === "lg" ? "size-16 rounded-xl" : size === "md" ? "size-12 rounded-lg" : "size-9 rounded-lg";
+  const iconSize = size === "lg" ? "size-7" : size === "md" ? "size-5" : "size-4";
 
   if (imageUrl) {
     return (
@@ -34,7 +36,7 @@ export function ProductThumb({
       )}
       aria-hidden
     >
-      <Pill className={size === "lg" ? "size-7" : "size-4"} />
+      <Pill className={iconSize} />
     </span>
   );
 }

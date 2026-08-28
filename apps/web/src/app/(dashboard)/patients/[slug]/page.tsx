@@ -46,7 +46,9 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppState } from "@/lib/app-state";
 import { ApiError, apiGet } from "@/lib/api/client";
-import { formatDate, formatINR, prescriptionStatusTone } from "@/components/pharmacy/format";
+import { formatDate, formatDateTime, formatINR, prescriptionStatusTone, reminderStatusTone } from "@/components/pharmacy/format";
+import { ProductThumb } from "@/components/pharmacy/product-thumb";
+import { ReminderMessageDialog } from "@/components/pharmacy/reminder-message-dialog";
 import { carePlanSteps, coupleFullLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { appointmentTone, patientStatusTone, taskStatusMeta } from "@/lib/status";
 import { cn } from "@/lib/utils";
@@ -700,13 +702,35 @@ export default function PatientProfile() {
 function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewReminder, setViewReminder] = useState<{
+    medicineName: string;
+    scheduledAt: string;
+    demoMessageBody: string | null;
+  } | null>(null);
   const [history, setHistory] = useState<{
     prescriptions: Array<{
       id: string;
       prescriptionDate: string;
       status: string;
       doctorName: string | null;
-      items: Array<{ medicineName: string; quantityPrescribed: number }>;
+      items: Array<{
+        medicineName: string;
+        quantityPrescribed: number;
+        quantityDispensed: number;
+        dosage: string | null;
+        frequency: string | null;
+        duration: string | null;
+        instructions: string | null;
+        timeOfDay: string | null;
+        beforeAfterFood: string | null;
+        productImageUrl?: string | null;
+        reminders?: Array<{
+          id: string;
+          scheduledAt: string;
+          status: string;
+          demoMessageBody: string | null;
+        }>;
+      }>;
     }>;
     sales: Array<{
       id: string;
@@ -752,47 +776,146 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
     );
   }
 
+  const activePrescriptions = history.prescriptions.filter(
+    (rx) => rx.status === "PENDING" || rx.status === "PARTIALLY_DISPENSED",
+  );
+
+  const currentMedications = activePrescriptions.flatMap((rx) =>
+    rx.items.map((item) => ({ ...item, prescriptionDate: rx.prescriptionDate, doctorName: rx.doctorName })),
+  );
+
+  const allReminders = history.prescriptions.flatMap((rx) =>
+    rx.items.flatMap((item) =>
+      (item.reminders ?? []).map((reminder) => ({
+        ...reminder,
+        medicineName: item.medicineName,
+        productImageUrl: item.productImageUrl,
+      })),
+    ),
+  );
+
+  function itemScheduleSummary(item: (typeof currentMedications)[number]) {
+    return [item.dosage, item.frequency, item.timeOfDay, item.instructions].filter(Boolean).join(" · ");
+  }
+
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="space-y-4">
       <RecordSection
-        title="Prescriptions"
-        subtitle={`${history.prescriptions.length} prescription${history.prescriptions.length === 1 ? "" : "s"}`}
+        title="Current medications"
+        subtitle={`${currentMedications.length} active medicine${currentMedications.length === 1 ? "" : "s"}`}
         icon={Pill}
-        empty="No prescriptions for this couple."
-        count={history.prescriptions.length}
+        empty="No active medications for this couple."
+        count={currentMedications.length}
       >
-        {history.prescriptions.map((rx) => (
-          <li key={rx.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 py-3">
-            <div className="min-w-0">
-              <p className="text-sm font-medium">{rx.items.map((i) => i.medicineName).join(", ") || "Prescription"}</p>
+        {currentMedications.map((item, index) => (
+          <li key={`${item.medicineName}-${index}`} className="flex items-start gap-3 py-3">
+            <ProductThumb name={item.medicineName} imageUrl={item.productImageUrl ?? null} size="md" />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{item.medicineName}</p>
+              {itemScheduleSummary(item) && (
+                <p className="text-xs text-muted-foreground">{itemScheduleSummary(item)}</p>
+              )}
               <p className="text-xs text-muted-foreground">
-                {rx.doctorName ?? "Doctor"} · {formatDate(rx.prescriptionDate)}
+                {item.doctorName ?? "Doctor"} · Qty {item.quantityDispensed}/{item.quantityPrescribed}
+                {item.duration ? ` · ${item.duration}` : ""}
               </p>
             </div>
-            <StatusBadge label={rx.status.replaceAll("_", " ")} tone={prescriptionStatusTone(rx.status)} />
           </li>
         ))}
       </RecordSection>
 
+      <div className="grid gap-4 xl:grid-cols-2">
+        <RecordSection
+          title="Prescriptions"
+          subtitle={`${history.prescriptions.length} prescription${history.prescriptions.length === 1 ? "" : "s"}`}
+          icon={Pill}
+          empty="No prescriptions for this couple."
+          count={history.prescriptions.length}
+        >
+          {history.prescriptions.map((rx) => (
+            <li key={rx.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 py-3">
+              <div className="flex min-w-0 items-start gap-3">
+                {rx.items[0]?.productImageUrl && (
+                  <ProductThumb name={rx.items[0].medicineName} imageUrl={rx.items[0].productImageUrl} size="sm" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{rx.items.map((i) => i.medicineName).join(", ") || "Prescription"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {rx.doctorName ?? "Doctor"} · {formatDate(rx.prescriptionDate)}
+                  </p>
+                </div>
+              </div>
+              <StatusBadge label={rx.status.replaceAll("_", " ")} tone={prescriptionStatusTone(rx.status)} />
+            </li>
+          ))}
+        </RecordSection>
+
+        <RecordSection
+          title="Pharmacy sales"
+          subtitle={`${history.sales.length} sale${history.sales.length === 1 ? "" : "s"}`}
+          icon={CircleDollarSign}
+          empty="No pharmacy sales for this couple."
+          count={history.sales.length}
+        >
+          {history.sales.map((sale) => (
+            <li key={sale.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{sale.invoiceNumber}</p>
+                <p className="text-xs text-muted-foreground">
+                  {sale.itemCount} item{sale.itemCount === 1 ? "" : "s"} · {formatDate(sale.soldAt)}
+                </p>
+              </div>
+              <span className="text-sm font-semibold tabular-nums">{formatINR(sale.totalAmount)}</span>
+            </li>
+          ))}
+        </RecordSection>
+      </div>
+
       <RecordSection
-        title="Pharmacy sales"
-        subtitle={`${history.sales.length} sale${history.sales.length === 1 ? "" : "s"}`}
-        icon={CircleDollarSign}
-        empty="No pharmacy sales for this couple."
-        count={history.sales.length}
+        title="Medication reminders"
+        subtitle={`${allReminders.length} reminder${allReminders.length === 1 ? "" : "s"}`}
+        icon={MessageCircle}
+        empty="No medication reminders scheduled for this couple."
+        count={allReminders.length}
       >
-        {history.sales.map((sale) => (
-          <li key={sale.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 py-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{sale.invoiceNumber}</p>
-              <p className="text-xs text-muted-foreground">
-                {sale.itemCount} item{sale.itemCount === 1 ? "" : "s"} · {formatDate(sale.soldAt)}
-              </p>
+        {allReminders.map((reminder) => (
+          <li key={reminder.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              {reminder.productImageUrl && (
+                <ProductThumb name={reminder.medicineName} imageUrl={reminder.productImageUrl} size="sm" />
+              )}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{reminder.medicineName}</p>
+                <p className="text-xs text-muted-foreground">{formatDateTime(reminder.scheduledAt)}</p>
+              </div>
             </div>
-            <span className="text-sm font-semibold tabular-nums">{formatINR(sale.totalAmount)}</span>
+            <div className="flex items-center gap-2">
+              <StatusBadge label={reminder.status.replaceAll("_", " ")} tone={reminderStatusTone(reminder.status)} />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  setViewReminder({
+                    medicineName: reminder.medicineName,
+                    scheduledAt: reminder.scheduledAt,
+                    demoMessageBody: reminder.demoMessageBody,
+                  })
+                }
+              >
+                View message
+              </Button>
+            </div>
           </li>
         ))}
       </RecordSection>
+
+      <ReminderMessageDialog
+        open={Boolean(viewReminder)}
+        onOpenChange={(open) => { if (!open) setViewReminder(null); }}
+        title={viewReminder?.medicineName ?? "WhatsApp reminder"}
+        description={viewReminder ? formatDateTime(viewReminder.scheduledAt) : undefined}
+        messageBody={viewReminder?.demoMessageBody ?? null}
+      />
     </div>
   );
 }

@@ -348,6 +348,7 @@ async function main() {
   }
 
   // Clear clinic clinical demo rows for idempotent re-seed
+  await prisma.medicationReminder.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.pharmacySaleItem.deleteMany({ where: { sale: { clinicId: clinic.id } } });
   await prisma.pharmacySale.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.pharmacyPrescriptionItem.deleteMany({ where: { prescription: { clinicId: clinic.id } } });
@@ -408,6 +409,7 @@ async function main() {
     prisma,
     clinicId: clinic.id,
     users,
+    clinicName: clinic.name,
   });
 
   console.log("Clinical seed counts:", counts);

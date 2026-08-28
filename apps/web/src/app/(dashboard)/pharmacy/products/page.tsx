@@ -34,6 +34,8 @@ type Product = {
   category: string | null;
   manufacturer: string | null;
   unit: string;
+  packSize: string | null;
+  medicineType: string | null;
   currentStock: number;
   defaultSellingPrice: number;
   status: string;
@@ -42,6 +44,10 @@ type Product = {
   lowStock: boolean;
 };
 
+function productSubtitle(product: Product) {
+  return [product.category, product.medicineType, product.packSize].filter(Boolean).join(" · ") || "Uncategorised";
+}
+
 const emptyForm = {
   name: "",
   genericName: "",
@@ -49,6 +55,7 @@ const emptyForm = {
   manufacturer: "",
   unit: "unit",
   packSize: "",
+  imageUrl: "",
   defaultPurchasePrice: "",
   defaultSellingPrice: "",
   defaultMrp: "",
@@ -107,6 +114,7 @@ export default function PharmacyProductsPage() {
         manufacturer: form.manufacturer || null,
         unit: form.unit || "unit",
         packSize: form.packSize || null,
+        imageUrl: form.imageUrl.trim() || null,
         defaultPurchasePrice: form.defaultPurchasePrice ? Number(form.defaultPurchasePrice) : undefined,
         defaultSellingPrice: form.defaultSellingPrice ? Number(form.defaultSellingPrice) : undefined,
         defaultMrp: form.defaultMrp ? Number(form.defaultMrp) : undefined,
@@ -198,7 +206,7 @@ export default function PharmacyProductsPage() {
                     <ProductThumb name={product.name} imageUrl={product.imageUrl} />
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{product.name}</p>
-                      <p className="text-sm text-muted-foreground">{product.category ?? "Uncategorised"}</p>
+                      <p className="text-sm text-muted-foreground">{productSubtitle(product)}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <StatusBadge label={product.status} tone={productStatusTone(product.status)} />
                         {product.lowStock && <StatusBadge label="Low stock" tone="warning" />}
@@ -235,7 +243,10 @@ export default function PharmacyProductsPage() {
                             <Link href={`/pharmacy/products/${product.id}`} className="font-medium hover:underline">
                               {product.name}
                             </Link>
-                            <p className="text-xs text-muted-foreground">{product.genericName ?? product.manufacturer ?? "—"}</p>
+                            <p className="text-xs text-muted-foreground">{productSubtitle(product)}</p>
+                            {(product.genericName || product.manufacturer) && (
+                              <p className="text-xs text-muted-foreground">{product.genericName ?? product.manufacturer}</p>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -304,6 +315,19 @@ export default function PharmacyProductsPage() {
               <div className="space-y-1">
                 <Label htmlFor="prod-unit">Unit</Label>
                 <Input id="prod-unit" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="prod-pack">Pack size</Label>
+                <Input id="prod-pack" value={form.packSize} onChange={(e) => setForm({ ...form, packSize: e.target.value })} />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <Label htmlFor="prod-image">Image URL</Label>
+                <Input
+                  id="prod-image"
+                  value={form.imageUrl}
+                  onChange={(e) => setForm({ ...form, imageUrl: e.target.value })}
+                  placeholder="/pharmacy/medicine.svg"
+                />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="prod-purchase">Purchase price</Label>

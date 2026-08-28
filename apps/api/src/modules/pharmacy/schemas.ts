@@ -157,6 +157,10 @@ export const prescriptionItemSchema = z.object({
   frequency: z.string().trim().max(120).optional().nullable(),
   duration: z.string().trim().max(120).optional().nullable(),
   instructions: z.string().trim().max(500).optional().nullable(),
+  timeOfDay: z.string().trim().max(40).optional().nullable(),
+  beforeAfterFood: z.enum(["BEFORE", "AFTER", "WITH", "ANY"]).optional().nullable(),
+  startDate: z.string().trim().optional().nullable(),
+  endDate: z.string().trim().optional().nullable(),
   quantityPrescribed: z.number().int().positive().max(1_000_000),
 });
 
@@ -166,8 +170,11 @@ export const createPrescriptionSchema = z
     coupleId: z.string().min(1).optional().nullable(),
     doctorId: z.string().min(1).optional().nullable(),
     doctorName: z.string().trim().max(120).optional().nullable(),
+    appointmentId: z.string().min(1).optional().nullable(),
+    treatmentId: z.string().min(1).optional().nullable(),
     prescriptionDate: z.string().trim().optional(),
     notes: z.string().trim().max(1000).optional().nullable(),
+    scheduleReminders: z.boolean().optional(),
     items: z.array(prescriptionItemSchema).min(1).max(100),
   })
   .strict();

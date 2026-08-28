@@ -7,52 +7,235 @@ function money(n: number) {
   return new Prisma.Decimal(n);
 }
 
-const PRODUCTS = [
-  { name: "Paracetamol 500mg", genericName: "Paracetamol", brandName: "Crocin", category: "Analgesic", subCategory: "Tablet", manufacturer: "GSK", medicineType: "Tablet", packSize: "15 tablets", prescriptionRequired: false, minimumStock: 50, reorderLevel: 80, purchase: 12, sell: 25, mrp: 30, gst: 5 },
-  { name: "Amoxicillin 500mg", genericName: "Amoxicillin", brandName: "Mox", category: "Antibiotic", subCategory: "Capsule", manufacturer: "Cipla", medicineType: "Capsule", packSize: "10 capsules", prescriptionRequired: true, minimumStock: 30, reorderLevel: 40, purchase: 45, sell: 85, mrp: 95, gst: 12 },
-  { name: "Folic Acid 5mg", genericName: "Folic Acid", brandName: "Folvite", category: "Supplement", subCategory: "Tablet", manufacturer: "Pfizer", medicineType: "Tablet", packSize: "30 tablets", prescriptionRequired: false, minimumStock: 40, reorderLevel: 60, purchase: 8, sell: 18, mrp: 22, gst: 5 },
-  { name: "Progesterone 200mg", genericName: "Progesterone", brandName: "Susten", category: "Hormone", subCategory: "Capsule", manufacturer: "Sun Pharma", medicineType: "Capsule", packSize: "10 capsules", prescriptionRequired: true, minimumStock: 20, reorderLevel: 30, purchase: 180, sell: 320, mrp: 350, gst: 12 },
-  { name: "Vitamin D3 60k IU", genericName: "Cholecalciferol", brandName: "Uprise-D3", category: "Supplement", subCategory: "Capsule", manufacturer: "Alkem", medicineType: "Capsule", packSize: "4 capsules", prescriptionRequired: false, minimumStock: 25, reorderLevel: 40, purchase: 35, sell: 65, mrp: 75, gst: 5 },
-  { name: "Iron + Folic Acid", genericName: "Ferrous Fumarate + Folic Acid", brandName: "Orofer XT", category: "Supplement", subCategory: "Tablet", manufacturer: "Emcure", medicineType: "Tablet", packSize: "30 tablets", prescriptionRequired: false, minimumStock: 35, reorderLevel: 50, purchase: 55, sell: 110, mrp: 125, gst: 5 },
-  { name: "Estradiol Valerate 2mg", genericName: "Estradiol", brandName: "Progynova", category: "Hormone", subCategory: "Tablet", manufacturer: "Bayer", medicineType: "Tablet", packSize: "28 tablets", prescriptionRequired: true, minimumStock: 15, reorderLevel: 25, purchase: 220, sell: 380, mrp: 420, gst: 12 },
-  { name: "Cetrorelix 0.25mg", genericName: "Cetrorelix", brandName: "Cetrotide", category: "Hormone", subCategory: "Injection", manufacturer: "Merck", medicineType: "Injection", packSize: "1 vial", prescriptionRequired: true, minimumStock: 10, reorderLevel: 15, purchase: 1850, sell: 2450, mrp: 2600, gst: 12 },
-  { name: "hCG 5000 IU", genericName: "Human Chorionic Gonadotropin", brandName: "Pubergen", category: "Hormone", subCategory: "Injection", manufacturer: "Sanzyme", medicineType: "Injection", packSize: "1 vial", prescriptionRequired: true, minimumStock: 12, reorderLevel: 20, purchase: 420, sell: 650, mrp: 720, gst: 12 },
-  { name: "Metformin 500mg", genericName: "Metformin", brandName: "Glycomet", category: "Metabolic", subCategory: "Tablet", manufacturer: "USV", medicineType: "Tablet", packSize: "20 tablets", prescriptionRequired: true, minimumStock: 40, reorderLevel: 60, purchase: 18, sell: 35, mrp: 42, gst: 12 },
-  { name: "Aspirin 75mg", genericName: "Aspirin", brandName: "Ecosprin", category: "Cardiovascular", subCategory: "Tablet", manufacturer: "USV", medicineType: "Tablet", packSize: "14 tablets", prescriptionRequired: true, minimumStock: 30, reorderLevel: 45, purchase: 10, sell: 22, mrp: 28, gst: 12 },
-  { name: "Dydrogesterone 10mg", genericName: "Dydrogesterone", brandName: "Duphaston", category: "Hormone", subCategory: "Tablet", manufacturer: "Abbott", medicineType: "Tablet", packSize: "10 tablets", prescriptionRequired: true, minimumStock: 20, reorderLevel: 30, purchase: 280, sell: 450, mrp: 495, gst: 12 },
-  { name: "Cabergoline 0.5mg", genericName: "Cabergoline", brandName: "Cabgolin", category: "Hormone", subCategory: "Tablet", manufacturer: "Sun Pharma", medicineType: "Tablet", packSize: "4 tablets", prescriptionRequired: true, minimumStock: 10, reorderLevel: 15, purchase: 320, sell: 520, mrp: 560, gst: 12 },
-  { name: "Letrozole 2.5mg", genericName: "Letrozole", brandName: "Letroz", category: "Hormone", subCategory: "Tablet", manufacturer: "Sun Pharma", medicineType: "Tablet", packSize: "5 tablets", prescriptionRequired: true, minimumStock: 15, reorderLevel: 25, purchase: 95, sell: 160, mrp: 180, gst: 12 },
-  { name: "Clomiphene 50mg", genericName: "Clomiphene Citrate", brandName: "Fertomid", category: "Hormone", subCategory: "Tablet", manufacturer: "Cipla", medicineType: "Tablet", packSize: "10 tablets", prescriptionRequired: true, minimumStock: 20, reorderLevel: 30, purchase: 48, sell: 85, mrp: 95, gst: 12 },
-  { name: "Calcium + Vitamin D3", genericName: "Calcium Carbonate + Vit D3", brandName: "Shelcal", category: "Supplement", subCategory: "Tablet", manufacturer: "Torrent", medicineType: "Tablet", packSize: "15 tablets", prescriptionRequired: false, minimumStock: 40, reorderLevel: 55, purchase: 42, sell: 78, mrp: 90, gst: 5 },
-  { name: "Omeprazole 20mg", genericName: "Omeprazole", brandName: "Omez", category: "GI", subCategory: "Capsule", manufacturer: "Dr Reddy's", medicineType: "Capsule", packSize: "15 capsules", prescriptionRequired: false, minimumStock: 35, reorderLevel: 50, purchase: 22, sell: 45, mrp: 55, gst: 12 },
-  { name: "Ondansetron 4mg", genericName: "Ondansetron", brandName: "Emeset", category: "GI", subCategory: "Tablet", manufacturer: "Cipla", medicineType: "Tablet", packSize: "10 tablets", prescriptionRequired: true, minimumStock: 25, reorderLevel: 35, purchase: 28, sell: 55, mrp: 65, gst: 12 },
-  { name: "Dexamethasone 0.5mg", genericName: "Dexamethasone", brandName: "Decadron", category: "Steroid", subCategory: "Tablet", manufacturer: "Wockhardt", medicineType: "Tablet", packSize: "10 tablets", prescriptionRequired: true, minimumStock: 15, reorderLevel: 25, purchase: 15, sell: 32, mrp: 40, gst: 12 },
-  { name: "Surgical Gloves (M)", genericName: null, brandName: "MediGuard", category: "Consumable", subCategory: "PPE", manufacturer: "Hartalega", medicineType: "Consumable", packSize: "100 pairs", prescriptionRequired: false, minimumStock: 5, reorderLevel: 10, purchase: 280, sell: 450, mrp: 500, gst: 18 },
-  { name: "Disposable Syringes 5ml", genericName: null, brandName: "Dispovan", category: "Consumable", subCategory: "Syringe", manufacturer: "Hindustan Syringes", medicineType: "Consumable", packSize: "100 pcs", prescriptionRequired: false, minimumStock: 8, reorderLevel: 12, purchase: 180, sell: 320, mrp: 360, gst: 12 },
-  { name: "IV Set", genericName: null, brandName: "B.Braun", category: "Consumable", subCategory: "Infusion", manufacturer: "B.Braun", medicineType: "Consumable", packSize: "1 unit", prescriptionRequired: false, minimumStock: 20, reorderLevel: 30, purchase: 35, sell: 65, mrp: 75, gst: 12 },
-  { name: "Alcohol Swabs", genericName: null, brandName: "CleanSwab", category: "Consumable", subCategory: "Antiseptic", manufacturer: "3M", medicineType: "Consumable", packSize: "100 pcs", prescriptionRequired: false, minimumStock: 10, reorderLevel: 20, purchase: 45, sell: 90, mrp: 110, gst: 18 },
-  { name: "Pregnancy Test Kit", genericName: null, brandName: "PregaNews", category: "Diagnostic", subCategory: "Kit", manufacturer: "Mankind", medicineType: "Kit", packSize: "1 kit", prescriptionRequired: false, minimumStock: 20, reorderLevel: 30, purchase: 25, sell: 55, mrp: 65, gst: 12 },
-  { name: "LH Surge Kit", genericName: null, brandName: "i-Know", category: "Diagnostic", subCategory: "Kit", manufacturer: "Piramal", medicineType: "Kit", packSize: "5 strips", prescriptionRequired: false, minimumStock: 15, reorderLevel: 25, purchase: 180, sell: 320, mrp: 350, gst: 12 },
-  { name: "Normal Saline 500ml", genericName: "Sodium Chloride 0.9%", brandName: "NS", category: "IV Fluid", subCategory: "Infusion", manufacturer: "Baxter", medicineType: "Infusion", packSize: "500 ml", prescriptionRequired: true, minimumStock: 30, reorderLevel: 50, purchase: 28, sell: 55, mrp: 65, gst: 12 },
-  { name: "Multivitamin Softgel", genericName: "Multivitamins", brandName: "Revital H", category: "Supplement", subCategory: "Capsule", manufacturer: "Ranbaxy", medicineType: "Capsule", packSize: "30 capsules", prescriptionRequired: false, minimumStock: 25, reorderLevel: 40, purchase: 95, sell: 175, mrp: 199, gst: 5 },
+const DEMO_PRODUCTS = [
+  {
+    key: "folic",
+    name: "Folic Acid 5 mg",
+    genericName: "Folic Acid",
+    brandName: "Folvite Demo",
+    category: "Supplement",
+    subCategory: "Tablet",
+    manufacturer: "Demo Pharma Labs",
+    medicineType: "Tablet",
+    packSize: "30 tablets",
+    unit: "tablet",
+    prescriptionRequired: false,
+    minimumStock: 40,
+    reorderLevel: 60,
+    purchase: 8,
+    sell: 18,
+    mrp: 22,
+    gst: 5,
+    imageUrl: "/pharmacy/folic-acid-5mg.svg",
+    description: "Demo folic acid supplement commonly used in fertility care pathways. Sample packaging only.",
+  },
+  {
+    key: "prog",
+    name: "Progesterone 200 mg",
+    genericName: "Progesterone",
+    brandName: "Susten Demo",
+    category: "Hormone",
+    subCategory: "Capsule",
+    manufacturer: "Demo Hormone Care",
+    medicineType: "Capsule",
+    packSize: "10 capsules",
+    unit: "capsule",
+    prescriptionRequired: true,
+    minimumStock: 20,
+    reorderLevel: 30,
+    purchase: 180,
+    sell: 320,
+    mrp: 350,
+    gst: 12,
+    imageUrl: "/pharmacy/progesterone-200mg.svg",
+    description: "Demo progesterone support medicine for clinic pharmacy inventory. Not a real branded pack.",
+  },
+  {
+    key: "doxy",
+    name: "Doxycycline 100 mg",
+    genericName: "Doxycycline",
+    brandName: "Doxy Demo",
+    category: "Antibiotic",
+    subCategory: "Capsule",
+    manufacturer: "Demo AntiBio",
+    medicineType: "Capsule",
+    packSize: "10 capsules",
+    unit: "capsule",
+    prescriptionRequired: true,
+    minimumStock: 15,
+    reorderLevel: 25,
+    purchase: 35,
+    sell: 65,
+    mrp: 75,
+    gst: 12,
+    imageUrl: "/pharmacy/doxycycline-100mg.svg",
+    description: "Demo antibiotic stock item for pharmacy low-stock scenarios. Sample product only.",
+  },
+  {
+    key: "vitd",
+    name: "Vitamin D3 60,000 IU",
+    genericName: "Cholecalciferol",
+    brandName: "D3 Demo",
+    category: "Supplement",
+    subCategory: "Softgel",
+    manufacturer: "Demo Nutri Labs",
+    medicineType: "Softgel",
+    packSize: "4 softgels",
+    unit: "softgel",
+    prescriptionRequired: false,
+    minimumStock: 20,
+    reorderLevel: 30,
+    purchase: 35,
+    sell: 65,
+    mrp: 75,
+    gst: 5,
+    imageUrl: "/pharmacy/vitamin-d3-60k.svg",
+    description: "Demo Vitamin D3 softgel used to demonstrate out-of-stock handling.",
+  },
+  {
+    key: "iron",
+    name: "Iron + Folic Acid",
+    genericName: "Ferrous Fumarate + Folic Acid",
+    brandName: "Orofer Demo",
+    category: "Supplement",
+    subCategory: "Tablet",
+    manufacturer: "Demo Hematinics",
+    medicineType: "Tablet",
+    packSize: "30 tablets",
+    unit: "tablet",
+    prescriptionRequired: false,
+    minimumStock: 35,
+    reorderLevel: 50,
+    purchase: 55,
+    sell: 110,
+    mrp: 125,
+    gst: 5,
+    imageUrl: "/pharmacy/iron-folic-acid.svg",
+    description: "Demo iron + folic acid combination tablet for fertility support demos.",
+  },
+  {
+    key: "amox",
+    name: "Amoxicillin 500 mg",
+    genericName: "Amoxicillin",
+    brandName: "Mox Demo",
+    category: "Antibiotic",
+    subCategory: "Capsule",
+    manufacturer: "Demo AntiBio",
+    medicineType: "Capsule",
+    packSize: "10 capsules",
+    unit: "capsule",
+    prescriptionRequired: true,
+    minimumStock: 25,
+    reorderLevel: 40,
+    purchase: 45,
+    sell: 85,
+    mrp: 95,
+    gst: 12,
+    imageUrl: "/pharmacy/amoxicillin-500mg.svg",
+    description: "Additional demo antibiotic for richer pharmacy catalogue.",
+  },
+  {
+    key: "estra",
+    name: "Estradiol Valerate 2 mg",
+    genericName: "Estradiol",
+    brandName: "Progynova Demo",
+    category: "Hormone",
+    subCategory: "Tablet",
+    manufacturer: "Demo Hormone Care",
+    medicineType: "Tablet",
+    packSize: "28 tablets",
+    unit: "tablet",
+    prescriptionRequired: true,
+    minimumStock: 15,
+    reorderLevel: 25,
+    purchase: 220,
+    sell: 380,
+    mrp: 420,
+    gst: 12,
+    imageUrl: "/pharmacy/estradiol-2mg.svg",
+    description: "Demo estradiol tablet for hormone support inventory demos.",
+  },
+  {
+    key: "gloves",
+    name: "Surgical Gloves (M)",
+    genericName: null,
+    brandName: "MediGuard Demo",
+    category: "Consumable",
+    subCategory: "PPE",
+    manufacturer: "Demo Medical Supplies",
+    medicineType: "Consumable",
+    packSize: "100 pairs",
+    unit: "pack",
+    prescriptionRequired: false,
+    minimumStock: 5,
+    reorderLevel: 10,
+    purchase: 280,
+    sell: 450,
+    mrp: 500,
+    gst: 18,
+    imageUrl: "/pharmacy/surgical-gloves.svg",
+    description: "Demo consumable item for non-prescription pharmacy stock.",
+  },
 ] as const;
 
-const SUPPLIERS = [
-  { name: "MedLife Distributors", contactPerson: "Ramesh Patel", phone: "+91 98765 41001", email: "orders@medlife.demo", address: "Peenya Industrial Area, Bangalore", gstNumber: "29AABCM1234A1Z5", licenseInfo: "DL-KA-2020-88421" },
-  { name: "Apollo Pharma Supply", contactPerson: "Sneha Reddy", phone: "+91 98765 41002", email: "supply@apollopharma.demo", address: "Whitefield, Bangalore", gstNumber: "29AABCA5678B1Z9", licenseInfo: "DL-KA-2019-55210" },
-  { name: "Cipla Direct", contactPerson: "Amit Shah", phone: "+91 98765 41003", email: "hospital@cipla.demo", address: "Vikhroli, Mumbai", gstNumber: "27AABCC9012C1Z3", licenseInfo: "DL-MH-2018-33102" },
-  { name: "Fertility Care Wholesale", contactPerson: "Lakshmi Iyer", phone: "+91 98765 41004", email: "wholesale@fertcare.demo", address: "Jayanagar, Bangalore", gstNumber: "29AABCF3456D1Z7", licenseInfo: "DL-KA-2021-99110" },
-  { name: "SafeHands Medical", contactPerson: "Vikram Singh", phone: "+91 98765 41005", email: "sales@safehands.demo", address: "Okhla, Delhi", gstNumber: "07AABCS7890E1Z1", licenseInfo: "DL-DL-2022-44088" },
-  { name: "Sun Pharma Institutional", contactPerson: "Neha Gupta", phone: "+91 98765 41006", email: "inst@sunpharma.demo", address: "Vadodara, Gujarat", gstNumber: "24AABCS1122F1Z8", licenseInfo: "DL-GJ-2017-22011" },
-] as const;
+function buildDemoWhatsAppMessage(input: {
+  patientFirstName: string;
+  clinicName: string;
+  medicineName: string;
+  dosage: string;
+  timeOfDay: string;
+  instructions: string;
+  appointmentLabel?: string | null;
+}) {
+  if (input.appointmentLabel) {
+    return [
+      `Hello ${input.patientFirstName},`,
+      "",
+      `Reminder from ${input.clinicName}.`,
+      "",
+      input.appointmentLabel,
+      "",
+      "Medication:",
+      input.medicineName,
+      "",
+      "Instruction:",
+      input.instructions,
+      "",
+      "Please follow the instructions provided by your doctor.",
+      "",
+      `— ${input.clinicName}`,
+      "",
+      "[DEMO — Message simulated, not sent]",
+    ].join("\n");
+  }
 
-/** Idempotent pharmacy seed for one clinic. Safe to re-run (skips if products already exist). */
+  return [
+    `Hello ${input.patientFirstName},`,
+    "",
+    `Medication reminder from ${input.clinicName}.`,
+    "",
+    `Medicine: ${input.medicineName}`,
+    `Dose: ${input.dosage}`,
+    `Time: ${input.timeOfDay}`,
+    `Instruction: ${input.instructions}`,
+    "",
+    "Please follow the medication instructions provided by your care team.",
+    "",
+    `— ${input.clinicName}`,
+    "",
+    "[DEMO — Message simulated, not sent]",
+  ].join("\n");
+}
+
+/** Idempotent when called after pharmacy wipe in seed.ts. Creates demo-ready pharmacy catalogue. */
 export async function seedClinicPharmacyData(input: {
   prisma: PrismaClient;
   clinicId: string;
   users: StaffMap;
+  clinicName?: string;
 }) {
   const { prisma, clinicId, users } = input;
+  const clinicName = input.clinicName ?? "ABC Fertility Centre";
   const existing = await prisma.pharmacyProduct.count({ where: { clinicId } });
   if (existing > 0) {
     return { skipped: true as const, products: existing };
@@ -65,19 +248,43 @@ export async function seedClinicPharmacyData(input: {
   await prisma.pharmacySetting.upsert({
     where: { clinicId },
     create: { clinicId, expiryWarningDays: 30, lowStockEnabled: true },
-    update: {},
+    update: { expiryWarningDays: 30, lowStockEnabled: true },
   });
 
-  const supplierIds: string[] = [];
-  for (const s of SUPPLIERS) {
-    const row = await prisma.pharmacySupplier.create({
-      data: { clinicId, ...s, status: "ACTIVE" },
-    });
-    supplierIds.push(row.id);
-  }
+  const suppliers = await Promise.all(
+    [
+      {
+        name: "MedLife Distributors",
+        contactPerson: "Ramesh Patel",
+        phone: "+91 98765 41001",
+        email: "orders@medlife.demo",
+        address: "Peenya Industrial Area, Bangalore",
+        gstNumber: "29AABCM1234A1Z5",
+        licenseInfo: "DL-KA-DEMO-88421",
+      },
+      {
+        name: "Fertility Care Wholesale",
+        contactPerson: "Lakshmi Iyer",
+        phone: "+91 98765 41004",
+        email: "wholesale@fertcare.demo",
+        address: "Jayanagar, Bangalore",
+        gstNumber: "29AABCF3456D1Z7",
+        licenseInfo: "DL-KA-DEMO-99110",
+      },
+      {
+        name: "SafeHands Medical",
+        contactPerson: "Vikram Singh",
+        phone: "+91 98765 41005",
+        email: "sales@safehands.demo",
+        address: "Okhla, Delhi",
+        gstNumber: "07AABCS7890E1Z1",
+        licenseInfo: "DL-DL-DEMO-44088",
+      },
+    ].map((s) => prisma.pharmacySupplier.create({ data: { clinicId, ...s, status: "ACTIVE" } })),
+  );
 
-  const productIds: string[] = [];
-  for (const p of PRODUCTS) {
+  const productByKey: Record<string, string> = {};
+  for (const p of DEMO_PRODUCTS) {
     const row = await prisma.pharmacyProduct.create({
       data: {
         clinicId,
@@ -89,7 +296,7 @@ export async function seedClinicPharmacyData(input: {
         manufacturer: p.manufacturer,
         medicineType: p.medicineType,
         packSize: p.packSize,
-        unit: p.medicineType === "Consumable" || p.medicineType === "Kit" ? "pack" : "unit",
+        unit: p.unit,
         prescriptionRequired: p.prescriptionRequired,
         minimumStock: p.minimumStock,
         reorderLevel: p.reorderLevel,
@@ -97,280 +304,414 @@ export async function seedClinicPharmacyData(input: {
         defaultSellingPrice: money(p.sell),
         defaultMrp: money(p.mrp),
         gstPercent: money(p.gst),
+        imageUrl: p.imageUrl,
+        description: p.description,
         status: "ACTIVE",
-        description: `${p.name} for clinic pharmacy inventory.`,
       },
     });
-    productIds.push(row.id);
+    productByKey[p.key] = row.id;
   }
 
-  // Batch scenarios: normal, low, out, expiring, expired, multi-batch
   const batchSpecs: Array<{
-    productIdx: number;
+    key: string;
     batchNumber: string;
     qty: number;
     expiryDays: number | null;
     supplierIdx: number;
-    sold?: number;
+    location: string;
   }> = [
-    { productIdx: 0, batchNumber: "PCM24001", qty: 100, expiryDays: 400, supplierIdx: 0 },
-    { productIdx: 0, batchNumber: "PCM24002", qty: 50, expiryDays: 550, supplierIdx: 0 },
-    { productIdx: 1, batchNumber: "AMX25001", qty: 80, expiryDays: 300, supplierIdx: 2 },
-    { productIdx: 2, batchNumber: "FOL25001", qty: 18, expiryDays: 200, supplierIdx: 1 }, // low stock
-    { productIdx: 3, batchNumber: "PRG25001", qty: 40, expiryDays: 180, supplierIdx: 3 },
-    { productIdx: 4, batchNumber: "VIT25001", qty: 60, expiryDays: 25, supplierIdx: 1 }, // expiring soon
-    { productIdx: 5, batchNumber: "IRN25001", qty: 55, expiryDays: 365, supplierIdx: 0 },
-    { productIdx: 6, batchNumber: "EST25001", qty: 28, expiryDays: 220, supplierIdx: 3 },
-    { productIdx: 7, batchNumber: "CET25001", qty: 8, expiryDays: 120, supplierIdx: 3 }, // low
-    { productIdx: 8, batchNumber: "HCG25001", qty: 22, expiryDays: 150, supplierIdx: 3 },
-    { productIdx: 9, batchNumber: "MET25001", qty: 90, expiryDays: 400, supplierIdx: 2 },
-    { productIdx: 10, batchNumber: "ASP25001", qty: 0, expiryDays: 200, supplierIdx: 1 }, // out of stock
-    { productIdx: 11, batchNumber: "DYD25001", qty: 35, expiryDays: 250, supplierIdx: 5 },
-    { productIdx: 12, batchNumber: "CAB25001", qty: 12, expiryDays: 18, supplierIdx: 5 }, // expiring
-    { productIdx: 13, batchNumber: "LET25001", qty: 40, expiryDays: 300, supplierIdx: 5 },
-    { productIdx: 14, batchNumber: "CLO25001", qty: 45, expiryDays: 280, supplierIdx: 2 },
-    { productIdx: 15, batchNumber: "CAL25001", qty: 70, expiryDays: 500, supplierIdx: 0 },
-    { productIdx: 16, batchNumber: "OME25001", qty: 5, expiryDays: -10, supplierIdx: 1 }, // expired
-    { productIdx: 17, batchNumber: "OND25001", qty: 40, expiryDays: 200, supplierIdx: 2 },
-    { productIdx: 19, batchNumber: "GLV25001", qty: 15, expiryDays: null, supplierIdx: 4 },
-    { productIdx: 20, batchNumber: "SYR25001", qty: 20, expiryDays: null, supplierIdx: 4 },
-    { productIdx: 21, batchNumber: "IVS25001", qty: 45, expiryDays: null, supplierIdx: 4 },
-    { productIdx: 23, batchNumber: "PRGTEST01", qty: 50, expiryDays: 120, supplierIdx: 1 },
-    { productIdx: 24, batchNumber: "LH25001", qty: 22, expiryDays: 90, supplierIdx: 1 },
-    { productIdx: 25, batchNumber: "NS25001", qty: 60, expiryDays: 200, supplierIdx: 0 },
-    { productIdx: 26, batchNumber: "MV25001", qty: 30, expiryDays: 400, supplierIdx: 0 },
+    { key: "folic", batchNumber: "FA24001", qty: 120, expiryDays: 400, supplierIdx: 0, location: "Shelf A1" },
+    { key: "folic", batchNumber: "FA24009", qty: 60, expiryDays: 650, supplierIdx: 0, location: "Shelf A1" },
+    { key: "prog", batchNumber: "PR24007", qty: 45, expiryDays: 280, supplierIdx: 1, location: "Fridge B" },
+    { key: "doxy", batchNumber: "DO24012", qty: 8, expiryDays: 200, supplierIdx: 0, location: "Shelf B2" }, // low
+    { key: "vitd", batchNumber: "VD24004", qty: 0, expiryDays: 180, supplierIdx: 1, location: "Shelf C1" }, // out
+    { key: "iron", batchNumber: "IF24003", qty: 75, expiryDays: 320, supplierIdx: 0, location: "Shelf A2" },
+    { key: "amox", batchNumber: "AMX25001", qty: 40, expiryDays: 22, supplierIdx: 0, location: "Shelf B1" }, // expiring soon
+    { key: "estra", batchNumber: "EST25001", qty: 28, expiryDays: 250, supplierIdx: 1, location: "Fridge B" },
+    { key: "gloves", batchNumber: "GLV25001", qty: 12, expiryDays: null, supplierIdx: 2, location: "Store Room" },
   ];
 
-  const batchIds: string[] = [];
+  const batchByNumber: Record<string, string> = {};
   for (const spec of batchSpecs) {
-    const product = PRODUCTS[spec.productIdx]!;
-    const productId = productIds[spec.productIdx]!;
-    const supplierId = supplierIds[spec.supplierIdx]!;
-    const expiryDate = spec.expiryDays === null ? null : day(spec.expiryDays);
+    const product = DEMO_PRODUCTS.find((p) => p.key === spec.key)!;
+    const productId = productByKey[spec.key]!;
     const batch = await prisma.pharmacyBatch.create({
       data: {
         clinicId,
         productId,
-        supplierId,
+        supplierId: suppliers[spec.supplierIdx]!.id,
         batchNumber: spec.batchNumber,
-        quantity: spec.qty,
+        quantity: Math.max(spec.qty, 0),
         availableQuantity: spec.qty,
         purchasePrice: money(product.purchase),
         sellingPrice: money(product.sell),
         mrp: money(product.mrp),
         gstPercent: money(product.gst),
-        expiryDate,
-        purchaseDate: day(-30),
-        manufacturingDate: day(-200),
-        storageLocation: "Pharmacy Shelf A",
+        expiryDate: spec.expiryDays === null ? null : day(spec.expiryDays),
+        purchaseDate: day(-20),
+        manufacturingDate: day(-180),
+        storageLocation: spec.location,
       },
     });
-    batchIds.push(batch.id);
-    await prisma.pharmacyStockMovement.create({
-      data: {
-        clinicId,
-        productId,
-        batchId: batch.id,
-        type: "PURCHASE",
-        quantity: spec.qty,
-        balanceAfter: spec.qty,
-        reason: "Initial seed stock",
-        referenceType: "SEED",
-        actorUserId: pharmacist.id,
-        createdAt: day(-30),
-      },
-    });
-  }
-
-  // Purchase orders
-  for (let i = 0; i < 5; i++) {
-    const supplierId = supplierIds[i % supplierIds.length]!;
-    const pIdx = i * 2;
-    const product = PRODUCTS[pIdx]!;
-    const productId = productIds[pIdx]!;
-    const qty = 50 + i * 10;
-    const unit = product.purchase;
-    const status = (["DRAFT", "ORDERED", "PARTIALLY_RECEIVED", "RECEIVED", "ORDERED"] as const)[i]!;
-    await prisma.pharmacyPurchaseOrder.create({
-      data: {
-        clinicId,
-        supplierId,
-        orderNumber: `PO-SEED-${String(i + 1).padStart(3, "0")}`,
-        orderDate: day(-20 + i),
-        expectedDelivery: day(5 + i),
-        status,
-        taxAmount: money(Math.round(qty * unit * 0.05)),
-        totalAmount: money(qty * unit),
-        notes: "Demo purchase order",
-        items: {
-          create: [
-            {
-              productId,
-              quantityOrdered: qty,
-              quantityReceived: status === "RECEIVED" ? qty : status === "PARTIALLY_RECEIVED" ? Math.floor(qty / 2) : 0,
-              purchasePrice: money(unit),
-              mrp: money(product.mrp),
-              batchNumber: status === "RECEIVED" || status === "PARTIALLY_RECEIVED" ? `POB${i + 1}` : null,
-              expiryDate: status === "RECEIVED" || status === "PARTIALLY_RECEIVED" ? day(400) : null,
-            },
-          ],
+    batchByNumber[spec.batchNumber] = batch.id;
+    if (spec.qty > 0) {
+      await prisma.pharmacyStockMovement.create({
+        data: {
+          clinicId,
+          productId,
+          batchId: batch.id,
+          type: "PURCHASE",
+          quantity: spec.qty,
+          balanceAfter: spec.qty,
+          reason: "Demo seed stock",
+          referenceType: "SEED",
+          actorUserId: pharmacist.id,
+          createdAt: day(-20),
         },
-      },
-    });
+      });
+    }
   }
 
-  // Patients for sales/prescriptions
-  const patients = await prisma.patient.findMany({
-    where: { clinicId },
-    take: 8,
-    orderBy: { createdAt: "asc" },
+  // Purchase orders (minimal demo set)
+  await prisma.pharmacyPurchaseOrder.create({
+    data: {
+      clinicId,
+      supplierId: suppliers[0]!.id,
+      orderNumber: "PO-DEMO-001",
+      orderDate: day(-10),
+      expectedDelivery: day(3),
+      status: "ORDERED",
+      taxAmount: money(120),
+      totalAmount: money(2400),
+      notes: "Reorder folic acid + iron",
+      items: {
+        create: [
+          {
+            productId: productByKey.folic!,
+            quantityOrdered: 100,
+            purchasePrice: money(8),
+            mrp: money(22),
+          },
+          {
+            productId: productByKey.iron!,
+            quantityOrdered: 50,
+            purchasePrice: money(55),
+            mrp: money(125),
+          },
+        ],
+      },
+    },
   });
+
   const couples = await prisma.couple.findMany({
     where: { clinicId },
-    take: 5,
+    include: {
+      primaryPatient: true,
+      partnerPatient: true,
+      appointments: { where: { status: { in: ["CONFIRMED", "WAITING"] }, startsAt: { gte: new Date() } }, orderBy: { startsAt: "asc" }, take: 1 },
+      treatments: { where: { status: "ACTIVE" }, take: 1 },
+    },
     orderBy: { createdAt: "asc" },
   });
 
-  // Sales
-  for (let i = 0; i < 12; i++) {
-    const batch = await prisma.pharmacyBatch.findFirst({
-      where: { clinicId, availableQuantity: { gte: 2 }, expiryDate: { gt: new Date() } },
-      include: { product: true },
-      skip: i % Math.max(batchIds.length - 5, 1),
-    });
-    if (!batch) continue;
-    const qty = 1 + (i % 3);
-    if (batch.availableQuantity < qty) continue;
-    const unitPrice = Number(batch.sellingPrice);
-    const tax = Math.round(unitPrice * qty * (Number(batch.gstPercent) / 100) * 100) / 100;
-    const lineTotal = unitPrice * qty + tax;
-    const patient = patients[i % Math.max(patients.length, 1)];
-    const couple = couples[i % Math.max(couples.length, 1)];
-    const sale = await prisma.pharmacySale.create({
-      data: {
-        clinicId,
-        invoiceNumber: `PHARM-SEED-${String(i + 1).padStart(4, "0")}`,
-        patientId: patient?.id ?? null,
-        coupleId: couple?.id ?? null,
-        doctorName: doctor.name,
-        subtotal: money(unitPrice * qty),
-        taxAmount: money(tax),
-        totalAmount: money(lineTotal),
-        paymentMethod: (["CASH", "UPI", "CARD", "UPI"] as const)[i % 4]!,
-        paymentStatus: "PAID",
-        createdById: pharmacist.id,
-        soldAt: day(-i),
-        items: {
-          create: [
-            {
-              productId: batch.productId,
-              batchId: batch.id,
-              quantity: qty,
-              unitPrice: money(unitPrice),
-              taxAmount: money(tax),
-              lineTotal: money(lineTotal),
-            },
-          ],
+  const mohit = couples.find((c) => c.slug === "mohit-shru") ?? couples[0];
+  const arjun = couples.find((c) => c.slug === "arjun-neha") ?? couples[1];
+  const rohan = couples.find((c) => c.slug === "rohan-priya") ?? couples[2];
+
+  // Ensure Vitamin D stays at 0 available (out of stock demo)
+  // Sales sample for dashboard
+  const folicBatch = batchByNumber.FA24001!;
+  const saleQty = 5;
+  const folicProduct = DEMO_PRODUCTS.find((p) => p.key === "folic")!;
+  const sale = await prisma.pharmacySale.create({
+    data: {
+      clinicId,
+      invoiceNumber: "PHARM-DEMO-0001",
+      patientId: mohit?.primaryPatientId ?? null,
+      coupleId: mohit?.id ?? null,
+      doctorName: doctor.name,
+      subtotal: money(folicProduct.sell * saleQty),
+      taxAmount: money(Math.round(folicProduct.sell * saleQty * 0.05 * 100) / 100),
+      totalAmount: money(Math.round(folicProduct.sell * saleQty * 1.05 * 100) / 100),
+      paymentMethod: "UPI",
+      paymentStatus: "PAID",
+      createdById: pharmacist.id,
+      soldAt: new Date(),
+      items: {
+        create: [
+          {
+            productId: productByKey.folic!,
+            batchId: folicBatch,
+            quantity: saleQty,
+            unitPrice: money(folicProduct.sell),
+            taxAmount: money(Math.round(folicProduct.sell * saleQty * 0.05 * 100) / 100),
+            lineTotal: money(Math.round(folicProduct.sell * saleQty * 1.05 * 100) / 100),
+          },
+        ],
+      },
+    },
+  });
+  const folicBefore = await prisma.pharmacyBatch.findUniqueOrThrow({ where: { id: folicBatch } });
+  const folicAfter = folicBefore.availableQuantity - saleQty;
+  await prisma.pharmacyBatch.update({
+    where: { id: folicBatch },
+    data: { availableQuantity: folicAfter },
+  });
+  await prisma.pharmacyStockMovement.create({
+    data: {
+      clinicId,
+      productId: productByKey.folic!,
+      batchId: folicBatch,
+      type: "SALE",
+      quantity: -saleQty,
+      balanceAfter: folicAfter,
+      reason: "Demo sale",
+      referenceType: "PharmacySale",
+      referenceId: sale.id,
+      actorUserId: pharmacist.id,
+    },
+  });
+
+  async function createRx(input: {
+    couple: (typeof couples)[number] | undefined;
+    patientId: string;
+    status: "PENDING" | "PARTIALLY_DISPENSED" | "DISPENSED";
+    appointmentId?: string | null;
+    treatmentId?: string | null;
+    notes?: string;
+    items: Array<{
+      productKey: string;
+      dosage: string;
+      frequency: string;
+      duration: string;
+      instructions: string;
+      timeOfDay: string;
+      beforeAfterFood: string;
+      quantity: number;
+      dispensed?: number;
+      startOffsetDays: number;
+      endOffsetDays: number;
+      reminderOffsetsHours: number[];
+    }>;
+  }) {
+    if (!input.couple) return null;
+    const patient = await prisma.patient.findUniqueOrThrow({ where: { id: input.patientId } });
+    const consent = await prisma.consent.findUnique({
+      where: {
+        patientId_consentType_channel: {
+          patientId: patient.id,
+          consentType: "WHATSAPP_COMMUNICATION",
+          channel: "WHATSAPP",
         },
       },
     });
-    const nextQty = batch.availableQuantity - qty;
-    await prisma.pharmacyBatch.update({
-      where: { id: batch.id },
-      data: { availableQuantity: nextQty },
-    });
-    await prisma.pharmacyStockMovement.create({
+    const hasConsent = consent?.status === "GRANTED";
+
+    const prepared = [];
+    for (const item of input.items) {
+      const product = DEMO_PRODUCTS.find((p) => p.key === item.productKey)!;
+      const careTask = await prisma.careTask.create({
+        data: {
+          clinicId,
+          coupleId: input.couple.id,
+          title: `Take prescribed medication — ${product.name}`,
+          description: `${item.dosage} · ${item.frequency} · ${item.instructions}`,
+          category: "Medication",
+          status: "WAITING",
+          priority: "NORMAL",
+          dueDate: day(item.startOffsetDays),
+          dueTime: item.timeOfDay,
+          createdById: doctor.id,
+        },
+      });
+      prepared.push({ item, product, careTaskId: careTask.id });
+    }
+
+    const rx = await prisma.pharmacyPrescription.create({
       data: {
         clinicId,
-        productId: batch.productId,
-        batchId: batch.id,
-        type: "SALE",
-        quantity: -qty,
-        balanceAfter: nextQty,
-        reason: "Seed sale",
-        referenceType: "PharmacySale",
-        referenceId: sale.id,
-        actorUserId: pharmacist.id,
-        createdAt: day(-i),
+        patientId: patient.id,
+        coupleId: input.couple.id,
+        doctorId: doctor.id,
+        doctorName: doctor.name,
+        appointmentId: input.appointmentId ?? null,
+        treatmentId: input.treatmentId ?? null,
+        prescriptionDate: day(-1),
+        status: input.status,
+        notes: input.notes ?? null,
+        items: {
+          create: prepared.map(({ item, product, careTaskId }) => ({
+            productId: productByKey[item.productKey]!,
+            medicineName: product.name,
+            dosage: item.dosage,
+            frequency: item.frequency,
+            duration: item.duration,
+            instructions: item.instructions,
+            timeOfDay: item.timeOfDay,
+            beforeAfterFood: item.beforeAfterFood,
+            quantityPrescribed: item.quantity,
+            quantityDispensed: item.dispensed ?? 0,
+            startDate: day(item.startOffsetDays),
+            endDate: day(item.endOffsetDays),
+            careTaskId,
+          })),
+        },
       },
+      include: { items: true },
     });
-  }
 
-  // Prescriptions
-  const rxProducts = [0, 2, 3, 5, 11, 13]; // indices into PRODUCTS
-  for (let i = 0; i < 6; i++) {
-    const patient = patients[i % Math.max(patients.length, 1)];
-    const couple = couples[i % Math.max(couples.length, 1)];
-    if (!patient) break;
-    const pIdx = rxProducts[i]!;
-    const productId = productIds[pIdx]!;
-    const product = PRODUCTS[pIdx]!;
-    const status = (["PENDING", "PENDING", "PARTIALLY_DISPENSED", "DISPENSED", "PENDING", "CANCELLED"] as const)[i]!;
-    const qty = 10;
-    const dispensed = status === "DISPENSED" ? qty : status === "PARTIALLY_DISPENSED" ? 4 : 0;
-    let batchId: string | null = null;
-    if (dispensed > 0) {
-      const batch = await prisma.pharmacyBatch.findFirst({
-        where: { clinicId, productId, availableQuantity: { gte: dispensed }, OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }] },
-      });
-      if (batch) {
-        batchId = batch.id;
-        const next = batch.availableQuantity - dispensed;
-        await prisma.pharmacyBatch.update({ where: { id: batch.id }, data: { availableQuantity: next } });
-        await prisma.pharmacyStockMovement.create({
+    const appointmentLabel =
+      input.appointmentId && input.couple.appointments[0]
+        ? `Your ${input.couple.appointments[0].type} is scheduled for ${input.couple.appointments[0].startsAt.toLocaleString("en-IN", {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })}.`
+        : null;
+
+    for (const rxItem of rx.items) {
+      const preparedItem = prepared.find((p) => p.product.name === rxItem.medicineName);
+      if (!preparedItem) continue;
+      for (const hours of preparedItem.item.reminderOffsetsHours) {
+        const scheduledAt = new Date(Date.now() + hours * 3_600_000);
+        const body = buildDemoWhatsAppMessage({
+          patientFirstName: patient.firstName,
+          clinicName,
+          medicineName: rxItem.medicineName,
+          dosage: rxItem.dosage ?? "",
+          timeOfDay: rxItem.timeOfDay ?? "",
+          instructions: rxItem.instructions ?? "",
+          appointmentLabel,
+        });
+        await prisma.medicationReminder.create({
           data: {
             clinicId,
-            productId,
-            batchId: batch.id,
-            type: "DISPENSE",
-            quantity: -dispensed,
-            balanceAfter: next,
-            reason: "Seed dispense",
-            referenceType: "PharmacyPrescription",
-            actorUserId: pharmacist.id,
-            createdAt: day(-i * 2),
+            prescriptionItemId: rxItem.id,
+            patientId: patient.id,
+            careTaskId: preparedItem.careTaskId,
+            scheduledAt,
+            status: hasConsent ? "SCHEDULED" : "SKIPPED_NO_CONSENT",
+            channel: "WHATSAPP",
+            demoMode: true,
+            demoMessageBody: body,
+            failureReason: hasConsent ? null : "WhatsApp reminders are disabled for this patient.",
           },
         });
       }
     }
-    await prisma.pharmacyPrescription.create({
-      data: {
-        clinicId,
-        patientId: patient.id,
-        coupleId: couple?.id ?? null,
-        doctorId: doctor.id,
-        doctorName: doctor.name,
-        prescriptionDate: day(-i * 2),
-        status,
-        notes: "Demo fertility support prescription",
-        dispensedById: dispensed > 0 ? pharmacist.id : null,
-        dispensedAt: dispensed > 0 ? day(-i * 2) : null,
-        items: {
-          create: [
-            {
-              productId,
-              batchId,
-              medicineName: product.name,
-              dosage: "1 tablet",
-              frequency: "Twice daily",
-              duration: "10 days",
-              instructions: "After food",
-              quantityPrescribed: qty,
-              quantityDispensed: dispensed,
-            },
-          ],
-        },
-      },
-    });
+
+    return rx;
   }
+
+  // Prescription 1 — Mohit/Shru with folic + progesterone, linked to upcoming appointment if present
+  await createRx({
+    couple: mohit,
+    patientId: mohit?.partnerPatientId ?? mohit!.primaryPatientId,
+    status: "PENDING",
+    appointmentId: mohit?.appointments[0]?.id ?? null,
+    treatmentId: mohit?.treatments[0]?.id ?? null,
+    notes: "Pre-treatment support medicines",
+    items: [
+      {
+        productKey: "folic",
+        dosage: "1 tablet",
+        frequency: "Once daily",
+        duration: "30 days",
+        instructions: "Take 1 tablet every morning after breakfast.",
+        timeOfDay: "09:00",
+        beforeAfterFood: "AFTER",
+        quantity: 30,
+        startOffsetDays: 0,
+        endOffsetDays: 30,
+        reminderOffsetsHours: [2, 26],
+      },
+      {
+        productKey: "prog",
+        dosage: "1 capsule",
+        frequency: "Once daily",
+        duration: "14 days",
+        instructions: mohit?.appointments[0]
+          ? "Take as prescribed before your scheduled scan."
+          : "Take 1 capsule at bedtime.",
+        timeOfDay: "21:00",
+        beforeAfterFood: "ANY",
+        quantity: 14,
+        startOffsetDays: 0,
+        endOffsetDays: 14,
+        reminderOffsetsHours: [4, 28],
+      },
+    ],
+  });
+
+  // Prescription 2 — Arjun/Neha different schedule
+  await createRx({
+    couple: arjun,
+    patientId: arjun?.primaryPatientId ?? arjun!.primaryPatientId,
+    status: "PENDING",
+    notes: "Cycle support",
+    items: [
+      {
+        productKey: "iron",
+        dosage: "1 tablet",
+        frequency: "Once daily",
+        duration: "21 days",
+        instructions: "Take 1 tablet after lunch with water.",
+        timeOfDay: "13:30",
+        beforeAfterFood: "AFTER",
+        quantity: 21,
+        startOffsetDays: 0,
+        endOffsetDays: 21,
+        reminderOffsetsHours: [3],
+      },
+      {
+        productKey: "doxy",
+        dosage: "1 capsule",
+        frequency: "Twice daily",
+        duration: "7 days",
+        instructions: "Take 1 capsule morning and night after food.",
+        timeOfDay: "08:00",
+        beforeAfterFood: "AFTER",
+        quantity: 14,
+        startOffsetDays: 0,
+        endOffsetDays: 7,
+        reminderOffsetsHours: [5],
+      },
+    ],
+  });
+
+  // Prescription 3 — Rohan/Priya appointment-linked / treatment prep
+  await createRx({
+    couple: rohan,
+    patientId: rohan?.partnerPatientId ?? rohan!.primaryPatientId,
+    status: "PENDING",
+    appointmentId: rohan?.appointments[0]?.id ?? null,
+    treatmentId: rohan?.treatments[0]?.id ?? null,
+    notes: "Procedure preparation",
+    items: [
+      {
+        productKey: "estra",
+        dosage: "1 tablet",
+        frequency: "Once daily",
+        duration: "10 days",
+        instructions: rohan?.appointments[0]
+          ? "Take medicine at 9:00 AM, one hour before the scan."
+          : "Take as prescribed on the morning of the procedure.",
+        timeOfDay: "09:00",
+        beforeAfterFood: "BEFORE",
+        quantity: 10,
+        startOffsetDays: 0,
+        endOffsetDays: 10,
+        reminderOffsetsHours: [6, 30],
+      },
+    ],
+  });
 
   return {
     skipped: false as const,
-    products: PRODUCTS.length,
-    suppliers: SUPPLIERS.length,
+    products: DEMO_PRODUCTS.length,
+    suppliers: suppliers.length,
     batches: batchSpecs.length,
-    purchaseOrders: 5,
-    sales: 12,
-    prescriptions: 6,
+    purchaseOrders: 1,
+    sales: 1,
+    prescriptions: 3,
   };
 }

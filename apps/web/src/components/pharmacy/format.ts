@@ -79,3 +79,11 @@ export function paymentStatusTone(status: string): Tone {
   if (status === "REFUNDED") return "muted";
   return "warning";
 }
+
+export function reminderStatusTone(status: string): Tone {
+  if (status === "SENT" || status === "DELIVERED") return "success";
+  if (status === "SCHEDULED" || status === "PENDING") return "info";
+  if (status === "SKIPPED_NO_CONSENT") return "warning";
+  if (status === "FAILED" || status === "CANCELLED") return "danger";
+  return "muted";
+}

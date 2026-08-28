@@ -254,10 +254,20 @@ export function serializePrescription(
   rx: PharmacyPrescription & {
     patient?: Pick<Patient, "id" | "firstName" | "lastName">;
     doctor?: Pick<User, "id" | "name"> | null;
+    appointment?: { id: string; type: string; startsAt: Date } | null;
+    treatment?: { id: string; label: string; kind: string } | null;
     items?: Array<
       PharmacyPrescriptionItem & {
-        product?: Pick<PharmacyProduct, "id" | "name" | "unit">;
+        product?: Pick<PharmacyProduct, "id" | "name" | "unit" | "imageUrl">;
         batch?: Pick<PharmacyBatch, "id" | "batchNumber"> | null;
+        reminders?: Array<{
+          id: string;
+          scheduledAt: Date;
+          status: string;
+          demoMode: boolean;
+          demoMessageBody: string | null;
+          failureReason: string | null;
+        }>;
       }
     >;
   },
@@ -270,6 +280,18 @@ export function serializePrescription(
     patientName: rx.patient ? `${rx.patient.firstName} ${rx.patient.lastName}`.trim() : null,
     doctorId: rx.doctorId,
     doctorName: rx.doctorName ?? rx.doctor?.name ?? null,
+    appointmentId: "appointmentId" in rx ? (rx as { appointmentId?: string | null }).appointmentId ?? null : null,
+    treatmentId: "treatmentId" in rx ? (rx as { treatmentId?: string | null }).treatmentId ?? null : null,
+    appointment: rx.appointment
+      ? {
+          id: rx.appointment.id,
+          type: rx.appointment.type,
+          startsAt: rx.appointment.startsAt.toISOString(),
+        }
+      : null,
+    treatment: rx.treatment
+      ? { id: rx.treatment.id, label: rx.treatment.label, kind: rx.treatment.kind }
+      : null,
     prescriptionDate: rx.prescriptionDate.toISOString(),
     status: rx.status,
     notes: rx.notes,
@@ -284,11 +306,24 @@ export function serializePrescription(
       frequency: item.frequency,
       duration: item.duration,
       instructions: item.instructions,
+      timeOfDay: "timeOfDay" in item ? item.timeOfDay ?? null : null,
+      beforeAfterFood: "beforeAfterFood" in item ? item.beforeAfterFood ?? null : null,
+      startDate: "startDate" in item && item.startDate ? item.startDate.toISOString() : null,
+      endDate: "endDate" in item && item.endDate ? item.endDate.toISOString() : null,
       quantityPrescribed: item.quantityPrescribed,
       quantityDispensed: item.quantityDispensed,
       productName: item.product?.name ?? item.medicineName,
+      productImageUrl: item.product?.imageUrl ?? null,
       batchNumber: item.batch?.batchNumber ?? null,
       unit: item.product?.unit,
+      reminders: (item.reminders ?? []).map((reminder) => ({
+        id: reminder.id,
+        scheduledAt: reminder.scheduledAt.toISOString(),
+        status: reminder.status,
+        demoMode: reminder.demoMode,
+        demoMessageBody: reminder.demoMessageBody,
+        failureReason: reminder.failureReason,
+      })),
     })),
     createdAt: rx.createdAt.toISOString(),
     updatedAt: rx.updatedAt.toISOString(),
