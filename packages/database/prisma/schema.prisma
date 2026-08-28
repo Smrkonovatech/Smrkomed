@@ -426,6 +426,11 @@ model Clinic {
   insuranceQueries InsuranceQuery[]
   insurancePayments InsurancePayment[]
   insuranceClaimEvents InsuranceClaimEvent[]
+  paymentGatewayConnections PaymentGatewayConnection[]
+  billingInvoices BillingInvoice[]
+  billingPayments BillingPayment[]
+  billingRefunds BillingRefund[]
+  paymentWebhookEvents PaymentWebhookEvent[]
 
   @@index([organizationId])
 }
@@ -475,6 +480,9 @@ model User {
   pharmacyDispenses      PharmacyPrescription[]  @relation("PharmacyPrescriptionDispenser")
   insuranceClaimsAssigned InsuranceClaim[] @relation("InsuranceClaimAssignee")
   insuranceQueriesAssigned InsuranceQuery[] @relation("InsuranceQueryAssignee")
+  billingInvoicesCreated BillingInvoice[] @relation("BillingInvoiceCreator")
+  billingPaymentsCreated BillingPayment[] @relation("BillingPaymentCreator")
+  billingRefundsCreated BillingRefund[] @relation("BillingRefundCreator")
 }
 
 model Role {
@@ -551,6 +559,8 @@ model Patient {
   medicationReminders MedicationReminder[]
   insurancePolicies InsurancePolicy[]
   insuranceClaimsAsPatient InsuranceClaim[] @relation("InsuranceClaimPatient")
+  billingInvoices BillingInvoice[]
+  billingPayments BillingPayment[]
 
   @@index([clinicId])
   @@index([clinicId, whatsappNumber])
@@ -588,6 +598,8 @@ model Couple {
   pharmacyPrescriptions PharmacyPrescription[]
   insurancePolicies   InsurancePolicy[]
   insuranceClaims     InsuranceClaim[]
+  billingInvoices     BillingInvoice[]
+  billingPayments     BillingPayment[]
 
   @@unique([clinicId, slug])
   @@index([clinicId])
@@ -1569,6 +1581,8 @@ model PharmacySale {
   couple    Couple?            @relation(fields: [coupleId], references: [id])
   createdBy User?              @relation("PharmacySaleCreator", fields: [createdById], references: [id])
   items     PharmacySaleItem[]
+  billingInvoice BillingInvoice?
+  billingPayments BillingPayment[]
 
   @@unique([clinicId, invoiceNumber])
   @@index([clinicId, soldAt])
@@ -1948,4 +1962,231 @@ model InsuranceClaimEvent {
 
   @@index([clinicId, claimId, createdAt])
   @@index([claimId])
+}
+
+// ─── Billing & Payment Gateways ──────────────────────────────────────────────
+
+enum PaymentGatewayProvider {
+  RAZORPAY
+  CASHFREE
+  PAYU
+}
+
+enum PaymentGatewayMode {
+  TEST
+  LIVE
+}
+
+enum PaymentGatewayConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum BillingInvoiceSource {
+  TREATMENT
+  PHARMACY
+  MANUAL
+  OTHER
+}
+
+enum BillingInvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum BillingPaymentStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  CANCELLED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum BillingPaymentProvider {
+  RAZORPAY
+  CASHFREE
+  PAYU
+  MANUAL
+  CASH
+}
+
+enum BillingRefundStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+model PaymentGatewayConnection {
+  id                     String                         @id @default(cuid())
+  clinicId               String
+  provider               PaymentGatewayProvider
+  displayName            String?
+  encryptedCredentials   String?
+  mode                   PaymentGatewayMode             @default(TEST)
+  status                 PaymentGatewayConnectionStatus @default(DISCONNECTED)
+  isDefault              Boolean                        @default(false)
+  isActive               Boolean                        @default(false)
+  lastTestedAt           DateTime?
+  lastError              String?
+  webhookSecretEncrypted String?
+  config                 Json?
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
+
+  clinic   Clinic           @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  payments BillingPayment[]
+
+  @@unique([clinicId, provider])
+  @@index([clinicId, isActive])
+  @@index([clinicId, isDefault])
+}
+
+model BillingInvoice {
+  id              String               @id @default(cuid())
+  clinicId        String
+  invoiceNumber   String
+  patientId       String?
+  coupleId        String?
+  pharmacySaleId  String?              @unique
+  source          BillingInvoiceSource @default(MANUAL)
+  title           String
+  description     String?
+  currency        String               @default("INR")
+  totalAmount     Decimal              @db.Decimal(14, 2)
+  paidAmount      Decimal              @default(0) @db.Decimal(14, 2)
+  status          BillingInvoiceStatus @default(ISSUED)
+  dueDate         DateTime?
+  issuedAt        DateTime             @default(now())
+  paidAt          DateTime?
+  notes           String?
+  createdById     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  clinic       Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient      Patient?             @relation(fields: [patientId], references: [id])
+  couple       Couple?              @relation(fields: [coupleId], references: [id])
+  pharmacySale PharmacySale?        @relation(fields: [pharmacySaleId], references: [id], onDelete: SetNull)
+  createdBy    User?                @relation("BillingInvoiceCreator", fields: [createdById], references: [id])
+  lines        BillingInvoiceLine[]
+  payments     BillingPayment[]
+
+  @@unique([clinicId, invoiceNumber])
+  @@index([clinicId, status])
+  @@index([clinicId, patientId])
+  @@index([clinicId, coupleId])
+  @@index([clinicId, dueDate])
+  @@index([clinicId, issuedAt])
+}
+
+model BillingInvoiceLine {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int      @default(1)
+  unitAmount  Decimal  @db.Decimal(14, 2)
+  lineTotal   Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+
+  invoice BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model BillingPayment {
+  id                   String                 @id @default(cuid())
+  clinicId             String
+  invoiceId            String?
+  patientId            String?
+  coupleId             String?
+  pharmacySaleId       String?
+  gatewayConnectionId  String?
+  provider             BillingPaymentProvider
+  amount               Decimal                @db.Decimal(14, 2)
+  currency             String                 @default("INR")
+  status               BillingPaymentStatus   @default(PENDING)
+  method               String?
+  gatewayOrderId       String?
+  gatewayPaymentId     String?
+  gatewayReference     String?
+  paymentLinkUrl       String?
+  paymentLinkId        String?
+  failureReason        String?
+  metadata             Json?
+  paidAt               DateTime?
+  createdById          String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  clinic            Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  invoice           BillingInvoice?            @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  patient           Patient?                   @relation(fields: [patientId], references: [id])
+  couple            Couple?                    @relation(fields: [coupleId], references: [id])
+  pharmacySale      PharmacySale?              @relation(fields: [pharmacySaleId], references: [id], onDelete: SetNull)
+  gatewayConnection PaymentGatewayConnection?  @relation(fields: [gatewayConnectionId], references: [id], onDelete: SetNull)
+  createdBy         User?                      @relation("BillingPaymentCreator", fields: [createdById], references: [id])
+  refunds           BillingRefund[]
+
+  @@index([clinicId, status])
+  @@index([clinicId, createdAt])
+  @@index([invoiceId])
+  @@index([patientId])
+  @@index([coupleId])
+  @@index([pharmacySaleId])
+  @@index([gatewayOrderId])
+  @@index([gatewayPaymentId])
+  @@index([paymentLinkId])
+  @@unique([clinicId, gatewayPaymentId])
+}
+
+model BillingRefund {
+  id              String              @id @default(cuid())
+  clinicId        String
+  paymentId       String
+  amount          Decimal             @db.Decimal(14, 2)
+  currency        String              @default("INR")
+  status          BillingRefundStatus @default(PENDING)
+  reason          String?
+  gatewayRefundId String?
+  failureReason   String?
+  createdById     String?
+  processedAt     DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  clinic    Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  payment   BillingPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("BillingRefundCreator", fields: [createdById], references: [id])
+
+  @@index([clinicId, paymentId])
+  @@index([paymentId])
+  @@index([gatewayRefundId])
+}
+
+model PaymentWebhookEvent {
+  id              String   @id @default(cuid())
+  clinicId        String?
+  provider        PaymentGatewayProvider
+  externalEventId String
+  eventType       String
+  paymentId       String?
+  processed       Boolean  @default(false)
+  payloadHash     String?
+  error           String?
+  receivedAt      DateTime @default(now())
+  processedAt     DateTime?
+
+  clinic Clinic? @relation(fields: [clinicId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, externalEventId])
+  @@index([clinicId, receivedAt])
+  @@index([paymentId])
 }

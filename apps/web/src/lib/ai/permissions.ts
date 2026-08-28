@@ -26,6 +26,12 @@ const READ_TOOLS: AiToolName[] = [
   "getNavigationHelp",
   "draftPatientMessage",
   "proposeCreateTask",
+  "getTodaysCollections",
+  "getOutstandingPayments",
+  "getFailedPayments",
+  "getPatientPaymentHistory",
+  "getOverdueInvoices",
+  "getClinicOutstandingTotal",
 ];
 
 export function canUseAi(tenant: TenantContext): boolean {
@@ -34,6 +40,10 @@ export function canUseAi(tenant: TenantContext): boolean {
 
 export function canProposeMutations(tenant: TenantContext): boolean {
   return roleHasPermission(tenant.role, PERMISSIONS.CARE_TASKS_WRITE);
+}
+
+export function canViewPayments(tenant: TenantContext): boolean {
+  return roleHasPermission(tenant.role, PERMISSIONS.PAYMENTS_VIEW);
 }
 
 export function allowedTools(tenant: TenantContext): AiToolName[] {
@@ -45,6 +55,16 @@ export function allowedTools(tenant: TenantContext): AiToolName[] {
         roleHasPermission(tenant.role, PERMISSIONS.PATIENTS_READ) ||
         roleHasPermission(tenant.role, PERMISSIONS.CARE_TASKS_WRITE)
       );
+    }
+    if (
+      tool === "getTodaysCollections" ||
+      tool === "getOutstandingPayments" ||
+      tool === "getFailedPayments" ||
+      tool === "getPatientPaymentHistory" ||
+      tool === "getOverdueInvoices" ||
+      tool === "getClinicOutstandingTotal"
+    ) {
+      return canViewPayments(tenant);
     }
     return true;
   });

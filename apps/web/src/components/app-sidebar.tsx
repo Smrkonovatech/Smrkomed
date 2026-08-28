@@ -6,6 +6,7 @@ import {
   BarChart3,
   CalendarDays,
   ClipboardList,
+  CreditCard,
   FileText,
   FolderOpen,
   Gauge,
@@ -132,6 +133,29 @@ export function SidebarContentBody({
           label: "Insurance & Claims",
           icon: Shield,
         });
+        return { ...group, items };
+      });
+    }
+    const showPayments = role && roleHasPermission(role, PERMISSIONS.PAYMENTS_VIEW);
+    if (showPayments) {
+      next = next.map((group) => {
+        if (group.label !== "Operations") return group;
+        const items = [...group.items];
+        const insuranceIndex = items.findIndex((item) => item.to === "/insurance");
+        const billingIndex = items.findIndex((item) => item.to === "/billing");
+        const insertAt =
+          insuranceIndex >= 0
+            ? insuranceIndex + 1
+            : billingIndex >= 0
+              ? billingIndex + 1
+              : items.length;
+        if (!items.some((item) => item.to === "/payments")) {
+          items.splice(insertAt, 0, {
+            to: "/payments",
+            label: "Payments",
+            icon: CreditCard,
+          });
+        }
         return { ...group, items };
       });
     }

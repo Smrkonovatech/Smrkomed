@@ -10,6 +10,7 @@ import { fertilitySteps } from "./seed-demo-types";
 import { seedAbcClinicClinicalData } from "./seed-demo-clinic";
 import { seedClinicPharmacyData } from "./seed-demo-pharmacy";
 import { seedClinicInsuranceData } from "./seed-demo-insurance";
+import { seedClinicPaymentsData } from "./seed-demo-payments";
 
 const DEMO_PASSWORD = "Demo@12345";
 
@@ -349,6 +350,12 @@ async function main() {
   }
 
   // Clear clinic clinical demo rows for idempotent re-seed
+  await prisma.billingRefund.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.billingPayment.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.billingInvoiceLine.deleteMany({ where: { invoice: { clinicId: clinic.id } } });
+  await prisma.billingInvoice.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.paymentWebhookEvent.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.paymentGatewayConnection.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.insuranceClaimEvent.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.insurancePayment.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.insuranceQuery.deleteMany({ where: { clinicId: clinic.id } });
@@ -428,9 +435,17 @@ async function main() {
     clinicName: clinic.name,
   });
 
+  const paymentsCounts = await seedClinicPaymentsData({
+    prisma,
+    clinicId: clinic.id,
+    users,
+    clinicName: clinic.name,
+  });
+
   console.log("Clinical seed counts:", counts);
   console.log("Pharmacy seed:", pharmacyCounts);
   console.log("Insurance seed:", insuranceCounts);
+  console.log("Payments seed:", paymentsCounts);
 
   console.log("Demo clinical dataset:", counts);
   await prisma.subscription.upsert({

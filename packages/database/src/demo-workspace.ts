@@ -5,6 +5,7 @@ import { prisma } from "./client";
 import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS } from "./permissions";
 import { seedClinicPharmacyData } from "./seed-pharmacy";
 import { seedClinicInsuranceData } from "./seed-insurance";
+import { seedClinicPaymentsData } from "./seed-payments";
 
 export const DEMO_PASSWORD = "Demo@12345";
 
@@ -219,6 +220,12 @@ export async function ensureDemoWorkspace() {
     users,
   });
   await seedClinicInsuranceData({
+    prisma,
+    clinicId: clinic.id,
+    clinicName: clinic.name,
+    users,
+  });
+  await seedClinicPaymentsData({
     prisma,
     clinicId: clinic.id,
     clinicName: clinic.name,

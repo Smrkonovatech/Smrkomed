@@ -21,6 +21,8 @@ import { activityRoutes } from "../modules/activity";
 import { adminRoutes } from "../modules/admin";
 import { pharmacyRoutes } from "../modules/pharmacy";
 import { insuranceRoutes } from "../modules/insurance";
+import { paymentRoutes } from "../modules/payments";
+import { paymentWebhookRoutes } from "../modules/payments/webhooks";
 import { publicIntegrationRoutes } from "../modules/integrations/public";
 import type { AppEnv } from "../types";
 
@@ -44,10 +46,12 @@ protectedRoutes.route("/activity", activityRoutes);
 protectedRoutes.route("/analytics", analyticsRoutes);
 protectedRoutes.route("/pharmacy", pharmacyRoutes);
 protectedRoutes.route("/insurance", insuranceRoutes);
+protectedRoutes.route("/payments", paymentRoutes);
 protectedRoutes.route("/integrations", integrationRoutes);
 
 export const v1 = new Hono<AppEnv>();
 v1.route("/health", healthRoutes);
 v1.route("/public", publicLeadRoutes);
+v1.route("/payments/webhooks", paymentWebhookRoutes);
 v1.route("/", publicIntegrationRoutes);
 v1.route("/", protectedRoutes);

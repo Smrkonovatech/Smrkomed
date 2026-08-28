@@ -47,6 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppState } from "@/lib/app-state";
 import { ApiError, apiGet } from "@/lib/api/client";
 import { PatientInsuranceTab } from "@/components/insurance/patient-insurance-tab";
+import { PatientFinancialsTab } from "@/components/payments/patient-financials-tab";
 import { formatDate, formatDateTime, formatINR, prescriptionStatusTone, reminderStatusTone } from "@/components/pharmacy/format";
 import { ProductThumb } from "@/components/pharmacy/product-thumb";
 import { ReminderMessageDialog } from "@/components/pharmacy/reminder-message-dialog";
@@ -118,7 +119,6 @@ export default function PatientProfile() {
     (appointment) => appointment.coupleId === couple.id,
   );
   const coupleDocs = appState.documents.filter((document) => document.coupleId === couple.id);
-  const coupleInvoices = appState.invoices.filter((invoice) => invoice.coupleId === couple.id);
   const coupleAlerts = appState.exceptions.filter((item) => item.coupleId === couple.id);
   const people = [couple.primary.name, couple.partner?.name].filter(Boolean) as string[];
   const recentActivity = appState.activity
@@ -645,40 +645,7 @@ export default function PatientProfile() {
         </TabsContent>
 
         <TabsContent value="billing" className="mt-4">
-          <RecordSection
-            title="Billing"
-            subtitle="Invoices linked to this couple"
-            icon={CircleDollarSign}
-            empty="No billing records."
-            count={coupleInvoices.length}
-          >
-            {coupleInvoices.map((invoice) => (
-              <li
-                key={invoice.id}
-                className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-4 py-3"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{invoice.item}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {invoice.id} · {invoice.date}
-                  </p>
-                </div>
-                <span className="text-sm font-semibold tabular-nums">
-                  ₹{invoice.amount.toLocaleString("en-IN")}
-                </span>
-                <StatusBadge
-                  label={invoice.status}
-                  tone={
-                    invoice.status === "Paid"
-                      ? "success"
-                      : invoice.status === "Overdue"
-                        ? "danger"
-                        : "warning"
-                  }
-                />
-              </li>
-            ))}
-          </RecordSection>
+          <PatientFinancialsTab coupleId={couple.id} />
         </TabsContent>
 
         <TabsContent value="pharmacy" className="mt-4">

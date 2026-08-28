@@ -33,7 +33,13 @@ export type AiToolName =
   | "getPatientAttentionScore"
   | "getNavigationHelp"
   | "draftPatientMessage"
-  | "proposeCreateTask";
+  | "proposeCreateTask"
+  | "getTodaysCollections"
+  | "getOutstandingPayments"
+  | "getFailedPayments"
+  | "getPatientPaymentHistory"
+  | "getOverdueInvoices"
+  | "getClinicOutstandingTotal";
 
 export type AiNavigationAction = {
   label: string;

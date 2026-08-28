@@ -16,8 +16,10 @@ import {
   MessageCircle,
   ShieldCheck,
   Users,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
@@ -886,6 +888,24 @@ export default function SettingsPage() {
                   />
                 </Field>
               </div>
+              <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                      <Wallet className="size-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">Payment Gateways</p>
+                      <p className="text-xs text-muted-foreground">
+                        Connect Razorpay, Cashfree, or PayU to collect patient payments securely.
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="rounded-lg" asChild>
+                    <Link href="/settings/payments">Manage gateways</Link>
+                  </Button>
+                </div>
+              </div>
               {isOwner ? (
                 <SaveActions saved={savedSection === "billing"} />
               ) : (
@@ -909,6 +929,24 @@ export default function SettingsPage() {
                   />
                 }
               />
+              <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                      <CreditCard className="size-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">Payment Gateways</p>
+                      <p className="text-xs text-muted-foreground">
+                        Razorpay, Cashfree, and PayU credentials — encrypted server-side.
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="rounded-lg" asChild>
+                    <Link href="/settings/payments">Open gateways</Link>
+                  </Button>
+                </div>
+              </div>
               <div>
                 {(
                   [

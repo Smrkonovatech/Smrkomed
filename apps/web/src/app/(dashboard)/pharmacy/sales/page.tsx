@@ -1,6 +1,7 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, Receipt } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 
@@ -43,14 +44,29 @@ type BatchOption = { id: string; batchNumber: string; availableQuantity: number;
 type SaleLine = { productId: string; batchId: string; quantity: string; unitPrice: string };
 
 export default function PharmacySalesPage() {
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [data, setData] = useState<PageResult<Sale> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [invoiceBusy, setInvoiceBusy] = useState<string | null>(null);
   const [products, setProducts] = useState<ProductOption[]>([]);
   const [batches, setBatches] = useState<BatchOption[]>([]);
+
+  async function createInvoiceFromSale(sale: Sale) {
+    setInvoiceBusy(sale.id);
+    try {
+      await apiPost(`/api/v1/payments/pharmacy-sales/${sale.id}/invoice`);
+      toast.success("Invoice created — opening billing.");
+      router.push("/billing");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Unable to create invoice.");
+    } finally {
+      setInvoiceBusy(null);
+    }
+  }
 
   const [form, setForm] = useState({
     patientId: "",
@@ -172,6 +188,16 @@ export default function PharmacySalesPage() {
                     <StatusBadge label={sale.paymentMethod} tone="muted" dot={false} />
                   </div>
                   <p className="mt-2 text-sm font-semibold tabular-nums">{formatINR(sale.totalAmount)}</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 w-full"
+                    disabled={invoiceBusy === sale.id}
+                    onClick={() => void createInvoiceFromSale(sale)}
+                  >
+                    <Receipt className="size-3.5" />
+                    {invoiceBusy === sale.id ? "Creating…" : "Create invoice"}
+                  </Button>
                 </RecordCard>
               ))}
             </MobileCards>
@@ -185,6 +211,7 @@ export default function PharmacySalesPage() {
                     <th className="px-4 py-2 font-medium">Amount</th>
                     <th className="px-4 py-2 font-medium">Payment</th>
                     <th className="px-4 py-2 font-medium">Date</th>
+                    <th className="px-4 py-2 font-medium" />
                   </tr>
                 </thead>
                 <tbody>
@@ -198,6 +225,16 @@ export default function PharmacySalesPage() {
                         <StatusBadge label={sale.paymentStatus} tone={paymentStatusTone(sale.paymentStatus)} />
                       </td>
                       <td className="px-4 py-3">{formatDateTime(sale.soldAt)}</td>
+                      <td className="px-4 py-3">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={invoiceBusy === sale.id}
+                          onClick={() => void createInvoiceFromSale(sale)}
+                        >
+                          {invoiceBusy === sale.id ? "Creating…" : "Create invoice"}
+                        </Button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

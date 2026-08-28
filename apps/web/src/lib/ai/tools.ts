@@ -336,6 +336,68 @@ export const AI_TOOL_DEFINITIONS = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "getTodaysCollections",
+      description:
+        "Deterministic today's successful payment collections total and count for the current clinic (INR).",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getOutstandingPayments",
+      description:
+        "List outstanding (unpaid/partial) billing invoices for the clinic from the database.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getFailedPayments",
+      description: "List recent failed payments for the current clinic.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientPaymentHistory",
+      description: "Payment and invoice history for a couple/patient (deterministic DB totals).",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getOverdueInvoices",
+      description: "List overdue billing invoices (due date passed, not fully paid).",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getClinicOutstandingTotal",
+      description: "Sum of outstanding invoice balances for the current clinic.",
+      parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
 ];
 
 export async function runAiTool(
@@ -1672,6 +1734,201 @@ export async function runAiTool(
         proposedAction,
         created: false,
         note: "Task is proposed only. Wait for staff confirmation in the UI.",
+      };
+    }
+
+    case "getTodaysCollections": {
+      const start = startOfToday();
+      const end = endOfToday();
+      const [agg, count] = await Promise.all([
+        prisma.billingPayment.aggregate({
+          where: {
+            ...clinicScope(tenant),
+            status: "SUCCESS",
+            paidAt: { gte: start, lte: end },
+          },
+          _sum: { amount: true },
+        }),
+        prisma.billingPayment.count({
+          where: {
+            ...clinicScope(tenant),
+            status: "SUCCESS",
+            paidAt: { gte: start, lte: end },
+          },
+        }),
+      ]);
+      return {
+        date: start.toISOString().slice(0, 10),
+        successfulPayments: count,
+        totalCollectedInr: Number(agg._sum.amount ?? 0),
+        currency: "INR",
+        source: "database",
+      };
+    }
+
+    case "getOutstandingPayments": {
+      const limit = Math.min(Number(rawArgs["limit"] ?? 20), 50);
+      const invoices = await prisma.billingInvoice.findMany({
+        where: {
+          ...clinicScope(tenant),
+          status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+        include: {
+          patient: { select: { firstName: true, lastName: true } },
+          couple: {
+            select: {
+              slug: true,
+              primaryPatient: { select: { firstName: true, lastName: true } },
+              partnerPatient: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+        orderBy: { dueDate: "asc" },
+        take: limit,
+      });
+      return {
+        items: invoices.map((inv) => {
+          const outstanding = Number(inv.totalAmount) - Number(inv.paidAmount);
+          return {
+            invoiceNumber: inv.invoiceNumber,
+            title: inv.title,
+            status: inv.status,
+            totalAmount: Number(inv.totalAmount),
+            paidAmount: Number(inv.paidAmount),
+            outstanding,
+            dueDate: inv.dueDate?.toISOString() ?? null,
+            patient: inv.patient
+              ? `${inv.patient.firstName} ${inv.patient.lastName}`.trim()
+              : inv.couple
+                ? coupleLabel(inv.couple)
+                : null,
+          };
+        }),
+        source: "database",
+      };
+    }
+
+    case "getFailedPayments": {
+      const limit = Math.min(Number(rawArgs["limit"] ?? 20), 50);
+      const rows = await prisma.billingPayment.findMany({
+        where: { ...clinicScope(tenant), status: "FAILED" },
+        include: {
+          patient: { select: { firstName: true, lastName: true } },
+          invoice: { select: { invoiceNumber: true } },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: limit,
+      });
+      return {
+        items: rows.map((p) => ({
+          id: p.id,
+          amount: Number(p.amount),
+          provider: p.provider,
+          method: p.method,
+          failureReason: p.failureReason,
+          invoiceNumber: p.invoice?.invoiceNumber ?? null,
+          patient: p.patient ? `${p.patient.firstName} ${p.patient.lastName}`.trim() : null,
+          updatedAt: p.updatedAt.toISOString(),
+        })),
+        source: "database",
+      };
+    }
+
+    case "getPatientPaymentHistory": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "Couple not found in this clinic." };
+      const [invoices, payments] = await Promise.all([
+        prisma.billingInvoice.findMany({
+          where: { clinicId: tenant.clinicId, coupleId: couple.id },
+          orderBy: { issuedAt: "desc" },
+          take: 30,
+        }),
+        prisma.billingPayment.findMany({
+          where: { clinicId: tenant.clinicId, coupleId: couple.id },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+        }),
+      ]);
+      const totalBilled = invoices.reduce((s, i) => s + Number(i.totalAmount), 0);
+      const totalPaid = invoices.reduce((s, i) => s + Number(i.paidAmount), 0);
+      return {
+        couple: coupleLabel(couple),
+        totalBilled,
+        totalPaid,
+        outstanding: Math.max(0, totalBilled - totalPaid),
+        invoices: invoices.map((i) => ({
+          invoiceNumber: i.invoiceNumber,
+          status: i.status,
+          totalAmount: Number(i.totalAmount),
+          paidAmount: Number(i.paidAmount),
+          outstanding: Number(i.totalAmount) - Number(i.paidAmount),
+        })),
+        payments: payments.map((p) => ({
+          amount: Number(p.amount),
+          status: p.status,
+          provider: p.provider,
+          method: p.method,
+          paidAt: p.paidAt?.toISOString() ?? null,
+        })),
+        source: "database",
+      };
+    }
+
+    case "getOverdueInvoices": {
+      const limit = Math.min(Number(rawArgs["limit"] ?? 20), 50);
+      const now = new Date();
+      const invoices = await prisma.billingInvoice.findMany({
+        where: {
+          ...clinicScope(tenant),
+          dueDate: { lt: now },
+          status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+        include: {
+          patient: { select: { firstName: true, lastName: true } },
+          couple: {
+            select: {
+              slug: true,
+              primaryPatient: { select: { firstName: true, lastName: true } },
+              partnerPatient: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+        orderBy: { dueDate: "asc" },
+        take: limit,
+      });
+      return {
+        items: invoices.map((inv) => ({
+          invoiceNumber: inv.invoiceNumber,
+          outstanding: Number(inv.totalAmount) - Number(inv.paidAmount),
+          dueDate: inv.dueDate?.toISOString() ?? null,
+          daysOverdue: daysOverdue(inv.dueDate),
+          patient: inv.patient
+            ? `${inv.patient.firstName} ${inv.patient.lastName}`.trim()
+            : inv.couple
+              ? coupleLabel(inv.couple)
+              : null,
+        })),
+        source: "database",
+      };
+    }
+
+    case "getClinicOutstandingTotal": {
+      const invoices = await prisma.billingInvoice.findMany({
+        where: {
+          ...clinicScope(tenant),
+          status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+        select: { totalAmount: true, paidAmount: true },
+      });
+      const outstandingTotal = invoices.reduce(
+        (s, i) => s + Math.max(0, Number(i.totalAmount) - Number(i.paidAmount)),
+        0,
+      );
+      return {
+        outstandingInvoiceCount: invoices.length,
+        outstandingTotalInr: outstandingTotal,
+        currency: "INR",
+        source: "database",
       };
     }
 
