@@ -26,6 +26,8 @@ export async function GET() {
         users,
         roles,
         demoAdmin: Boolean(demoAdmin),
+        pharmacyProducts: await prisma.pharmacyProduct.count(),
+        pharmacyBatches: await prisma.pharmacyBatch.count(),
       },
     });
   } catch (error) {
@@ -54,7 +56,14 @@ export async function POST() {
   try {
     await pingDatabase();
     await ensureDemoWorkspace();
-    return NextResponse.json({ success: true, data: { ready: true } });
+    const [pharmacyProducts, pharmacyBatches] = await Promise.all([
+      prisma.pharmacyProduct.count(),
+      prisma.pharmacyBatch.count(),
+    ]);
+    return NextResponse.json({
+      success: true,
+      data: { ready: true, pharmacyProducts, pharmacyBatches },
+    });
   } catch (error) {
     const hint = prismaErrorHint(error);
     console.error("Demo setup failed:", hint.code);

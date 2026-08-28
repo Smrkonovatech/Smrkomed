@@ -3,6 +3,7 @@ import type { StaffRole } from "@prisma/client";
 
 import { prisma } from "./client";
 import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS } from "./permissions";
+import { seedClinicPharmacyData } from "./seed-pharmacy";
 
 export const DEMO_PASSWORD = "Demo@12345";
 
@@ -203,6 +204,19 @@ export async function ensureDemoWorkspace() {
       },
     });
   }
+
+  // Populate demo pharmacy catalogue when inventory is missing (Vercel migrate does not seed).
+  const staffUsers = await prisma.user.findMany({
+    where: { email: { in: DEMO_STAFF.map((person) => person.email) } },
+    select: { id: true, name: true, email: true },
+  });
+  const users = Object.fromEntries(staffUsers.map((user) => [user.email, { id: user.id, name: user.name }]));
+  await seedClinicPharmacyData({
+    prisma,
+    clinicId: clinic.id,
+    clinicName: clinic.name,
+    users,
+  });
 
   return { organization, clinic };
 }
