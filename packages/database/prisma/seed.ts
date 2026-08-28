@@ -9,6 +9,7 @@ import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS, prisma } from "../src";
 import { fertilitySteps } from "./seed-demo-types";
 import { seedAbcClinicClinicalData } from "./seed-demo-clinic";
 import { seedClinicPharmacyData } from "./seed-demo-pharmacy";
+import { seedClinicInsuranceData } from "./seed-demo-insurance";
 
 const DEMO_PASSWORD = "Demo@12345";
 
@@ -348,6 +349,14 @@ async function main() {
   }
 
   // Clear clinic clinical demo rows for idempotent re-seed
+  await prisma.insuranceClaimEvent.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.insurancePayment.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.insuranceQuery.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.insuranceClaimDocument.deleteMany({ where: { claim: { clinicId: clinic.id } } });
+  await prisma.insuranceClaim.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.insurancePolicy.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.insuranceTpa.deleteMany({ where: { clinicId: clinic.id } });
+  await prisma.insuranceProvider.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.medicationReminder.deleteMany({ where: { clinicId: clinic.id } });
   await prisma.pharmacySaleItem.deleteMany({ where: { sale: { clinicId: clinic.id } } });
   await prisma.pharmacySale.deleteMany({ where: { clinicId: clinic.id } });
@@ -412,8 +421,16 @@ async function main() {
     clinicName: clinic.name,
   });
 
+  const insuranceCounts = await seedClinicInsuranceData({
+    prisma,
+    clinicId: clinic.id,
+    users,
+    clinicName: clinic.name,
+  });
+
   console.log("Clinical seed counts:", counts);
   console.log("Pharmacy seed:", pharmacyCounts);
+  console.log("Insurance seed:", insuranceCounts);
 
   console.log("Demo clinical dataset:", counts);
   await prisma.subscription.upsert({

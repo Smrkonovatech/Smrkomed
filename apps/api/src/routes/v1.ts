@@ -20,6 +20,7 @@ import { userRoutes } from "../modules/users";
 import { activityRoutes } from "../modules/activity";
 import { adminRoutes } from "../modules/admin";
 import { pharmacyRoutes } from "../modules/pharmacy";
+import { insuranceRoutes } from "../modules/insurance";
 import { publicIntegrationRoutes } from "../modules/integrations/public";
 import type { AppEnv } from "../types";
 
@@ -42,6 +43,7 @@ protectedRoutes.route("/documents", documentRoutes);
 protectedRoutes.route("/activity", activityRoutes);
 protectedRoutes.route("/analytics", analyticsRoutes);
 protectedRoutes.route("/pharmacy", pharmacyRoutes);
+protectedRoutes.route("/insurance", insuranceRoutes);
 protectedRoutes.route("/integrations", integrationRoutes);
 
 export const v1 = new Hono<AppEnv>();

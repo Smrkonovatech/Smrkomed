@@ -419,6 +419,13 @@ model Clinic {
   pharmacyPrescriptions PharmacyPrescription[]
   pharmacySettings PharmacySetting?
   medicationReminders MedicationReminder[]
+  insuranceProviders InsuranceProvider[]
+  insuranceTpas InsuranceTpa[]
+  insurancePolicies InsurancePolicy[]
+  insuranceClaims InsuranceClaim[]
+  insuranceQueries InsuranceQuery[]
+  insurancePayments InsurancePayment[]
+  insuranceClaimEvents InsuranceClaimEvent[]
 
   @@index([organizationId])
 }
@@ -466,6 +473,8 @@ model User {
   pharmacySales          PharmacySale[]          @relation("PharmacySaleCreator")
   pharmacyPrescriptions  PharmacyPrescription[]  @relation("PharmacyPrescriptionDoctor")
   pharmacyDispenses      PharmacyPrescription[]  @relation("PharmacyPrescriptionDispenser")
+  insuranceClaimsAssigned InsuranceClaim[] @relation("InsuranceClaimAssignee")
+  insuranceQueriesAssigned InsuranceQuery[] @relation("InsuranceQueryAssignee")
 }
 
 model Role {
@@ -540,6 +549,8 @@ model Patient {
   pharmacySales PharmacySale[]
   pharmacyPrescriptions PharmacyPrescription[]
   medicationReminders MedicationReminder[]
+  insurancePolicies InsurancePolicy[]
+  insuranceClaimsAsPatient InsuranceClaim[] @relation("InsuranceClaimPatient")
 
   @@index([clinicId])
   @@index([clinicId, whatsappNumber])
@@ -575,6 +586,8 @@ model Couple {
   consultationNotes   ConsultationNote[]
   pharmacySales       PharmacySale[]
   pharmacyPrescriptions PharmacyPrescription[]
+  insurancePolicies   InsurancePolicy[]
+  insuranceClaims     InsuranceClaim[]
 
   @@unique([clinicId, slug])
   @@index([clinicId])
@@ -689,6 +702,7 @@ model CareTask {
   aiInteractions AIInteraction[]
   medicationReminders MedicationReminder[]
   pharmacyPrescriptionItems PharmacyPrescriptionItem[]
+  insuranceQueries InsuranceQuery[]
 
   @@index([clinicId, status])
   @@index([coupleId])
@@ -944,6 +958,8 @@ model Document {
   couple   Couple?           @relation(fields: [coupleId], references: [id])
   careTask CareTask?         @relation(fields: [careTaskId], references: [id])
   category DocumentCategory? @relation(fields: [categoryId], references: [id])
+  insuranceClaimDocuments InsuranceClaimDocument[]
+  insurancePoliciesAsCard InsurancePolicy[] @relation("InsuranceCardDocument")
 
   @@index([clinicId])
   @@index([coupleId])
@@ -1671,4 +1687,265 @@ model MedicationReminder {
   @@index([prescriptionItemId])
   @@index([patientId, scheduledAt])
   @@index([careTaskId])
+}
+
+// ─── Insurance & Claims ──────────────────────────────────────────────────────
+
+enum InsurancePolicyStatus {
+  ACTIVE
+  EXPIRED
+  PENDING_VERIFICATION
+  CANCELLED
+}
+
+enum InsuranceEligibilityStatus {
+  PENDING
+  VERIFIED
+  NOT_VERIFIED
+  FAILED
+}
+
+enum InsuranceClaimStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  QUERY
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+  FINAL_BILL_PENDING
+  PAYMENT_PENDING
+  PAID
+  CLOSED
+}
+
+enum InsuranceClaimType {
+  CASHLESS
+  REIMBURSEMENT
+  PRE_AUTH
+}
+
+enum InsuranceQueryStatus {
+  OPEN
+  RESPONDED
+  RESOLVED
+  OVERDUE
+}
+
+enum InsuranceIntegrationMode {
+  MANUAL_DEMO
+  NHCX_NOT_CONNECTED
+}
+
+model InsuranceProvider {
+  id              String                   @id @default(cuid())
+  clinicId        String
+  name            String
+  logoUrl         String?
+  supportContact  String?
+  supportEmail    String?
+  supportPhone    String?
+  notes           String?
+  isActive        Boolean                  @default(true)
+  integrationMode InsuranceIntegrationMode @default(MANUAL_DEMO)
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  clinic   Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  policies InsurancePolicy[]
+  claims   InsuranceClaim[]
+
+  @@index([clinicId, isActive])
+  @@index([clinicId, name])
+}
+
+model InsuranceTpa {
+  id        String   @id @default(cuid())
+  clinicId  String
+  name      String
+  contact   String?
+  email     String?
+  phone     String?
+  notes     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clinic   Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  policies InsurancePolicy[]
+  claims   InsuranceClaim[]
+
+  @@index([clinicId, isActive])
+  @@index([clinicId, name])
+}
+
+model InsurancePolicy {
+  id                   String                     @id @default(cuid())
+  clinicId             String
+  patientId            String
+  coupleId             String?
+  providerId           String
+  tpaId                String?
+  policyName           String
+  policyNumber         String
+  memberId             String?
+  policyHolderName     String?
+  relationshipToHolder String?
+  startDate            DateTime?
+  expiryDate           DateTime?
+  sumInsured           Decimal                    @default(0) @db.Decimal(14, 2)
+  availableCoverage    Decimal                    @default(0) @db.Decimal(14, 2)
+  networkStatus        String?
+  cashlessStatus       String?
+  status               InsurancePolicyStatus      @default(PENDING_VERIFICATION)
+  eligibilityStatus    InsuranceEligibilityStatus @default(PENDING)
+  notes                String?
+  cardDocumentId       String?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+
+  clinic       Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient      Patient           @relation(fields: [patientId], references: [id])
+  couple       Couple?           @relation(fields: [coupleId], references: [id])
+  provider     InsuranceProvider @relation(fields: [providerId], references: [id])
+  tpa          InsuranceTpa?     @relation(fields: [tpaId], references: [id])
+  cardDocument Document?         @relation("InsuranceCardDocument", fields: [cardDocumentId], references: [id])
+  claims       InsuranceClaim[]
+
+  @@unique([clinicId, policyNumber])
+  @@index([clinicId, patientId])
+  @@index([clinicId, coupleId])
+  @@index([clinicId, status])
+  @@index([providerId])
+  @@index([tpaId])
+}
+
+model InsuranceClaim {
+  id                    String               @id @default(cuid())
+  clinicId              String
+  claimNumber           String
+  patientId             String
+  coupleId              String?
+  policyId              String
+  providerId            String
+  tpaId                 String?
+  claimType             InsuranceClaimType   @default(PRE_AUTH)
+  status                InsuranceClaimStatus @default(DRAFT)
+  treatmentLabel        String?
+  procedureLabel        String?
+  diagnosisCategory     String?
+  expectedAdmissionDate DateTime?
+  expectedDischargeDate DateTime?
+  doctorName            String?
+  assignedCoordinatorId String?
+  amountRequested       Decimal              @default(0) @db.Decimal(14, 2)
+  amountApproved        Decimal              @default(0) @db.Decimal(14, 2)
+  amountRejected        Decimal              @default(0) @db.Decimal(14, 2)
+  amountPaid            Decimal              @default(0) @db.Decimal(14, 2)
+  patientResponsibility Decimal              @default(0) @db.Decimal(14, 2)
+  priority              String               @default("NORMAL")
+  dueDate               DateTime?
+  notes                 String?
+  preauthSubmittedAt    DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  clinic              Clinic                   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient             Patient                  @relation("InsuranceClaimPatient", fields: [patientId], references: [id])
+  couple              Couple?                  @relation(fields: [coupleId], references: [id])
+  policy              InsurancePolicy          @relation(fields: [policyId], references: [id])
+  provider            InsuranceProvider        @relation(fields: [providerId], references: [id])
+  tpa                 InsuranceTpa?            @relation(fields: [tpaId], references: [id])
+  assignedCoordinator User?                    @relation("InsuranceClaimAssignee", fields: [assignedCoordinatorId], references: [id])
+  documents           InsuranceClaimDocument[]
+  queries             InsuranceQuery[]
+  payments            InsurancePayment[]
+  events              InsuranceClaimEvent[]
+
+  @@unique([clinicId, claimNumber])
+  @@index([clinicId, status])
+  @@index([clinicId, patientId])
+  @@index([clinicId, coupleId])
+  @@index([clinicId, updatedAt])
+  @@index([policyId])
+  @@index([assignedCoordinatorId])
+}
+
+model InsuranceClaimDocument {
+  id           String   @id @default(cuid())
+  claimId      String
+  documentId   String
+  documentType String?
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  claim    InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  document Document       @relation(fields: [documentId], references: [id])
+
+  @@unique([claimId, documentId])
+  @@index([claimId])
+  @@index([documentId])
+}
+
+model InsuranceQuery {
+  id              String               @id @default(cuid())
+  clinicId        String
+  claimId         String
+  careTaskId      String?
+  message         String
+  receivedAt      DateTime             @default(now())
+  dueDate         DateTime?
+  status          InsuranceQueryStatus @default(OPEN)
+  assignedToId    String?
+  responseMessage String?
+  respondedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  clinic     Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  claim      InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  careTask   CareTask?      @relation(fields: [careTaskId], references: [id], onDelete: SetNull)
+  assignedTo User?          @relation("InsuranceQueryAssignee", fields: [assignedToId], references: [id])
+
+  @@index([clinicId, status])
+  @@index([claimId])
+  @@index([careTaskId])
+  @@index([assignedToId])
+}
+
+model InsurancePayment {
+  id            String   @id @default(cuid())
+  clinicId      String
+  claimId       String
+  amount        Decimal  @db.Decimal(14, 2)
+  paymentDate   DateTime @default(now())
+  paymentMethod String?
+  reference     String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  clinic Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  claim  InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, claimId])
+  @@index([claimId])
+}
+
+model InsuranceClaimEvent {
+  id        String   @id @default(cuid())
+  clinicId  String
+  claimId   String
+  action    String
+  status    String?
+  note      String?
+  actorId   String?
+  actorName String?
+  createdAt DateTime @default(now())
+
+  clinic Clinic         @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  claim  InsuranceClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId, claimId, createdAt])
+  @@index([claimId])
 }

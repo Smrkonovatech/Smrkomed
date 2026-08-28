@@ -46,6 +46,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppState } from "@/lib/app-state";
 import { ApiError, apiGet } from "@/lib/api/client";
+import { PatientInsuranceTab } from "@/components/insurance/patient-insurance-tab";
 import { formatDate, formatDateTime, formatINR, prescriptionStatusTone, reminderStatusTone } from "@/components/pharmacy/format";
 import { ProductThumb } from "@/components/pharmacy/product-thumb";
 import { ReminderMessageDialog } from "@/components/pharmacy/reminder-message-dialog";
@@ -70,6 +71,7 @@ const tabs = [
   ["conversation", "Conversation"],
   ["billing", "Billing"],
   ["pharmacy", "Pharmacy"],
+  ["insurance", "Insurance"],
 ] as const;
 
 export default function PatientProfile() {
@@ -109,6 +111,8 @@ export default function PatientProfile() {
     );
   }
   if (!couple) notFound();
+  const insurancePatientId =
+    "id" in couple.primary ? (couple.primary as { id?: string }).id : undefined;
   const coupleTasks = appState.tasks.filter((task) => task.coupleId === couple.id);
   const coupleAppointments = appState.appointments.filter(
     (appointment) => appointment.coupleId === couple.id,
@@ -679,6 +683,13 @@ export default function PatientProfile() {
 
         <TabsContent value="pharmacy" className="mt-4">
           <PatientPharmacyTab coupleId={couple.id} />
+        </TabsContent>
+
+        <TabsContent value="insurance" className="mt-4">
+          <PatientInsuranceTab
+            coupleId={couple.id}
+            {...(insurancePatientId ? { patientId: insurancePatientId } : {})}
+          />
         </TabsContent>
       </Tabs>
 

@@ -16,6 +16,7 @@ import {
   PlayCircle,
   RefreshCw,
   Settings,
+  Shield,
   Sparkles,
   Users,
   Wallet,
@@ -118,11 +119,27 @@ export function SidebarContentBody({
   const pathname = usePathname();
   const groups = useMemo(() => {
     const role = session?.user?.role;
+    let next = [...baseGroups];
+    const showInsurance = role && roleHasPermission(role, PERMISSIONS.INSURANCE_VIEW);
+    if (showInsurance) {
+      next = next.map((group) => {
+        if (group.label !== "Operations") return group;
+        const items = [...group.items];
+        const billingIndex = items.findIndex((item) => item.to === "/billing");
+        const insertAt = billingIndex >= 0 ? billingIndex + 1 : items.length;
+        items.splice(insertAt, 0, {
+          to: "/insurance",
+          label: "Insurance & Claims",
+          icon: Shield,
+        });
+        return { ...group, items };
+      });
+    }
     const showPharmacy = role && roleHasPermission(role, PERMISSIONS.PHARMACY_VIEW);
-    if (!showPharmacy) return baseGroups;
-    const next = [...baseGroups];
-    const operationsIndex = next.findIndex((group) => group.label === "Operations");
-    next.splice(operationsIndex + 1, 0, pharmacyGroup);
+    if (showPharmacy) {
+      const operationsIndex = next.findIndex((group) => group.label === "Operations");
+      next.splice(operationsIndex + 1, 0, pharmacyGroup);
+    }
     return next;
   }, [session?.user?.role]);
   const isActive = (href: string) =>

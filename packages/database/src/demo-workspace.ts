@@ -4,6 +4,7 @@ import type { StaffRole } from "@prisma/client";
 import { prisma } from "./client";
 import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS } from "./permissions";
 import { seedClinicPharmacyData } from "./seed-pharmacy";
+import { seedClinicInsuranceData } from "./seed-insurance";
 
 export const DEMO_PASSWORD = "Demo@12345";
 
@@ -212,6 +213,12 @@ export async function ensureDemoWorkspace() {
   });
   const users = Object.fromEntries(staffUsers.map((user) => [user.email, { id: user.id, name: user.name }]));
   await seedClinicPharmacyData({
+    prisma,
+    clinicId: clinic.id,
+    clinicName: clinic.name,
+    users,
+  });
+  await seedClinicInsuranceData({
     prisma,
     clinicId: clinic.id,
     clinicName: clinic.name,

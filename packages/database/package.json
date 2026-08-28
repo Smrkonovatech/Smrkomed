@@ -23,7 +23,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:setup": "prisma generate && prisma db push && tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test": "tsx --test src/isolation.test.ts src/error-hint.test.ts src/saas-migration.test.ts src/pharmacy-permissions.test.ts"
+    "test": "tsx --test src/isolation.test.ts src/error-hint.test.ts src/saas-migration.test.ts src/pharmacy-permissions.test.ts src/insurance-permissions.test.ts"
   },
   "prisma": {
     "schema": "prisma/schema.prisma",
