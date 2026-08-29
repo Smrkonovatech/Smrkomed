@@ -125,3 +125,24 @@ export async function sendTemplateMessage(input: {
     }),
   });
 }
+
+export async function sendTextMessage(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  to: string;
+  body: string;
+}) {
+  return graphRequest(`/${input.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: input.to,
+      type: "text",
+      text: { preview_url: false, body: input.body.slice(0, 4096) },
+    }),
+  });
+}

@@ -123,20 +123,40 @@ export async function getWhatsAppConversation(ctx: TenantContext, conversationId
 
 export async function getWhatsAppAnalytics(ctx: TenantContext) {
   const conversationWhere = { clinicId: ctx.clinicId, channel: "WHATSAPP" as const };
-  const [activeConversations, inbound, sent, delivered, read, failed] = await Promise.all([
+  const [
+    activeConversations,
+    inbound,
+    sent,
+    delivered,
+    read,
+    failed,
+    automationRulesActive,
+    automationRulesTotal,
+    pendingReminders,
+  ] = await Promise.all([
     prisma.conversation.count({ where: { ...conversationWhere, status: { not: "CLOSED" } } }),
     prisma.message.count({ where: { direction: "INBOUND", conversation: conversationWhere } }),
     prisma.message.count({ where: { direction: "OUTBOUND", conversation: conversationWhere } }),
     prisma.message.count({ where: { status: "DELIVERED", conversation: conversationWhere } }),
     prisma.message.count({ where: { status: "READ", conversation: conversationWhere } }),
     prisma.message.count({ where: { status: "FAILED", conversation: conversationWhere } }),
+    prisma.automationRule.count({ where: { clinicId: ctx.clinicId, isActive: true } }),
+    prisma.automationRule.count({ where: { clinicId: ctx.clinicId } }),
+    prisma.medicationReminder.count({
+      where: { clinicId: ctx.clinicId, status: { in: ["PENDING", "SCHEDULED"] } },
+    }),
   ]);
   return {
     activeConversations,
     inboundMessages: inbound,
+    replies: inbound,
     messagesSent: sent,
     messagesDelivered: delivered,
     messagesRead: read,
     messagesFailed: failed,
+    activeAutomations: automationRulesActive,
+    automationRulesTotal,
+    pendingMedicineReminders: pendingReminders,
+    hasMessageData: sent + inbound > 0,
   };
 }

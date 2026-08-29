@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { PERMISSIONS, prisma } from "@smrkomed/database";
+import { PERMISSIONS, buildPatient360, prisma } from "@smrkomed/database";
 
 import { audit } from "../../lib/audit";
 import { requirePermission } from "../../lib/authz";
@@ -17,6 +17,13 @@ export const coupleRoutes = new Hono<AppEnv>()
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const couples = await listCouples(tenant);
     return ok(c, couples.map(serializeCouple));
+  })
+  .get("/:id/360", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const { id } = c.req.valid("param");
+    const payload = await buildPatient360(tenant, id);
+    if (!payload) throw notFound();
+    return ok(c, payload);
   })
   .get("/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);

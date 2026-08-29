@@ -156,6 +156,7 @@ export const prescriptionItemSchema = z.object({
   dosage: z.string().trim().max(120).optional().nullable(),
   frequency: z.string().trim().max(120).optional().nullable(),
   duration: z.string().trim().max(120).optional().nullable(),
+  route: z.string().trim().max(80).optional().nullable(),
   instructions: z.string().trim().max(500).optional().nullable(),
   timeOfDay: z.string().trim().max(40).optional().nullable(),
   beforeAfterFood: z.enum(["BEFORE", "AFTER", "WITH", "ANY"]).optional().nullable(),
@@ -163,6 +164,12 @@ export const prescriptionItemSchema = z.object({
   endDate: z.string().trim().optional().nullable(),
   quantityPrescribed: z.number().int().positive().max(1_000_000),
 });
+
+export const updateReminderStatusSchema = z
+  .object({
+    status: z.enum(["TAKEN", "MISSED", "SKIPPED", "COMPLETED", "DUE", "SCHEDULED"]),
+  })
+  .strict();
 
 export const createPrescriptionSchema = z
   .object({

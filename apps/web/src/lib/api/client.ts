@@ -91,3 +91,7 @@ export function apiPost<T>(path: string, body: unknown = {}) {
 export function apiPatch<T>(path: string, body: unknown = {}) {
   return request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 }
+
+export function apiDelete<T>(path: string) {
+  return request<T>(path, { method: "DELETE" });
+}

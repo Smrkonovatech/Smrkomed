@@ -6,9 +6,11 @@ import { useParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
+  Bell,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
+  ClipboardList,
   Clock3,
   FileText,
   HeartHandshake,
@@ -17,6 +19,7 @@ import {
   Mic,
   Phone,
   Pill,
+  ShieldCheck,
   Stethoscope,
   Upload,
   UserRound,
@@ -28,6 +31,7 @@ import { toast } from "sonner";
 import { AiPatientSummary } from "@/components/ai/ai-patient-summary";
 import { PatientJourneySummary } from "@/components/ai/patient-journey-summary";
 import { PrepareConsultation } from "@/components/ai/prepare-consultation";
+import { Patient360Panel } from "@/components/patients/patient-360-panel";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { useCreateTask } from "@/components/create-task-drawer";
 import { JourneyStrip } from "@/components/journey-strip";
@@ -48,6 +52,7 @@ import { useAppState } from "@/lib/app-state";
 import { ApiError, apiGet } from "@/lib/api/client";
 import { PatientInsuranceTab } from "@/components/insurance/patient-insurance-tab";
 import { PatientFinancialsTab } from "@/components/payments/patient-financials-tab";
+import { PatientDigitalHealthTab } from "@/components/digital-health/patient-digital-health-tab";
 import { formatDate, formatDateTime, formatINR, prescriptionStatusTone, reminderStatusTone } from "@/components/pharmacy/format";
 import { ProductThumb } from "@/components/pharmacy/product-thumb";
 import { ReminderMessageDialog } from "@/components/pharmacy/reminder-message-dialog";
@@ -73,6 +78,7 @@ const tabs = [
   ["billing", "Billing"],
   ["pharmacy", "Pharmacy"],
   ["insurance", "Insurance"],
+  ["digital-health", "Digital Health"],
 ] as const;
 
 export default function PatientProfile() {
@@ -292,6 +298,7 @@ export default function PatientProfile() {
 
         <TabsContent value="overview" className="mt-4">
           <div className="mb-4 space-y-4">
+            <Patient360Panel coupleIdOrSlug={couple.slug || couple.id} />
             <AiPatientSummary
               couple={couple}
               tasks={coupleTasks}
@@ -658,6 +665,18 @@ export default function PatientProfile() {
             {...(insurancePatientId ? { patientId: insurancePatientId } : {})}
           />
         </TabsContent>
+
+        <TabsContent value="digital-health" className="mt-4">
+          {insurancePatientId ? (
+            <PatientDigitalHealthTab patientId={insurancePatientId} />
+          ) : (
+            <EmptyState
+              title="Digital health needs a patient record."
+              description="Link a primary patient on this couple profile to manage ABHA and consents."
+              icon={ShieldCheck}
+            />
+          )}
+        </TabsContent>
       </Tabs>
 
       <Sheet open={messageOpen} onOpenChange={setMessageOpen}>
@@ -717,6 +736,49 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
       totalAmount: number;
       itemCount: number;
     }>;
+    medications?: {
+      schedule?: {
+        upcoming?: Array<{
+          id: string;
+          medicineName?: string | null;
+          dosage?: string | null;
+          scheduledAt: string;
+          adherenceStatus: string;
+          status: string;
+          demoMessageBody: string | null;
+          productImageUrl?: string | null;
+        }>;
+        due?: Array<{
+          id: string;
+          medicineName?: string | null;
+          dosage?: string | null;
+          scheduledAt: string;
+          adherenceStatus: string;
+          status: string;
+          demoMessageBody: string | null;
+          productImageUrl?: string | null;
+        }>;
+        missed?: Array<{
+          id: string;
+          medicineName?: string | null;
+          dosage?: string | null;
+          scheduledAt: string;
+          adherenceStatus: string;
+          status: string;
+          demoMessageBody: string | null;
+          productImageUrl?: string | null;
+        }>;
+      };
+      reminders?: Array<{
+        id: string;
+        medicineName?: string | null;
+        scheduledAt: string;
+        status: string;
+        adherenceStatus?: string;
+        demoMessageBody: string | null;
+        productImageUrl?: string | null;
+      }>;
+    };
   } | null>(null);
 
   useEffect(() => {
@@ -762,24 +824,39 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
     rx.items.map((item) => ({ ...item, prescriptionDate: rx.prescriptionDate, doctorName: rx.doctorName })),
   );
 
-  const allReminders = history.prescriptions.flatMap((rx) =>
-    rx.items.flatMap((item) =>
-      (item.reminders ?? []).map((reminder) => ({
-        ...reminder,
-        medicineName: item.medicineName,
-        productImageUrl: item.productImageUrl,
-      })),
-    ),
+  const allReminders =
+    history.medications?.reminders?.map((reminder) => ({
+      ...reminder,
+      medicineName: reminder.medicineName ?? "Medication",
+      productImageUrl: reminder.productImageUrl,
+    })) ??
+    history.prescriptions.flatMap((rx) =>
+      rx.items.flatMap((item) =>
+        (item.reminders ?? []).map((reminder) => ({
+          ...reminder,
+          medicineName: item.medicineName,
+          productImageUrl: item.productImageUrl,
+        })),
+      ),
+    );
+
+  const upcoming = history.medications?.schedule?.upcoming ?? [];
+  const due = history.medications?.schedule?.due ?? [];
+  const missed = history.medications?.schedule?.missed ?? [];
+  const completedRx = history.prescriptions.filter(
+    (rx) => rx.status === "DISPENSED" || rx.status === "CANCELLED",
   );
 
   function itemScheduleSummary(item: (typeof currentMedications)[number]) {
-    return [item.dosage, item.frequency, item.timeOfDay, item.instructions].filter(Boolean).join(" · ");
+    return [item.dosage, item.frequency, item.timeOfDay, item.beforeAfterFood, item.instructions]
+      .filter(Boolean)
+      .join(" · ");
   }
 
   return (
     <div className="space-y-4">
       <RecordSection
-        title="Current medications"
+        title="Current medicines"
         subtitle={`${currentMedications.length} active medicine${currentMedications.length === 1 ? "" : "s"}`}
         icon={Pill}
         empty="No active medications for this couple."
@@ -794,7 +871,7 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
                 <p className="text-xs text-muted-foreground">{itemScheduleSummary(item)}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                {item.doctorName ?? "Doctor"} · Qty {item.quantityDispensed}/{item.quantityPrescribed}
+                Prescribed by {item.doctorName ?? "Doctor"} · Qty {item.quantityDispensed}/{item.quantityPrescribed}
                 {item.duration ? ` · ${item.duration}` : ""}
               </p>
             </div>
@@ -802,9 +879,64 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
         ))}
       </RecordSection>
 
+      <div className="grid gap-4 xl:grid-cols-3">
+        <RecordSection
+          title="Upcoming"
+          subtitle={`${upcoming.length} dose${upcoming.length === 1 ? "" : "s"}`}
+          icon={Bell}
+          empty="No upcoming doses."
+          count={upcoming.length}
+        >
+          {upcoming.map((r) => (
+            <li key={r.id} className="py-2 text-sm">
+              <p className="font-medium">{r.medicineName ?? "Medicine"}</p>
+              <p className="text-xs text-muted-foreground">
+                {[r.dosage, formatDateTime(r.scheduledAt)].filter(Boolean).join(" · ")}
+              </p>
+            </li>
+          ))}
+        </RecordSection>
+        <RecordSection
+          title="Due / missed"
+          subtitle={`${due.length + missed.length} item${due.length + missed.length === 1 ? "" : "s"}`}
+          icon={AlertTriangle}
+          empty="No due or missed doses."
+          count={due.length + missed.length}
+        >
+          {[...due, ...missed].map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <div>
+                <p className="font-medium">{r.medicineName ?? "Medicine"}</p>
+                <p className="text-xs text-muted-foreground">{formatDateTime(r.scheduledAt)}</p>
+              </div>
+              <StatusBadge
+                label={(r.adherenceStatus ?? r.status).replaceAll("_", " ")}
+                tone={reminderStatusTone(r.adherenceStatus ?? r.status)}
+              />
+            </li>
+          ))}
+        </RecordSection>
+        <RecordSection
+          title="Completed / history"
+          subtitle={`${completedRx.length} prescription${completedRx.length === 1 ? "" : "s"}`}
+          icon={ClipboardList}
+          empty="No completed prescriptions yet."
+          count={completedRx.length}
+        >
+          {completedRx.map((rx) => (
+            <li key={rx.id} className="py-2 text-sm">
+              <p className="font-medium">{rx.items.map((i) => i.medicineName).join(", ") || "Prescription"}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatDate(rx.prescriptionDate)} · {rx.status.replaceAll("_", " ")}
+              </p>
+            </li>
+          ))}
+        </RecordSection>
+      </div>
+
       <div className="grid gap-4 xl:grid-cols-2">
         <RecordSection
-          title="Prescriptions"
+          title="Prescription history"
           subtitle={`${history.prescriptions.length} prescription${history.prescriptions.length === 1 ? "" : "s"}`}
           icon={Pill}
           empty="No prescriptions for this couple."
@@ -829,7 +961,7 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
         </RecordSection>
 
         <RecordSection
-          title="Pharmacy sales"
+          title="Dispensing history"
           subtitle={`${history.sales.length} sale${history.sales.length === 1 ? "" : "s"}`}
           icon={CircleDollarSign}
           empty="No pharmacy sales for this couple."
@@ -850,7 +982,7 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
       </div>
 
       <RecordSection
-        title="Medication reminders"
+        title="Medication schedule"
         subtitle={`${allReminders.length} reminder${allReminders.length === 1 ? "" : "s"}`}
         icon={MessageCircle}
         empty="No medication reminders scheduled for this couple."
@@ -868,7 +1000,12 @@ function PatientPharmacyTab({ coupleId }: { coupleId: string }) {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <StatusBadge label={reminder.status.replaceAll("_", " ")} tone={reminderStatusTone(reminder.status)} />
+              <StatusBadge
+                label={(("adherenceStatus" in reminder && reminder.adherenceStatus) || reminder.status).toString().replaceAll("_", " ")}
+                tone={reminderStatusTone(
+                  (("adherenceStatus" in reminder && reminder.adherenceStatus) || reminder.status) as string,
+                )}
+              />
               <Button
                 size="sm"
                 variant="outline"

@@ -947,6 +947,24 @@ export default function SettingsPage() {
                   </Button>
                 </div>
               </div>
+              <div className="rounded-xl border border-primary/15 bg-primary/5 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
+                      <ShieldCheck className="size-4" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-semibold">ABDM / Digital Health</p>
+                      <p className="text-xs text-muted-foreground">
+                        ABHA linking, consent, and record exchange foundation. Secrets stay in server env — never shown here.
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="rounded-lg" asChild>
+                    <Link href="/digital-health">Open Digital Health</Link>
+                  </Button>
+                </div>
+              </div>
               <div>
                 {(
                   [

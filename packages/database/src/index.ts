@@ -31,4 +31,12 @@ export { DEMO_PASSWORD, ensureDefaultRoles, ensureDemoWorkspace, isDemoLogin } f
 export { seedClinicPharmacyData } from "./seed-pharmacy";
 export { seedClinicInsuranceData } from "./seed-insurance";
 export { seedClinicPaymentsData } from "./seed-payments";
+export { seedClinicDigitalHealthData } from "./seed-digital-health";
+export {
+  buildPatient360,
+  buildPatient360ByPatientId,
+  buildUnifiedTimeline,
+  type OperationalAlert,
+  type UnifiedTimelineItem,
+} from "./patient-360";
 export type * from "@prisma/client";

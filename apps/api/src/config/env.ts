@@ -33,6 +33,27 @@ export const env = {
   rateLimitDisabled: process.env["RATE_LIMIT_DISABLED"] === "1" || process.env["NODE_ENV"] === "test",
   integrationEncryptionKey: process.env["INTEGRATION_ENCRYPTION_KEY"],
   mockIntegrationsEnabled: process.env["MOCK_INTEGRATIONS_ENABLED"] === "1",
+  /** In-process WAIT/schedule tick on Railway API. Default on in production. */
+  whatsappAutomationWorker:
+    process.env["WHATSAPP_AUTOMATION_WORKER"] === "1" ||
+    (process.env["WHATSAPP_AUTOMATION_WORKER"] !== "0" &&
+      (process.env["NODE_ENV"] ?? "development") === "production"),
+  whatsappAutomationWorkerIntervalMs: Number.parseInt(
+    process.env["WHATSAPP_AUTOMATION_WORKER_INTERVAL_MS"] ?? "60000",
+    10,
+  ),
+  /** Shared secret for cron/Vercel → POST /whatsapp-automation/internal/tick */
+  whatsappWorkerSecret: process.env["WHATSAPP_WORKER_SECRET"] ?? process.env["CRON_SECRET"] ?? "",
+  /** ABDM / ABHA — server-only. Never NEXT_PUBLIC_. */
+  abdmEnabled: process.env["ABDM_ENABLED"] === "1",
+  abdmEnv: (process.env["ABDM_ENV"] ?? "sandbox").toLowerCase() === "production" ? "production" : "sandbox",
+  abdmBaseUrl: process.env["ABDM_BASE_URL"]?.trim() || "",
+  abdmClientId: process.env["ABDM_CLIENT_ID"]?.trim() || "",
+  abdmClientSecret: process.env["ABDM_CLIENT_SECRET"]?.trim() || "",
+  abdmFacilityId: process.env["ABDM_FACILITY_ID"]?.trim() || "",
+  abdmXCmId: process.env["ABDM_X_CM_ID"]?.trim() || "",
+  /** Allows local SANDBOX link intents without claiming gateway OTP success. */
+  abdmDemoMode: process.env["ABDM_DEMO_MODE"] === "1",
 };
 
 function parseCorsOrigins() {

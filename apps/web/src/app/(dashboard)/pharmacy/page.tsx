@@ -27,13 +27,17 @@ import { ApiError, apiGet } from "@/lib/api/client";
 type Dashboard = {
   totals: {
     products: number;
+    activeProducts?: number;
     stockItems: number;
     lowStock: number;
     outOfStock?: number;
     expiringSoon: number;
+    expired?: number;
     todaySales: number;
     todaySalesAmount: number;
+    todayPrescriptions?: number;
     pendingPrescriptions: number;
+    pendingDispensing?: number;
     upcomingReminders?: number;
   };
   lowStock: Array<{
@@ -145,16 +149,16 @@ export default function PharmacyDashboardPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-        <KpiCard label="Products" value={String(t.products)} icon={Pill} tone="primary" />
-        <KpiCard label="Stock batches" value={String(t.stockItems)} icon={Warehouse} tone="info" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
+        <KpiCard label="Total medicines" value={String(t.products)} icon={Pill} tone="primary" />
+        <KpiCard label="Active products" value={String(t.activeProducts ?? t.products)} icon={Pill} tone="info" />
         <KpiCard label="Low stock" value={String(t.lowStock)} icon={AlertTriangle} tone="warning" />
+        <KpiCard label="Out of stock" value={String(t.outOfStock ?? 0)} icon={Package} tone="danger" />
         <KpiCard label="Expiring soon" value={String(t.expiringSoon)} icon={Package} tone="purple" />
+        <KpiCard label="Expired" value={String(t.expired ?? 0)} icon={AlertTriangle} tone="danger" />
         <KpiCard label="Today's sales" value={String(t.todaySales)} hint={formatINR(t.todaySalesAmount)} icon={IndianRupee} tone="success" />
-        <KpiCard label="Pending Rx" value={String(t.pendingPrescriptions)} icon={Stethoscope} tone="teal" />
-        {t.outOfStock != null && (
-          <KpiCard label="Out of stock" value={String(t.outOfStock)} icon={Package} tone="danger" />
-        )}
+        <KpiCard label="Today's prescriptions" value={String(t.todayPrescriptions ?? 0)} icon={ClipboardList} tone="teal" />
+        <KpiCard label="Pending dispensing" value={String(t.pendingDispensing ?? t.pendingPrescriptions)} icon={Stethoscope} tone="teal" />
         {t.upcomingReminders != null && (
           <KpiCard label="Upcoming reminders" value={String(t.upcomingReminders)} icon={Bell} tone="purple" />
         )}

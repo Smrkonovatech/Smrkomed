@@ -121,6 +121,20 @@ export const careTaskRoutes = new Hono<AppEnv>()
       include: taskInclude,
     });
     await audit(tenant, "care_task.create", "CareTask", task.id, { patient: body.title });
+    void import("../whatsapp-automation/triggers")
+      .then(({ dispatchWhatsAppTrigger }) =>
+        dispatchWhatsAppTrigger({
+          tenant,
+          triggerType: "CARE_TASK_CREATED",
+          triggerEventId: task.id,
+          coupleId: couple.id,
+          vars: {
+            care_task_title: task.title,
+            clinic_name: tenant.clinicName,
+          },
+        }),
+      )
+      .catch(() => undefined);
     return ok(c, serializeTask(task, task.couple ?? undefined), 201);
   })
   .patch("/:id", validate("param", idParam), validate("json", updateCareTaskSchema), async (c) => {

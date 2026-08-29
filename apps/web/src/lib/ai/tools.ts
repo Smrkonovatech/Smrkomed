@@ -1,5 +1,6 @@
 import {
   prisma,
+  buildPatient360,
   type TenantContext,
   writeTenantAuditLog,
 } from "@smrkomed/database";
@@ -396,6 +397,226 @@ export const AI_TOOL_DEFINITIONS = [
       name: "getClinicOutstandingTotal",
       description: "Sum of outstanding invoice balances for the current clinic.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientMedications",
+      description:
+        "List current prescribed medicines for a patient from pharmacy records only. Does not invent dosages.",
+      parameters: {
+        type: "object",
+        properties: {
+          patientId: { type: "string" },
+          coupleId: { type: "string" },
+          coupleSlug: { type: "string" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getMedicationSchedule",
+      description: "Upcoming/due/missed medication reminder slots from stored pharmacy schedules.",
+      parameters: {
+        type: "object",
+        properties: {
+          patientId: { type: "string" },
+          status: { type: "string" },
+          limit: { type: "number" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPrescriptionSummary",
+      description: "Summarize a pharmacy prescription by id (medicines, status, dispensing).",
+      parameters: {
+        type: "object",
+        properties: { prescriptionId: { type: "string" } },
+        required: ["prescriptionId"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPharmacyInventory",
+      description: "Search clinic pharmacy products and available stock. Read-only.",
+      parameters: {
+        type: "object",
+        properties: {
+          q: { type: "string" },
+          limit: { type: "number" },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getLowStockMedicines",
+      description: "List pharmacy products at or below reorder level.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPendingDispensing",
+      description: "List prescriptions pending or partially dispensed.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getMedicationFollowUps",
+      description:
+        "Today's medication follow-ups: due reminders, missed doses, and medicines starting tomorrow.",
+      parameters: {
+        type: "object",
+        properties: { limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientDigitalHealthStatus",
+      description: "ABHA / digital health identity status for a patient (masked). Read-only.",
+      parameters: {
+        type: "object",
+        properties: { patientId: { type: "string" }, coupleId: { type: "string" }, coupleSlug: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientConsents",
+      description: "Digital health information consents for a patient (not WhatsApp messaging consent).",
+      parameters: {
+        type: "object",
+        properties: { patientId: { type: "string" }, coupleId: { type: "string" }, coupleSlug: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientHealthTimeline",
+      description: "Operational digital health timeline from SMRKOMED records only.",
+      parameters: {
+        type: "object",
+        properties: { patientId: { type: "string" }, coupleId: { type: "string" }, coupleSlug: { type: "string" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getRecordSharingStatus",
+      description: "Health record exchange prepare/share statuses for the clinic or a patient.",
+      parameters: {
+        type: "object",
+        properties: { patientId: { type: "string" }, limit: { type: "number" } },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatient360",
+      description:
+        "Full Patient 360 operational view (header, summary cards, attention alerts, meds, digital health). Deterministic; not diagnosis.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientTimeline",
+      description: "Unified chronological timeline from existing module records only.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getCurrentMedications",
+      description: "Current prescribed/dispensed medications for a couple/patient. AI cannot prescribe.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPendingCareTasks",
+      description: "Open care tasks for a couple from Care Loop.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientDocuments",
+      description: "Document metadata for a couple. Blob storage may be unconfigured.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientCommunicationSummary",
+      description: "WhatsApp conversation status summary (no auto-send).",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientPaymentStatus",
+      description: "Payment / outstanding invoice summary for a couple.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "getPatientInsuranceStatus",
+      description: "Insurance policy status summary for a couple.",
+      parameters: coupleRefParams,
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "preparePatientConsultation",
+      description:
+        "Prepare Patient briefing from live records (why here, meds, tasks, payment, ABDM). Not medical advice.",
+      parameters: coupleRefParams,
     },
   },
 ];
@@ -1928,6 +2149,522 @@ export async function runAiTool(
         outstandingInvoiceCount: invoices.length,
         outstandingTotalInr: outstandingTotal,
         currency: "INR",
+        source: "database",
+      };
+    }
+
+    case "getPatientMedications": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      let patientId = optionalString(rawArgs, "patientId");
+      if (!patientId && couple) patientId = couple.primaryPatient.id;
+      if (!patientId) return { error: "patientId or couple context required.", medicines: [] };
+      const prescriptions = await prisma.pharmacyPrescription.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          patientId,
+          status: { not: "CANCELLED" },
+        },
+        include: {
+          doctor: { select: { name: true } },
+          items: { include: { product: { select: { name: true, imageUrl: true } } } },
+        },
+        orderBy: { prescriptionDate: "desc" },
+        take: 20,
+      });
+      return {
+        patientId,
+        medicines: prescriptions.flatMap((rx) =>
+          rx.items.map((item) => ({
+            medicineName: item.medicineName,
+            dosage: item.dosage,
+            frequency: item.frequency,
+            timeOfDay: item.timeOfDay,
+            beforeAfterFood: item.beforeAfterFood,
+            duration: item.duration,
+            instructions: item.instructions,
+            startDate: item.startDate?.toISOString() ?? null,
+            endDate: item.endDate?.toISOString() ?? null,
+            prescribedBy: rx.doctorName ?? rx.doctor?.name ?? null,
+            prescriptionStatus: rx.status,
+          })),
+        ),
+        note: "Data from clinic prescriptions only. Do not invent dosage or medical advice.",
+        source: "database",
+      };
+    }
+
+    case "getMedicationSchedule": {
+      const patientId = optionalString(rawArgs, "patientId");
+      const status = optionalString(rawArgs, "status");
+      const limit = Math.min(Number(rawArgs["limit"] ?? 40), 100);
+      const reminders = await prisma.medicationReminder.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          ...(patientId ? { patientId } : {}),
+          ...(status ? { status: status as never } : {}),
+        },
+        include: {
+          patient: { select: { firstName: true, lastName: true } },
+          prescriptionItem: {
+            select: {
+              medicineName: true,
+              dosage: true,
+              timeOfDay: true,
+              instructions: true,
+            },
+          },
+        },
+        orderBy: { scheduledAt: "asc" },
+        take: limit,
+      });
+      const now = new Date();
+      return {
+        items: reminders.map((r) => {
+          let adherence: string = r.status;
+          if (!["TAKEN", "MISSED", "SKIPPED", "COMPLETED", "CANCELLED", "SKIPPED_NO_CONSENT"].includes(r.status)) {
+            const t = r.scheduledAt.getTime();
+            if (t > now.getTime() + 15 * 60_000) adherence = "UPCOMING";
+            else if (t > now.getTime() - 2 * 3_600_000) adherence = "DUE";
+            else if (["SCHEDULED", "PENDING", "DUE"].includes(r.status)) adherence = "MISSED";
+          }
+          return {
+            id: r.id,
+            patientName: `${r.patient.firstName} ${r.patient.lastName}`.trim(),
+            medicineName: r.prescriptionItem.medicineName,
+            dosage: r.prescriptionItem.dosage,
+            timeOfDay: r.prescriptionItem.timeOfDay,
+            scheduledAt: r.scheduledAt.toISOString(),
+            status: r.status,
+            adherenceStatus: adherence,
+            demoMode: r.demoMode,
+          };
+        }),
+        note: "Schedule from stored pharmacy reminders only.",
+        source: "database",
+      };
+    }
+
+    case "getPrescriptionSummary": {
+      const prescriptionId = optionalString(rawArgs, "prescriptionId");
+      if (!prescriptionId) return { error: "prescriptionId required." };
+      const rx = await prisma.pharmacyPrescription.findFirst({
+        where: { id: prescriptionId, clinicId: tenant.clinicId },
+        include: {
+          patient: true,
+          items: true,
+        },
+      });
+      if (!rx) return { error: "Prescription could not be found." };
+      return {
+        id: rx.id,
+        status: rx.status,
+        patientName: `${rx.patient.firstName} ${rx.patient.lastName}`.trim(),
+        prescriptionDate: rx.prescriptionDate.toISOString(),
+        items: rx.items.map((i) => ({
+          medicineName: i.medicineName,
+          dosage: i.dosage,
+          quantityPrescribed: i.quantityPrescribed,
+          quantityDispensed: i.quantityDispensed,
+          instructions: i.instructions,
+        })),
+        source: "database",
+      };
+    }
+
+    case "getPharmacyInventory": {
+      const q = optionalString(rawArgs, "q")?.trim();
+      const limit = Math.min(Number(rawArgs["limit"] ?? 25), 50);
+      const products = await prisma.pharmacyProduct.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          status: { not: "ARCHIVED" },
+          ...(q
+            ? {
+                OR: [
+                  { name: { contains: q, mode: "insensitive" } },
+                  { genericName: { contains: q, mode: "insensitive" } },
+                  { brandName: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        include: { batches: { select: { availableQuantity: true, expiryDate: true } } },
+        take: limit,
+        orderBy: { name: "asc" },
+      });
+      return {
+        products: products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          genericName: p.genericName,
+          status: p.status,
+          availableQuantity: p.batches.reduce((s, b) => s + b.availableQuantity, 0),
+          reorderLevel: p.reorderLevel,
+          sellingPrice: Number(p.defaultSellingPrice),
+        })),
+        source: "database",
+      };
+    }
+
+    case "getLowStockMedicines": {
+      const limit = Math.min(Number(rawArgs["limit"] ?? 30), 100);
+      const products = await prisma.pharmacyProduct.findMany({
+        where: { clinicId: tenant.clinicId, status: "ACTIVE" },
+        include: { batches: { select: { availableQuantity: true } } },
+        take: 200,
+      });
+      const low = products
+        .map((p) => {
+          const stock = p.batches.reduce((s, b) => s + b.availableQuantity, 0);
+          const threshold = Math.max(p.minimumStock, p.reorderLevel);
+          return { id: p.id, name: p.name, stock, threshold, reorderLevel: p.reorderLevel };
+        })
+        .filter((p) => p.threshold > 0 && p.stock <= p.threshold)
+        .slice(0, limit);
+      return { count: low.length, items: low, source: "database" };
+    }
+
+    case "getPendingDispensing": {
+      const limit = Math.min(Number(rawArgs["limit"] ?? 25), 50);
+      const rows = await prisma.pharmacyPrescription.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          status: { in: ["PENDING", "PARTIALLY_DISPENSED"] },
+        },
+        include: {
+          patient: true,
+          items: { select: { medicineName: true, quantityPrescribed: true, quantityDispensed: true } },
+        },
+        orderBy: { prescriptionDate: "desc" },
+        take: limit,
+      });
+      return {
+        count: rows.length,
+        items: rows.map((rx) => ({
+          id: rx.id,
+          status: rx.status,
+          patientName: `${rx.patient.firstName} ${rx.patient.lastName}`.trim(),
+          prescriptionDate: rx.prescriptionDate.toISOString(),
+          medicines: rx.items.map((i) => i.medicineName),
+        })),
+        source: "database",
+      };
+    }
+
+    case "getMedicationFollowUps": {
+      const limit = Math.min(Number(rawArgs["limit"] ?? 30), 50);
+      const now = new Date();
+      const tomorrowStart = new Date(now);
+      tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+      tomorrowStart.setHours(0, 0, 0, 0);
+      const tomorrowEnd = new Date(tomorrowStart);
+      tomorrowEnd.setHours(23, 59, 59, 999);
+
+      const [due, missed, starting] = await Promise.all([
+        prisma.medicationReminder.findMany({
+          where: {
+            clinicId: tenant.clinicId,
+            status: { in: ["SCHEDULED", "PENDING", "DUE", "SENT"] },
+            scheduledAt: {
+              gte: new Date(now.getTime() - 2 * 3_600_000),
+              lte: new Date(now.getTime() + 2 * 3_600_000),
+            },
+          },
+          include: {
+            patient: true,
+            prescriptionItem: { select: { medicineName: true, dosage: true, timeOfDay: true } },
+          },
+          take: limit,
+          orderBy: { scheduledAt: "asc" },
+        }),
+        prisma.medicationReminder.findMany({
+          where: {
+            clinicId: tenant.clinicId,
+            status: "MISSED",
+            scheduledAt: { gte: new Date(now.getTime() - 7 * 86_400_000) },
+          },
+          include: {
+            patient: true,
+            prescriptionItem: { select: { medicineName: true } },
+          },
+          take: limit,
+          orderBy: { scheduledAt: "desc" },
+        }),
+        prisma.pharmacyPrescriptionItem.findMany({
+          where: {
+            prescription: { clinicId: tenant.clinicId, status: { not: "CANCELLED" } },
+            startDate: { gte: tomorrowStart, lte: tomorrowEnd },
+          },
+          include: {
+            prescription: { include: { patient: true } },
+          },
+          take: limit,
+        }),
+      ]);
+
+      return {
+        due: due.map((r) => ({
+          reminderId: r.id,
+          patientName: `${r.patient.firstName} ${r.patient.lastName}`.trim(),
+          medicineName: r.prescriptionItem.medicineName,
+          dosage: r.prescriptionItem.dosage,
+          scheduledAt: r.scheduledAt.toISOString(),
+        })),
+        missed: missed.map((r) => ({
+          reminderId: r.id,
+          patientName: `${r.patient.firstName} ${r.patient.lastName}`.trim(),
+          medicineName: r.prescriptionItem.medicineName,
+          scheduledAt: r.scheduledAt.toISOString(),
+        })),
+        startingTomorrow: starting.map((i) => ({
+          medicineName: i.medicineName,
+          patientName: `${i.prescription.patient.firstName} ${i.prescription.patient.lastName}`.trim(),
+          startDate: i.startDate?.toISOString() ?? null,
+          timeOfDay: i.timeOfDay,
+        })),
+        note: "Operational follow-ups from pharmacy data. Do not prescribe or change doses.",
+        source: "database",
+      };
+    }
+
+    case "getPatientDigitalHealthStatus": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      let patientId = optionalString(rawArgs, "patientId");
+      if (!patientId && couple) patientId = couple.primaryPatient.id;
+      if (!patientId) return { error: "patientId or couple context required." };
+      const identity = await prisma.digitalHealthIdentity.findFirst({
+        where: { clinicId: tenant.clinicId, patientId },
+      });
+      return {
+        patientId,
+        status: identity?.status ?? "NOT_LINKED",
+        abhaMasked: identity?.abhaMasked ?? null,
+        verificationStatus: identity?.verificationStatus ?? null,
+        sandboxMode: identity?.sandboxMode ?? true,
+        note: "ABHA link ≠ consent. Do not approve or link via AI.",
+        source: "database",
+      };
+    }
+
+    case "getPatientConsents": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      let patientId = optionalString(rawArgs, "patientId");
+      if (!patientId && couple) patientId = couple.primaryPatient.id;
+      if (!patientId) return { error: "patientId or couple context required." };
+      const rows = await prisma.digitalHealthConsent.findMany({
+        where: { clinicId: tenant.clinicId, patientId },
+        orderBy: { requestedAt: "desc" },
+        take: 30,
+      });
+      return {
+        patientId,
+        consents: rows.map((r) => ({
+          id: r.id,
+          purpose: r.purpose,
+          status: r.status,
+          expiresAt: r.expiresAt?.toISOString() ?? null,
+          sandboxMode: r.sandboxMode,
+        })),
+        note: "Digital health consents only. AI must not approve/revoke.",
+        source: "database",
+      };
+    }
+
+    case "getPatientHealthTimeline": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      let patientId = optionalString(rawArgs, "patientId");
+      if (!patientId && couple) patientId = couple.primaryPatient.id;
+      if (!patientId) return { error: "patientId or couple context required." };
+      const [rx, sales] = await Promise.all([
+        prisma.pharmacyPrescription.findMany({
+          where: { clinicId: tenant.clinicId, patientId },
+          include: { items: { select: { medicineName: true } } },
+          orderBy: { prescriptionDate: "desc" },
+          take: 10,
+        }),
+        prisma.pharmacySale.findMany({
+          where: { clinicId: tenant.clinicId, patientId },
+          orderBy: { soldAt: "desc" },
+          take: 10,
+        }),
+      ]);
+      return {
+        patientId,
+        recent: [
+          ...rx.map((r) => ({
+            type: "Prescription",
+            date: r.prescriptionDate.toISOString(),
+            title: r.items.map((i) => i.medicineName).join(", "),
+            status: r.status,
+          })),
+          ...sales.map((s) => ({
+            type: "Dispensed",
+            date: s.soldAt.toISOString(),
+            title: s.invoiceNumber,
+            status: s.paymentStatus,
+          })),
+        ].sort((a, b) => b.date.localeCompare(a.date)),
+        note: "Summary of existing SMRKOMED records only.",
+        source: "database",
+      };
+    }
+
+    case "getRecordSharingStatus": {
+      const patientId = optionalString(rawArgs, "patientId");
+      const limit = Math.min(Number(rawArgs["limit"] ?? 25), 50);
+      const rows = await prisma.healthRecordExchange.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          ...(patientId ? { patientId } : {}),
+        },
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      });
+      return {
+        items: rows.map((r) => ({
+          id: r.id,
+          patientId: r.patientId,
+          status: r.status,
+          purpose: r.purpose,
+          failureReason: r.failureReason,
+          sandboxMode: r.sandboxMode,
+          sharedAt: r.sharedAt?.toISOString() ?? null,
+        })),
+        note: "SHARED only when provider confirmed. AI cannot share records.",
+        source: "database",
+      };
+    }
+
+    case "getPatient360": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return {
+        header: view.header,
+        summaryCards: view.summaryCards,
+        attention: view.attention,
+        digitalHealth: view.digitalHealth,
+        note: "Operational Patient 360. Not diagnosis. AI cannot prescribe or mutate without confirmation.",
+        source: "database",
+      };
+    }
+
+    case "getPatientTimeline": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return {
+        timeline: view.timeline,
+        note: "Derived from existing records only.",
+        source: "database",
+      };
+    }
+
+    case "getCurrentMedications": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return { medications: view.medications, source: "database" };
+    }
+
+    case "getPendingCareTasks": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const tasks = await prisma.careTask.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          coupleId: couple.id,
+          status: { in: ["WAITING", "IN_PROGRESS", "OVERDUE"] },
+        },
+        orderBy: { dueDate: "asc" },
+        take: 30,
+      });
+      return {
+        couple: coupleLabel(couple),
+        tasks: tasks.map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          dueDate: t.dueDate?.toISOString() ?? null,
+        })),
+        source: "database",
+      };
+    }
+
+    case "getPatientDocuments": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const docs = await prisma.document.findMany({
+        where: { clinicId: tenant.clinicId, coupleId: couple.id },
+        orderBy: { createdAt: "desc" },
+        take: 40,
+        include: { category: { select: { name: true } } },
+      });
+      const storageConfigured = docs.some((d) => Boolean(d.storageKey));
+      return {
+        documents: docs.map((d) => ({
+          id: d.id,
+          name: d.name,
+          status: d.status,
+          category: d.category?.name ?? null,
+          storage: d.storageKey ? "STORED" : "METADATA_ONLY",
+        })),
+        documentStorageNote: storageConfigured
+          ? null
+          : "Document storage is not configured.",
+        source: "database",
+      };
+    }
+
+    case "getPatientCommunicationSummary": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return {
+        whatsappStatus: view.summaryCards.whatsappStatus,
+        conversationId: view.summaryCards.conversationId,
+        note: "AI cannot send WhatsApp automatically. Consent and automation rules apply.",
+        source: "database",
+      };
+    }
+
+    case "getPatientPaymentStatus": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return {
+        paymentStatus: view.summaryCards.paymentStatus,
+        outstandingAmountInr: view.summaryCards.outstandingAmountInr,
+        source: "database",
+      };
+    }
+
+    case "getPatientInsuranceStatus": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return {
+        insuranceStatus: view.summaryCards.insuranceStatus,
+        policyCount: view.summaryCards.insurancePolicyCount,
+        source: "database",
+      };
+    }
+
+    case "preparePatientConsultation": {
+      const couple = await resolveCouple(tenant, coupleArgs(rawArgs), page);
+      if (!couple) return { error: "I don't have that information in SmrkoMed." };
+      const view = await buildPatient360(tenant, couple.id);
+      if (!view) return { error: "I don't have that information in SmrkoMed." };
+      return {
+        preparePatient: view.preparePatient,
+        attention: view.attention,
+        note: "Briefing only. Review clinically before acting. AI cannot diagnose or prescribe.",
         source: "database",
       };
     }

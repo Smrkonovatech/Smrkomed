@@ -121,6 +121,9 @@ enum ConversationStatus {
   OPEN
   WAITING_PATIENT
   WAITING_STAFF
+  HUMAN_HANDOFF
+  ESCALATED
+  RESOLVED
   CLOSED
 }
 
@@ -431,6 +434,15 @@ model Clinic {
   billingPayments BillingPayment[]
   billingRefunds BillingRefund[]
   paymentWebhookEvents PaymentWebhookEvent[]
+  whatsappFlows WhatsAppFlow[]
+  whatsappFlowExecutions WhatsAppFlowExecution[]
+  whatsappKnowledgeArticles WhatsAppKnowledgeArticle[]
+  whatsappClinicSettings WhatsAppClinicSettings?
+  communicationPreferences CommunicationPreference[]
+  whatsappCampaigns WhatsAppCampaign[]
+  digitalHealthIdentities DigitalHealthIdentity[]
+  digitalHealthConsents DigitalHealthConsent[]
+  healthRecordExchanges HealthRecordExchange[]
 
   @@index([organizationId])
 }
@@ -480,9 +492,15 @@ model User {
   pharmacyDispenses      PharmacyPrescription[]  @relation("PharmacyPrescriptionDispenser")
   insuranceClaimsAssigned InsuranceClaim[] @relation("InsuranceClaimAssignee")
   insuranceQueriesAssigned InsuranceQuery[] @relation("InsuranceQueryAssignee")
+  whatsappFlowsCreated WhatsAppFlow[] @relation("WhatsAppFlowCreator")
+  whatsappKnowledgeArticles WhatsAppKnowledgeArticle[] @relation("WhatsAppKbAuthor")
+  assignedConversations Conversation[] @relation("ConversationAssignee")
   billingInvoicesCreated BillingInvoice[] @relation("BillingInvoiceCreator")
   billingPaymentsCreated BillingPayment[] @relation("BillingPaymentCreator")
   billingRefundsCreated BillingRefund[] @relation("BillingRefundCreator")
+  whatsappCampaignsCreated WhatsAppCampaign[] @relation("WhatsAppCampaignCreator")
+  digitalHealthConsentsRequested DigitalHealthConsent[] @relation("DigitalHealthConsentRequester")
+  healthRecordExchangesCreated HealthRecordExchange[] @relation("HealthRecordExchangeCreator")
 }
 
 model Role {
@@ -561,6 +579,11 @@ model Patient {
   insuranceClaimsAsPatient InsuranceClaim[] @relation("InsuranceClaimPatient")
   billingInvoices BillingInvoice[]
   billingPayments BillingPayment[]
+  communicationPreference CommunicationPreference?
+  whatsappCampaignRecipients WhatsAppCampaignRecipient[]
+  digitalHealthIdentity DigitalHealthIdentity?
+  digitalHealthConsents DigitalHealthConsent[]
+  healthRecordExchanges HealthRecordExchange[]
 
   @@index([clinicId])
   @@index([clinicId, whatsappNumber])
@@ -845,23 +868,32 @@ model ConsultationNote {
 // ─── Conversations & AI ──────────────────────────────────────────────────────
 
 model Conversation {
-  id           String              @id @default(cuid())
-  clinicId     String
-  coupleId     String?
-  patientId    String?
-  leadId       String?
-  contactPhone String?
-  unmatched    Boolean             @default(false)
-  channel      ConversationChannel @default(WHATSAPP)
-  status       ConversationStatus  @default(OPEN)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id               String              @id @default(cuid())
+  clinicId         String
+  coupleId         String?
+  patientId        String?
+  leadId           String?
+  contactPhone     String?
+  unmatched        Boolean             @default(false)
+  channel          ConversationChannel @default(WHATSAPP)
+  status           ConversationStatus  @default(OPEN)
+  /// Staff owning this thread (clinic membership validated on assign)
+  assignedStaffId  String?
+  priority         String              @default("NORMAL")
+  handoffAt        DateTime?
+  handoffReason    String?
+  /// When set, automation triggers for this patient conversation should stay paused
+  automationPausedAt DateTime?
+  lastStaffReadAt  DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
 
-  clinic   Clinic    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  couple   Couple?   @relation(fields: [coupleId], references: [id])
-  patient  Patient?  @relation(fields: [patientId], references: [id])
-  lead     Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  messages Message[]
+  clinic         Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple         Couple? @relation(fields: [coupleId], references: [id])
+  patient        Patient? @relation(fields: [patientId], references: [id])
+  lead           Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedStaff  User?   @relation("ConversationAssignee", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  messages       Message[]
   aiInteractions AIInteraction[]
 
   @@index([clinicId, channel])
@@ -869,6 +901,8 @@ model Conversation {
   @@index([coupleId])
   @@index([leadId])
   @@index([clinicId, contactPhone])
+  @@index([clinicId, assignedStaffId])
+  @@index([clinicId, status])
 }
 
 model Message {
@@ -1370,6 +1404,11 @@ enum PharmacyPrescriptionStatus {
 enum MedicationReminderStatus {
   PENDING
   SCHEDULED
+  DUE
+  TAKEN
+  MISSED
+  SKIPPED
+  COMPLETED
   SENT
   DELIVERED
   FAILED
@@ -1654,6 +1693,7 @@ model PharmacyPrescriptionItem {
   dosage             String?
   frequency          String?
   duration           String?
+  route              String?
   instructions       String?
   timeOfDay          String?
   beforeAfterFood    String?
@@ -2189,4 +2229,373 @@ model PaymentWebhookEvent {
   @@unique([provider, externalEventId])
   @@index([clinicId, receivedAt])
   @@index([paymentId])
+}
+
+// ─── WhatsApp Automation Center (Flows + KB) ─────────────────────────────────
+
+enum WhatsAppFlowStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum WhatsAppFlowExecutionStatus {
+  PENDING
+  RUNNING
+  WAITING
+  COMPLETED
+  FAILED
+  CANCELLED
+  ESCALATED
+}
+
+enum WhatsAppFlowStepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum WhatsAppKnowledgeStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model WhatsAppFlow {
+  id              String            @id @default(cuid())
+  clinicId        String
+  name            String
+  description     String?
+  status          WhatsAppFlowStatus @default(DRAFT)
+  triggerType     String
+  /// JSON graph: { nodes: FlowNode[], edges: FlowEdge[] }
+  definition      Json
+  isLibrary       Boolean           @default(false)
+  libraryKey      String?
+  createdById     String?
+  lastRunAt       DateTime?
+  successCount    Int               @default(0)
+  failureCount    Int               @default(0)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  clinic     Clinic                  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdBy  User?                   @relation("WhatsAppFlowCreator", fields: [createdById], references: [id])
+  executions WhatsAppFlowExecution[]
+
+  @@index([clinicId, status])
+  @@index([clinicId, triggerType])
+  @@index([clinicId, libraryKey])
+}
+
+model WhatsAppFlowExecution {
+  id               String                      @id @default(cuid())
+  clinicId         String
+  flowId           String
+  status           WhatsAppFlowExecutionStatus @default(PENDING)
+  triggerType      String
+  triggerEventId   String?
+  idempotencyKey   String
+  patientId        String?
+  coupleId         String?
+  conversationId   String?
+  currentNodeId    String?
+  context          Json?
+  error            String?
+  resumeAt         DateTime?
+  startedAt        DateTime                    @default(now())
+  completedAt      DateTime?
+  updatedAt        DateTime                    @updatedAt
+
+  clinic Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  flow   WhatsAppFlow              @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  steps  WhatsAppFlowExecutionStep[]
+
+  @@unique([clinicId, idempotencyKey])
+  @@index([clinicId, status])
+  @@index([flowId, status])
+  @@index([clinicId, resumeAt])
+  @@index([patientId])
+  @@index([conversationId])
+}
+
+model WhatsAppFlowExecutionStep {
+  id          String                 @id @default(cuid())
+  executionId String
+  nodeId      String
+  nodeType    String
+  status      WhatsAppFlowStepStatus @default(PENDING)
+  input       Json?
+  output      Json?
+  error       String?
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime               @default(now())
+
+  execution WhatsAppFlowExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId])
+}
+
+model WhatsAppKnowledgeArticle {
+  id          String                  @id @default(cuid())
+  clinicId    String
+  title       String
+  category    String
+  content     String
+  /// Comma-separated or free-text keywords for search / AI retrieval hints
+  keywords    String?
+  /// Optional specialty pack label (FERTILITY, DENTAL, DERMATOLOGY, MATERNITY, AESTHETICS, GENERAL, CUSTOM)
+  specialty   String?
+  status      WhatsAppKnowledgeStatus @default(DRAFT)
+  updatedById String?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  clinic    Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  updatedBy User?  @relation("WhatsAppKbAuthor", fields: [updatedById], references: [id])
+
+  @@index([clinicId, status])
+  @@index([clinicId, category])
+  @@index([clinicId, specialty])
+}
+
+/// Clinic WhatsApp communication safety settings (working hours, frequency, consent mode).
+model WhatsAppClinicSettings {
+  id                     String   @id @default(cuid())
+  clinicId               String   @unique
+  /// Json map of weekday → { start: "HH:mm", end: "HH:mm" } | null (closed)
+  workingHours           Json?
+  timezone               String   @default("Asia/Kolkata")
+  maxMessagesPerDay      Int      @default(5)
+  minDelayMinutes        Int      @default(30)
+  /// When true, automation SEND requires Consent GRANTED (not merely "not revoked")
+  requireConsentGranted  Boolean  @default(false)
+  /// When true, ESCALATE / urgent path may bypass working-hours wait
+  urgentBypassHours      Boolean  @default(true)
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+}
+
+/// Per-patient channel / reminder preferences (clinical vs marketing separated).
+model CommunicationPreference {
+  id                    String   @id @default(cuid())
+  clinicId              String
+  patientId             String   @unique
+  whatsappEnabled       Boolean  @default(true)
+  smsEnabled            Boolean  @default(false)
+  emailEnabled          Boolean  @default(false)
+  phoneEnabled          Boolean  @default(true)
+  /// Marketing / promotional (separate from clinical ops)
+  marketingOptIn        Boolean  @default(false)
+  appointmentReminders  Boolean  @default(true)
+  careReminders         Boolean  @default(true)
+  paymentReminders      Boolean  @default(true)
+  pharmacyReminders     Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([clinicId])
+}
+
+enum WhatsAppCampaignStatus {
+  DRAFT
+  READY
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+/// Controlled WhatsApp broadcast (template-only, consent-gated).
+model WhatsAppCampaign {
+  id                 String                 @id @default(cuid())
+  clinicId           String
+  name               String
+  status             WhatsAppCampaignStatus @default(DRAFT)
+  templateName       String
+  templateLanguage   String                 @default("en")
+  templateId         String?
+  /// Audience filter Json (status, inactiveDays, specialty, etc.)
+  audienceFilter     Json?
+  scheduledAt        DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  confirmedAt        DateTime?
+  createdById        String?
+  audienceCount      Int                    @default(0)
+  eligibleCount      Int                    @default(0)
+  excludedCount      Int                    @default(0)
+  sentCount          Int                    @default(0)
+  deliveredCount     Int                    @default(0)
+  readCount          Int                    @default(0)
+  failedCount        Int                    @default(0)
+  repliedCount       Int                    @default(0)
+  skippedCount       Int                    @default(0)
+  lastError          String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  clinic    Clinic                     @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  createdBy User?                      @relation("WhatsAppCampaignCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  recipients WhatsAppCampaignRecipient[]
+
+  @@index([clinicId, status])
+  @@index([clinicId, scheduledAt])
+}
+
+model WhatsAppCampaignRecipient {
+  id           String   @id @default(cuid())
+  campaignId   String
+  patientId    String
+  clinicId     String
+  status       String   @default("PENDING")
+  skipReason   String?
+  messageId    String?
+  sentAt       DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  campaign WhatsAppCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  patient  Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([campaignId, patientId])
+  @@index([campaignId, status])
+  @@index([clinicId])
+}
+
+// ─── Stage 7: Digital Health / ABHA / ABDM foundation ─────────────────────────
+
+enum AbhaLinkStatus {
+  NOT_LINKED
+  PENDING
+  LINKED
+  VERIFICATION_REQUIRED
+  ERROR
+}
+
+enum DigitalHealthConsentStatus {
+  DRAFT
+  PENDING
+  ACTIVE
+  EXPIRED
+  REVOKED
+  REJECTED
+}
+
+enum HealthRecordExchangeStatus {
+  DRAFT
+  CONSENT_REQUIRED
+  CONSENT_GRANTED
+  PREPARING
+  PREPARED
+  SHARING
+  SHARED
+  FAILED
+  EXPIRED
+  REVOKED
+}
+
+/// Clinic-scoped ABHA / digital health identity link for a SMRKOMED patient.
+/// Does not replace Patient. Messaging Consent remains separate.
+model DigitalHealthIdentity {
+  id                 String         @id @default(cuid())
+  clinicId           String
+  patientId          String         @unique
+  /// SHA-256 of normalized ABHA digits — for uniqueness; never log raw ABHA.
+  abhaNumberHash     String?
+  /// Masked display only, e.g. XX-XXXX-XXXX-1234
+  abhaMasked         String?
+  abhaAddress        String?
+  status             AbhaLinkStatus @default(NOT_LINKED)
+  verificationStatus String?
+  linkedAt           DateTime?
+  lastVerifiedAt     DateTime?
+  /// DEMO_SEED | LINK_INTENT | ABDM_GATEWAY
+  source             String?
+  sandboxMode        Boolean        @default(true)
+  errorMessage       String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  clinic  Clinic  @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, abhaNumberHash])
+  @@index([clinicId, status])
+}
+
+/// ABDM-oriented health-information consent (not WhatsApp/SMS Consent).
+model DigitalHealthConsent {
+  id                String                      @id @default(cuid())
+  clinicId          String
+  patientId         String
+  purpose           String
+  requestedById     String?
+  requestedByName   String?
+  requestedAt       DateTime                    @default(now())
+  expiresAt         DateTime?
+  /// JSON string array of categories, e.g. ["Prescription","Consultation"]
+  dataCategories    Json
+  status            DigitalHealthConsentStatus  @default(PENDING)
+  externalConsentId String?
+  careTaskId        String?
+  notes             String?
+  decidedAt         DateTime?
+  sandboxMode       Boolean                     @default(true)
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  clinic      Clinic               @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient     Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  requestedBy User?                @relation("DigitalHealthConsentRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  exchanges   HealthRecordExchange[]
+
+  @@index([clinicId, status])
+  @@index([patientId, status])
+  @@index([clinicId, expiresAt])
+}
+
+/// Prepare / share lifecycle for interoperability. SHARED only after provider confirms.
+model HealthRecordExchange {
+  id                  String                     @id @default(cuid())
+  clinicId            String
+  patientId           String
+  consentId           String?
+  status              HealthRecordExchangeStatus @default(DRAFT)
+  purpose             String
+  recordTypes         Json
+  dateFrom            DateTime?
+  dateTo              DateTime?
+  receivingEntity     String?
+  /// Interoperability DTO snapshot (SMRKOMED → mapped resources). Not claimed ABDM-compliant.
+  preparedPayload     Json?
+  idempotencyKey      String
+  externalReferenceId String?
+  failureReason       String?
+  sandboxMode         Boolean                    @default(true)
+  createdById         String?
+  preparedAt          DateTime?
+  sharedAt            DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  clinic    Clinic                @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient   Patient               @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  consent   DigitalHealthConsent? @relation(fields: [consentId], references: [id], onDelete: SetNull)
+  createdBy User?                 @relation("HealthRecordExchangeCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@unique([clinicId, idempotencyKey])
+  @@index([clinicId, status])
+  @@index([patientId, status])
 }

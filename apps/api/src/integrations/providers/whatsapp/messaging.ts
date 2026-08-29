@@ -3,7 +3,7 @@ import { prisma, writeAuditLog, type TenantContext } from "@smrkomed/database";
 import { IntegrationError } from "../../core/errors";
 import { credentialService } from "../../credentials/service";
 import { createMemoryRateLimiter } from "../../../middleware/rate-limit";
-import { sendTemplateMessage } from "./graph";
+import { sendTemplateMessage, sendTextMessage } from "./graph";
 import { normalizeWhatsAppPhone } from "./phone";
 import { isSendableTemplateStatus } from "./templates";
 
@@ -149,6 +149,137 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
     throw error instanceof IntegrationError
       ? error
       : new IntegrationError("MESSAGE_SEND_FAILED", "WhatsApp could not send this template.", 500);
+  }
+}
+
+/**
+ * Session free-text reply (staff). Requires an open customer-care window on Meta's side.
+ * Never used for mass broadcast. Marks sender as STAFF (not doctor persona).
+ */
+export async function sendWhatsAppSessionText(
+  ctx: TenantContext,
+  input: { conversationId: string; body: string },
+) {
+  assertRateLimit(ctx.userId, ctx.clinicId);
+  const body = input.body.trim();
+  if (!body || body.length > 4096) {
+    throw new IntegrationError("INVALID_TEMPLATE", "Message body is required (max 4096 chars).", 422);
+  }
+
+  const integration = await prisma.integration.findUnique({
+    where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
+  });
+  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+    throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
+  });
+  if (!account) {
+    throw new IntegrationError("PHONE_NOT_REGISTERED", "No active WhatsApp phone number is connected.", 409);
+  }
+
+  const conversation = await resolveConversation(ctx, { conversationId: input.conversationId }, integration.id);
+  const recipient = conversation.contactPhone;
+  if (!recipient) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No WhatsApp number is associated with this conversation.", 422);
+  }
+
+  if (conversation.patientId) {
+    const consent = await prisma.consent.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: conversation.patientId,
+        channel: "WHATSAPP",
+        consentType: "WHATSAPP_COMMUNICATION",
+        status: "REVOKED",
+      },
+    });
+    if (consent) {
+      throw new IntegrationError("INVALID_RECIPIENT", "This patient has revoked WhatsApp communication.", 403);
+    }
+    const prefs = await prisma.communicationPreference.findUnique({
+      where: { patientId: conversation.patientId },
+    });
+    if (prefs && !prefs.whatsappEnabled) {
+      throw new IntegrationError("INVALID_RECIPIENT", "Patient has disabled WhatsApp in communication preferences.", 403);
+    }
+  }
+
+  const credentials = credentialService.decrypt(integration.encryptedCredentials);
+  const token = credentials.accessToken ?? credentials.systemUserToken;
+  if (!token) {
+    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  }
+
+  await writeAuditLog({
+    actorId: ctx.userId,
+    organizationId: ctx.organizationId,
+    clinicId: ctx.clinicId,
+    action: "whatsapp.message.send.session.attempt",
+    entityType: "Conversation",
+    entityId: conversation.id,
+    metadata: { kind: "session_text" },
+  });
+
+  try {
+    const result = await sendTextMessage({
+      phoneNumberId: account.phoneNumberId,
+      accessToken: token,
+      to: recipient,
+      body,
+    });
+    const messages = result["messages"];
+    const providerMessageId =
+      Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
+        ? String((messages[0] as { id?: string }).id ?? "")
+        : "";
+    const stored = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType: "STAFF",
+        content: body,
+        messageType: "text",
+        providerMessageId: providerMessageId || null,
+        status: "SENT",
+      },
+    });
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        status: conversation.status === "CLOSED" ? "OPEN" : "WAITING_PATIENT",
+        updatedAt: new Date(),
+        lastStaffReadAt: new Date(),
+      },
+    });
+    await writeAuditLog({
+      actorId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+      action: "whatsapp.message.send.session.success",
+      entityType: "Message",
+      entityId: stored.id,
+      metadata: {},
+    });
+    return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+  } catch (error) {
+    await writeAuditLog({
+      actorId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+      action: "whatsapp.message.send.session.failure",
+      entityType: "Conversation",
+      entityId: conversation.id,
+      metadata: {},
+    });
+    throw error instanceof IntegrationError
+      ? error
+      : new IntegrationError(
+          "MESSAGE_SEND_FAILED",
+          "WhatsApp could not send this message. The 24-hour session window may be closed — use an approved template.",
+          500,
+        );
   }
 }
 

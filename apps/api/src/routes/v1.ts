@@ -24,6 +24,8 @@ import { insuranceRoutes } from "../modules/insurance";
 import { paymentRoutes } from "../modules/payments";
 import { paymentWebhookRoutes } from "../modules/payments/webhooks";
 import { publicIntegrationRoutes } from "../modules/integrations/public";
+import { whatsappAutomationRoutes } from "../modules/whatsapp-automation";
+import { digitalHealthRoutes } from "../modules/digital-health";
 import type { AppEnv } from "../types";
 
 const protectedRoutes = new Hono<AppEnv>();
@@ -48,6 +50,8 @@ protectedRoutes.route("/pharmacy", pharmacyRoutes);
 protectedRoutes.route("/insurance", insuranceRoutes);
 protectedRoutes.route("/payments", paymentRoutes);
 protectedRoutes.route("/integrations", integrationRoutes);
+protectedRoutes.route("/whatsapp-automation", whatsappAutomationRoutes);
+protectedRoutes.route("/digital-health", digitalHealthRoutes);
 
 export const v1 = new Hono<AppEnv>();
 v1.route("/health", healthRoutes);

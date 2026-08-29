@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
-import { writeTenantAuditLog, type TenantContext } from "@smrkomed/database";
+import { prisma, writeTenantAuditLog, type TenantContext } from "@smrkomed/database";
 
 import { AI_LIMITS, AI_MODEL, AiConfigError, AiUserError, assertOpenAIConfigured } from "./config";
 import { coupleSlugFromPath, describePageContext, normalizePageContext } from "./context";
@@ -9,6 +9,29 @@ import { SMRKO_SYSTEM_PROMPT } from "./prompts";
 import { isMedicalDecisionRequest, sanitizeUserFacingError } from "./safety";
 import { AI_TOOL_DEFINITIONS, executeToolAndSerialize } from "./tools";
 import type { AiChatMessage, AiChatResult, AiPageContext, AiProposedAction, AiToolName } from "./types";
+
+async function loadClinicKnowledgeSnippet(clinicId: string) {
+  try {
+    const articles = await prisma.whatsAppKnowledgeArticle.findMany({
+      where: { clinicId, status: "PUBLISHED" },
+      orderBy: { updatedAt: "desc" },
+      take: 16,
+      select: { title: true, category: true, content: true, keywords: true, specialty: true },
+    });
+    if (!articles.length) {
+      return "\n\nClinic WhatsApp Knowledge Base: no published articles. If asked about clinic-specific policy not in SmrkoMed records, say the information is unavailable and staff should confirm.";
+    }
+    const body = articles
+      .map((a) => {
+        const meta = [a.category, a.specialty, a.keywords].filter(Boolean).join(" · ");
+        return `### ${a.title}${meta ? ` (${meta})` : ""}\n${a.content.slice(0, 1200)}`;
+      })
+      .join("\n\n");
+    return `\n\nClinic WhatsApp Knowledge Base (PUBLISHED only — clinic-scoped):\n${body}\n\nRules: Use only published knowledge + SmrkoMed records. Never invent clinic policies, dosages, or clinical advice. Never diagnose, prescribe, or auto-send WhatsApp. If information is not in the knowledge base or records, clearly say it is unavailable.`;
+  } catch {
+    return "";
+  }
+}
 
 function getClient() {
   return new OpenAI({ apiKey: assertOpenAIConfigured() });
@@ -110,10 +133,12 @@ export async function runSmrkoAiChat(input: {
     ? "\n\nNote: The user may be asking for a clinical decision. Remind them that Smrko AI summarizes records only and clinical judgment remains with the clinician."
     : "";
 
+  const knowledge = await loadClinicKnowledgeSnippet(input.tenant.clinicId);
+
   const openaiMessages: ChatCompletionMessageParam[] = [
     {
       role: "system",
-      content: `${SMRKO_SYSTEM_PROMPT}\n\nClinic: ${input.tenant.clinicName}\nUser role: ${input.tenant.role}\n${describePageContext(page)}${medicalHint}`,
+      content: `${SMRKO_SYSTEM_PROMPT}\n\nClinic: ${input.tenant.clinicName}\nUser role: ${input.tenant.role}\n${describePageContext(page)}${medicalHint}${knowledge}`,
     },
     ...messages.map((m) => ({ role: m.role, content: m.content }) as ChatCompletionMessageParam),
   ];

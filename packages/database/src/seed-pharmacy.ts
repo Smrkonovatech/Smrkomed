@@ -183,6 +183,90 @@ const DEMO_PRODUCTS = [
     imageUrl: "/pharmacy/surgical-gloves.svg",
     description: "Demo consumable item for non-prescription pharmacy stock.",
   },
+  {
+    key: "pcm",
+    name: "Paracetamol 650 mg",
+    genericName: "Paracetamol",
+    brandName: "Crocin Demo",
+    category: "Pain relief",
+    subCategory: "Tablet",
+    manufacturer: "Demo Analgesics",
+    medicineType: "Tablet",
+    packSize: "15 tablets",
+    unit: "tablet",
+    prescriptionRequired: false,
+    minimumStock: 50,
+    reorderLevel: 80,
+    purchase: 12,
+    sell: 28,
+    mrp: 32,
+    gst: 12,
+    imageUrl: "/pharmacy/paracetamol-650mg.svg",
+    description: "Demo pain-relief tablet for general medicine catalogue. Sample packaging only.",
+  },
+  {
+    key: "omep",
+    name: "Omeprazole 20 mg",
+    genericName: "Omeprazole",
+    brandName: "Omez Demo",
+    category: "Gastro",
+    subCategory: "Capsule",
+    manufacturer: "Demo Gastro Care",
+    medicineType: "Capsule",
+    packSize: "15 capsules",
+    unit: "capsule",
+    prescriptionRequired: true,
+    minimumStock: 30,
+    reorderLevel: 45,
+    purchase: 40,
+    sell: 75,
+    mrp: 85,
+    gst: 12,
+    imageUrl: "/pharmacy/omeprazole-20mg.svg",
+    description: "Demo gastro medicine for prescription-required inventory demos.",
+  },
+  {
+    key: "clob",
+    name: "Clobetasol Cream 0.05%",
+    genericName: "Clobetasol Propionate",
+    brandName: "Tenovate Demo",
+    category: "Dermatology",
+    subCategory: "Cream",
+    manufacturer: "Demo Derma Labs",
+    medicineType: "Cream",
+    packSize: "15 g tube",
+    unit: "tube",
+    prescriptionRequired: true,
+    minimumStock: 10,
+    reorderLevel: 15,
+    purchase: 90,
+    sell: 160,
+    mrp: 180,
+    gst: 12,
+    imageUrl: "/pharmacy/clobetasol-cream.svg",
+    description: "Demo dermatology cream for specialty clinic pharmacy stock. Not a medical recommendation.",
+  },
+  {
+    key: "oldfolic",
+    name: "Folic Acid 5 mg (Legacy Pack)",
+    genericName: "Folic Acid",
+    brandName: "Folvite Legacy Demo",
+    category: "Supplement",
+    subCategory: "Tablet",
+    manufacturer: "Demo Pharma Labs",
+    medicineType: "Tablet",
+    packSize: "30 tablets",
+    unit: "tablet",
+    prescriptionRequired: false,
+    minimumStock: 0,
+    reorderLevel: 0,
+    purchase: 6,
+    sell: 14,
+    mrp: 18,
+    gst: 5,
+    imageUrl: "/pharmacy/folic-acid-5mg.svg",
+    description: "Inactive demo SKU kept for catalogue history. Do not dispense.",
+  },
 ] as const;
 
 function buildDemoWhatsAppMessage(input: {
@@ -338,7 +422,7 @@ export async function seedClinicPharmacyData(input: {
         gstPercent: money(p.gst),
         imageUrl: p.imageUrl,
         description: p.description,
-        status: "ACTIVE",
+        status: p.key === "oldfolic" ? "INACTIVE" : "ACTIVE",
       },
     });
     productByKey[p.key] = row.id;
@@ -361,6 +445,9 @@ export async function seedClinicPharmacyData(input: {
     { key: "amox", batchNumber: "AMX25001", qty: 40, expiryDays: 22, supplierIdx: 0, location: "Shelf B1" }, // expiring soon
     { key: "estra", batchNumber: "EST25001", qty: 28, expiryDays: 250, supplierIdx: 1, location: "Fridge B" },
     { key: "gloves", batchNumber: "GLV25001", qty: 12, expiryDays: null, supplierIdx: 2, location: "Store Room" },
+    { key: "pcm", batchNumber: "PCM25001", qty: 200, expiryDays: 500, supplierIdx: 0, location: "Shelf D1" },
+    { key: "omep", batchNumber: "OMP25001", qty: 55, expiryDays: 300, supplierIdx: 1, location: "Shelf D2" },
+    { key: "clob", batchNumber: "CLB25001", qty: 18, expiryDays: 210, supplierIdx: 2, location: "Shelf E1" },
   ];
 
   const batchByNumber: Record<string, string> = {};
@@ -736,6 +823,64 @@ export async function seedClinicPharmacyData(input: {
       },
     ],
   });
+
+  const authorId =
+    input.users["admin@abcfertility.demo"]?.id ??
+    input.users["clinic-admin"]?.id ??
+    Object.values(input.users)[0]?.id ??
+    null;
+  const kbArticles = [
+    {
+      title: "Medicine storage instructions (clinic pharmacy)",
+      category: "PHARMACY",
+      specialty: "GENERAL",
+      keywords: "storage, fridge, humidity, pharmacy",
+      content:
+        "Store medicines as labelled on the pack. Refrigerated items stay in the pharmacy fridge. Do not use this article as medical advice — follow the prescription and product label.",
+    },
+    {
+      title: "Clinic pharmacy timings",
+      category: "PHARMACY",
+      specialty: "GENERAL",
+      keywords: "hours, collect, pharmacy timing",
+      content:
+        "Pharmacy counter hours follow clinic front-desk hours unless your care team shares a different window. Bring your prescription ID when collecting medicines.",
+    },
+    {
+      title: "How to collect medication",
+      category: "PHARMACY",
+      specialty: "GENERAL",
+      keywords: "collect, dispense, pickup",
+      content:
+        "Visit the pharmacy desk with your patient ID. Staff will match your prescription, check batch expiry, and confirm quantities before dispensing.",
+    },
+    {
+      title: "General medication handling",
+      category: "PHARMACY",
+      specialty: "GENERAL",
+      keywords: "handling, dose, reminder",
+      content:
+        "Take medicines only as written on your clinic prescription. If you miss a dose reminder, contact your care coordinator — do not change the dose yourself.",
+    },
+  ];
+  for (const article of kbArticles) {
+    const existing = await prisma.whatsAppKnowledgeArticle.findFirst({
+      where: { clinicId, title: article.title },
+    });
+    if (existing) continue;
+    await prisma.whatsAppKnowledgeArticle.create({
+      data: {
+        clinicId,
+        title: article.title,
+        category: article.category,
+        specialty: article.specialty,
+        keywords: article.keywords,
+        content: article.content,
+        status: "PUBLISHED",
+        ...(authorId ? { updatedById: authorId } : {}),
+      },
+    });
+  }
 
   return {
     skipped: false as const,

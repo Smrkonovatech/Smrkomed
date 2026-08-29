@@ -105,12 +105,19 @@ describe("pharmacy module", () => {
 
   after(async () => {
     const clinicIds = [clinicA.id, clinicB.id];
+    await prisma.medicationReminder.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.pharmacyPrescriptionItem.deleteMany({
+      where: { prescription: { clinicId: { in: clinicIds } } },
+    });
+    await prisma.pharmacyPrescription.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.careTask.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.pharmacySaleItem.deleteMany({ where: { sale: { clinicId: { in: clinicIds } } } });
     await prisma.pharmacySale.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.pharmacyStockMovement.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.pharmacyBatch.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.pharmacyProduct.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.pharmacySetting.deleteMany({ where: { clinicId: { in: clinicIds } } });
+    await prisma.patient.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.clinicMembership.deleteMany({ where: { clinicId: { in: clinicIds } } });
     await prisma.clinic.deleteMany({ where: { id: { in: clinicIds } } });
     await prisma.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
@@ -268,5 +275,121 @@ describe("pharmacy module", () => {
       headers: { Cookie: `authjs.session-token=${tokenReception}` },
     });
     assert.equal(res.status, 403);
+  });
+
+  it("creates prescription, medication schedule, and patient medications view", async () => {
+    const patient = await prisma.patient.create({
+      data: {
+        clinicId: clinicA.id,
+        firstName: "Stage6",
+        lastName: "Patient",
+        phone: "+919999990006",
+      },
+    });
+
+    const start = new Date();
+    start.setDate(start.getDate() + 1);
+    start.setHours(8, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 2);
+
+    const rxRes = await app.request("/api/v1/pharmacy/prescriptions", {
+      method: "POST",
+      headers: {
+        Cookie: `authjs.session-token=${tokenA}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        patientId: patient.id,
+        doctorName: "Dr Test",
+        items: [
+          {
+            productId: productA,
+            medicineName: "Folic Acid Demo",
+            dosage: "1 tablet",
+            frequency: "Once daily",
+            duration: "3 days",
+            route: "Oral",
+            timeOfDay: "8:00 AM",
+            beforeAfterFood: "AFTER",
+            instructions: "Continue until next consultation.",
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+            quantityPrescribed: 3,
+          },
+        ],
+      }),
+    });
+    const rxText = await rxRes.text();
+    assert.equal(rxRes.status, 201, rxText);
+    const rxBody = JSON.parse(rxText) as {
+      success: true;
+      data: { id: string; items: Array<{ id: string; careTaskId?: string | null }> };
+    };
+    const prescriptionId = rxBody.data.id;
+
+    const meds = await app.request(`/api/v1/pharmacy/patients/${patient.id}/medications`, {
+      headers: { Cookie: `authjs.session-token=${tokenA}` },
+    });
+    assert.equal(meds.status, 200);
+    const medsBody = (await meds.json()) as {
+      success: true;
+      data: {
+        current: Array<{ medicineName: string }>;
+        schedule: Array<{ id: string; adherenceStatus: string }>;
+      };
+    };
+    assert.ok(medsBody.data.current.some((m) => m.medicineName.includes("Folic")));
+    assert.ok(medsBody.data.schedule.length >= 1);
+
+    const reminders = await prisma.medicationReminder.findMany({
+      where: { clinicId: clinicA.id, patientId: patient.id },
+    });
+    assert.ok(reminders.length >= 1);
+    assert.ok(reminders.every((r) => r.demoMode === true));
+
+    const careTasks = await prisma.careTask.findMany({
+      where: { clinicId: clinicA.id, category: "MEDICATION" },
+    });
+    assert.ok(careTasks.length >= 1);
+
+    const dash = await app.request("/api/v1/pharmacy/dashboard", {
+      headers: { Cookie: `authjs.session-token=${tokenA}` },
+    });
+    assert.equal(dash.status, 200);
+    const dashBody = (await dash.json()) as {
+      success: true;
+      data: { totals: { pendingDispensing: number; expired: number } };
+    };
+    assert.ok(dashBody.data.totals.pendingDispensing >= 1);
+
+    const dispense = await app.request(`/api/v1/pharmacy/prescriptions/${prescriptionId}/dispense`, {
+      method: "POST",
+      headers: {
+        Cookie: `authjs.session-token=${tokenA}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        items: [{ itemId: rxBody.data.items[0]!.id, batchId: batchA, quantity: 3 }],
+      }),
+    });
+    assert.equal(dispense.status, 200, await dispense.text());
+
+    const dup = await app.request(`/api/v1/pharmacy/prescriptions/${prescriptionId}/dispense`, {
+      method: "POST",
+      headers: {
+        Cookie: `authjs.session-token=${tokenA}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        items: [{ itemId: rxBody.data.items[0]!.id, batchId: batchA, quantity: 1 }],
+      }),
+    });
+    assert.equal(dup.status, 422);
+
+    const crossClinic = await app.request(`/api/v1/pharmacy/patients/${patient.id}/medications`, {
+      headers: { Cookie: `authjs.session-token=${tokenB}` },
+    });
+    assert.equal(crossClinic.status, 404);
   });
 });

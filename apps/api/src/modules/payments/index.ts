@@ -494,6 +494,60 @@ paymentRoutes.post(
       status: payment.status,
     });
 
+    const amountStr = String(body.amount);
+    if (payment.status === "PENDING" || payment.status === "PROCESSING") {
+      void import("../whatsapp-automation/triggers")
+        .then(({ dispatchWhatsAppTrigger }) =>
+          dispatchWhatsAppTrigger({
+            tenant,
+            triggerType: "PAYMENT_PENDING",
+            triggerEventId: `payment_pending_${payment.id}`,
+            patientId: payment.patientId,
+            coupleId: payment.coupleId,
+            vars: {
+              payment_amount: amountStr,
+              payment_due_date: "",
+              clinic_name: tenant.clinicName,
+            },
+          }),
+        )
+        .catch(() => undefined);
+    }
+    if (payment.status === "SUCCESS") {
+      void import("../whatsapp-automation/triggers")
+        .then(({ dispatchWhatsAppTrigger }) =>
+          dispatchWhatsAppTrigger({
+            tenant,
+            triggerType: "PAYMENT_RECEIVED",
+            triggerEventId: `payment_received_${payment.id}`,
+            patientId: payment.patientId,
+            coupleId: payment.coupleId,
+            vars: {
+              payment_amount: amountStr,
+              clinic_name: tenant.clinicName,
+            },
+          }),
+        )
+        .catch(() => undefined);
+    }
+    if (payment.status === "FAILED") {
+      void import("../whatsapp-automation/triggers")
+        .then(({ dispatchWhatsAppTrigger }) =>
+          dispatchWhatsAppTrigger({
+            tenant,
+            triggerType: "PAYMENT_FAILED",
+            triggerEventId: `payment_failed_${payment.id}`,
+            patientId: payment.patientId,
+            coupleId: payment.coupleId,
+            vars: {
+              payment_amount: amountStr,
+              clinic_name: tenant.clinicName,
+            },
+          }),
+        )
+        .catch(() => undefined);
+    }
+
     return ok(c, serializePayment(payment), 201);
   },
 );
@@ -558,6 +612,24 @@ paymentRoutes.post("/payments/:id/verify", validate("param", idParam), validate(
   await audit(tenant, "BILLING_PAYMENT_VERIFY", "BillingPayment", updated.id, {
     status: updated.status,
   });
+
+  if (updated.status === "SUCCESS") {
+    void import("../whatsapp-automation/triggers")
+      .then(({ dispatchWhatsAppTrigger }) =>
+        dispatchWhatsAppTrigger({
+          tenant,
+          triggerType: "PAYMENT_RECEIVED",
+          triggerEventId: `payment_received_${updated.id}`,
+          patientId: updated.patientId,
+          coupleId: updated.coupleId,
+          vars: {
+            payment_amount: String(updated.amount),
+            clinic_name: tenant.clinicName,
+          },
+        }),
+      )
+      .catch(() => undefined);
+  }
 
   return ok(c, serializePayment(updated));
 });

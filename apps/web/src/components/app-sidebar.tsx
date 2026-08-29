@@ -19,6 +19,7 @@ import {
   Settings,
   Shield,
   Sparkles,
+  MessageCircle,
   Users,
   Wallet,
 } from "lucide-react";
@@ -105,6 +106,23 @@ const pharmacyGroup: NavGroup = {
   ],
 };
 
+const whatsappGroup: NavGroup = {
+  label: "WhatsApp",
+  items: [
+    { to: "/whatsapp", label: "Overview", icon: MessageCircle },
+    { to: "/whatsapp/inbox", label: "Inbox", icon: MessageCircle },
+    { to: "/whatsapp/templates", label: "Templates", icon: FileText },
+    { to: "/whatsapp/settings", label: "Settings", icon: Settings },
+  ],
+};
+
+const digitalHealthGroup: NavGroup = {
+  label: "Digital Health",
+  items: [
+    { to: "/digital-health", label: "ABDM / ABHA", icon: Shield },
+  ],
+};
+
 const linkBase =
   "group relative flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium transition-colors";
 
@@ -163,6 +181,19 @@ export function SidebarContentBody({
     if (showPharmacy) {
       const operationsIndex = next.findIndex((group) => group.label === "Operations");
       next.splice(operationsIndex + 1, 0, pharmacyGroup);
+    }
+    // Patients-read staff can use Automation Center inbox/templates; settings stays permission-gated in API.
+    const showWhatsApp = role && roleHasPermission(role, PERMISSIONS.PATIENTS_READ);
+    if (showWhatsApp) {
+      const insertAfter = next.findIndex((group) => group.label === "Pharmacy");
+      const at = insertAfter >= 0 ? insertAfter + 1 : next.findIndex((group) => group.label === "Operations") + 1;
+      next.splice(at, 0, whatsappGroup);
+    }
+    const showDigitalHealth = role && roleHasPermission(role, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    if (showDigitalHealth) {
+      const insertAfter = next.findIndex((group) => group.label === "WhatsApp");
+      const at = insertAfter >= 0 ? insertAfter + 1 : next.findIndex((group) => group.label === "Operations") + 1;
+      next.splice(at, 0, digitalHealthGroup);
     }
     return next;
   }, [session?.user?.role]);

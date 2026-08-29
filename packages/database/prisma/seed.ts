@@ -9,6 +9,7 @@ import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS, prisma } from "../src";
 import { fertilitySteps } from "./seed-demo-types";
 import { seedAbcClinicClinicalData } from "./seed-demo-clinic";
 import { seedClinicPharmacyData } from "./seed-demo-pharmacy";
+import { seedClinicDigitalHealthData } from "../src/seed-digital-health";
 import { seedClinicInsuranceData } from "./seed-demo-insurance";
 import { seedClinicPaymentsData } from "./seed-demo-payments";
 
@@ -428,6 +429,12 @@ async function main() {
     clinicName: clinic.name,
   });
 
+  const digitalHealthCounts = await seedClinicDigitalHealthData({
+    prisma,
+    clinicId: clinic.id,
+    users,
+  });
+
   const insuranceCounts = await seedClinicInsuranceData({
     prisma,
     clinicId: clinic.id,
@@ -444,6 +451,7 @@ async function main() {
 
   console.log("Clinical seed counts:", counts);
   console.log("Pharmacy seed:", pharmacyCounts);
+  console.log("Digital health seed:", digitalHealthCounts);
   console.log("Insurance seed:", insuranceCounts);
   console.log("Payments seed:", paymentsCounts);
 

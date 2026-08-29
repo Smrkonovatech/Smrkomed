@@ -1,8 +1,9 @@
 import { Hono } from "hono";
-import { PERMISSIONS, prisma } from "@smrkomed/database";
+import { PERMISSIONS, buildPatient360ByPatientId, prisma } from "@smrkomed/database";
 
 import { audit } from "../../lib/audit";
 import { requirePermission } from "../../lib/authz";
+import { notFound } from "../../lib/errors";
 import { ok } from "../../lib/http";
 import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
@@ -38,6 +39,13 @@ export const patientRoutes = new Hono<AppEnv>()
     });
     return ok(c, patients);
   })
+  .get("/:id/360", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const { id } = c.req.valid("param");
+    const payload = await buildPatient360ByPatientId(tenant, id);
+    if (!payload) throw notFound();
+    return ok(c, payload);
+  })
   .get("/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const { id } = c.req.valid("param");
@@ -61,6 +69,21 @@ export const patientRoutes = new Hono<AppEnv>()
       },
     });
     await audit(tenant, "patient.create", "Patient", patient.id, { clinicId: tenant.clinicId });
+    void import("../whatsapp-automation/triggers")
+      .then(({ dispatchWhatsAppTrigger }) =>
+        dispatchWhatsAppTrigger({
+          tenant,
+          triggerType: "PATIENT_CREATED",
+          triggerEventId: patient.id,
+          patientId: patient.id,
+          vars: {
+            patient_name: `${patient.firstName} ${patient.lastName}`.trim(),
+            patient_first_name: patient.firstName,
+            clinic_name: tenant.clinicName,
+          },
+        }),
+      )
+      .catch(() => undefined);
     return ok(c, patient, 201);
   })
   .patch("/:id", validate("param", idParam), validate("json", updatePatientSchema), async (c) => {

@@ -4,7 +4,7 @@ import { PERMISSIONS, prisma, type TenantContext } from "@smrkomed/database";
 
 import { audit } from "../../lib/audit";
 import { requirePermission } from "../../lib/authz";
-import { HttpError } from "../../lib/errors";
+import { HttpError, notFound } from "../../lib/errors";
 import { ok } from "../../lib/http";
 import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
@@ -23,6 +23,7 @@ import {
   receivePurchaseOrderSchema,
   reportQuery,
   updateProductSchema,
+  updateReminderStatusSchema,
   updateSettingsSchema,
   updateSupplierSchema,
 } from "./schemas";
@@ -312,7 +313,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     const settings = await getPharmacySettings(tenant.clinicId);
     const { start, end } = dayBounds();
 
-    const [products, stockItems, todaySalesAgg, pendingPrescriptionsCount, lowStock, expiringSoon, recentSales, pendingPrescriptions, upcomingReminders, outOfStock] =
+    const [products, stockItems, todaySalesAgg, pendingPrescriptionsCount, lowStock, expiringSoon, recentSales, pendingPrescriptions, upcomingReminders, outOfStock, expiredCount, todayPrescriptions] =
       await Promise.all([
         prisma.pharmacyProduct.count({ where: { ...clinicWhere(tenant), status: { not: "ARCHIVED" } } }),
         prisma.pharmacyBatch.count({ where: { ...clinicWhere(tenant), availableQuantity: { gt: 0 } } }),
@@ -341,8 +342,8 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         prisma.medicationReminder.findMany({
           where: {
             ...clinicWhere(tenant),
-            status: { in: ["SCHEDULED", "PENDING"] },
-            scheduledAt: { gte: new Date() },
+            status: { in: ["SCHEDULED", "PENDING", "DUE"] },
+            scheduledAt: { gte: new Date(Date.now() - 2 * 3_600_000) },
           },
           include: {
             patient: true,
@@ -357,6 +358,16 @@ export const pharmacyRoutes = new Hono<AppEnv>()
             status: "ACTIVE",
             batches: { every: { availableQuantity: { lte: 0 } } },
           },
+        }),
+        prisma.pharmacyBatch.count({
+          where: {
+            ...clinicWhere(tenant),
+            availableQuantity: { gt: 0 },
+            expiryDate: { not: null, lte: new Date() },
+          },
+        }),
+        prisma.pharmacyPrescription.count({
+          where: { ...clinicWhere(tenant), prescriptionDate: { gte: start, lte: end } },
         }),
       ]);
 
@@ -385,13 +396,17 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     return ok(c, {
       totals: {
         products,
+        activeProducts: products,
         stockItems,
         lowStock: lowStockCount,
         outOfStock,
         expiringSoon: expiringSoonCount,
+        expired: expiredCount,
         todaySales: todaySalesAgg._count.id,
         todaySalesAmount: dec(todaySalesAgg._sum.totalAmount),
+        todayPrescriptions,
         pendingPrescriptions: pendingPrescriptionsCount,
+        pendingDispensing: pendingPrescriptionsCount,
         upcomingReminders: upcomingReminders.length,
       },
       lowStock,
@@ -475,14 +490,14 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     const tenant = requirePharmacyView(c);
     const { id } = c.req.valid("param");
     const settings = await getPharmacySettings(tenant.clinicId);
-    const product = await prisma.pharmacyProduct.findUnique({
-      where: { id },
+    const product = await prisma.pharmacyProduct.findFirst({
+      where: { id, clinicId: tenant.clinicId, clinic: { organizationId: tenant.organizationId } },
       include: {
         batches: { include: { supplier: true } },
         _count: { select: { batches: true } },
       },
     });
-    await requireClinicOwned(tenant, product);
+    if (!product) throw notFound();
     const movements = await prisma.pharmacyStockMovement.findMany({
       where: { clinicId: tenant.clinicId, productId: id },
       include: {
@@ -494,7 +509,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
       take: 25,
     });
     return ok(c, {
-      ...serializeProduct(product!, settings.expiryWarningDays),
+      ...serializeProduct(product, settings.expiryWarningDays),
       recentMovements: movements.map(serializeMovement),
     });
   })
@@ -1179,6 +1194,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
             dosage: item.dosage ?? null,
             frequency: item.frequency ?? null,
             duration: item.duration ?? null,
+            route: item.route ?? null,
             instructions: item.instructions ?? null,
             timeOfDay: item.timeOfDay ?? null,
             beforeAfterFood: item.beforeAfterFood ?? null,
@@ -1199,10 +1215,47 @@ export const pharmacyRoutes = new Hono<AppEnv>()
           })}.`
         : null;
       for (const item of rx.items) {
+        let coupleId = body.coupleId ?? rx.coupleId ?? null;
+        if (!coupleId) {
+          const couple = await prisma.couple.findFirst({
+            where: {
+              clinicId: tenant.clinicId,
+              OR: [{ primaryPatientId: body.patientId }, { partnerPatientId: body.patientId }],
+            },
+            select: { id: true },
+          });
+          coupleId = couple?.id ?? null;
+        }
+        const careTask = await prisma.careTask.create({
+          data: {
+            clinicId: tenant.clinicId,
+            ...(coupleId ? { coupleId } : {}),
+            title: `Medication follow-up: ${item.medicineName}`,
+            description: [
+              `Dose: ${item.dosage ?? "As prescribed"}`,
+              `Frequency: ${item.frequency ?? "—"}`,
+              `Time: ${item.timeOfDay ?? "—"}`,
+              item.instructions ? `Instructions: ${item.instructions}` : null,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            category: "MEDICATION",
+            status: "WAITING",
+            priority: "NORMAL",
+            dueDate: item.startDate ?? new Date(),
+            ...(tenant.userId && tenant.userId !== "system-worker" ? { createdById: tenant.userId } : {}),
+          },
+        });
+        await prisma.pharmacyPrescriptionItem.update({
+          where: { id: item.id },
+          data: { careTaskId: careTask.id },
+        });
+
         await scheduleMedicationReminders({
           tenant,
           prescriptionItemId: item.id,
           patientId: body.patientId,
+          careTaskId: careTask.id,
           medicineName: item.medicineName,
           dosage: item.dosage ?? "As prescribed",
           timeOfDay: item.timeOfDay ?? "As scheduled",
@@ -1211,6 +1264,24 @@ export const pharmacyRoutes = new Hono<AppEnv>()
           endDate: item.endDate,
           appointmentLabel,
         });
+        void import("../whatsapp-automation/triggers")
+          .then(({ dispatchWhatsAppTrigger }) =>
+            dispatchWhatsAppTrigger({
+              tenant,
+              triggerType: "MEDICINE_ASSIGNED",
+              triggerEventId: `medicine_assigned_${item.id}`,
+              patientId: body.patientId,
+              ...(coupleId ? { coupleId } : {}),
+              vars: {
+                medicine_name: item.medicineName,
+                medicine_dosage: item.dosage ?? "",
+                medicine_time: item.timeOfDay ?? "",
+                medicine_instructions: item.instructions ?? "",
+                clinic_name: tenant.clinicName,
+              },
+            }),
+          )
+          .catch(() => undefined);
       }
     }
 
@@ -1280,6 +1351,23 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     });
 
     await audit(tenant, "pharmacy.prescription.dispense", "PharmacyPrescription", rx.id);
+
+    void import("../whatsapp-automation/triggers")
+      .then(({ dispatchWhatsAppTrigger }) =>
+        dispatchWhatsAppTrigger({
+          tenant,
+          triggerType: "MEDICINE_DISPENSED",
+          triggerEventId: `medicine_dispensed_${rx.id}_${rx.status}`,
+          patientId: rx.patientId,
+          coupleId: rx.coupleId,
+          vars: {
+            clinic_name: tenant.clinicName,
+            medicine_name: rx.items.map((i) => i.medicineName).join(", ").slice(0, 200),
+          },
+        }),
+      )
+      .catch(() => undefined);
+
     return ok(c, serializePrescription(rx));
   })
   .post("/prescriptions/:id/cancel", validate("param", idParam), async (c) => {
@@ -1308,7 +1396,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     const patientId = c.req.param("patientId");
     await requireClinicOwned(tenant, await prisma.patient.findUnique({ where: { id: patientId } }));
 
-    const [prescriptions, sales] = await Promise.all([
+    const [prescriptions, sales, reminders] = await Promise.all([
       prisma.pharmacyPrescription.findMany({
         where: { ...clinicWhere(tenant), patientId },
         include: prescriptionListInclude,
@@ -1325,11 +1413,134 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         orderBy: { soldAt: "desc" },
         take: 50,
       }),
+      prisma.medicationReminder.findMany({
+        where: { ...clinicWhere(tenant), patientId },
+        include: {
+          patient: true,
+          prescriptionItem: { include: { product: true } },
+        },
+        orderBy: { scheduledAt: "desc" },
+        take: 100,
+      }),
     ]);
 
+    const serializedReminders = reminders.map(serializeReminder);
     return ok(c, {
       prescriptions: prescriptions.map(serializePrescription),
       sales: sales.map(serializeSale),
+      medications: {
+        current: prescriptions
+          .filter((p) => p.status !== "CANCELLED")
+          .flatMap((p) =>
+            p.items.map((item) => ({
+              prescriptionId: p.id,
+              itemId: item.id,
+              medicineName: item.medicineName,
+              dosage: item.dosage,
+              frequency: item.frequency,
+              timeOfDay: item.timeOfDay,
+              beforeAfterFood: item.beforeAfterFood,
+              instructions: item.instructions,
+              startDate: item.startDate?.toISOString() ?? null,
+              endDate: item.endDate?.toISOString() ?? null,
+              prescribedBy: p.doctorName ?? p.doctor?.name ?? null,
+              status: p.status,
+              productImageUrl: item.product?.imageUrl ?? null,
+            })),
+          ),
+        schedule: {
+          upcoming: serializedReminders.filter((r) => r.adherenceStatus === "UPCOMING"),
+          due: serializedReminders.filter((r) => r.adherenceStatus === "DUE"),
+          missed: serializedReminders.filter((r) => r.adherenceStatus === "MISSED"),
+          taken: serializedReminders.filter((r) => r.adherenceStatus === "TAKEN"),
+          completed: serializedReminders.filter((r) =>
+            ["COMPLETED", "SENT", "DELIVERED"].includes(r.status),
+          ),
+        },
+        reminders: serializedReminders,
+      },
+    });
+  })
+  .get("/patients/:patientId/medications", async (c) => {
+    const tenant = requirePharmacyView(c);
+    const patientId = c.req.param("patientId");
+    const patient = await prisma.patient.findFirst({
+      where: {
+        id: patientId,
+        clinicId: tenant.clinicId,
+        clinic: { organizationId: tenant.organizationId },
+      },
+    });
+    if (!patient) throw notFound();
+
+    const [prescriptions, sales, reminders] = await Promise.all([
+      prisma.pharmacyPrescription.findMany({
+        where: { ...clinicWhere(tenant), patientId, status: { not: "CANCELLED" } },
+        include: prescriptionListInclude,
+        orderBy: { prescriptionDate: "desc" },
+        take: 50,
+      }),
+      prisma.pharmacySale.findMany({
+        where: { ...clinicWhere(tenant), patientId },
+        include: {
+          patient: true,
+          createdBy: true,
+          items: { include: { product: true, batch: true } },
+        },
+        orderBy: { soldAt: "desc" },
+        take: 50,
+      }),
+      prisma.medicationReminder.findMany({
+        where: { ...clinicWhere(tenant), patientId },
+        include: {
+          patient: true,
+          prescriptionItem: { include: { product: true } },
+        },
+        orderBy: { scheduledAt: "asc" },
+        take: 200,
+      }),
+    ]);
+
+    const serializedReminders = reminders.map(serializeReminder);
+    const now = Date.now();
+    const current = prescriptions.flatMap((p) =>
+      p.items
+        .filter((item) => {
+          if (item.endDate && item.endDate.getTime() < now) return false;
+          return true;
+        })
+        .map((item) => ({
+          prescriptionId: p.id,
+          itemId: item.id,
+          medicineName: item.medicineName,
+          dosage: item.dosage,
+          frequency: item.frequency,
+          duration: item.duration,
+          timeOfDay: item.timeOfDay,
+          beforeAfterFood: item.beforeAfterFood,
+          instructions: item.instructions,
+          startDate: item.startDate?.toISOString() ?? null,
+          endDate: item.endDate?.toISOString() ?? null,
+          prescribedBy: p.doctorName ?? p.doctor?.name ?? null,
+          treatmentId: p.treatmentId ?? null,
+          appointmentId: p.appointmentId ?? null,
+          status: p.status,
+          productImageUrl: item.product?.imageUrl ?? null,
+        })),
+    );
+
+    return ok(c, {
+      current,
+      upcoming: serializedReminders.filter((r) => r.adherenceStatus === "UPCOMING"),
+      due: serializedReminders.filter((r) => r.adherenceStatus === "DUE"),
+      missed: serializedReminders.filter((r) => r.adherenceStatus === "MISSED"),
+      completed: serializedReminders.filter((r) =>
+        ["COMPLETED", "TAKEN", "SENT", "DELIVERED"].includes(r.adherenceStatus) ||
+        ["COMPLETED", "TAKEN", "SENT", "DELIVERED"].includes(r.status),
+      ),
+      prescriptionHistory: prescriptions.map(serializePrescription),
+      dispensingHistory: sales.map(serializeSale),
+      schedule: serializedReminders,
     });
   })
   .get("/couples/:coupleId/history", async (c) => {
@@ -1356,9 +1567,35 @@ export const pharmacyRoutes = new Hono<AppEnv>()
       }),
     ]);
 
+    const patientIds = [
+      ...new Set(prescriptions.map((p) => p.patientId).filter(Boolean)),
+    ] as string[];
+    const reminders =
+      patientIds.length === 0
+        ? []
+        : await prisma.medicationReminder.findMany({
+            where: { ...clinicWhere(tenant), patientId: { in: patientIds } },
+            include: {
+              patient: true,
+              prescriptionItem: { include: { product: true } },
+            },
+            orderBy: { scheduledAt: "desc" },
+            take: 100,
+          });
+    const serializedReminders = reminders.map(serializeReminder);
+
     return ok(c, {
       prescriptions: prescriptions.map(serializePrescription),
       sales: sales.map(serializeSale),
+      medications: {
+        schedule: {
+          upcoming: serializedReminders.filter((r) => r.adherenceStatus === "UPCOMING"),
+          due: serializedReminders.filter((r) => r.adherenceStatus === "DUE"),
+          missed: serializedReminders.filter((r) => r.adherenceStatus === "MISSED"),
+          taken: serializedReminders.filter((r) => r.adherenceStatus === "TAKEN"),
+        },
+        reminders: serializedReminders,
+      },
     });
   })
 
@@ -1397,6 +1634,57 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     });
     await requireClinicOwned(tenant, reminder);
     return ok(c, serializeReminder(reminder!));
+  })
+  .patch("/reminders/:id/status", validate("param", idParam), validate("json", updateReminderStatusSchema), async (c) => {
+    const tenant = requirePharmacyPrescriptions(c);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const reminder = await prisma.medicationReminder.findUnique({
+      where: { id },
+      include: {
+        patient: true,
+        prescriptionItem: { include: { product: true } },
+      },
+    });
+    await requireClinicOwned(tenant, reminder);
+    if (!reminder) throw new HttpError(404, "REMINDER_NOT_FOUND", "Reminder was not found.");
+    if (reminder.status === "CANCELLED") {
+      throw new HttpError(422, "CANCELLED", "This reminder was cancelled.");
+    }
+
+    const updated = await prisma.medicationReminder.update({
+      where: { id },
+      data: { status: body.status },
+      include: {
+        patient: true,
+        prescriptionItem: { include: { product: true } },
+      },
+    });
+    await audit(tenant, "pharmacy.medication.status_change", "MedicationReminder", updated.id, {
+      from: reminder.status,
+      to: body.status,
+    });
+
+    if (body.status === "MISSED") {
+      void import("../whatsapp-automation/triggers")
+        .then(({ dispatchWhatsAppTrigger }) =>
+          dispatchWhatsAppTrigger({
+            tenant,
+            triggerType: "MEDICINE_MISSED",
+            triggerEventId: `medicine_missed_${updated.id}`,
+            patientId: updated.patientId,
+            vars: {
+              medicine_name: updated.prescriptionItem?.medicineName ?? "",
+              medicine_dosage: updated.prescriptionItem?.dosage ?? "",
+              medicine_time: updated.prescriptionItem?.timeOfDay ?? "",
+              clinic_name: tenant.clinicName,
+            },
+          }),
+        )
+        .catch(() => undefined);
+    }
+
+    return ok(c, serializeReminder(updated));
   })
   .post("/reminders/:id/simulate", validate("param", idParam), async (c) => {
     const tenant = requirePharmacyPrescriptions(c);

@@ -7,7 +7,7 @@ import { sendWhatsAppTemplate } from "../../integrations/providers/whatsapp/mess
 import { completeWhatsAppConnect, startWhatsAppConnect } from "../../integrations/providers/whatsapp/onboarding";
 import { listWhatsAppTemplates, syncWhatsAppTemplates } from "../../integrations/providers/whatsapp/sync";
 import { integrationService } from "../../integrations/services/integration-service";
-import { requirePermission } from "../../lib/authz";
+import { requireAnyPermission, requirePermission } from "../../lib/authz";
 import { ok } from "../../lib/http";
 import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
@@ -94,6 +94,7 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     return ok(c, await getWhatsAppConversation(tenant, c.req.valid("param").id));
   })
   .get("/analytics", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    // Overview KPIs for Automation Center — clinic-scoped; not admin-only.
+    const tenant = requireAnyPermission(c, [PERMISSIONS.PATIENTS_READ, PERMISSIONS.SETTINGS_MANAGE]);
     return ok(c, await getWhatsAppAnalytics(tenant));
   });

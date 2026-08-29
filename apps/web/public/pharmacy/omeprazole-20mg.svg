@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Omeprazole demo pack">
+  <rect width="128" height="128" rx="16" fill="#F3F7EE"/>
+  <rect x="34" y="30" width="60" height="68" rx="30" fill="#3E8B4F"/>
+  <rect x="48" y="44" width="32" height="40" rx="16" fill="#EAF6EC"/>
+  <text x="64" y="114" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#24462C">Omeprazole Demo</text>
+</svg>

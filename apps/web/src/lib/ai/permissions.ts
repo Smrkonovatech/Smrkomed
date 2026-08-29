@@ -32,6 +32,26 @@ const READ_TOOLS: AiToolName[] = [
   "getPatientPaymentHistory",
   "getOverdueInvoices",
   "getClinicOutstandingTotal",
+  "getPatientMedications",
+  "getMedicationSchedule",
+  "getPrescriptionSummary",
+  "getPharmacyInventory",
+  "getLowStockMedicines",
+  "getPendingDispensing",
+  "getMedicationFollowUps",
+  "getPatientDigitalHealthStatus",
+  "getPatientConsents",
+  "getPatientHealthTimeline",
+  "getRecordSharingStatus",
+  "getPatient360",
+  "getPatientTimeline",
+  "getCurrentMedications",
+  "getPendingCareTasks",
+  "getPatientDocuments",
+  "getPatientCommunicationSummary",
+  "getPatientPaymentStatus",
+  "getPatientInsuranceStatus",
+  "preparePatientConsultation",
 ];
 
 export function canUseAi(tenant: TenantContext): boolean {
@@ -44,6 +64,14 @@ export function canProposeMutations(tenant: TenantContext): boolean {
 
 export function canViewPayments(tenant: TenantContext): boolean {
   return roleHasPermission(tenant.role, PERMISSIONS.PAYMENTS_VIEW);
+}
+
+export function canViewPharmacy(tenant: TenantContext): boolean {
+  return roleHasPermission(tenant.role, PERMISSIONS.PHARMACY_VIEW);
+}
+
+export function canViewDigitalHealth(tenant: TenantContext): boolean {
+  return roleHasPermission(tenant.role, PERMISSIONS.DIGITAL_HEALTH_VIEW);
 }
 
 export function allowedTools(tenant: TenantContext): AiToolName[] {
@@ -62,9 +90,33 @@ export function allowedTools(tenant: TenantContext): AiToolName[] {
       tool === "getFailedPayments" ||
       tool === "getPatientPaymentHistory" ||
       tool === "getOverdueInvoices" ||
-      tool === "getClinicOutstandingTotal"
+      tool === "getClinicOutstandingTotal" ||
+      tool === "getPatientPaymentStatus"
     ) {
       return canViewPayments(tenant);
+    }
+    if (
+      tool === "getPatientMedications" ||
+      tool === "getMedicationSchedule" ||
+      tool === "getPrescriptionSummary" ||
+      tool === "getPharmacyInventory" ||
+      tool === "getLowStockMedicines" ||
+      tool === "getPendingDispensing" ||
+      tool === "getMedicationFollowUps" ||
+      tool === "getCurrentMedications"
+    ) {
+      return canViewPharmacy(tenant);
+    }
+    if (
+      tool === "getPatientDigitalHealthStatus" ||
+      tool === "getPatientConsents" ||
+      tool === "getPatientHealthTimeline" ||
+      tool === "getRecordSharingStatus"
+    ) {
+      return canViewDigitalHealth(tenant);
+    }
+    if (tool === "getPatientInsuranceStatus") {
+      return roleHasPermission(tenant.role, PERMISSIONS.INSURANCE_VIEW);
     }
     return true;
   });

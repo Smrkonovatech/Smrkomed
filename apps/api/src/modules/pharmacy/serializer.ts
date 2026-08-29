@@ -305,6 +305,7 @@ export function serializePrescription(
       dosage: item.dosage,
       frequency: item.frequency,
       duration: item.duration,
+      route: "route" in item ? (item as { route?: string | null }).route ?? null : null,
       instructions: item.instructions,
       timeOfDay: "timeOfDay" in item ? item.timeOfDay ?? null : null,
       beforeAfterFood: "beforeAfterFood" in item ? item.beforeAfterFood ?? null : null,

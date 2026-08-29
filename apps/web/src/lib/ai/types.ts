@@ -39,7 +39,27 @@ export type AiToolName =
   | "getFailedPayments"
   | "getPatientPaymentHistory"
   | "getOverdueInvoices"
-  | "getClinicOutstandingTotal";
+  | "getClinicOutstandingTotal"
+  | "getPatientMedications"
+  | "getMedicationSchedule"
+  | "getPrescriptionSummary"
+  | "getPharmacyInventory"
+  | "getLowStockMedicines"
+  | "getPendingDispensing"
+  | "getMedicationFollowUps"
+  | "getPatientDigitalHealthStatus"
+  | "getPatientConsents"
+  | "getPatientHealthTimeline"
+  | "getRecordSharingStatus"
+  | "getPatient360"
+  | "getPatientTimeline"
+  | "getCurrentMedications"
+  | "getPendingCareTasks"
+  | "getPatientDocuments"
+  | "getPatientCommunicationSummary"
+  | "getPatientPaymentStatus"
+  | "getPatientInsuranceStatus"
+  | "preparePatientConsultation";
 
 export type AiNavigationAction = {
   label: string;
