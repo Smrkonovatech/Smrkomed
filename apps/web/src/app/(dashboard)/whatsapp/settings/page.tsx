@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { WhatsAppConnectionPanel } from "@/components/whatsapp/connection-panel";
-import { EmptyState, LoadingRows, PageHeader } from "@/components/ui-kit";
+import { AiCoordinationPanel } from "@/components/whatsapp/center/ai-coordination";
+import { EmptyState, LoadingRows } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, apiGet, apiPatch } from "@/lib/api/client";
+import Link from "next/link";
 
 type DayHours = { start: string; end: string } | null;
 type WorkingHours = Partial<Record<"mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun", DayHours>>;
@@ -86,17 +88,19 @@ export default function WhatsAppSettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        title="WhatsApp Settings"
-        subtitle="Clinic connection uses Meta Embedded Signup. Tokens stay server-side. Communication safety controls apply to automation sends."
-      />
+      <div>
+        <h2 className="text-base font-semibold tracking-tight">WhatsApp Settings</h2>
+        <p className="text-sm text-muted-foreground">
+          Connection, automation timing, consent, and AI safety for Care Loop communication.
+        </p>
+      </div>
       <WhatsAppConnectionPanel />
 
-      <section className="surface-card space-y-4 p-4">
+      <section className="space-y-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
         <div>
-          <h2 className="text-sm font-semibold">Communication safety</h2>
+          <h2 className="text-sm font-semibold">Automation settings</h2>
           <p className="text-xs text-muted-foreground">
-            Working hours, frequency limits, and consent mode for automated WhatsApp. Urgent escalations can bypass hours when enabled.
+            Default reminder timing, escalation windows, message limits, and working hours.
           </p>
         </div>
 
@@ -197,12 +201,25 @@ export default function WhatsAppSettingsPage() {
               </ul>
             </div>
 
-            <Button disabled={saving} onClick={() => void save()}>
+            <Button className="rounded-xl" disabled={saving} onClick={() => void save()}>
               {saving ? "Saving…" : "Save communication settings"}
             </Button>
           </div>
         ) : null}
       </section>
+
+      <section className="space-y-3 rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+        <h2 className="text-sm font-semibold">Consent settings</h2>
+        <p className="text-xs text-muted-foreground">
+          WhatsApp consent and communication preferences are managed per patient. Automation respects revoked
+          consent and opt-outs.
+        </p>
+        <Button asChild size="sm" variant="outline" className="rounded-xl">
+          <Link href="/whatsapp/consent">Open consent history</Link>
+        </Button>
+      </section>
+
+      <AiCoordinationPanel />
     </div>
   );
 }

@@ -3,50 +3,50 @@
 import Link from "next/link";
 import {
   AlertTriangle,
-  Bell,
+  ArrowRight,
   CheckCircle2,
   MessageCircle,
-  MessageSquare,
-  Send,
+  Plus,
   Workflow,
-  XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { EmptyState, KpiCard, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
+import { AiCoordinationPanel } from "@/components/whatsapp/center/ai-coordination";
+import { CarePlanWhatsAppBridge } from "@/components/whatsapp/center/care-plan-bridge";
+import {
+  PreviewBanner,
+  WaMetric,
+  WaSection,
+  WaStatusPill,
+} from "@/components/whatsapp/center/section";
+import { EmptyState, LoadingRows } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { ApiError, apiGet } from "@/lib/api/client";
+import {
+  DEMO_ACTIVITY,
+  DEMO_ATTENTION,
+  DEMO_AUTOMATIONS,
+  FLAGSHIP_FLOW_STEPS,
+} from "@/lib/whatsapp/center-demo";
+import { cn } from "@/lib/utils";
 
 type Overview = {
   connection: { connected: boolean; displayName: string | null; phone: string | null };
   today: {
     messagesSent: number;
-    messagesDelivered?: number;
-    messagesFailed?: number;
-    messagesRead?: number;
     messagesReceived: number;
-    patientReplies?: number;
     activeFlows: number;
     completedFlows: number;
     failedFlows: number;
-    waitingExecutions?: number;
     pendingReplies: number;
     escalated: number;
     successRate: number | null;
-    skippedAutomation?: number;
   };
-  consent?: { granted: number; revoked: number; eligible: number; blocked: number };
-  knowledgeBase?: { published: number };
   activeConversations: number;
   templates: { approved: number; pending: number; rejected: number; total: number };
   hasData: boolean;
   workerNote: string;
 };
-
-function metricValue(n: number, hasData: boolean) {
-  if (!hasData && n === 0) return "Not enough data";
-  return String(n);
-}
 
 export default function WhatsAppOverviewPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -75,8 +75,7 @@ export default function WhatsAppOverviewPage() {
   if (loading) {
     return (
       <div className="mx-auto max-w-[1500px] space-y-4">
-        <PageHeader title="WhatsApp Automation" subtitle="Clinic communication + workflow center." />
-        <LoadingRows rows={4} />
+        <LoadingRows rows={5} />
       </div>
     );
   }
@@ -84,9 +83,8 @@ export default function WhatsAppOverviewPage() {
   if (error || !overview) {
     return (
       <div className="mx-auto max-w-[1500px]">
-        <PageHeader title="WhatsApp Automation" subtitle="Clinic communication + workflow center." />
         <EmptyState
-          title="Unable to load WhatsApp overview."
+          title="Unable to load Automation Center"
           description={error ?? "Please try again."}
           action={<Button onClick={() => window.location.reload()}>Retry</Button>}
         />
@@ -94,102 +92,220 @@ export default function WhatsAppOverviewPage() {
     );
   }
 
-  const hasData = overview.hasData;
+  const live = overview.hasData;
   const t = overview.today;
+  const messagesToday = live ? String(t.messagesSent + t.messagesReceived) : "2,481";
+  const activeConvos = live ? String(overview.activeConversations) : "184";
+  const automationsRunning = live ? String(t.activeFlows) : "28";
+  const attention = live ? String(t.escalated + t.pendingReplies) : "12";
 
   return (
     <div className="mx-auto max-w-[1500px] space-y-6">
-      <PageHeader
-        title="WhatsApp Automation"
-        subtitle="Real database counts for this clinic. Never invented KPIs."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/whatsapp/inbox">Open Inbox</Link>
-            </Button>
-            <Button asChild size="sm">
-              <Link href="/whatsapp/flows">Flows</Link>
-            </Button>
-          </div>
-        }
-      />
-
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        {overview.connection.connected ? (
-          <StatusBadge
-            label={`Connected · ${overview.connection.displayName ?? "WhatsApp"}${overview.connection.phone ? ` · ${overview.connection.phone}` : ""}`}
-            tone="success"
-          />
-        ) : (
-          <StatusBadge label="Not connected — connect WhatsApp to activate live messaging" tone="warning" />
-        )}
-        <span className="text-muted-foreground">
-          Templates: {overview.templates.approved} approved
-          {overview.templates.pending ? ` · ${overview.templates.pending} pending Meta` : ""}
-        </span>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiCard label="Messages sent today" value={metricValue(t.messagesSent, hasData)} icon={Send} />
-        <KpiCard label="Delivered today" value={metricValue(t.messagesDelivered ?? 0, hasData)} icon={CheckCircle2} />
-        <KpiCard label="Replies today" value={metricValue(t.messagesReceived, hasData)} icon={MessageSquare} />
-        <KpiCard label="Active conversations" value={metricValue(overview.activeConversations, hasData)} icon={MessageCircle} />
-        <KpiCard label="Active flows" value={String(t.activeFlows)} icon={Workflow} />
-        <KpiCard label="Pending (waiting)" value={metricValue(t.pendingReplies, hasData)} icon={Bell} />
-        <KpiCard
-          label="Failed today"
-          value={metricValue(t.failedFlows, hasData || t.completedFlows > 0)}
-          icon={XCircle}
-          tone="danger"
-        />
-        <KpiCard
-          label="Skipped (safety)"
-          value={metricValue(t.skippedAutomation ?? 0, hasData || (t.skippedAutomation ?? 0) > 0)}
-          icon={AlertTriangle}
-        />
-      </div>
-
-      <section className="surface-card space-y-3 p-4">
-        <h2 className="text-sm font-semibold tracking-tight">Consent & knowledge</h2>
-        {overview.consent ? (
+      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="max-w-2xl">
           <p className="text-sm text-muted-foreground">
-            Consent eligible: {overview.consent.eligible} · Revoked/blocked: {overview.consent.blocked}
-            {overview.knowledgeBase
-              ? ` · Published KB articles: ${overview.knowledgeBase.published}`
-              : ""}
+            Manage patient conversations, approved templates and automated care workflows.
           </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">Not enough consent data yet.</p>
-        )}
-      </section>
-
-      <section className="surface-card space-y-3 p-4">
-        <h2 className="text-sm font-semibold tracking-tight">Attention</h2>
-        {t.escalated > 0 ? (
-          <p className="flex items-start gap-2 text-sm">
-            <AlertTriangle className="mt-0.5 size-4 text-warning-foreground" />
-            {t.escalated} automation(s) escalated today — staff response may be needed.
-            <Link href="/whatsapp/logs" className="text-primary hover:underline">
-              View logs
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {overview.connection.connected ? (
+              <WaStatusPill
+                label={`Connected · ${overview.connection.displayName ?? "WhatsApp"}`}
+                tone="success"
+              />
+            ) : (
+              <WaStatusPill label="WhatsApp not connected" tone="warning" />
+            )}
+            <WaStatusPill
+              label={`${overview.templates.approved} templates approved`}
+              tone="primary"
+            />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" className="rounded-xl">
+            <Link href="/whatsapp/templates/new">
+              <Plus className="size-4" /> Create Template
             </Link>
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">No escalations recorded today.</p>
-        )}
-      </section>
+          </Button>
+          <Button asChild className="rounded-xl">
+            <Link href="/whatsapp/flows/new">
+              <Plus className="size-4" /> Create Flow
+            </Link>
+          </Button>
+        </div>
+      </div>
 
-      <section className="surface-card space-y-3 p-4">
-        <h2 className="text-sm font-semibold tracking-tight">Automation health</h2>
-        {t.successRate == null ? (
-          <p className="text-sm text-muted-foreground">Not enough data — no completed or failed executions today.</p>
-        ) : (
-          <p className="flex items-center gap-2 text-sm">
-            <CheckCircle2 className="size-4 text-success" />
-            {t.successRate}% successful today ({t.completedFlows} completed · {t.failedFlows} failed)
-          </p>
-        )}
-        <p className="text-xs text-muted-foreground">{overview.workerNote}</p>
-      </section>
+      {!live ? <PreviewBanner /> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <WaMetric label="Messages today" value={messagesToday} hint={live ? "Sent + received" : "Sample"} />
+        <WaMetric label="Active conversations" value={activeConvos} />
+        <WaMetric label="Automations running" value={automationsRunning} />
+        <WaMetric
+          label="Patients requiring attention"
+          value={attention}
+          hint={live ? "Escalations + pending replies" : "Sample"}
+        />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[1.35fr_0.9fr]">
+        <WaSection
+          title="Active automations"
+          subtitle="Care Loop workflows currently coordinating patient communication"
+          action={
+            <Button asChild variant="ghost" size="sm" className="rounded-lg text-primary">
+              <Link href="/whatsapp/automations">
+                View all <ArrowRight className="size-3.5" />
+              </Link>
+            </Button>
+          }
+        >
+          <ul className="space-y-2">
+            {DEMO_AUTOMATIONS.map((row) => (
+              <li
+                key={row.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/70 bg-background px-3.5 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">{row.name}</p>
+                    <WaStatusPill
+                      label={row.status}
+                      tone={row.status === "Needs Attention" ? "warning" : "success"}
+                    />
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Trigger: {row.trigger} · {row.patients.toLocaleString()} patients · {row.metric}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">Last activity {row.lastActivity}</p>
+                </div>
+                <Button asChild size="sm" variant="outline" className="rounded-lg">
+                  <Link href={`/whatsapp/automations/${row.id}`}>Open</Link>
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </WaSection>
+
+        <WaSection title="Attention required" subtitle="Only important exceptions">
+          <ul className="space-y-2">
+            {(live
+              ? [
+                  t.pendingReplies > 0
+                    ? {
+                        id: "live-pending",
+                        label: `${t.pendingReplies} conversations awaiting reply`,
+                        tone: "warning" as const,
+                      }
+                    : null,
+                  t.failedFlows > 0
+                    ? {
+                        id: "live-fail",
+                        label: `${t.failedFlows} failed automation executions today`,
+                        tone: "danger" as const,
+                      }
+                    : null,
+                  t.escalated > 0
+                    ? {
+                        id: "live-esc",
+                        label: `${t.escalated} escalations today`,
+                        tone: "danger" as const,
+                      }
+                    : null,
+                  overview.templates.rejected > 0
+                    ? {
+                        id: "live-rej",
+                        label: `${overview.templates.rejected} template(s) rejected`,
+                        tone: "danger" as const,
+                      }
+                    : null,
+                ].filter(Boolean)
+              : DEMO_ATTENTION
+            ).map((item) =>
+              item ? (
+                <li
+                  key={item.id}
+                  className={cn(
+                    "flex items-start gap-2 rounded-xl border px-3 py-2.5 text-sm",
+                    item.tone === "danger"
+                      ? "border-rose-200/80 bg-rose-50/50"
+                      : "border-orange-200/80 bg-orange-50/50",
+                  )}
+                >
+                  <AlertTriangle
+                    className={cn(
+                      "mt-0.5 size-4 shrink-0",
+                      item.tone === "danger" ? "text-rose-700" : "text-orange-700",
+                    )}
+                  />
+                  <span>{item.label}</span>
+                </li>
+              ) : null,
+            )}
+            {live && t.escalated === 0 && t.pendingReplies === 0 && t.failedFlows === 0 ? (
+              <li className="flex items-center gap-2 rounded-xl bg-emerald-50/70 px-3 py-2.5 text-sm text-emerald-900">
+                <CheckCircle2 className="size-4" /> No urgent exceptions today.
+              </li>
+            ) : null}
+          </ul>
+          <Button asChild variant="outline" size="sm" className="mt-3 w-full rounded-lg">
+            <Link href="/whatsapp/inbox?filter=escalated">Open inbox exceptions</Link>
+          </Button>
+        </WaSection>
+      </div>
+
+      <WaSection title="Recent automation activity" subtitle="What Care Loop already did">
+        <ul className="divide-y divide-border/60">
+          {DEMO_ACTIVITY.map((row) => (
+            <li key={`${row.time}-${row.title}`} className="flex flex-wrap items-start gap-4 py-3 first:pt-0 last:pb-0">
+              <span className="w-20 shrink-0 text-xs font-medium text-muted-foreground tabular-nums">
+                {row.time}
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold">{row.title}</p>
+                <p className="text-xs text-muted-foreground">
+                  {row.couple} · {row.detail}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </WaSection>
+
+      <CarePlanWhatsAppBridge />
+
+      <WaSection
+        title="Flagship flow · IVF Patient Care Journey"
+        subtitle="Doctor-approved plan → Care Loop → WhatsApp → response → task / escalation"
+        action={
+          <Button asChild size="sm" className="rounded-lg">
+            <Link href="/whatsapp/flows/new">
+              <Workflow className="size-3.5" /> Open builder
+            </Link>
+          </Button>
+        }
+      >
+        <div className="flex flex-wrap gap-2">
+          {FLAGSHIP_FLOW_STEPS.map((step, index) => (
+            <span
+              key={step}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] font-medium"
+            >
+              <span className="grid size-4 place-items-center rounded-full bg-primary-soft text-[9px] font-bold text-primary">
+                {index + 1}
+              </span>
+              {step}
+            </span>
+          ))}
+        </div>
+      </WaSection>
+
+      <AiCoordinationPanel />
+
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
+        <MessageCircle className="size-3.5" />
+        {overview.workerNote}
+      </p>
     </div>
   );
 }

@@ -8,12 +8,14 @@ import { FlaskConical, Pause, Play, Save, Trash2 } from "lucide-react";
 
 import {
   FLOW_PALETTE,
+  FLOW_PALETTE_GROUPS,
   MobileNodeList,
   WhatsAppFlowCanvas,
   addPaletteNode,
   type FlowDefinition,
 } from "@/components/whatsapp/flow-canvas";
-import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
+import { WaStatusPill } from "@/components/whatsapp/center/section";
+import { EmptyState, LoadingRows, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -222,8 +224,7 @@ export default function WhatsAppFlowBuilderPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <PageHeader title="Flow builder" subtitle="Loading…" />
+      <div className="space-y-4 p-1">
         <LoadingRows rows={6} />
       </div>
     );
@@ -245,62 +246,68 @@ export default function WhatsAppFlowBuilderPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3">
-      <PageHeader
-        title={name || "Flow"}
-        subtitle={`${flow.triggerType.replaceAll("_", " ")} · ${readOnly ? "SYSTEM TEMPLATE" : flow.status}`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/whatsapp/flows">Flows</Link>
-            </Button>
-            <Button size="sm" variant="outline" onClick={undo} disabled={!history.length || readOnly}>
-              Undo
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => void testSim()}>
-              <FlaskConical className="mr-1 size-3.5" />
-              Test
-            </Button>
-            <Button size="sm" onClick={() => void saveDraft()} disabled={saving || readOnly}>
-              <Save className="mr-1 size-3.5" />
-              Save draft
-            </Button>
-            {flow.status === "ACTIVE" ? (
-              <Button size="sm" variant="outline" onClick={() => void pause()} disabled={readOnly}>
-                <Pause className="mr-1 size-3.5" />
-                Pause
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => void activate()} disabled={saving || readOnly}>
-                <Play className="mr-1 size-3.5" />
-                Activate
-              </Button>
-            )}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">Care Workflow Builder</p>
+          <h1 className="mt-0.5 text-xl font-semibold tracking-tight">{name || "Untitled flow"}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Starts when: {flow.triggerType.replaceAll("_", " ").toLowerCase()} · Coordinates doctor-approved care —
+            never diagnoses or changes treatment.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <WaStatusPill
+              label={readOnly ? "System template" : flow.status}
+              tone={flow.status === "ACTIVE" ? "success" : flow.status === "PAUSED" ? "warning" : "muted"}
+            />
+            {flow.successRate != null ? (
+              <WaStatusPill label={`${flow.successRate}% success`} tone="primary" />
+            ) : null}
           </div>
-        }
-      />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm" className="rounded-xl">
+            <Link href="/whatsapp/flows">Flows</Link>
+          </Button>
+          <Button size="sm" variant="outline" className="rounded-xl" onClick={undo} disabled={!history.length || readOnly}>
+            Undo
+          </Button>
+          <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void testSim()}>
+            <FlaskConical className="mr-1 size-3.5" />
+            Test flow
+          </Button>
+          <Button size="sm" className="rounded-xl" onClick={() => void saveDraft()} disabled={saving || readOnly}>
+            <Save className="mr-1 size-3.5" />
+            Save
+          </Button>
+          {flow.status === "ACTIVE" ? (
+            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void pause()} disabled={readOnly}>
+              <Pause className="mr-1 size-3.5" />
+              Pause
+            </Button>
+          ) : (
+            <Button size="sm" className="rounded-xl" onClick={() => void activate()} disabled={saving || readOnly}>
+              <Play className="mr-1 size-3.5" />
+              Publish
+            </Button>
+          )}
+        </div>
+      </div>
 
       {readOnly ? (
-        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-          SYSTEM TEMPLATE — view and duplicate only. Duplicate from the Flows list to create a CUSTOM editable flow.
+        <p className="rounded-xl border border-orange-200 bg-orange-50/80 px-3 py-2 text-sm text-orange-900">
+          System template — duplicate from Flows to create an editable clinic workflow.
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <span>Success: {flow.successRate == null ? "No data" : `${flow.successRate}%`}</span>
-        <span>Failures: {flow.failureCount}</span>
-        <span>Last run: {flow.lastRunAt ? new Date(flow.lastRunAt).toLocaleString() : "Never"}</span>
-        <span>Updated: {new Date(flow.updatedAt).toLocaleString()}</span>
-      </div>
-
-      <div className="surface-card flex flex-wrap items-end gap-3 p-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-border/70 bg-card p-3 shadow-sm">
         <div className="space-y-1">
-          <Label className="text-xs">TEST MODE patient (optional)</Label>
+          <Label className="text-xs">Test with patient (optional)</Label>
           <select
-            className="flex h-9 min-w-[200px] rounded-md border bg-background px-2 text-sm"
+            className="flex h-9 min-w-[200px] rounded-xl border bg-background px-2 text-sm"
             value={testPatientId}
             onChange={(e) => setTestPatientId(e.target.value)}
           >
-            <option value="">No patient</option>
+            <option value="">Sample run — no patient</option>
             {patients.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.firstName} {p.lastName}
@@ -308,29 +315,31 @@ export default function WhatsAppFlowBuilderPage() {
             ))}
           </select>
         </div>
-        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-          TEST MODE — NO MESSAGE WILL BE SENT
-        </p>
+        <p className="text-xs font-medium text-orange-800">Test mode — no WhatsApp message is sent</p>
       </div>
 
       {testResult ? (
-        <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">{testResult}</p>
+        <p className="rounded-xl border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">{testResult}</p>
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_300px]">
-        <aside className="surface-card hidden space-y-2 p-3 lg:block">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nodes</p>
-          {FLOW_PALETTE.map((item) => (
-            <Button
-              key={item.type}
-              size="sm"
-              variant="outline"
-              className="w-full justify-start"
-              disabled={readOnly}
-              onClick={() => pushHistory(addPaletteNode(definition, item.type, { ...item.defaults }))}
-            >
-              {item.label}
-            </Button>
+      <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_300px]">
+        <aside className="hidden max-h-[72vh] space-y-4 overflow-y-auto rounded-2xl border border-border/70 bg-card p-3 shadow-sm lg:block">
+          {FLOW_PALETTE_GROUPS.map((group) => (
+            <div key={group.title} className="space-y-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{group.title}</p>
+              {group.items.map((item) => (
+                <Button
+                  key={item.type}
+                  size="sm"
+                  variant="outline"
+                  className="w-full justify-start rounded-xl"
+                  disabled={readOnly}
+                  onClick={() => pushHistory(addPaletteNode(definition, item.type, { ...item.defaults }))}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
           ))}
         </aside>
 
@@ -374,25 +383,26 @@ export default function WhatsAppFlowBuilderPage() {
         </section>
 
         <aside
-          className={`surface-card space-y-3 p-3 ${configOpen ? "" : "hidden lg:block"} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[70vh] max-lg:overflow-y-auto max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-lg`}
+          className={`space-y-3 rounded-2xl border border-border/70 bg-card p-3 shadow-sm ${configOpen ? "" : "hidden lg:block"} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[70vh] max-lg:overflow-y-auto max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-lg`}
         >
           <div className="flex items-center justify-between lg:hidden">
-            <p className="text-sm font-semibold">Configure node</p>
+            <p className="text-sm font-semibold">Configure step</p>
             <Button size="sm" variant="ghost" onClick={() => setConfigOpen(false)}>
               Close
             </Button>
           </div>
           <p className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:block">
-            Flow
+            Workflow details
           </p>
           <div className="space-y-2">
             <Label>Name</Label>
-            <Input value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
+            <Input className="rounded-xl" value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
           </div>
           <div className="space-y-2">
-            <Label>Description</Label>
+            <Label>What does this do?</Label>
             <Textarea
               rows={2}
+              className="rounded-xl"
               value={description}
               disabled={readOnly}
               onChange={(e) => setDescription(e.target.value)}
@@ -402,11 +412,12 @@ export default function WhatsAppFlowBuilderPage() {
           {selected ? (
             <>
               <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Selected · {selected.type}
+                Selected step
               </p>
               <div className="space-y-2">
                 <Label>Label</Label>
                 <Input
+                  className="rounded-xl"
                   value={selected.label}
                   disabled={readOnly}
                   onChange={(e) => updateSelected({ label: e.target.value })}
@@ -414,39 +425,69 @@ export default function WhatsAppFlowBuilderPage() {
               </div>
               {selected.type === "SEND_TEMPLATE" ? (
                 <div className="space-y-2">
-                  <Label>Meta template name</Label>
+                  <Label>Message type</Label>
+                  <p className="text-xs text-muted-foreground">Template (clinic-approved WhatsApp only)</p>
+                  <Label>Approved template</Label>
                   <Input
+                    className="rounded-xl"
                     value={String(selected.config["templateName"] ?? "")}
                     disabled={readOnly}
+                    placeholder="e.g. Medication Reminder"
                     onChange={(e) =>
                       updateSelected({ config: { ...selected.config, templateName: e.target.value } })
                     }
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Must be APPROVED by Meta for this clinic before activate/send.
+                    Must be approved by Meta for this clinic. AI cannot invent clinical content.
                   </p>
+                  <Label>Send timing</Label>
+                  <select
+                    className="flex h-9 w-full rounded-xl border bg-background px-2 text-sm"
+                    value={String(selected.config["sendMode"] ?? "immediate")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, sendMode: e.target.value } })
+                    }
+                  >
+                    <option value="immediate">Immediately</option>
+                    <option value="scheduled">Schedule relative to due time</option>
+                  </select>
+                  <Label>If send fails</Label>
+                  <select
+                    className="flex h-9 w-full rounded-xl border bg-background px-2 text-sm"
+                    value={String(selected.config["fallback"] ?? "staff_task")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, fallback: e.target.value } })
+                    }
+                  >
+                    <option value="staff_task">Create staff task</option>
+                    <option value="escalate">Escalate to coordinator</option>
+                    <option value="retry">Retry later</option>
+                  </select>
                 </div>
               ) : null}
               {selected.type === "WAIT" ? (
                 <div className="space-y-2">
-                  <Label>Wait mode</Label>
+                  <Label>How long should we wait?</Label>
                   <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    className="flex h-9 w-full rounded-xl border bg-background px-2 text-sm"
                     value={String(selected.config["mode"] ?? "duration")}
                     disabled={readOnly}
                     onChange={(e) =>
                       updateSelected({ config: { ...selected.config, mode: e.target.value } })
                     }
                   >
-                    <option value="duration">Duration</option>
-                    <option value="before_appointment">Before appointment</option>
-                    <option value="until_datetime">Until date/time</option>
-                    <option value="at_time">Until clock time</option>
+                    <option value="duration">For a set duration</option>
+                    <option value="before_appointment">Until before appointment</option>
+                    <option value="until_datetime">Until a date/time</option>
+                    <option value="at_time">Until a clock time</option>
                   </select>
                   {String(selected.config["mode"] ?? "duration") === "duration" ? (
                     <div className="grid grid-cols-2 gap-2">
                       <Input
                         type="number"
+                        className="rounded-xl"
                         disabled={readOnly}
                         value={Number(selected.config["amount"] ?? 0)}
                         onChange={(e) =>
@@ -455,7 +496,7 @@ export default function WhatsAppFlowBuilderPage() {
                         placeholder="Amount"
                       />
                       <select
-                        className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                        className="flex h-9 w-full rounded-xl border bg-background px-2 text-sm"
                         value={String(selected.config["unit"] ?? "hours")}
                         disabled={readOnly}
                         onChange={(e) =>
@@ -473,6 +514,7 @@ export default function WhatsAppFlowBuilderPage() {
                       <Label>Hours before appointment</Label>
                       <Input
                         type="number"
+                        className="rounded-xl"
                         disabled={readOnly}
                         value={Number(selected.config["hoursBefore"] ?? 24)}
                         onChange={(e) =>
@@ -485,8 +527,9 @@ export default function WhatsAppFlowBuilderPage() {
                   ) : null}
                   {String(selected.config["mode"]) === "until_datetime" ? (
                     <div className="space-y-1">
-                      <Label>Until (ISO date/time)</Label>
+                      <Label>Until</Label>
                       <Input
+                        className="rounded-xl"
                         disabled={readOnly}
                         value={String(selected.config["until"] ?? "")}
                         onChange={(e) =>
@@ -500,6 +543,7 @@ export default function WhatsAppFlowBuilderPage() {
                     <div className="grid grid-cols-2 gap-2">
                       <Input
                         type="number"
+                        className="rounded-xl"
                         disabled={readOnly}
                         value={Number(selected.config["hour"] ?? 9)}
                         onChange={(e) =>
@@ -509,6 +553,7 @@ export default function WhatsAppFlowBuilderPage() {
                       />
                       <Input
                         type="number"
+                        className="rounded-xl"
                         disabled={readOnly}
                         value={Number(selected.config["minute"] ?? 0)}
                         onChange={(e) =>
@@ -520,16 +565,13 @@ export default function WhatsAppFlowBuilderPage() {
                       />
                     </div>
                   ) : null}
-                  <p className="text-[11px] text-muted-foreground">
-                    WAIT is durable (`resumeAt`). Production worker resumes — not a browser timer.
-                  </p>
                 </div>
               ) : null}
               {selected.type === "CONDITION" ? (
                 <div className="space-y-2">
-                  <Label>Field</Label>
+                  <Label>Only continue if…</Label>
                   <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    className="flex h-9 w-full rounded-xl border bg-background px-2 text-sm"
                     value={String(selected.config["field"] ?? selected.config["kind"] ?? "")}
                     disabled={readOnly}
                     onChange={(e) =>
@@ -539,51 +581,43 @@ export default function WhatsAppFlowBuilderPage() {
                     }
                   >
                     {[
-                      "communication.patient_replied",
-                      "communication.no_response",
-                      "communication.conversation_status",
-                      "patient.status",
-                      "patient.stage",
-                      "patient.inactive_days",
-                      "staff.doctor",
-                      "staff.coordinator",
-                      "appointment.status",
-                      "appointment.type",
-                      "appointment.days_until",
-                      "appointment.doctor",
-                      "care_task.status",
-                      "care_task.overdue",
-                      "care_task.assigned",
-                      "treatment.stage",
-                      "care_plan.status",
-                      "medication.assigned",
-                      "payment.pending",
-                      "payment.paid",
-                      "payment.overdue",
-                      "workflow.has_tag",
-                    ].map((f) => (
-                      <option key={f} value={f}>
-                        {f}
+                      ["communication.patient_replied", "Patient replied"],
+                      ["communication.no_response", "Patient did not respond"],
+                      ["appointment.status", "Appointment status"],
+                      ["care_task.status", "Care task status"],
+                      ["care_task.overdue", "Care task is overdue"],
+                      ["patient.stage", "Care stage"],
+                      ["medication.assigned", "Medication assigned"],
+                      ["payment.pending", "Payment pending"],
+                      ["payment.paid", "Payment received"],
+                      ["treatment.stage", "Treatment stage"],
+                    ].map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
                       </option>
                     ))}
                   </select>
-                  <Label>Operator</Label>
+                  <Label>Match</Label>
                   <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    className="flex h-9 w-full rounded-xl border bg-background px-2 text-sm"
                     value={String(selected.config["operator"] ?? "truthy")}
                     disabled={readOnly}
                     onChange={(e) =>
                       updateSelected({ config: { ...selected.config, operator: e.target.value } })
                     }
                   >
-                    {["truthy", "equals", "not_equals", "contains", "gt", "gte", "lt", "lte", "in"].map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
+                    <option value="truthy">Is true / present</option>
+                    <option value="equals">Equals</option>
+                    <option value="not_equals">Does not equal</option>
+                    <option value="contains">Contains</option>
+                    <option value="gt">Greater than</option>
+                    <option value="gte">At least</option>
+                    <option value="lt">Less than</option>
+                    <option value="lte">At most</option>
                   </select>
-                  <Label>Value</Label>
+                  <Label>Value (if needed)</Label>
                   <Input
+                    className="rounded-xl"
                     value={String(selected.config["value"] ?? "")}
                     disabled={readOnly}
                     onChange={(e) =>
@@ -596,6 +630,7 @@ export default function WhatsAppFlowBuilderPage() {
                 <div className="space-y-2">
                   <Label>Task title</Label>
                   <Input
+                    className="rounded-xl"
                     value={String(selected.config["title"] ?? "")}
                     disabled={readOnly}
                     onChange={(e) =>
@@ -608,6 +643,7 @@ export default function WhatsAppFlowBuilderPage() {
                 <div className="space-y-2">
                   <Label>Tag</Label>
                   <Input
+                    className="rounded-xl"
                     value={String(selected.config["tag"] ?? "")}
                     disabled={readOnly}
                     onChange={(e) =>
@@ -616,13 +652,13 @@ export default function WhatsAppFlowBuilderPage() {
                   />
                 </div>
               )}
-              <Button size="sm" variant="ghost" disabled={readOnly} onClick={deleteSelected}>
+              <Button size="sm" variant="ghost" className="rounded-xl" disabled={readOnly} onClick={deleteSelected}>
                 <Trash2 className="mr-1 size-3.5" />
-                Delete node
+                Remove step
               </Button>
             </>
           ) : (
-            <p className="text-sm text-muted-foreground">Select a node to configure.</p>
+            <p className="text-sm text-muted-foreground">Select a step on the canvas to configure it.</p>
           )}
         </aside>
       </div>
