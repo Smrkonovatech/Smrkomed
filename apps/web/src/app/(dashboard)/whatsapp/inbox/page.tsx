@@ -1,41 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import {
-  AlertTriangle,
-  Bot,
-  MoreHorizontal,
-  Paperclip,
-  Phone,
-  Search,
-  Send,
-  Sparkles,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { PreviewBanner, WaStatusPill } from "@/components/whatsapp/center/section";
-import { EmptyState, LoadingRows } from "@/components/ui-kit";
+import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError, apiGet, apiPost } from "@/lib/api/client";
-import {
-  DEMO_CONVERSATIONS,
-  DEMO_THREAD,
-  type DemoConversation,
-} from "@/lib/whatsapp/center-demo";
+import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 type InboxRow = {
   id: string;
   status: string;
+  priority: string;
   unmatched: boolean;
   contactPhone: string | null;
-  patient: { id: string; firstName: string; lastName: string } | null;
+  patient: { id: string; firstName: string; lastName: string; initials: string; status: string } | null;
+  assignedStaff: { id: string; name: string; initials: string | null } | null;
   unreadCount: number;
   automationPaused: boolean;
   handoffReason: string | null;
+  automation: {
+    executionId: string;
+    flowId: string;
+    flowName: string;
+    status: string;
+    resumeAt: string | null;
+  } | null;
   lastMessage: {
     preview: string;
     createdAt: string;
@@ -48,21 +41,32 @@ type InboxRow = {
 type Detail = {
   id: string;
   status: string;
+  priority: string;
   handoffReason: string | null;
   automationPausedAt: string | null;
+  assignedStaff: { id: string; name: string } | null;
   patient: { id: string; firstName: string; lastName: string; phone: string | null } | null;
+  clinicName: string;
   messages: Array<{
     id: string;
     direction: string;
     senderType: string;
     content: string;
     createdAt: string;
+    status: string;
     label: string;
   }>;
+  automation: {
+    executionId: string;
+    flowId: string;
+    flowName: string;
+    status: string;
+    resumeAt: string | null;
+  } | null;
 };
 
 type Context = {
-  patient: { id: string; firstName: string; lastName: string; phone: string | null } | null;
+  patient: { id: string; firstName: string; lastName: string; phone: string | null; status: string } | null;
   couple: {
     slug: string;
     doctor: { name: string } | null;
@@ -71,71 +75,58 @@ type Context = {
   upcomingAppointment: { type: string; startsAt: string; doctorName: string | null } | null;
   overdueTaskCount: number;
   recentTasks: Array<{ id: string; title: string; status: string }>;
+  payments: Array<{ invoiceNumber: string; status: string; balance: number }>;
+  pharmacy: { items: Array<{ medicineName: string; dosage: string | null }> } | null;
+  automations: Array<{ id: string; flowName: string; status: string }>;
   note?: string;
 };
 
-const FILTERS = [
+type Staff = { id: string; name: string; role: string };
+
+const FILTERS: Array<{ id: InboxRow extends never ? never : string; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
-  { id: "ai", label: "AI" },
-  { id: "staff", label: "Staff" },
+  { id: "assigned_to_me", label: "Assigned to me" },
+  { id: "unassigned", label: "Unassigned" },
+  { id: "waiting_patient", label: "Waiting patient" },
+  { id: "waiting_staff", label: "Waiting staff" },
+  { id: "automation_active", label: "Automation" },
+  { id: "human_handoff", label: "Human handoff" },
   { id: "escalated", label: "Escalated" },
-] as const;
+  { id: "closed", label: "Closed" },
+];
 
-function initials(name: string) {
-  return name
-    .split(/[\s+]+/)
-    .filter(Boolean)
-    .map((p) => p[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function formatTime(iso: string) {
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
+function labelTone(status: string) {
+  if (status === "HUMAN_HANDOFF" || status === "ESCALATED") return "warning" as const;
+  if (status === "CLOSED" || status === "RESOLVED") return "muted" as const;
+  return "info" as const;
 }
 
 export default function WhatsAppInboxPage() {
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
+  const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
   const [rows, setRows] = useState<InboxRow[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [demoId, setDemoId] = useState(DEMO_CONVERSATIONS[0]!.id);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [context, setContext] = useState<Context | null>(null);
+  const [staff, setStaff] = useState<Staff[]>([]);
   const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
-  const [demoMode, setDemoMode] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showContext, setShowContext] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const apiFilter =
-        filter === "escalated"
-          ? "escalated"
-          : filter === "unread"
-            ? "unread"
-            : filter === "staff"
-              ? "human_handoff"
-              : filter === "ai"
-                ? "automation_active"
-                : "all";
-      const params = new URLSearchParams({ filter: apiFilter });
+      const params = new URLSearchParams({ filter });
       if (q.trim()) params.set("q", q.trim());
       const next = await apiGet<InboxRow[]>(`/api/v1/whatsapp-automation/inbox?${params}`);
       setRows(next);
-      setDemoMode(next.length === 0);
-      if (next[0] && !activeId) setActiveId(next[0].id);
+      if (!activeId && next[0]) setActiveId(next[0].id);
     } catch (err) {
-      setDemoMode(true);
-      setError(err instanceof ApiError ? err.message : null);
+      setError(err instanceof ApiError ? err.message : "Unable to load inbox.");
     } finally {
       setLoading(false);
     }
@@ -143,16 +134,22 @@ export default function WhatsAppInboxPage() {
 
   useEffect(() => {
     void loadList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
+  }, [filter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (demoMode || !activeId) {
+    void apiGet<Staff[]>("/api/v1/whatsapp-automation/staff")
+      .then(setStaff)
+      .catch(() => setStaff([]));
+  }, []);
+
+  useEffect(() => {
+    if (!activeId) {
       setDetail(null);
       setContext(null);
       return;
     }
     let cancelled = false;
+    setDetailLoading(true);
     void (async () => {
       try {
         const [d, ctx] = await Promise.all([
@@ -163,443 +160,420 @@ export default function WhatsAppInboxPage() {
           setDetail(d);
           setContext(ctx);
         }
-      } catch {
-        if (!cancelled) toast.error("Failed to load conversation");
+      } catch (err) {
+        if (!cancelled) toast.error(err instanceof ApiError ? err.message : "Failed to load conversation");
+      } finally {
+        if (!cancelled) setDetailLoading(false);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [activeId, demoMode]);
-
-  const demoList = useMemo(() => {
-    return DEMO_CONVERSATIONS.filter((c) => {
-      if (filter !== "all" && c.filter !== filter && !(filter === "unread" && c.unread)) {
-        if (filter === "escalated") return c.escalated;
-        if (filter === "unread") return c.unread;
-        if (filter === "ai") return c.filter === "ai";
-        if (filter === "staff") return false;
-      }
-      if (q.trim() && !c.couple.toLowerCase().includes(q.trim().toLowerCase())) return false;
-      return true;
-    });
-  }, [filter, q]);
-
-  const activeDemo: DemoConversation =
-    demoList.find((c) => c.id === demoId) ?? demoList[0] ?? DEMO_CONVERSATIONS[0]!;
+  }, [activeId]);
 
   async function sendReply() {
-    if (demoMode) {
-      toast.message("Preview mode — connect WhatsApp to send live messages.");
-      return;
-    }
     if (!activeId || !reply.trim()) return;
     try {
       await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/reply`, { body: reply.trim() });
       setReply("");
-      toast.success("Message sent");
+      toast.success("Message sent (staff)");
       const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
       setDetail(d);
       await loadList();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Send failed");
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : "Send failed. Session window may be closed — use an approved template.",
+      );
     }
   }
 
   async function takeover() {
-    if (demoMode) {
-      toast.message("Preview: human takeover would pause automation.");
-      return;
-    }
     if (!activeId) return;
     try {
       await apiPost(`/api/v1/whatsapp-automation/conversations/${activeId}/takeover`, {
         reason: "PATIENT_REQUESTED_HUMAN",
         pauseAutomation: true,
       });
-      toast.success("You took over this conversation");
+      toast.success("Human takeover");
+      setActiveId(activeId);
       const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
       setDetail(d);
+      await loadList();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Takeover failed");
     }
   }
 
-  if (loading && rows.length === 0 && !demoMode) {
-    return <LoadingRows rows={6} />;
+  async function assign(staffId: string | null) {
+    if (!activeId) return;
+    try {
+      await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/assign`, { assignedStaffId: staffId });
+      toast.success(staffId ? "Assigned" : "Unassigned");
+      await loadList();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Assign failed");
+    }
   }
 
-  const title = demoMode
-    ? activeDemo.couple
-    : detail?.patient
-      ? `${detail.patient.firstName} ${detail.patient.lastName}`
-      : rows.find((r) => r.id === activeId)?.patient
-        ? `${rows.find((r) => r.id === activeId)!.patient!.firstName} ${rows.find((r) => r.id === activeId)!.patient!.lastName}`
-        : "Conversation";
+  async function createFollowUp() {
+    if (!activeId) return;
+    try {
+      await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/follow-up`, {
+        title: "WhatsApp follow-up",
+        notes: "Created from Inbox",
+        priority: "NORMAL",
+      });
+      toast.success("Care task created");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Follow-up failed");
+    }
+  }
 
-  const journeyLine = demoMode
-    ? `${activeDemo.journey} · ${activeDemo.stage}`
-    : context?.upcomingAppointment?.type ?? detail?.status ?? "WhatsApp";
+  if (loading && rows.length === 0) {
+    return (
+      <div className="space-y-4">
+        <PageHeader title="Inbox" subtitle="Clinic WhatsApp conversations." />
+        <LoadingRows rows={5} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <EmptyState
+        title="Unable to load inbox."
+        description={error}
+        action={<Button onClick={() => void loadList()}>Retry</Button>}
+      />
+    );
+  }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Inbox</h2>
-        <p className="text-sm text-muted-foreground">
-          Healthcare communication workspace — Care Loop messages, patient replies, and staff handoff.
-        </p>
+      <PageHeader
+        title="Inbox"
+        subtitle="Operational patient communication — automation and staff clearly labeled. Not a consumer chat clone."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href="/whatsapp/templates">Templates</Link>
+          </Button>
+        }
+      />
+
+      <div className="flex flex-wrap gap-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFilter(f.id)}
+            className={cn(
+              "rounded-lg px-2.5 py-1 text-xs font-medium",
+              filter === f.id ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground",
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+        <Input
+          className="ml-auto max-w-xs"
+          placeholder="Search name or phone"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void loadList();
+          }}
+        />
+        <Button size="sm" variant="outline" onClick={() => void loadList()}>
+          Search
+        </Button>
       </div>
 
-      {demoMode ? (
-        <PreviewBanner>
-          {error
-            ? `Showing sample conversations (${error}). Connect WhatsApp for live inbox.`
-            : "No live conversations yet — showing sample Care Loop workspace for ABC Fertility Centre."}
-        </PreviewBanner>
-      ) : null}
-
-      <div className="grid min-h-[680px] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)_minmax(260px,300px)]">
-        {/* LEFT */}
-        <aside className="flex flex-col border-b border-border/70 lg:border-r lg:border-b-0">
-          <div className="space-y-3 border-b border-border/60 p-3">
-            <div className="relative">
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") void loadList();
-                }}
-                placeholder="Search patients or conversations…"
-                className="h-9 rounded-xl pl-8 text-sm"
-              />
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {FILTERS.map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setFilter(f.id)}
-                  className={cn(
-                    "rounded-lg px-2 py-1 text-[11px] font-semibold",
-                    filter === f.id
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <ul className="flex-1 overflow-y-auto p-2">
-            {(demoMode ? demoList : rows).map((row) => {
-              if (demoMode) {
-                const c = row as unknown as DemoConversation;
-                const active = c.id === activeDemo.id;
+      {rows.length === 0 ? (
+        <EmptyState
+          title="No conversations"
+          description="Connect WhatsApp and wait for patient messages, or send an approved template."
+        />
+      ) : (
+        <div className="grid min-h-[65vh] overflow-hidden rounded-xl border lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+          <aside className="max-h-[70vh] overflow-y-auto border-b lg:border-r lg:border-b-0">
+            <ul>
+              {rows.map((row) => {
+                const active = row.id === activeId;
+                const name = row.patient
+                  ? `${row.patient.firstName} ${row.patient.lastName}`.trim()
+                  : (row.contactPhone ?? "Unknown");
                 return (
-                  <li key={c.id}>
+                  <li key={row.id}>
                     <button
                       type="button"
-                      onClick={() => setDemoId(c.id)}
+                      onClick={() => setActiveId(row.id)}
                       className={cn(
-                        "mb-1 grid w-full grid-cols-[auto_minmax(0,1fr)_auto] gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-colors",
+                        "flex w-full flex-col gap-0.5 border-b px-3 py-3 text-left text-sm",
                         active ? "bg-primary-soft" : "hover:bg-muted/60",
                       )}
                     >
-                      <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                        {initials(c.couple)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate text-sm font-semibold">{c.couple}</span>
-                          {c.escalated ? <AlertTriangle className="size-3 text-orange-600" /> : null}
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2 font-medium">
+                          <span className="flex size-7 items-center justify-center rounded-full bg-muted text-[10px]">
+                            {row.patient?.initials ?? "?"}
+                          </span>
+                          {name}
                         </span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
-                          {c.journey} · {c.stage}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">{c.preview}</span>
-                      </span>
-                      <span className="text-[10px] text-muted-foreground">{c.time}</span>
-                      {c.unread ? (
-                        <span className="col-start-1 row-start-1 mt-0 size-2 translate-x-7 rounded-full bg-primary" />
-                      ) : null}
+                        {row.unreadCount > 0 ? (
+                          <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">
+                            {row.unreadCount}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="truncate text-xs text-muted-foreground">{row.lastMessage?.preview ?? "No messages"}</p>
+                      <div className="flex flex-wrap gap-1">
+                        <StatusBadge label={row.status} tone={labelTone(row.status)} />
+                        {row.automation ? <StatusBadge label="Automation" tone="info" /> : null}
+                        {row.assignedStaff ? (
+                          <span className="text-[10px] text-muted-foreground">{row.assignedStaff.name}</span>
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">Unassigned</span>
+                        )}
+                      </div>
                     </button>
                   </li>
                 );
-              }
-              const r = row as InboxRow;
-              const name = r.patient
-                ? `${r.patient.firstName} ${r.patient.lastName}`
-                : r.contactPhone ?? "Unknown";
-              const active = r.id === activeId;
-              return (
-                <li key={r.id}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveId(r.id)}
-                    className={cn(
-                      "mb-1 grid w-full grid-cols-[auto_minmax(0,1fr)_auto] gap-2.5 rounded-xl px-2.5 py-2.5 text-left",
-                      active ? "bg-primary-soft" : "hover:bg-muted/60",
-                    )}
-                  >
-                    <span className="grid size-9 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                      {initials(name)}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="truncate text-sm font-semibold">{name}</span>
-                      <span className="block truncate text-[11px] text-muted-foreground">{r.status}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {r.lastMessage?.preview ?? "No messages"}
-                      </span>
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {r.lastMessage ? formatTime(r.lastMessage.createdAt) : ""}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-            {!demoMode && rows.length === 0 ? (
-              <li className="p-4 text-center text-xs text-muted-foreground">No conversations</li>
-            ) : null}
-          </ul>
-        </aside>
+              })}
+            </ul>
+          </aside>
 
-        {/* MIDDLE */}
-        <section className="flex min-h-[420px] flex-col border-b border-border/70 lg:border-b-0">
-          <header className="flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">{title}</p>
-              <p className="text-xs text-muted-foreground">
-                {journeyLine}
-                {demoMode || !detail?.automationPausedAt ? (
-                  <span className="ml-2 inline-flex items-center gap-1 text-primary">
-                    · Care Loop Active
-                  </span>
-                ) : (
-                  <span className="ml-2 text-orange-700">· Automation paused</span>
-                )}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button type="button" size="icon" variant="ghost" className="rounded-lg" aria-label="Search">
-                <Search className="size-4" />
-              </Button>
-              <Button type="button" size="icon" variant="ghost" className="rounded-lg" aria-label="Call">
-                <Phone className="size-4" />
-              </Button>
-              <Button type="button" size="icon" variant="ghost" className="rounded-lg" aria-label="More">
-                <MoreHorizontal className="size-4" />
-              </Button>
-            </div>
-          </header>
-
-          {!demoMode && detail?.handoffReason ? (
-            <div className="mx-4 mt-3 rounded-xl border border-orange-200 bg-orange-50/80 p-3">
-              <p className="text-xs font-semibold text-orange-900">Clinical attention required</p>
-              <p className="mt-0.5 text-xs text-orange-800/90">
-                AI has stopped automated responses. {detail.handoffReason}
-              </p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button size="sm" className="rounded-lg" onClick={() => void takeover()}>
-                  Take Over Conversation
-                </Button>
-                <Button size="sm" variant="outline" className="rounded-lg" asChild>
-                  <Link href="/care-loop">Escalate to Doctor</Link>
-                </Button>
+          <section className="flex max-h-[70vh] flex-col border-b lg:border-b-0 lg:border-r">
+            {detailLoading ? (
+              <div className="p-4">
+                <LoadingRows rows={4} />
               </div>
-            </div>
-          ) : null}
-
-          <div className="flex-1 space-y-3 overflow-y-auto bg-[#faf8fc] px-4 py-4">
-            {demoMode
-              ? DEMO_THREAD.map((m) => (
-                  <div
-                    key={m.id}
-                    className={cn(
-                      "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm",
-                      m.from === "patient"
-                        ? "ml-auto rounded-br-md bg-primary text-primary-foreground"
-                        : "rounded-bl-md border border-border/70 bg-card",
-                    )}
-                  >
-                    {m.from !== "patient" ? (
-                      <p className="mb-1 text-[10px] font-semibold tracking-wide text-primary uppercase">
-                        {m.from === "ai" ? "AI" : "Care Loop"}
+            ) : !detail ? (
+              <p className="p-4 text-sm text-muted-foreground">Select a conversation.</p>
+            ) : (
+              <>
+                <header className="space-y-2 border-b px-4 py-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">
+                        {detail.patient
+                          ? `${detail.patient.firstName} ${detail.patient.lastName}`
+                          : "Unmatched contact"}
                       </p>
-                    ) : null}
-                    <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
-                    {m.buttons?.length ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {m.buttons.map((b) => (
-                          <span
-                            key={b}
-                            className="rounded-lg border border-primary/20 bg-primary-soft px-2 py-1 text-[11px] font-semibold text-primary"
-                          >
-                            {b}
-                          </span>
-                        ))}
+                      <p className="text-xs text-muted-foreground">
+                        {detail.patient?.phone ?? "No phone"} · {detail.clinicName}
+                      </p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <StatusBadge label={detail.status} tone={labelTone(detail.status)} />
+                        {detail.automationPausedAt ? <StatusBadge label="Automation paused" tone="warning" /> : null}
+                        {detail.automation ? (
+                          <StatusBadge label={`${detail.automation.flowName}: ${detail.automation.status}`} tone="info" />
+                        ) : (
+                          <StatusBadge label="Manual" tone="muted" />
+                        )}
                       </div>
-                    ) : null}
-                    {m.aiAssisted ? (
-                      <p className="mt-2 flex items-center gap-1 text-[10px] text-muted-foreground">
-                        <Sparkles className="size-3" /> AI assisted · Based on clinic-approved information
-                      </p>
-                    ) : null}
-                    <p
-                      className={cn(
-                        "mt-1 text-[10px]",
-                        m.from === "patient" ? "text-primary-foreground/70" : "text-muted-foreground",
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" className="lg:hidden" onClick={() => setShowContext(true)}>
+                        Patient
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => void takeover()}>
+                        Take over
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => void createFollowUp()}>
+                        Follow-up
+                      </Button>
+                      {detail.automationPausedAt ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/resume-automation`, {}).then(
+                              () => toast.success("Automation resumed"),
+                            )
+                          }
+                        >
+                          Resume automation
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/pause-automation`, {}).then(
+                              () => toast.success("Automation paused"),
+                            )
+                          }
+                        >
+                          Pause automation
+                        </Button>
                       )}
-                    >
-                      {m.time}
-                    </p>
+                    </div>
                   </div>
-                ))
-              : detail?.messages.map((m) => {
-                  const inbound = m.direction === "INBOUND";
-                  return (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-muted-foreground">Assign:</span>
+                    <select
+                      className="h-8 rounded-md border bg-background px-2"
+                      value={detail.assignedStaff?.id ?? ""}
+                      onChange={(e) => void assign(e.target.value || null)}
+                    >
+                      <option value="">Unassigned</option>
+                      {staff.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.role})
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        void apiPatch(`/api/v1/whatsapp-automation/inbox/${activeId}/status`, {
+                          status: "CLOSED",
+                        }).then(() => {
+                          toast.success("Closed");
+                          void loadList();
+                        })
+                      }
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </header>
+
+                <div className="flex-1 space-y-2 overflow-y-auto bg-muted/20 p-4">
+                  {detail.messages.map((m) => (
                     <div
                       key={m.id}
                       className={cn(
-                        "max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm shadow-sm",
-                        inbound
-                          ? "ml-auto rounded-br-md bg-primary text-primary-foreground"
-                          : "rounded-bl-md border border-border/70 bg-card",
+                        "max-w-[85%] rounded-lg px-3 py-2 text-sm shadow-sm",
+                        m.direction === "INBOUND" ? "bg-card" : "ml-auto bg-primary/10",
                       )}
                     >
-                      {!inbound ? (
-                        <p className="mb-1 text-[10px] font-semibold tracking-wide text-primary uppercase">
-                          {m.label || m.senderType}
-                        </p>
-                      ) : null}
-                      <p className="leading-relaxed whitespace-pre-wrap">{m.content}</p>
-                      <p
-                        className={cn(
-                          "mt-1 text-[10px]",
-                          inbound ? "text-primary-foreground/70" : "text-muted-foreground",
-                        )}
-                      >
-                        {formatTime(m.createdAt)}
+                      <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                        {m.label}
+                      </p>
+                      <p className="whitespace-pre-wrap">{m.content}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        {new Date(m.createdAt).toLocaleString()} · {m.status}
                       </p>
                     </div>
-                  );
-                })}
-            {!demoMode && detail && detail.messages.length === 0 ? (
-              <EmptyState title="No messages yet" description="Start with an approved template." />
-            ) : null}
-          </div>
+                  ))}
+                </div>
 
-          <footer className="border-t border-border/60 p-3">
-            <div className="flex items-end gap-2">
-              <Textarea
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                placeholder="Type a message…"
-                className="min-h-[44px] resize-none rounded-xl text-sm"
-                rows={2}
-              />
-              <Button type="button" className="rounded-xl" onClick={() => void sendReply()}>
-                <Send className="size-4" />
-              </Button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" className="rounded-lg">
-                <Paperclip className="size-3.5" /> Attachment
-              </Button>
-              <Button type="button" size="sm" variant="outline" className="rounded-lg" asChild>
-                <Link href="/whatsapp/templates">Template</Link>
-              </Button>
-              <Button type="button" size="sm" variant="outline" className="rounded-lg">
-                <Bot className="size-3.5" /> AI Assist
-              </Button>
-              <Button type="button" size="sm" variant="ghost" className="rounded-lg ml-auto" onClick={() => void takeover()}>
-                Take over
-              </Button>
-            </div>
-          </footer>
-        </section>
-
-        {/* RIGHT */}
-        <aside className="flex flex-col gap-4 overflow-y-auto bg-primary-soft/20 p-4">
-          <div>
-            <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">Patient</p>
-            <p className="mt-1 text-sm font-semibold">{title}</p>
-            {demoMode ? (
-              <>
-                <p className="mt-3 text-xs text-muted-foreground">Journey</p>
-                <p className="text-sm font-medium">{activeDemo.journey}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Current stage</p>
-                <p className="text-sm font-medium">{activeDemo.stage}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Assigned doctor</p>
-                <p className="text-sm font-medium">Dr. Ananya Rao</p>
-                <p className="mt-2 text-xs text-muted-foreground">Care Loop</p>
-                <WaStatusPill label="Active" tone="success" />
-                <p className="mt-3 text-xs text-muted-foreground">Next required action</p>
-                <p className="text-sm font-medium">Monitoring Scan</p>
-                <p className="text-xs text-muted-foreground">Due tomorrow · 9:00 AM</p>
-                <p className="mt-2 text-xs text-muted-foreground">Task</p>
-                <p className="text-sm font-medium">Awaiting completion</p>
-              </>
-            ) : (
-              <>
-                <p className="mt-3 text-xs text-muted-foreground">Doctor</p>
-                <p className="text-sm font-medium">{context?.couple?.doctor?.name ?? "Unassigned"}</p>
-                <p className="mt-2 text-xs text-muted-foreground">Coordinator</p>
-                <p className="text-sm font-medium">{context?.couple?.coordinator?.name ?? "Unassigned"}</p>
-                {context?.upcomingAppointment ? (
-                  <>
-                    <p className="mt-3 text-xs text-muted-foreground">Next appointment</p>
-                    <p className="text-sm font-medium">{context.upcomingAppointment.type}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(context.upcomingAppointment.startsAt).toLocaleString()}
-                    </p>
-                  </>
-                ) : null}
-                {context?.overdueTaskCount ? (
-                  <p className="mt-2 text-xs text-orange-700">{context.overdueTaskCount} overdue task(s)</p>
-                ) : null}
+                <footer className="space-y-2 border-t p-3">
+                  <p className="text-[10px] text-muted-foreground">
+                    Staff reply uses Meta session window. Outside 24h, use an approved template. Never shown as a doctor
+                    personal message.
+                  </p>
+                  <Textarea
+                    rows={2}
+                    placeholder="Write a staff reply…"
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => void sendReply()} disabled={!reply.trim()}>
+                      Send as staff
+                    </Button>
+                    <Button asChild size="sm" variant="outline">
+                      <Link href="/whatsapp/templates">Send template</Link>
+                    </Button>
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href="/whatsapp">Ask Smrko AI</Link>
+                    </Button>
+                  </div>
+                </footer>
               </>
             )}
-          </div>
+          </section>
 
-          <div>
-            <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-              Recent care activity
-            </p>
-            <ul className="mt-2 space-y-1.5 text-xs text-muted-foreground">
-              {(demoMode
-                ? ["Appointment confirmed", "Medication reminder sent", "Scan requested", "Patient responded"]
-                : (context?.recentTasks ?? []).map((t) => `${t.title} · ${t.status}`)
-              ).map((line) => (
-                <li key={line} className="rounded-lg bg-card/80 px-2.5 py-1.5 border border-border/50">
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div className="mt-auto flex flex-col gap-2">
-            <Button asChild className="rounded-xl">
-              <Link
-                href={
-                  demoMode
-                    ? "/patients"
-                    : context?.couple?.slug
-                      ? `/patients/${context.couple.slug}`
-                      : "/patients"
-                }
-              >
-                Open Patient
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="rounded-xl">
-              <Link href="/care-loop">Open Care Loop</Link>
-            </Button>
-          </div>
-        </aside>
-      </div>
+          <aside
+            className={cn(
+              "max-h-[70vh] overflow-y-auto bg-card p-4",
+              showContext ? "fixed inset-0 z-40 block bg-background p-4 lg:static" : "hidden lg:block",
+            )}
+          >
+            <div className="mb-3 flex items-center justify-between lg:hidden">
+              <h2 className="text-sm font-semibold">Patient context</h2>
+              <Button size="sm" variant="ghost" onClick={() => setShowContext(false)}>
+                Close
+              </Button>
+            </div>
+            <h2 className="mb-3 hidden text-sm font-semibold lg:block">Patient context</h2>
+            {!context?.patient ? (
+              <p className="text-sm text-muted-foreground">{context?.note ?? "No linked patient."}</p>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <p className="font-medium">
+                  {context.patient.firstName} {context.patient.lastName}
+                </p>
+                <p className="text-xs text-muted-foreground">{context.patient.phone}</p>
+                <p className="text-xs">Status: {context.patient.status}</p>
+                {context.couple?.doctor ? <p className="text-xs">Doctor: {context.couple.doctor.name}</p> : null}
+                {context.couple?.coordinator ? (
+                  <p className="text-xs">Coordinator: {context.couple.coordinator.name}</p>
+                ) : null}
+                {context.upcomingAppointment ? (
+                  <div className="rounded-lg border p-2 text-xs">
+                    <p className="font-medium">Upcoming</p>
+                    <p>
+                      {context.upcomingAppointment.type} ·{" "}
+                      {new Date(context.upcomingAppointment.startsAt).toLocaleString()}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No upcoming appointment</p>
+                )}
+                <p className="text-xs">Overdue tasks: {context.overdueTaskCount}</p>
+                {context.payments.length ? (
+                  <div className="text-xs">
+                    <p className="font-medium">Payments</p>
+                    {context.payments.map((p) => (
+                      <p key={p.invoiceNumber}>
+                        {p.invoiceNumber}: {p.status} (bal {p.balance})
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                {context.pharmacy?.items?.length ? (
+                  <div className="text-xs">
+                    <p className="font-medium">Pharmacy</p>
+                    {context.pharmacy.items.map((i, idx) => (
+                      <p key={idx}>
+                        {i.medicineName} {i.dosage ?? ""}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="text-xs">
+                  <p className="font-medium">Automations</p>
+                  {context.automations.length === 0 ? (
+                    <p className="text-muted-foreground">None recent</p>
+                  ) : (
+                    context.automations.map((a) => (
+                      <p key={a.id}>
+                        {a.flowName}: {a.status}
+                      </p>
+                    ))
+                  )}
+                </div>
+                {context.couple?.slug ? (
+                  <Button asChild size="sm" variant="outline" className="w-full">
+                    <Link href={`/patients/${context.couple.slug}`}>Open patient</Link>
+                  </Button>
+                ) : null}
+                {context.patient.id ? (
+                  <Button asChild size="sm" variant="ghost" className="w-full">
+                    <Link href={`/whatsapp/logs?patientId=${context.patient.id}`}>Timeline / logs</Link>
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
     </div>
   );
 }

@@ -57,7 +57,7 @@ export function SmrkoAiBuddyProvider({ children }: { children: ReactNode }) {
       <Button
         type="button"
         size="lg"
-        className="fixed left-4 bottom-[calc(var(--app-dock-height)+0.85rem)] z-30 h-12 rounded-full px-4 shadow-lift"
+        className="fixed right-4 bottom-[calc(var(--app-dock-height)+0.5rem)] z-30 h-12 rounded-full px-4 shadow-lift sm:right-6"
         onClick={() => setOpen(true)}
         aria-label="Open Smrko AI Buddy"
       >

@@ -9,6 +9,7 @@ import { FormEvent, Suspense, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { enterAppFullscreen, markFullscreenAfterLogin } from "@/lib/browser/fullscreen";
 
 function LoginForm() {
   const router = useRouter();
@@ -47,6 +48,9 @@ function LoginForm() {
         );
         return;
       }
+      // Prefer entering full screen from the sign-in gesture; also flag the app shell as fallback.
+      markFullscreenAfterLogin();
+      await enterAppFullscreen();
       router.push(callbackUrl);
       router.refresh();
     } catch {

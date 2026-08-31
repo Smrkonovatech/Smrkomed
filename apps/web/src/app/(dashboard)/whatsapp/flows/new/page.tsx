@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { PageHeader } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,31 +13,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiPost } from "@/lib/api/client";
 
 const TRIGGERS = [
-  { value: "CARE_TASK_DUE", label: "Care task is due" },
-  { value: "CARE_TASK_CREATED", label: "Care task is created" },
-  { value: "CARE_TASK_OVERDUE", label: "Care task is overdue" },
-  { value: "APPOINTMENT_BOOKED", label: "Appointment is booked" },
-  { value: "APPOINTMENT_TOMORROW", label: "Appointment is tomorrow" },
-  { value: "APPOINTMENT_2H", label: "Appointment in 2 hours" },
-  { value: "APPOINTMENT_MISSED", label: "Appointment was missed" },
-  { value: "MEDICINE_REMINDER", label: "Medication reminder time" },
-  { value: "MEDICINE_ASSIGNED", label: "Medication is assigned" },
-  { value: "DOCUMENT_REQUIRED", label: "Document is required" },
-  { value: "PAYMENT_PENDING", label: "Payment is pending" },
-  { value: "PATIENT_INACTIVE", label: "Patient has been inactive" },
-  { value: "INCOMING_WHATSAPP", label: "Patient replies on WhatsApp" },
-  { value: "TREATMENT_STARTED", label: "Treatment journey starts" },
-  { value: "MANUAL", label: "Staff starts it manually" },
-  { value: "SCHEDULED", label: "On a scheduled date / time" },
+  "PATIENT_CREATED",
+  "APPOINTMENT_BOOKED",
+  "APPOINTMENT_TOMORROW",
+  "APPOINTMENT_2H",
+  "APPOINTMENT_MISSED",
+  "APPOINTMENT_CANCELLED",
+  "APPOINTMENT_RESCHEDULED",
+  "CARE_TASK_CREATED",
+  "CARE_TASK_DUE",
+  "CARE_TASK_OVERDUE",
+  "MEDICINE_ASSIGNED",
+  "MEDICINE_REMINDER",
+  "MEDICINE_REFILL",
+  "PAYMENT_PENDING",
+  "PAYMENT_OVERDUE",
+  "PAYMENT_RECEIVED",
+  "PAYMENT_FAILED",
+  "PATIENT_INACTIVE",
+  "CONSULTATION_COMPLETED",
+  "TREATMENT_STARTED",
+  "INCOMING_WHATSAPP",
+  "MANUAL",
+  "SCHEDULED",
 ] as const;
 
 export default function NewWhatsAppFlowPage() {
   const router = useRouter();
-  const [name, setName] = useState("IVF Monitoring Follow-up");
-  const [description, setDescription] = useState(
-    "Doctor-approved monitoring stage: reminder → confirm → report request → escalate if unresolved.",
-  );
-  const [triggerType, setTriggerType] = useState<string>("CARE_TASK_DUE");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [triggerType, setTriggerType] = useState<string>("PATIENT_CREATED");
   const [saving, setSaving] = useState(false);
 
   async function create() {
@@ -61,58 +67,43 @@ export default function NewWhatsAppFlowPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">Care Workflow Builder</h2>
-        <p className="text-sm text-muted-foreground">
-          When should this workflow start? Then configure what SmrkoMed should do — never clinical
-          decisions.
-        </p>
-      </div>
-      <div className="space-y-4 rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+    <div className="mx-auto max-w-xl space-y-4">
+      <PageHeader
+        title="Create Flow"
+        subtitle="Starts as a draft. Configure nodes, test in simulation, then activate."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href="/whatsapp/flows">Back</Link>
+          </Button>
+        }
+      />
+      <div className="surface-card space-y-4 p-4">
         <div className="space-y-2">
           <Label htmlFor="name">Flow name</Label>
-          <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="IVF Monitoring Follow-up"
-            className="rounded-xl"
-          />
+          <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Appointment Reminder" />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="desc">What does this workflow do?</Label>
-          <Textarea
-            id="desc"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="rounded-xl"
-          />
+          <Label htmlFor="desc">Description</Label>
+          <Textarea id="desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="trigger">When should this workflow start?</Label>
+          <Label htmlFor="trigger">Trigger</Label>
           <select
             id="trigger"
-            className="flex h-10 w-full rounded-xl border bg-background px-3 text-sm"
+            className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
             value={triggerType}
             onChange={(e) => setTriggerType(e.target.value)}
           >
             {TRIGGERS.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
+              <option key={t} value={t}>
+                {t.replaceAll("_", " ")}
               </option>
             ))}
           </select>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" className="rounded-xl" disabled={saving} onClick={() => void create()}>
-            {saving ? "Creating…" : "Create draft & open canvas"}
-          </Button>
-          <Button asChild type="button" variant="outline" className="rounded-xl">
-            <Link href="/whatsapp/flows">Cancel</Link>
-          </Button>
-        </div>
+        <Button onClick={() => void create()} disabled={saving}>
+          {saving ? "Creating…" : "Save draft & open builder"}
+        </Button>
       </div>
     </div>
   );

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart3,
-  BookOpen,
   CalendarDays,
   ClipboardList,
   CreditCard,
@@ -14,17 +13,15 @@ import {
   Heart,
   Link2,
   ListChecks,
-  MessageCircle,
   Pill,
   PlayCircle,
-  Radio,
   RefreshCw,
   Settings,
   Shield,
   Sparkles,
+  MessageCircle,
   Users,
   Wallet,
-  Workflow,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useMemo } from "react";
@@ -110,14 +107,11 @@ const pharmacyGroup: NavGroup = {
 };
 
 const whatsappGroup: NavGroup = {
-  label: "Communication",
+  label: "WhatsApp",
   items: [
-    { to: "/whatsapp", label: "WhatsApp Center", icon: MessageCircle },
-    { to: "/whatsapp/inbox", label: "Conversations", icon: MessageCircle },
+    { to: "/whatsapp", label: "Overview", icon: MessageCircle },
+    { to: "/whatsapp/inbox", label: "Inbox", icon: MessageCircle },
     { to: "/whatsapp/templates", label: "Templates", icon: FileText },
-    { to: "/whatsapp/flows", label: "Automation", icon: Workflow },
-    { to: "/whatsapp/knowledge-base", label: "Knowledge Base", icon: BookOpen },
-    { to: "/whatsapp/broadcasts", label: "Broadcasts", icon: Radio },
     { to: "/whatsapp/settings", label: "Settings", icon: Settings },
   ],
 };
@@ -197,7 +191,7 @@ export function SidebarContentBody({
     }
     const showDigitalHealth = role && roleHasPermission(role, PERMISSIONS.DIGITAL_HEALTH_VIEW);
     if (showDigitalHealth) {
-      const insertAfter = next.findIndex((group) => group.label === "Communication");
+      const insertAfter = next.findIndex((group) => group.label === "WhatsApp");
       const at = insertAfter >= 0 ? insertAfter + 1 : next.findIndex((group) => group.label === "Operations") + 1;
       next.splice(at, 0, digitalHealthGroup);
     }
