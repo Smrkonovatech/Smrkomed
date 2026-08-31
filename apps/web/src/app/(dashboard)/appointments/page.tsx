@@ -21,14 +21,18 @@ import { EmptyState, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppState } from "@/lib/app-state";
-import { coupleLabel, team, type Appointment } from "@/lib/demo-data";
+import { coupleLabel, type Appointment } from "@/lib/demo-data";
+import {
+  displayNameOf,
+  formatTimeLabel,
+  generateDaySlots,
+  useDoctors,
+} from "@/lib/doctors";
 import { appointmentTone } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
 const tabs = ["Today", "Upcoming", "Calendar", "Availability"] as const;
 const views = ["Day", "Week", "Month"] as const;
-const hours = ["09:00 AM", "10:00 AM", "11:30 AM", "01:00 PM", "02:30 PM", "04:00 PM"];
-const doctors = team.filter((member) => member.name.startsWith("Dr."));
 
 export default function AppointmentsPage() {
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Today");
@@ -37,6 +41,11 @@ export default function AppointmentsPage() {
   const [remindedIds, setRemindedIds] = useState<string[]>([]);
   const { openAction } = useGlobalActions();
   const { appointments, couples, pushActivity, patchAppointmentStatus, loadState } = useAppState();
+  const doctorsCatalog = useDoctors();
+  const activeDoctors = useMemo(
+    () => doctorsCatalog.filter((d) => d.status === "active" && !d.isDraft),
+    [doctorsCatalog],
+  );
   const coupleById = useMemo(
     () => new Map(couples.map((couple) => [couple.id, couple])),
     [couples],
@@ -156,6 +165,7 @@ export default function AppointmentsPage() {
         {activeTab === "Availability" ? (
           <Availability
             selectedDate={selectedDate}
+            doctors={activeDoctors}
             onSelectSlot={() => openAction("new-appointment")}
           />
         ) : loadState === "loading" ? (
@@ -367,17 +377,26 @@ export default function AppointmentsPage() {
 
 function Availability({
   selectedDate,
+  doctors,
   onSelectSlot,
 }: {
   selectedDate: string;
+  doctors: ReturnType<typeof useDoctors>;
   onSelectSlot: () => void;
 }) {
+  const date = new Date(`${selectedDate}T00:00:00`);
+  const rows = doctors.map((doctor) => {
+    const slots = generateDaySlots(doctor, date).filter((s) => s.status === "available");
+    return { doctor, slots };
+  });
+  const openCount = rows.reduce((sum, row) => sum + row.slots.length, 0);
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
         <span>{formatDate(selectedDate)}</span>
         <span>
-          {hours.length} open slots across {doctors.length} doctors
+          {openCount} open slots across {doctors.length} doctors
         </span>
       </div>
       <div className="overflow-x-auto">
@@ -390,33 +409,43 @@ function Availability({
             </tr>
           </thead>
           <tbody>
-            {doctors.map((doctor, doctorIndex) => (
-              <tr key={doctor.id} className="border-b last:border-0">
-                <td className="px-4 py-3">
-                  <span className="block font-semibold">{doctor.name}</span>
-                  <span className="text-xs text-muted-foreground">{doctor.role}</span>
-                </td>
-                <td className="px-3 py-3">
-                  <StatusBadge label="Available" tone="success" />
-                </td>
-                <td className="px-3 py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {hours
-                      .filter((_, index) => index % doctors.length === doctorIndex)
-                      .map((hour) => (
-                        <button
-                          key={hour}
-                          onClick={onSelectSlot}
-                          className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary hover:bg-primary-soft hover:text-primary"
-                          aria-label={`Book ${hour} with ${doctor.name}`}
-                        >
-                          <Clock className="size-3.5" /> {hour}
-                        </button>
-                      ))}
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {rows.map(({ doctor, slots }) => {
+              const name = displayNameOf(doctor);
+              return (
+                <tr key={doctor.id} className="border-b last:border-0">
+                  <td className="px-4 py-3">
+                    <Link href={`/doctors/${doctor.id}`} className="block font-semibold hover:text-primary">
+                      {name}
+                    </Link>
+                    <span className="text-xs text-muted-foreground">{doctor.designation}</span>
+                  </td>
+                  <td className="px-3 py-3">
+                    <StatusBadge
+                      label={slots.length > 0 ? "Available" : "Unavailable"}
+                      tone={slots.length > 0 ? "success" : "muted"}
+                    />
+                  </td>
+                  <td className="px-3 py-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {slots.length === 0 ? (
+                        <span className="text-xs text-muted-foreground">No open slots</span>
+                      ) : (
+                        slots.slice(0, 8).map((slot) => (
+                          <button
+                            key={`${slot.start}-${slot.end}`}
+                            onClick={onSelectSlot}
+                            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-2.5 py-1.5 text-xs font-medium transition-colors hover:border-primary hover:bg-primary-soft hover:text-primary"
+                            aria-label={`Book ${formatTimeLabel(slot.start)} with ${name}`}
+                          >
+                            <Clock className="size-3.5" /> {formatTimeLabel(slot.start)}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

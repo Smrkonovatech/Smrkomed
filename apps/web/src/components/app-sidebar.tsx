@@ -20,6 +20,7 @@ import {
   Shield,
   Sparkles,
   MessageCircle,
+  Stethoscope,
   Users,
   Wallet,
 } from "lucide-react";
@@ -52,6 +53,7 @@ const baseGroups: NavGroup[] = [
     label: "Patient Care",
     items: [
       { to: "/patients", label: "Patients", icon: Users },
+      { to: "/doctors", label: "Doctors", icon: Stethoscope },
       { to: "/ivf-cycles", label: "IVF Cycles", icon: Sparkles },
       { to: "/appointments", label: "Appointments", icon: CalendarDays },
       { to: "/care-plans", label: "Care Plans", icon: ClipboardList },

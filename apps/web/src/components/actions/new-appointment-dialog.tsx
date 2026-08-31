@@ -25,7 +25,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppState } from "@/lib/app-state";
-import { team } from "@/lib/demo-data";
+import { displayNameOf, useDoctors } from "@/lib/doctors";
 import { newAppointmentSchema, type NewAppointmentValues } from "@/lib/validations/global-actions";
 
 import { FieldGrid, SelectField, TextField } from "./form-fields";
@@ -48,7 +48,6 @@ const rooms = ["Room 1", "Room 2", "Room 3", "Scan 1", "OT"].map((value) => ({
   value,
   label: value,
 }));
-const doctors = team.filter((member) => member.name.startsWith("Dr."));
 
 export function NewAppointmentDialog({
   open,
@@ -60,6 +59,10 @@ export function NewAppointmentDialog({
   coupleId?: string;
 }) {
   const { couples, addAppointment } = useAppState();
+  const allDoctors = useDoctors();
+  const doctors = allDoctors
+    .filter((d) => d.status === "active" && !d.isDraft)
+    .map((d) => ({ id: d.id, name: displayNameOf(d) }));
   const firstCouple = couples[0];
 
   const form = useForm<NewAppointmentValues>({
@@ -104,7 +107,7 @@ export function NewAppointmentDialog({
       whatsappReminder: true,
       careLoop: true,
     });
-  }, [open, coupleId, couples, firstCouple, form]);
+  }, [open, coupleId, couples, firstCouple, form, doctors]);
 
   useEffect(() => {
     const selectedNames = [selectedCouple?.primary.name, selectedCouple?.partner?.name].filter(

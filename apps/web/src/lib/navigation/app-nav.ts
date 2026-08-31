@@ -123,6 +123,18 @@ export const APP_NAV_CATEGORIES: AppNavCategory[] = [
     columns: 2,
     items: [
       {
+        href: "/doctors",
+        label: "Doctors",
+        description: "Profiles, specialties, and availability",
+        icon: Stethoscope,
+      },
+      {
+        href: "/doctors/new",
+        label: "Add Doctor",
+        description: "Onboard a new clinic doctor",
+        icon: Users,
+      },
+      {
         href: "/care-plans",
         label: "Treatments",
         description: "Doctor-approved care plans",
