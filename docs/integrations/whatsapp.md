@@ -35,12 +35,23 @@ Valid OAuth redirect / JavaScript SDK origins must include the clinic app origin
 
 ## 3. Required permissions
 
+### Meta (Graph / Embedded Signup)
+
 Embedded Signup v4 selects permissions in the Login configuration builder, not by inventing extra scopes in SmrkoMed. Current WhatsApp Cloud API permissions used by this integration:
 
 - `whatsapp_business_management`
 - `whatsapp_business_messaging`
 
-Do not add undocumented permissions.
+Do not add undocumented permissions. Do **not** request SmrkoMed RBAC keys (for example `settings:manage`) from Meta — those are internal clinic-role permissions only.
+
+### SmrkoMed RBAC (clinic roles)
+
+| Action | Permission |
+| --- | --- |
+| View WhatsApp status / inbox | `whatsapp:view` (or admin) |
+| Connect / disconnect / test / sync | `whatsapp:settings` or `settings:manage` |
+
+`Missing permission: settings:manage` is a **SmrkoMed authorization** error, not a Meta Graph scope. Clinic admins (`CLINIC_ADMIN`, `ORGANIZATION_ADMIN`, `PLATFORM_ADMIN`) have connect rights. Care coordinators and doctors can use the inbox after an admin connects WhatsApp.
 
 ## 4. Business verification and app review
 
@@ -111,8 +122,9 @@ Server (`apps/api` / root `.env`):
 | `META_APP_ID` | Meta app id (also returned to the signed-in clinic for `FB.init`) |
 | `META_APP_SECRET` | App secret for token exchange and webhook HMAC. Never `NEXT_PUBLIC_`. |
 | `WHATSAPP_CONFIGURATION_ID` | Embedded Signup config id |
-| `WHATSAPP_VERIFY_TOKEN` | Webhook GET handshake |
-| `META_GRAPH_API_VERSION` | Default `v21.0` (override if Meta requires a newer version) |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook GET handshake (`META_WEBHOOK_VERIFY_TOKEN` alias) |
+| `META_GRAPH_API_VERSION` | Default `v21.0` (`META_API_VERSION` alias) |
+| `WHATSAPP_ENV` | `development` or `production` |
 | `INTEGRATION_ENCRYPTION_KEY` | 32-byte hex/base64 AES-256-GCM key |
 | `WHATSAPP_DEMO_MODE` | Set to `1` to allow simulated Embedded Signup when Meta App credentials are not configured (dev/test only; never a production Meta connection) |
 | `MOCK_INTEGRATIONS_ENABLED` | Also enables WhatsApp demo connect when Meta is not configured |
@@ -156,7 +168,9 @@ If Meta app credentials are missing, disconnect remains 501 and local state is u
 
 | Symptom | Likely cause |
 | --- | --- |
+| `Missing permission: settings:manage` / `whatsapp:settings` | SmrkoMed RBAC — sign in as `CLINIC_ADMIN` (e.g. `admin@abcfertility.demo`). This is **not** a Meta Graph scope. |
 | Connect returns 501 | `META_APP_ID` / secret / configuration id / verify token missing |
+| Meta popup never opens | Facebook JS SDK blocked, wrong App ID, or Embedded Signup `config_id` not set; check browser console |
 | Webhook GET fails | Verify token mismatch, or response was JSON instead of the raw challenge |
 | Webhook POST 401 | HMAC uses the wrong app secret, or the body was parsed before hashing |
 | Connection requires attention | Graph error 190; reconnect with Embedded Signup |

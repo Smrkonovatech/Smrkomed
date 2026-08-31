@@ -17,7 +17,7 @@ import {
 } from "../../integrations/providers/whatsapp/onboarding";
 import { listWhatsAppTemplates, syncWhatsAppTemplates } from "../../integrations/providers/whatsapp/sync";
 import { integrationService } from "../../integrations/services/integration-service";
-import { requireAnyPermission, requirePermission } from "../../lib/authz";
+import { requireAnyPermission } from "../../lib/authz";
 import { ok } from "../../lib/http";
 import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
@@ -43,21 +43,38 @@ const sendSchema = z.object({
 
 const conversationParam = z.object({ id: z.string().min(1) });
 
+/** Clinic staff who can view WhatsApp connection status / inbox analytics. */
+const WHATSAPP_VIEW_PERMS = [
+  PERMISSIONS.WHATSAPP_VIEW,
+  PERMISSIONS.WHATSAPP_SETTINGS,
+  PERMISSIONS.SETTINGS_MANAGE,
+] as const;
+
+/**
+ * Clinic admins who may connect / disconnect WhatsApp via Meta Embedded Signup.
+ * Uses `whatsapp:settings` (not Meta Graph scopes). `settings:manage` kept as a
+ * legacy alternate for full clinic admins — it is a SmrkoMed RBAC key, not a Meta permission.
+ */
+const WHATSAPP_CONNECT_PERMS = [
+  PERMISSIONS.WHATSAPP_SETTINGS,
+  PERMISSIONS.SETTINGS_MANAGE,
+] as const;
+
 export const whatsappClinicRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_VIEW_PERMS);
     return ok(c, await getWhatsAppClinicStatus(tenant));
   })
   .get("/status", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_VIEW_PERMS);
     return ok(c, await getWhatsAppClinicStatus(tenant));
   })
   .post("/connect", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     return ok(c, await startWhatsAppConnect(tenant));
   })
   .post("/callback", validate("json", callbackSchema), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     const body = c.req.valid("json");
     return ok(
       c,
@@ -70,7 +87,7 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     );
   })
   .post("/demo-callback", validate("json", demoCallbackSchema), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     const body = c.req.valid("json");
     return ok(
       c,
@@ -81,11 +98,11 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     );
   })
   .post("/test", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     return ok(c, await testWhatsAppConnection(tenant));
   })
   .post("/disconnect", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     const result = await integrationService.disconnectConnection(tenant, "WHATSAPP_CLOUD");
     return ok(c, {
       ...result,
@@ -94,15 +111,19 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     });
   })
   .post("/sync", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     return ok(c, await syncWhatsAppTemplates(tenant));
   })
   .get("/templates", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const tenant = requireAnyPermission(c, [
+      PERMISSIONS.WHATSAPP_TEMPLATES,
+      PERMISSIONS.WHATSAPP_VIEW,
+      PERMISSIONS.PATIENTS_READ,
+    ]);
     return ok(c, await listWhatsAppTemplates(tenant));
   })
   .post("/messages/template", validate("json", sendSchema), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);
+    const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_SEND, PERMISSIONS.PATIENTS_WRITE]);
     const body = c.req.valid("json");
     return ok(
       c,
@@ -116,14 +137,19 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     );
   })
   .get("/conversations", async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_VIEW, PERMISSIONS.PATIENTS_READ]);
     return ok(c, await listWhatsAppConversations(tenant));
   })
   .get("/conversations/:id", validate("param", conversationParam), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_VIEW, PERMISSIONS.PATIENTS_READ]);
     return ok(c, await getWhatsAppConversation(tenant, c.req.valid("param").id));
   })
   .get("/analytics", async (c) => {
-    const tenant = requireAnyPermission(c, [PERMISSIONS.PATIENTS_READ, PERMISSIONS.SETTINGS_MANAGE]);
+    const tenant = requireAnyPermission(c, [
+      PERMISSIONS.WHATSAPP_VIEW,
+      PERMISSIONS.WHATSAPP_SETTINGS,
+      PERMISSIONS.SETTINGS_MANAGE,
+      PERMISSIONS.PATIENTS_READ,
+    ]);
     return ok(c, await getWhatsAppAnalytics(tenant));
   });

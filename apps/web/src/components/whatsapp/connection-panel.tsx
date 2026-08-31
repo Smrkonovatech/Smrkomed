@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { CheckCircle2, MessageCircle, Shield } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -16,6 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, apiGet, apiPost } from "@/lib/api/client";
+import { PERMISSIONS, roleHasPermission, type StaffRole } from "@/lib/permissions/rbac";
 import { runWhatsAppEmbeddedSignup } from "@/lib/whatsapp/embedded-signup";
 import { cn } from "@/lib/utils";
 
@@ -68,13 +70,13 @@ type TestResult = {
   checks: Array<{ id: string; label: string; ok: boolean; detail: string }>;
 };
 
-const progressCopy = [
-  "Connecting your WhatsApp Business account...",
-  "Meta onboarding in progress...",
-  "Configuring webhook...",
-  "Verifying number...",
-  "Checking messaging...",
-];
+type ConnectErrorKind = "permission" | "meta_sdk" | "cancelled" | "config" | "conflict" | "phone" | "generic";
+
+type ConnectError = {
+  kind: ConnectErrorKind;
+  message: string;
+  technical?: string;
+};
 
 function toneFor(status: ConnectionStatus) {
   if (status === "CONNECTED") return "success" as const;
@@ -92,11 +94,24 @@ function labelFor(status: ConnectionStatus) {
   return "Not connected";
 }
 
+function canManageWhatsApp(role: StaffRole | undefined) {
+  if (!role) return false;
+  return (
+    roleHasPermission(role, PERMISSIONS.WHATSAPP_SETTINGS) ||
+    roleHasPermission(role, PERMISSIONS.SETTINGS_MANAGE)
+  );
+}
+
 export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean }) {
+  const { data: session } = useSession();
+  const role = session?.user?.role;
+  const manageAllowed = canManageWhatsApp(role);
+
   const [status, setStatus] = useState<WhatsAppStatus | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ConnectError | null>(null);
+  const [showTechnical, setShowTechnical] = useState(false);
   const [oauthState, setOauthState] = useState<string | null>(null);
   const [phoneChoices, setPhoneChoices] = useState<PhoneOption[] | null>(null);
   const [disconnectOpen, setDisconnectOpen] = useState(false);
@@ -112,9 +127,12 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
     void (async () => {
       try {
         const data = await apiGet<WhatsAppStatus>("/api/v1/integrations/whatsapp");
-        if (!cancelled) setStatus(data);
+        if (!cancelled) {
+          setStatus(data);
+          setError(null);
+        }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not load WhatsApp status.");
+        if (!cancelled) setError(classifyConnectError(err));
       }
     })();
     return () => {
@@ -123,11 +141,21 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
   }, []);
 
   async function connect() {
+    if (!manageAllowed) {
+      setError({
+        kind: "permission",
+        message:
+          "Only a clinic administrator can connect WhatsApp. Ask an admin to complete Meta onboarding.",
+      });
+      return;
+    }
+
     setError(null);
+    setShowTechnical(false);
     setTestResult(null);
     setPhoneChoices(null);
     setBusy("connect");
-    setProgress(progressCopy[0] ?? null);
+    setProgress("Connecting to Meta...");
     try {
       const start = await apiPost<{
         demo?: boolean;
@@ -155,13 +183,14 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
         throw new Error("WhatsApp Embedded Signup is not configured on this server.");
       }
 
-      setProgress(progressCopy[1] ?? null);
-      const session = await runWhatsAppEmbeddedSignup({
+      setProgress("Opening Meta WhatsApp onboarding...");
+      const sessionResult = await runWhatsAppEmbeddedSignup({
         appId: start.appId,
         configId: start.configId,
         graphVersion: start.graphVersion,
       });
-      setProgress(progressCopy[2] ?? null);
+
+      setProgress("Configuring your WhatsApp connection...");
       const result = await apiPost<{
         needsSelection: boolean;
         phones?: PhoneOption[];
@@ -169,9 +198,9 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
         wabaId?: string;
       }>("/api/v1/integrations/whatsapp/callback", {
         state: start.state,
-        code: session.code,
-        ...(session.wabaId ? { wabaId: session.wabaId } : {}),
-        ...(session.phoneNumberId ? { phoneNumberId: session.phoneNumberId } : {}),
+        code: sessionResult.code,
+        ...(sessionResult.wabaId ? { wabaId: sessionResult.wabaId } : {}),
+        ...(sessionResult.phoneNumberId ? { phoneNumberId: sessionResult.phoneNumberId } : {}),
       });
 
       if (result.needsSelection && result.phones?.length) {
@@ -182,17 +211,11 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
         return;
       }
 
-      setProgress(progressCopy[4] ?? null);
+      setProgress("Verifying messaging and webhooks...");
       toast.success("WhatsApp connected successfully.");
       await load();
     } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? humanizeConnectError(err.message)
-          : err instanceof Error
-            ? humanizeConnectError(err.message)
-            : "WhatsApp connection could not be completed.";
-      setError(message);
+      setError(classifyConnectError(err));
     } finally {
       setBusy(null);
       setProgress(null);
@@ -212,7 +235,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
       toast.success("WhatsApp connected successfully.");
       await load();
     } catch (err) {
-      setError(err instanceof ApiError ? humanizeConnectError(err.message) : "Phone selection failed.");
+      setError(classifyConnectError(err));
     } finally {
       setBusy(null);
     }
@@ -227,7 +250,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
       toast.success("WhatsApp disconnected from SmrkoMed.");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "WhatsApp could not be disconnected.");
+      setError(classifyConnectError(err));
     } finally {
       setBusy(null);
     }
@@ -241,7 +264,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
       toast.success("Templates synced.");
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Templates could not be synced.");
+      setError(classifyConnectError(err));
     } finally {
       setBusy(null);
     }
@@ -255,7 +278,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
       setTestResult(result);
       toast.message(result.summary);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Connection test failed.");
+      setError(classifyConnectError(err));
     } finally {
       setBusy(null);
     }
@@ -285,16 +308,47 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
 
       {error ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-semibold">WhatsApp connection could not be completed.</p>
-          <p className="mt-1 text-xs">{error}</p>
-          <p className="mt-2 text-xs text-amber-900/80">
-            Possible reasons: Meta authorization cancelled, phone verification failed, incomplete business
-            setup, missing permission, or an existing configuration conflict.
+          <p className="font-semibold">
+            {error.kind === "permission"
+              ? "You do not have permission to manage WhatsApp"
+              : error.kind === "meta_sdk"
+                ? "Unable to connect to Meta"
+                : "WhatsApp connection could not be completed"}
           </p>
+          <p className="mt-1 text-sm">{error.message}</p>
+          {error.kind !== "permission" && error.kind !== "meta_sdk" && error.kind !== "config" ? (
+            <p className="mt-2 text-xs text-amber-900/80">
+              This usually means Meta onboarding was cancelled, phone verification failed, business setup is
+              incomplete, or the number is not eligible. SmrkoMed never asks you for API tokens.
+            </p>
+          ) : null}
+          {manageAllowed && error.technical ? (
+            <div className="mt-2">
+              <button
+                type="button"
+                className="text-xs font-medium text-amber-900 underline"
+                onClick={() => setShowTechnical((v) => !v)}
+              >
+                {showTechnical ? "Hide technical details" : "View technical details"}
+              </button>
+              {showTechnical ? (
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-white/70 p-2 text-[11px] text-amber-950">
+                  {error.technical}
+                </pre>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => void connect()}>
-              Try Again
-            </Button>
+            {error.kind === "permission" ? null : (
+              <Button size="sm" onClick={() => void connect()} disabled={!manageAllowed || busy !== null}>
+                Try Again
+              </Button>
+            )}
+            {(error.kind === "meta_sdk" || error.kind === "config") && (
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/help">View Setup Help</Link>
+              </Button>
+            )}
             <Button size="sm" variant="outline" asChild>
               <Link href="/help">Contact Support</Link>
             </Button>
@@ -364,13 +418,19 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
                   your clinic
                 </li>
               </ul>
+              {!manageAllowed ? (
+                <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                  Connecting WhatsApp requires a clinic administrator. You can still view status and
+                  conversations if WhatsApp is already connected.
+                </p>
+              ) : null}
               <Button
                 className="mt-5"
-                disabled={busy !== null}
+                disabled={busy !== null || !manageAllowed}
                 onClick={() => void connect()}
               >
                 {busy === "connect"
-                  ? "Connecting…"
+                  ? "Connecting to Meta…"
                   : status?.platform?.demoModeAvailable
                     ? "Connect WhatsApp (Demo)"
                     : "Connect WhatsApp"}
@@ -400,18 +460,18 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-lg font-semibold">WhatsApp Business</h2>
+                <h2 className="text-lg font-semibold">WhatsApp Connected</h2>
                 <StatusBadge label="Connected" tone="success" />
                 {demo && <StatusBadge label="DEMO" tone="info" />}
               </div>
               <p className="mt-2 text-sm font-medium">
-                {status?.account?.displayName ?? status?.integration.displayName ?? "WhatsApp Business"}
+                Business: {status?.account?.displayName ?? status?.integration.displayName ?? "WhatsApp Business"}
               </p>
               <p className="text-sm text-muted-foreground tabular-nums">
                 Phone: {status?.account?.displayPhoneNumber ?? "••••"}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Last checked:{" "}
+                Last synced:{" "}
                 {status?.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString("en-IN") : "Just now"}
               </p>
             </div>
@@ -420,23 +480,39 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
                 <Link href="/whatsapp/inbox">Open WhatsApp Inbox</Link>
               </Button>
               <Button asChild variant="outline" size="sm">
-                <Link href="/integrations/whatsapp/templates">Manage</Link>
+                <Link href="/whatsapp/templates">Manage Templates</Link>
               </Button>
-              <Button type="button" variant="outline" size="sm" disabled={busy !== null} onClick={() => void testConnection()}>
-                {busy === "test" ? "Testing…" : "Test WhatsApp"}
-              </Button>
-              <Button type="button" variant="outline" size="sm" disabled={busy !== null} onClick={() => void sync()}>
-                {busy === "sync" ? "Syncing…" : "Sync templates"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={busy !== null}
-                onClick={() => setDisconnectOpen(true)}
-              >
-                Disconnect
-              </Button>
+              {manageAllowed ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy !== null}
+                    onClick={() => void testConnection()}
+                  >
+                    {busy === "test" ? "Testing…" : "Test WhatsApp"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy !== null}
+                    onClick={() => void sync()}
+                  >
+                    {busy === "sync" ? "Syncing…" : "Refresh Status"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={busy !== null}
+                    onClick={() => setDisconnectOpen(true)}
+                  >
+                    Disconnect
+                  </Button>
+                </>
+              ) : null}
             </div>
           </div>
 
@@ -444,9 +520,9 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
             {[
               { label: "WhatsApp Business Account", value: "Connected", ok: true },
               { label: "Phone Number", value: "Connected", ok: true },
-              { label: "Messaging", value: "Active", ok: true },
+              { label: "Status", value: "Active", ok: true },
               {
-                label: "Webhooks",
+                label: "Webhook",
                 value:
                   status?.webhookStatus === "RECEIVING"
                     ? "Connected"
@@ -457,7 +533,12 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
               },
               {
                 label: "Templates",
-                value: `${status?.templates.approved ?? 0} approved`,
+                value:
+                  (status?.templates.approved ?? 0) > 0
+                    ? "Connected"
+                    : demo
+                      ? "Demo"
+                      : `${status?.templates.approved ?? 0} approved`,
                 ok: (status?.templates.approved ?? 0) > 0 || demo,
               },
               {
@@ -486,14 +567,13 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
                     className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm"
                   >
                     <span className="tabular-nums">{row.displayPhoneNumber}</span>
-                    <StatusBadge label={row.isActive ? "Active" : "Inactive"} tone={row.isActive ? "success" : "muted"} />
+                    <StatusBadge
+                      label={row.isActive ? "Active" : "Inactive"}
+                      tone={row.isActive ? "success" : "muted"}
+                    />
                   </li>
                 ))}
               </ul>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Architecture supports multiple clinic numbers. Use Connect WhatsApp again after Meta
-                onboarding to add another number when available.
-              </p>
             </div>
           )}
 
@@ -535,7 +615,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { href: "/whatsapp/inbox", label: "Messages" },
-          { href: "/integrations/whatsapp/templates", label: "Templates" },
+          { href: "/whatsapp/templates", label: "Templates" },
           { href: "/whatsapp/automations", label: "Automations" },
           { href: "/whatsapp/analytics", label: "Analytics" },
         ].map((link) => (
@@ -573,19 +653,59 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
   );
 }
 
-function humanizeConnectError(raw: string) {
+function classifyConnectError(err: unknown): ConnectError {
+  const raw =
+    err instanceof ApiError ? err.message : err instanceof Error ? err.message : "Something went wrong while connecting WhatsApp.";
   const lower = raw.toLowerCase();
+  const technical = err instanceof ApiError ? `${err.code}: ${err.message}` : raw;
+
+  if (lower.includes("missing permission") || lower.includes("insufficient") || (err instanceof ApiError && err.status === 403)) {
+    return {
+      kind: "permission",
+      message:
+        "Only a clinic administrator can connect or manage WhatsApp. Sign in as an admin, or ask an admin to complete Meta onboarding.",
+      technical,
+    };
+  }
+  if (lower.includes("unable to connect to meta") || lower.includes("facebook sdk") || lower.includes("sdk is not available")) {
+    return {
+      kind: "meta_sdk",
+      message: "Unable to connect to Meta right now. Please try again.",
+      technical,
+    };
+  }
   if (lower.includes("cancelled") || lower.includes("canceled")) {
-    return "Meta authorization was cancelled. You can try again when ready.";
+    return {
+      kind: "cancelled",
+      message: "WhatsApp connection was cancelled. You can try again whenever you're ready.",
+      technical,
+    };
   }
   if (lower.includes("not configured") || lower.includes("501")) {
-    return "WhatsApp Embedded Signup is not configured on this server yet. Ask your SmrkoMed administrator to complete Meta App setup, or enable demo mode for local testing.";
+    return {
+      kind: "config",
+      message:
+        "SmrkoMed could not complete the Meta connection. Ask your SmrkoMed administrator to finish Meta App setup (App ID, Embedded Signup configuration, and webhook).",
+      technical,
+    };
   }
   if (lower.includes("conflict") || lower.includes("already connected")) {
-    return "This WhatsApp number appears to be connected to another clinic. Contact support if this is unexpected.";
+    return {
+      kind: "conflict",
+      message: "This WhatsApp number appears to be connected to another clinic. Contact support if this is unexpected.",
+      technical,
+    };
   }
-  if (lower.includes("phone")) {
-    return "Phone verification or phone selection could not be completed. Try again or finish verification in Meta.";
+  if (lower.includes("phone") || lower.includes("verification")) {
+    return {
+      kind: "phone",
+      message: "We couldn't verify this phone number. Please check the number and verification method in Meta, then try again.",
+      technical,
+    };
   }
-  return raw;
+  return {
+    kind: "generic",
+    message: "Something went wrong while connecting WhatsApp. Please try again.",
+    technical,
+  };
 }

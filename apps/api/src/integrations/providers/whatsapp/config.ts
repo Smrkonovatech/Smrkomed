@@ -1,10 +1,16 @@
+export function whatsAppEnv(): "development" | "production" {
+  const value = (process.env["WHATSAPP_ENV"] ?? process.env["NODE_ENV"] ?? "development").toLowerCase();
+  return value === "production" ? "production" : "development";
+}
+
 export function metaConfig() {
   return {
     appId: process.env["META_APP_ID"] ?? "",
     appSecret: process.env["META_APP_SECRET"] ?? "",
     configId: process.env["WHATSAPP_CONFIGURATION_ID"] ?? "",
-    verifyToken: process.env["WHATSAPP_VERIFY_TOKEN"] ?? "",
-    graphVersion: process.env["META_GRAPH_API_VERSION"] ?? "v21.0",
+    verifyToken: process.env["WHATSAPP_VERIFY_TOKEN"] ?? process.env["META_WEBHOOK_VERIFY_TOKEN"] ?? "",
+    graphVersion: process.env["META_GRAPH_API_VERSION"] ?? process.env["META_API_VERSION"] ?? "v21.0",
+    env: whatsAppEnv(),
   };
 }
 
