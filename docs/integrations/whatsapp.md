@@ -114,6 +114,8 @@ Server (`apps/api` / root `.env`):
 | `WHATSAPP_VERIFY_TOKEN` | Webhook GET handshake |
 | `META_GRAPH_API_VERSION` | Default `v21.0` (override if Meta requires a newer version) |
 | `INTEGRATION_ENCRYPTION_KEY` | 32-byte hex/base64 AES-256-GCM key |
+| `WHATSAPP_DEMO_MODE` | Set to `1` to allow simulated Embedded Signup when Meta App credentials are not configured (dev/test only; never a production Meta connection) |
+| `MOCK_INTEGRATIONS_ENABLED` | Also enables WhatsApp demo connect when Meta is not configured |
 
 Optional public (not required; connect API already returns app id + config id):
 

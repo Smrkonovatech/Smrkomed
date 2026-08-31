@@ -443,6 +443,7 @@ model Clinic {
   digitalHealthIdentities DigitalHealthIdentity[]
   digitalHealthConsents DigitalHealthConsent[]
   healthRecordExchanges HealthRecordExchange[]
+  abdmTransactions AbdmTransaction[]
 
   @@index([organizationId])
 }
@@ -501,6 +502,7 @@ model User {
   whatsappCampaignsCreated WhatsAppCampaign[] @relation("WhatsAppCampaignCreator")
   digitalHealthConsentsRequested DigitalHealthConsent[] @relation("DigitalHealthConsentRequester")
   healthRecordExchangesCreated HealthRecordExchange[] @relation("HealthRecordExchangeCreator")
+  abdmTransactionsInitiated AbdmTransaction[] @relation("AbdmTransactionActor")
 }
 
 model Role {
@@ -584,6 +586,7 @@ model Patient {
   digitalHealthIdentity DigitalHealthIdentity?
   digitalHealthConsents DigitalHealthConsent[]
   healthRecordExchanges HealthRecordExchange[]
+  abdmTransactions AbdmTransaction[]
 
   @@index([clinicId])
   @@index([clinicId, whatsappNumber])
@@ -2598,4 +2601,36 @@ model HealthRecordExchange {
   @@unique([clinicId, idempotencyKey])
   @@index([clinicId, status])
   @@index([patientId, status])
+}
+
+/// Internal ABDM operation log — never stores OTP, Aadhaar, or raw secrets.
+model AbdmTransaction {
+  id                String   @id @default(cuid())
+  clinicId          String
+  patientId         String?
+  coupleId          String?
+  operation         String
+  status            String
+  referenceId       String?
+  abhaMasked        String?
+  consentReference  String?
+  errorCode         String?
+  /// Safe user-facing message only
+  userMessage       String?
+  /// Technical detail for admins — never shown in patient UI
+  technicalDetail   String?
+  retryCount        Int      @default(0)
+  environment       String   @default("sandbox")
+  initiatedById     String?
+  initiatedByName   String?
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+
+  clinic      Clinic   @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  patient     Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  initiatedBy User?    @relation("AbdmTransactionActor", fields: [initiatedById], references: [id], onDelete: SetNull)
+
+  @@index([clinicId, createdAt])
+  @@index([patientId, createdAt])
+  @@index([clinicId, operation, status])
 }

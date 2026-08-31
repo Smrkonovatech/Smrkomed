@@ -212,8 +212,20 @@ export const APP_NAV_CATEGORIES: AppNavCategory[] = [
       {
         href: "/digital-health",
         label: "ABDM & Digital Health",
-        description: "ABHA and health exchange",
+        description: "ABHA, consent, and health records",
         icon: ShieldCheck,
+      },
+      {
+        href: "/digital-health/tasks",
+        label: "ABDM Tasks",
+        description: "Pending ABHA and consent work",
+        icon: ListChecks,
+      },
+      {
+        href: "/digital-health/settings",
+        label: "ABDM Settings",
+        description: "Sandbox / production configuration",
+        icon: Settings,
       },
       {
         href: "/pharmacy/suppliers",

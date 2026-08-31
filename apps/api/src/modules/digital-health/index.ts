@@ -13,11 +13,77 @@ import { buildInteropBundle } from "./interop";
 import {
   createConsentSchema,
   idParam,
+  journeyAuthStartSchema,
+  journeyConsentSchema,
+  journeyCreateSchema,
+  journeyDiscoverSchema,
+  journeyMatchSchema,
+  journeyOtpSchema,
+  journeyStartSchema,
   linkAbhaSchema,
   patientIdParam,
   prepareExchangeSchema,
   shareExchangeSchema,
 } from "./schemas";
+
+async function recordAbdmTransaction(
+  tenant: TenantContext,
+  input: {
+    patientId?: string;
+    coupleId?: string | null;
+    operation: string;
+    status: string;
+    referenceId?: string | null;
+    abhaMasked?: string | null;
+    consentReference?: string | null;
+    errorCode?: string | null;
+    userMessage?: string | null;
+    technicalDetail?: string | null;
+    completed?: boolean;
+  },
+) {
+  const envInfo = abdmProvider.getConnectionInfo();
+  let initiatedByName: string | null = null;
+  try {
+    if (tenant.userId !== "system-worker") {
+      const user = await prisma.user.findUnique({
+        where: { id: tenant.userId },
+        select: { name: true },
+      });
+      initiatedByName = user?.name ?? null;
+    }
+  } catch {
+    initiatedByName = null;
+  }
+  try {
+    return await prisma.abdmTransaction.create({
+      data: {
+        clinicId: tenant.clinicId,
+        patientId: input.patientId ?? null,
+        coupleId: input.coupleId ?? null,
+        operation: input.operation,
+        status: input.status,
+        referenceId: input.referenceId ?? null,
+        abhaMasked: input.abhaMasked ?? null,
+        consentReference: input.consentReference ?? null,
+        errorCode: input.errorCode ?? null,
+        userMessage: input.userMessage ?? null,
+        technicalDetail: input.technicalDetail ?? null,
+        environment: envInfo.environment,
+        initiatedById: tenant.userId !== "system-worker" ? tenant.userId : null,
+        initiatedByName,
+        completedAt: input.completed ? new Date() : null,
+      },
+    });
+  } catch {
+    // Table may not be migrated yet — fall back to audit only.
+    await audit(tenant, `abdm.${input.operation}`, "AbdmTransaction", input.referenceId ?? "n/a", {
+      status: input.status,
+      errorCode: input.errorCode ?? null,
+    });
+    return null;
+  }
+}
 
 function clinicWhere(tenant: TenantContext) {
   return { clinicId: tenant.clinicId };
@@ -1109,4 +1175,457 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
     await requireClinicOwned(tenant, exchange);
     if (!exchange) throw new HttpError(404, "EXCHANGE_NOT_FOUND", "Exchange was not found.");
     return ok(c, serializeExchange(exchange));
-  });
+  })
+  .get("/transactions", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    try {
+      const items = await prisma.abdmTransaction.findMany({
+        where: clinicWhere(tenant),
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        select: {
+          id: true,
+          patientId: true,
+          operation: true,
+          status: true,
+          referenceId: true,
+          abhaMasked: true,
+          errorCode: true,
+          userMessage: true,
+          retryCount: true,
+          environment: true,
+          initiatedByName: true,
+          createdAt: true,
+          completedAt: true,
+        },
+      });
+      return ok(c, {
+        items: items.map((row) => ({
+          ...row,
+          createdAt: row.createdAt.toISOString(),
+          completedAt: row.completedAt?.toISOString() ?? null,
+        })),
+      });
+    } catch {
+      return ok(c, { items: [], note: "ABDM transaction table is not available yet. Run migrations." });
+    }
+  })
+  .get("/tasks", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    const [notLinked, pendingVerify, pendingConsent, linked, failedTx] = await Promise.all([
+      prisma.patient.count({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [
+            { digitalHealthIdentity: null },
+            { digitalHealthIdentity: { status: "NOT_LINKED" } },
+          ],
+        },
+      }),
+      prisma.digitalHealthIdentity.count({
+        where: {
+          clinicId: tenant.clinicId,
+          status: { in: ["PENDING", "VERIFICATION_REQUIRED"] },
+        },
+      }),
+      prisma.digitalHealthConsent.count({
+        where: { clinicId: tenant.clinicId, status: "PENDING" },
+      }),
+      prisma.digitalHealthIdentity.count({
+        where: { clinicId: tenant.clinicId, status: "LINKED" },
+      }),
+      prisma.healthRecordExchange.count({
+        where: { clinicId: tenant.clinicId, status: "FAILED" },
+      }),
+    ]);
+    return ok(c, {
+      cards: {
+        withoutAbha: notLinked,
+        authenticationPending: pendingVerify,
+        consentPending: pendingConsent,
+        abhaLinked: linked,
+        recordRequestsPending: failedTx,
+      },
+    });
+  })
+  .post(
+    "/patients/:patientId/journey/start",
+    validate("param", patientIdParam),
+    validate("json", journeyStartSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const patient = await loadPatient(tenant, patientId);
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "JOURNEY_START",
+        status: "STARTED",
+        userMessage: `Journey started: ${body.path}`,
+        completed: true,
+      });
+      await prisma.digitalHealthIdentity.upsert({
+        where: { patientId },
+        create: {
+          clinicId: tenant.clinicId,
+          patientId,
+          status: "PENDING",
+          verificationStatus: "REGISTRATION_STARTED",
+          source: "JOURNEY",
+          sandboxMode: abdmProvider.getConnectionInfo().environment !== "production",
+        },
+        update: {
+          status: "PENDING",
+          verificationStatus: "REGISTRATION_STARTED",
+          errorMessage: null,
+        },
+      });
+      return ok(c, {
+        path: body.path,
+        connection: abdmProvider.getConnectionInfo(),
+        patient: {
+          id: patient.id,
+          name: `${patient.firstName} ${patient.lastName}`.trim(),
+          phone: patient.phone,
+          dateOfBirth: patient.dateOfBirth?.toISOString().slice(0, 10) ?? null,
+          gender: patient.gender,
+        },
+        message:
+          body.path === "HAS_ABHA"
+            ? "Continue with existing ABHA verification."
+            : body.path === "NOT_SURE"
+              ? "We'll help check whether an ABHA already exists using supported ABDM authentication."
+              : "SmrkoMed can help create an ABHA through ABDM. The patient must complete identity verification and consent.",
+      });
+    },
+  )
+  .post(
+    "/patients/:patientId/journey/consent",
+    validate("param", patientIdParam),
+    validate("json", journeyConsentSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      await loadPatient(tenant, patientId);
+      const requester = await prisma.user.findUnique({
+        where: { id: tenant.userId },
+        select: { name: true },
+      });
+      const consent = await prisma.digitalHealthConsent.create({
+        data: {
+          clinicId: tenant.clinicId,
+          patientId,
+          purpose: `ABHA ${body.sessionPurpose === "CREATE_ABHA" ? "creation" : "linking"} via ABDM`,
+          requestedById: tenant.userId !== "system-worker" ? tenant.userId : null,
+          requestedByName: requester?.name ?? "Clinic staff",
+          dataCategories: ["Demographics", "ABHA identity"],
+          status: "ACTIVE",
+          notes: `Consent version ${body.consentVersion}. Explicit agree recorded.`,
+          decidedAt: new Date(),
+          sandboxMode: abdmProvider.getConnectionInfo().environment !== "production",
+          externalConsentId: `local_${body.consentVersion}_${Date.now()}`,
+        },
+      });
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "CONSENT_REQUEST",
+        status: "GRANTED",
+        consentReference: consent.id,
+        userMessage: "Patient consent recorded for ABHA journey.",
+        completed: true,
+      });
+      return ok(c, {
+        consentId: consent.id,
+        consentVersion: body.consentVersion,
+        grantedAt: consent.decidedAt?.toISOString() ?? new Date().toISOString(),
+      });
+    },
+  )
+  .post(
+    "/patients/:patientId/journey/auth/start",
+    validate("param", patientIdParam),
+    validate("json", journeyAuthStartSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      await loadPatient(tenant, patientId);
+      const result = abdmProvider.startAuthSession({
+        patientId,
+        purpose: body.purpose,
+        authMethod: body.authMethod,
+      });
+      if (!result.ok) {
+        await recordAbdmTransaction(tenant, {
+          patientId,
+          operation: "OTP_REQUEST",
+          status: "FAILED",
+          errorCode: result.code,
+          userMessage: result.message,
+          technicalDetail: result.code,
+          completed: true,
+        });
+        throw new HttpError(422, result.code, result.message);
+      }
+      await prisma.digitalHealthIdentity.upsert({
+        where: { patientId },
+        create: {
+          clinicId: tenant.clinicId,
+          patientId,
+          status: "VERIFICATION_REQUIRED",
+          verificationStatus: "AUTHENTICATION_PENDING",
+          source: result.mode === "gateway" ? "ABDM_GATEWAY" : "JOURNEY",
+          sandboxMode: result.mode !== "gateway",
+        },
+        update: {
+          status: "VERIFICATION_REQUIRED",
+          verificationStatus: "AUTHENTICATION_PENDING",
+        },
+      });
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "OTP_REQUEST",
+        status: "SENT",
+        referenceId: result.referenceId ?? null,
+        userMessage: result.message,
+        completed: true,
+      });
+      return ok(c, {
+        sessionId: result.session?.sessionId,
+        expiresAt: result.session?.expiresAt,
+        maxAttempts: result.session?.maxAttempts,
+        sandboxMode: result.session?.sandboxMode,
+        message: result.message,
+        connection: abdmProvider.getConnectionInfo(),
+      });
+    },
+  )
+  .post(
+    "/patients/:patientId/journey/auth/verify",
+    validate("param", patientIdParam),
+    validate("json", journeyOtpSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_VERIFY);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      await loadPatient(tenant, patientId);
+      const result = abdmProvider.verifyOtp({ sessionId: body.sessionId, otp: body.otp });
+      if (!result.ok) {
+        await recordAbdmTransaction(tenant, {
+          patientId,
+          operation: "OTP_VERIFY",
+          status: "FAILED",
+          referenceId: body.sessionId,
+          errorCode: result.code,
+          userMessage: result.message,
+          technicalDetail: result.code,
+          completed: true,
+        });
+        throw new HttpError(422, result.code, result.message);
+      }
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "OTP_VERIFY",
+        status: "AUTHENTICATED",
+        referenceId: body.sessionId,
+        userMessage: result.message,
+        completed: true,
+      });
+      return ok(c, {
+        authenticated: true,
+        sandboxMode: result.mode === "demo_intent",
+        message: result.message,
+        sessionId: body.sessionId,
+      });
+    },
+  )
+  .post(
+    "/patients/:patientId/journey/discover",
+    validate("param", patientIdParam),
+    validate("json", journeyDiscoverSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const patient = await loadPatient(tenant, patientId);
+      const result = await abdmProvider.discoverExisting({
+        patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+        ...(body.forceMockFound ? { forceMockFound: true } : {}),
+      });
+      if (!result.ok) {
+        throw new HttpError(503, result.code, result.message);
+      }
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "RECORD_DISCOVERY",
+        status: result.found ? "EXISTING_FOUND" : "NOT_FOUND",
+        referenceId: result.found ? result.referenceId : null,
+        abhaMasked: result.found ? result.abhaMasked : null,
+        userMessage: result.message,
+        completed: true,
+      });
+      return ok(c, result);
+    },
+  )
+  .post(
+    "/patients/:patientId/journey/create",
+    validate("param", patientIdParam),
+    validate("json", journeyCreateSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const patient = await loadPatient(tenant, patientId);
+      const result = await abdmProvider.createAbhaIntent({
+        patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+        sessionId: body.sessionId,
+      });
+      if (!result.ok) {
+        await recordAbdmTransaction(tenant, {
+          patientId,
+          operation: "ABHA_CREATION",
+          status: "FAILED",
+          errorCode: result.code,
+          userMessage: result.message,
+          completed: true,
+        });
+        throw new HttpError(422, result.code, result.message);
+      }
+
+      const identity = await prisma.digitalHealthIdentity.upsert({
+        where: { patientId },
+        create: {
+          clinicId: tenant.clinicId,
+          patientId,
+          abhaMasked: result.abhaMasked,
+          status: result.mode === "gateway" ? "PENDING" : "PENDING",
+          verificationStatus: result.status,
+          source: result.mode === "gateway" ? "ABDM_GATEWAY" : "CREATE_INTENT",
+          sandboxMode: result.mode !== "gateway",
+          linkedAt: null,
+        },
+        update: {
+          abhaMasked: result.abhaMasked,
+          status: "PENDING",
+          verificationStatus: result.status,
+          source: result.mode === "gateway" ? "ABDM_GATEWAY" : "CREATE_INTENT",
+          sandboxMode: result.mode !== "gateway",
+          errorMessage: null,
+        },
+      });
+
+      // Care Loop follow-up task
+      try {
+        const couple = await prisma.couple.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            OR: [{ primaryPatientId: patientId }, { partnerPatientId: patientId }],
+          },
+        });
+        if (couple) {
+          await prisma.careTask.create({
+            data: {
+              clinicId: tenant.clinicId,
+              coupleId: couple.id,
+              title: "Complete ABHA linking / address",
+              description:
+                "ABHA creation intent recorded. Follow up on ABDM confirmation and ABHA address.",
+              category: "DIGITAL_HEALTH",
+              status: "WAITING",
+              priority: "NORMAL",
+              dueDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+              ...(tenant.userId !== "system-worker" ? { createdById: tenant.userId } : {}),
+            },
+          });
+        }
+      } catch {
+        // non-blocking
+      }
+
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "ABHA_CREATION",
+        status: result.status,
+        referenceId: result.referenceId,
+        abhaMasked: result.abhaMasked,
+        userMessage: result.message,
+        completed: true,
+      });
+
+      return ok(c, {
+        identity: serializeIdentity(identity, patientId),
+        message: result.message,
+        referenceId: result.referenceId,
+        sandboxMode: result.mode === "demo_intent",
+      });
+    },
+  )
+  .post(
+    "/patients/:patientId/journey/match-confirm",
+    validate("param", patientIdParam),
+    validate("json", journeyMatchSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const { patientId } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const patient = await loadPatient(tenant, patientId);
+      if (!body.confirmed) {
+        await recordAbdmTransaction(tenant, {
+          patientId,
+          operation: "ABHA_LINK",
+          status: "MISMATCH_CANCELLED",
+          userMessage: "Staff cancelled linking due to identity mismatch.",
+          completed: true,
+        });
+        return ok(c, { linked: false, message: "Linking cancelled. Review patient details and try again." });
+      }
+      if (!body.abhaNumber) {
+        throw new HttpError(422, "ABHA_REQUIRED", "ABHA number is required to confirm linking.");
+      }
+      // Reuse link endpoint logic via provider + upsert
+      const digits = normalizeAbhaDigits(body.abhaNumber);
+      const abhaHash = hashAbha(digits);
+      const masked = maskAbha(digits);
+      const providerResult = await abdmProvider.linkAbha({
+        abhaNumber: digits,
+        patientName: `${patient.firstName} ${patient.lastName}`.trim(),
+      });
+      if (!providerResult.ok) {
+        throw new HttpError(503, providerResult.code, providerResult.message);
+      }
+      const identity = await prisma.digitalHealthIdentity.upsert({
+        where: { patientId },
+        create: {
+          clinicId: tenant.clinicId,
+          patientId,
+          abhaNumberHash: abhaHash,
+          abhaMasked: masked,
+          status: "VERIFICATION_REQUIRED",
+          verificationStatus: "IDENTITY_MATCHED",
+          source: providerResult.mode === "gateway" ? "ABDM_GATEWAY" : "LINK_INTENT",
+          sandboxMode: providerResult.mode !== "gateway",
+        },
+        update: {
+          abhaNumberHash: abhaHash,
+          abhaMasked: masked,
+          status: "VERIFICATION_REQUIRED",
+          verificationStatus: "IDENTITY_MATCHED",
+          errorMessage: null,
+        },
+      });
+      await recordAbdmTransaction(tenant, {
+        patientId,
+        operation: "ABHA_LINK",
+        status: "IDENTITY_MATCHED",
+        abhaMasked: masked,
+        referenceId: providerResult.referenceId ?? null,
+        userMessage: "Identity match confirmed. Complete authentication to finish linking.",
+        completed: true,
+      });
+      return ok(c, {
+        identity: serializeIdentity(identity, patientId),
+        message: "Identity match confirmed. Continue with authentication if still required.",
+      });
+    },
+  );

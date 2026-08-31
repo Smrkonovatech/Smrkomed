@@ -5,16 +5,39 @@ import { SAFE_INTEGRATION_SELECT, serializeIntegration } from "../../core/serial
 import { canTransition } from "../../core/status";
 import { credentialService } from "../../credentials/service";
 import { integrationService } from "../../services/integration-service";
-import { isMetaConfigured, metaConfig } from "./config";
+import { isMetaConfigured, isWhatsAppDemoMode, metaConfig } from "./config";
 import { exchangeEmbeddedSignupCode, getPhoneNumber, getWaba, listWabaPhones, subscribeWaba } from "./graph";
 import { consumeWhatsAppOauthState, createWhatsAppOauthState, loadValidWhatsAppOauthState } from "./oauth-state";
 import { maskPhone } from "./phone";
 
 export async function startWhatsAppConnect(ctx: TenantContext) {
+  if (isWhatsAppDemoMode()) {
+    const state = await createWhatsAppOauthState({
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+    });
+    await writeAuditLog({
+      actorId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+      action: "whatsapp.connect.demo_start",
+      entityType: "Integration",
+      entityId: "WHATSAPP_CLOUD",
+      metadata: { demo: true },
+    });
+    return {
+      demo: true as const,
+      state: state.id,
+      message:
+        "DEMO MODE: Meta credentials are not configured. You can simulate Embedded Signup locally. This is not a real Meta connection.",
+    };
+  }
+
   if (!isMetaConfigured()) {
     throw new IntegrationError(
       "PROVIDER_UNAVAILABLE",
-      "WhatsApp Embedded Signup is not configured on this server.",
+      "WhatsApp Embedded Signup is not configured. Ask your SmrkoMed administrator to set META_APP_ID, META_APP_SECRET, WHATSAPP_CONFIGURATION_ID, and WHATSAPP_VERIFY_TOKEN — or enable WHATSAPP_DEMO_MODE for local testing.",
       501,
     );
   }
@@ -38,11 +61,98 @@ export async function startWhatsAppConnect(ctx: TenantContext) {
     metadata: { provider: "WHATSAPP_CLOUD" },
   });
   return {
+    demo: false as const,
     state: state.id,
     appId: cfg.appId,
     configId: cfg.configId,
     graphVersion: cfg.graphVersion,
     expiresAt: state.expiresAt,
+  };
+}
+
+/** Simulated Embedded Signup completion for development only. Never invents production Meta assets. */
+export async function completeWhatsAppDemoConnect(
+  ctx: TenantContext,
+  input: { state: string; phoneLabel?: string },
+) {
+  if (!isWhatsAppDemoMode()) {
+    throw new IntegrationError("PROVIDER_UNAVAILABLE", "Demo WhatsApp connect is not enabled.", 403);
+  }
+  const oauth = await loadValidWhatsAppOauthState(input.state, ctx);
+  const phoneNumberId = `demo_phone_${oauth.clinicId.slice(-8)}`;
+  const wabaId = `demo_waba_${oauth.organizationId.slice(-8)}`;
+  const displayPhoneNumber = input.phoneLabel ?? "+91 ••••• ••000";
+  const displayName = "Demo Clinic WhatsApp";
+  const encrypted = credentialService.encrypt({
+    accessToken: "demo_token_not_valid_for_graph",
+    systemUserToken: "demo_token_not_valid_for_graph",
+  });
+
+  const integration = await prisma.integration.upsert({
+    where: { clinicId_provider: { clinicId: oauth.clinicId, provider: "WHATSAPP_CLOUD" } },
+    create: {
+      organizationId: oauth.organizationId,
+      clinicId: oauth.clinicId,
+      provider: "WHATSAPP_CLOUD",
+      status: "ACTIVE",
+      displayName: `${displayName} (DEMO)`,
+      externalAccountId: wabaId,
+      encryptedCredentials: encrypted,
+      lastError: null,
+      lastErrorCode: null,
+      lastSyncAt: new Date(),
+    },
+    update: {
+      status: "ACTIVE",
+      displayName: `${displayName} (DEMO)`,
+      externalAccountId: wabaId,
+      encryptedCredentials: encrypted,
+      lastError: null,
+      lastErrorCode: null,
+      lastSyncAt: new Date(),
+    },
+    select: SAFE_INTEGRATION_SELECT,
+  });
+
+  await prisma.whatsAppAccount.upsert({
+    where: { clinicId_phoneNumberId: { clinicId: oauth.clinicId, phoneNumberId } },
+    create: {
+      clinicId: oauth.clinicId,
+      integrationId: integration.id,
+      phoneNumberId,
+      businessAccountId: wabaId,
+      displayName: `${displayName} (DEMO)`,
+      displayPhoneNumber,
+      verifiedName: "DEMO / SIMULATED",
+      qualityRating: "UNKNOWN",
+      isActive: true,
+      lastSyncedAt: new Date(),
+    },
+    update: {
+      integrationId: integration.id,
+      businessAccountId: wabaId,
+      displayName: `${displayName} (DEMO)`,
+      displayPhoneNumber,
+      verifiedName: "DEMO / SIMULATED",
+      isActive: true,
+      lastSyncedAt: new Date(),
+    },
+  });
+
+  await consumeWhatsAppOauthState(oauth.id);
+  await writeAuditLog({
+    actorId: ctx.userId,
+    organizationId: ctx.organizationId,
+    clinicId: ctx.clinicId,
+    action: "whatsapp.connect.demo_success",
+    entityType: "Integration",
+    entityId: integration.id,
+    metadata: { demo: true },
+  });
+  return {
+    needsSelection: false as const,
+    demo: true as const,
+    integration: serializeIntegration(integration),
   };
 }
 
@@ -128,7 +238,9 @@ export async function completeWhatsAppConnect(
       });
       return {
         needsSelection: true as const,
+        demo: false as const,
         wabaId,
+        state: input.state,
         phones: data.map((row) => ({
           id: row.id ?? "",
           displayPhoneNumber: maskPhone(row.display_phone_number ?? null),
@@ -221,7 +333,97 @@ export async function completeWhatsAppConnect(
     entityId: integration.id,
     metadata: { provider: "WHATSAPP_CLOUD", connectionStatus: "CONNECTED" },
   });
-  return { needsSelection: false as const, integration: serializeIntegration(integration) };
+  return { needsSelection: false as const, demo: false as const, integration: serializeIntegration(integration) };
+}
+
+export async function testWhatsAppConnection(ctx: TenantContext) {
+  const status = await integrationService.getConnection(ctx, "WHATSAPP_CLOUD");
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: { clinicId: ctx.clinicId, isActive: true },
+  });
+  const lastWebhook = await prisma.integrationEvent.findFirst({
+    where: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" },
+    orderBy: { receivedAt: "desc" },
+    select: { receivedAt: true },
+  });
+  const templates = await prisma.whatsAppTemplate.count({
+    where: { clinicId: ctx.clinicId, status: "APPROVED" },
+  });
+  const demo =
+    account?.verifiedName === "DEMO / SIMULATED" ||
+    (status.displayName ?? "").includes("(DEMO)");
+
+  const checks = [
+    {
+      id: "meta",
+      label: "Meta connection",
+      ok: isMetaConfigured() || demo,
+      detail: demo
+        ? "DEMO / SIMULATED — not a live Meta App connection"
+        : isMetaConfigured()
+          ? "Platform Meta App is configured"
+          : "Platform Meta App credentials are missing",
+    },
+    {
+      id: "business",
+      label: "Business account",
+      ok: Boolean(account?.businessAccountId) && status.connectionStatus === "CONNECTED",
+      detail: account?.businessAccountId ? "WhatsApp Business Account linked" : "No WABA linked",
+    },
+    {
+      id: "phone",
+      label: "Phone number",
+      ok: Boolean(account?.phoneNumberId && account.isActive),
+      detail: account?.displayPhoneNumber
+        ? `Active number ${maskPhone(account.displayPhoneNumber)}`
+        : "No active phone number",
+    },
+    {
+      id: "webhook",
+      label: "Webhooks",
+      ok: Boolean(isMetaConfigured() || demo),
+      detail: lastWebhook
+        ? `Last event ${lastWebhook.receivedAt.toISOString()}`
+        : demo
+          ? "DEMO — webhook events not received from Meta"
+          : "Waiting for first webhook event",
+    },
+    {
+      id: "messaging",
+      label: "Messaging capability",
+      ok: status.connectionStatus === "CONNECTED" && Boolean(account),
+      detail:
+        status.connectionStatus === "CONNECTED"
+          ? demo
+            ? "DEMO — Graph sends are not live"
+            : "Ready to send approved templates"
+          : "Connect WhatsApp to enable messaging",
+    },
+    {
+      id: "templates",
+      label: "Template availability",
+      ok: templates > 0 || demo,
+      detail:
+        templates > 0
+          ? `${templates} approved template(s)`
+          : demo
+            ? "DEMO — sync templates after live connect"
+            : "No approved templates yet — sync from Meta",
+    },
+  ];
+
+  const healthy = checks.every((c) => c.ok);
+  return {
+    healthy,
+    demo,
+    checkedAt: new Date().toISOString(),
+    summary: healthy
+      ? demo
+        ? "Demo WhatsApp connection looks ready for local testing."
+        : "WhatsApp Connection Healthy"
+      : "Action Required",
+    checks,
+  };
 }
 
 export function publicWhatsAppAccount(row: {
@@ -244,5 +446,6 @@ export function publicWhatsAppAccount(row: {
     isActive: row.isActive,
     lastSyncedAt: row.lastSyncedAt,
     connectionStatus: row.isActive ? ("CONNECTED" as const) : ("DISCONNECTED" as const),
+    demo: row.verifiedName === "DEMO / SIMULATED",
   };
 }

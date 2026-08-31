@@ -125,11 +125,11 @@ export default function DigitalHealthDashboardPage() {
     <div className="mx-auto max-w-[1400px] space-y-6">
       <PageHeader
         title="Digital Health"
-        subtitle="ABDM interoperability foundation — SMRKOMED remains the source of truth."
+        subtitle="ABHA identity, consent, and interoperability — native to SmrkoMed Care Loop."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" className="rounded-lg" asChild>
-              <Link href="/settings">Settings</Link>
+              <Link href="/digital-health/settings">ABDM Settings</Link>
             </Button>
             <Button className="rounded-lg" disabled={testing} onClick={() => void testConnection()}>
               Test connection

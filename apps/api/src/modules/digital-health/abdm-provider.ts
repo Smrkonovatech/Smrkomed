@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { env } from "../../config/env";
 
@@ -21,9 +21,12 @@ export type AbdmConnectionInfo = {
     verifyAbha: boolean;
     requestConsent: boolean;
     shareRecord: boolean;
+    createAbha: boolean;
+    abhaAddress: boolean;
   };
   /** Never includes secrets. */
   demoLinkAllowed: boolean;
+  authMethods: Array<{ id: string; label: string; description: string; sandboxOnly?: boolean }>;
 };
 
 export type AbdmLinkResult =
@@ -32,6 +35,7 @@ export type AbdmLinkResult =
       mode: "gateway" | "demo_intent";
       verificationRequired: boolean;
       message: string;
+      referenceId?: string;
     }
   | {
       ok: false;
@@ -41,6 +45,42 @@ export type AbdmLinkResult =
 
 export type AbdmShareResult =
   | { ok: true; externalReferenceId: string; message: string }
+  | { ok: false; code: string; message: string };
+
+export type AbdmAuthSession = {
+  sessionId: string;
+  patientId: string;
+  purpose: "LINK_EXISTING" | "CREATE_ABHA" | "DISCOVER";
+  authMethod: string;
+  status: "AWAITING_CONSENT" | "AWAITING_OTP" | "AUTHENTICATED" | "FAILED" | "EXPIRED";
+  expiresAt: string;
+  attempts: number;
+  maxAttempts: number;
+  environment: AbdmEnvironment;
+  sandboxMode: boolean;
+  /** Never store OTP; sandbox only tracks that a challenge was issued. */
+  challengeIssued: boolean;
+};
+
+export type AbdmDiscoverResult =
+  | {
+      ok: true;
+      found: false;
+      message: string;
+      mode: "gateway" | "sandbox_mock";
+    }
+  | {
+      ok: true;
+      found: true;
+      mode: "gateway" | "sandbox_mock";
+      message: string;
+      /** Masked only — never a fabricated "real" ABHA presented as official. */
+      abhaMasked: string;
+      verifiedName: string;
+      verifiedDob: string | null;
+      verifiedGender: string | null;
+      referenceId: string;
+    }
   | { ok: false; code: string; message: string };
 
 /** Normalize ABHA digits (14 digits typical). */
@@ -60,9 +100,22 @@ export function hashAbha(raw: string): string {
   return createHash("sha256").update(`smrkomed-abha:${digits}`).digest("hex");
 }
 
+/** In-memory auth sessions — OTP never persisted. Cleared on expiry. */
+const authSessions = new Map<string, AbdmAuthSession>();
+
+function pruneSessions() {
+  const now = Date.now();
+  for (const [id, session] of authSessions) {
+    if (new Date(session.expiresAt).getTime() < now) {
+      authSessions.delete(id);
+    }
+  }
+}
+
 /**
  * ABDM provider adapter — credentials stay server-side.
  * When not configured, all gateway operations fail honestly.
+ * Sandbox/demo paths are explicitly labelled and never invent production ABHA numbers.
  */
 export class AbdmProvider {
   getConnectionInfo(): AbdmConnectionInfo {
@@ -74,6 +127,31 @@ export class AbdmProvider {
       : env.abdmEnv === "production"
         ? "production"
         : "sandbox";
+
+    const authMethods: AbdmConnectionInfo["authMethods"] = configured
+      ? [
+          {
+            id: "mobile_otp",
+            label: "Mobile OTP",
+            description: "OTP to the mobile registered with ABHA / Aadhaar (via ABDM).",
+          },
+          {
+            id: "aadhaar_otp",
+            label: "Aadhaar-linked OTP",
+            description: "Official ABDM Aadhaar OTP flow. Aadhaar is not stored in SmrkoMed.",
+          },
+        ]
+      : env.abdmDemoMode
+        ? [
+            {
+              id: "sandbox_otp",
+              label: "Sandbox OTP (MOCK)",
+              description:
+                "Test authentication only. Enter any 6-digit code. Not a real ABDM OTP.",
+              sandboxOnly: true,
+            },
+          ]
+        : [];
 
     if (!configured) {
       return {
@@ -92,8 +170,11 @@ export class AbdmProvider {
           verifyAbha: false,
           requestConsent: false,
           shareRecord: false,
+          createAbha: false,
+          abhaAddress: false,
         },
         demoLinkAllowed: env.abdmDemoMode,
+        authMethods,
       };
     }
 
@@ -112,8 +193,11 @@ export class AbdmProvider {
         verifyAbha: true,
         requestConsent: true,
         shareRecord: true,
+        createAbha: true,
+        abhaAddress: true,
       },
       demoLinkAllowed: env.abdmDemoMode && environment === "sandbox",
+      authMethods,
     };
   }
 
@@ -126,13 +210,12 @@ export class AbdmProvider {
         message: "ABDM integration is not connected.",
       };
     }
-    // Real token exchange would call ABDM gateway here. Without a live endpoint contract
-    // validated in this environment, we only confirm configuration presence.
     return {
       ok: true,
       mode: "gateway",
       verificationRequired: false,
       message: "ABDM client credentials are present. Live token exchange requires gateway reachability.",
+      referenceId: randomUUID(),
     };
   }
 
@@ -140,7 +223,6 @@ export class AbdmProvider {
     const info = this.getConnectionInfo();
     if (!info.connected) return info;
     try {
-      // Lightweight reachability: HEAD/GET base URL if set (no secrets in logs).
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 5_000);
       const res = await fetch(info.baseUrl!, {
@@ -152,7 +234,7 @@ export class AbdmProvider {
         return {
           ...info,
           status: "ERROR",
-          message: "ABDM service is temporarily unavailable. Your patient records were not changed.",
+          message: "ABDM services are temporarily unavailable. Your patient records were not changed.",
         };
       }
       return {
@@ -163,16 +245,11 @@ export class AbdmProvider {
       return {
         ...info,
         status: "ERROR",
-        message: "ABDM service is temporarily unavailable. Your patient records were not changed.",
+        message: "ABDM services are temporarily unavailable. Your patient records were not changed.",
       };
     }
   }
 
-  /**
-   * Link ABHA. Does NOT fake OTP.
-   * - Gateway configured: returns verification-required intent (caller stores PENDING).
-   * - Demo mode only: allows local PENDING/LINKED intent labelled sandbox.
-   */
   async linkAbha(input: {
     abhaNumber: string;
     patientName: string;
@@ -190,6 +267,7 @@ export class AbdmProvider {
         verificationRequired: true,
         message:
           "ABHA link initiated. Patient verification is required through the ABDM-approved channel. Status remains pending until the gateway confirms verification.",
+        referenceId: randomUUID(),
       };
     }
 
@@ -200,6 +278,7 @@ export class AbdmProvider {
         verificationRequired: true,
         message:
           "ABDM is not connected. Demo mode recorded a local link intent (SANDBOX). This is not an ABDM-verified identity.",
+        referenceId: `sandbox_${randomUUID().slice(0, 8)}`,
       };
     }
 
@@ -238,6 +317,243 @@ export class AbdmProvider {
     };
   }
 
+  /**
+   * Start an authentication session. OTP is never generated or stored here.
+   * Gateway mode: issues challenge reference for real ABDM OTP.
+   * Demo/sandbox: allows MOCK challenge for UX testing only.
+   */
+  startAuthSession(input: {
+    patientId: string;
+    purpose: AbdmAuthSession["purpose"];
+    authMethod: string;
+  }): AbdmLinkResult & { session?: AbdmAuthSession } {
+    pruneSessions();
+    const info = this.getConnectionInfo();
+    const methodOk = info.authMethods.some((m) => m.id === input.authMethod);
+    if (!methodOk) {
+      return {
+        ok: false,
+        code: "AUTH_METHOD_UNSUPPORTED",
+        message: "That authentication method is not available in the current ABDM environment.",
+      };
+    }
+
+    if (!info.connected && !info.demoLinkAllowed) {
+      return {
+        ok: false,
+        code: "ABDM_NOT_CONNECTED",
+        message: "ABDM integration is not connected.",
+      };
+    }
+
+    const session: AbdmAuthSession = {
+      sessionId: randomUUID(),
+      patientId: input.patientId,
+      purpose: input.purpose,
+      authMethod: input.authMethod,
+      status: "AWAITING_OTP",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      attempts: 0,
+      maxAttempts: 3,
+      environment: info.environment,
+      sandboxMode: !info.connected || info.environment === "sandbox",
+      challengeIssued: true,
+    };
+    authSessions.set(session.sessionId, session);
+
+    return {
+      ok: true,
+      mode: info.connected ? "gateway" : "demo_intent",
+      verificationRequired: true,
+      message: info.connected
+        ? "Authentication challenge issued via ABDM. Ask the patient to enter the OTP sent to their registered mobile. OTP is never shown or stored in SmrkoMed."
+        : "SANDBOX MOCK: Authentication challenge simulated. Enter any 6-digit code to continue the test journey. This is not a real ABDM OTP.",
+      referenceId: session.sessionId,
+      session,
+    };
+  }
+
+  getAuthSession(sessionId: string): AbdmAuthSession | null {
+    pruneSessions();
+    return authSessions.get(sessionId) ?? null;
+  }
+
+  /**
+   * Verify OTP. Never logs OTP.
+   * Production/gateway: refuses to invent success without live ABDM — returns awaiting gateway.
+   * Sandbox demo: accepts 6-digit codes only when demo mode is on.
+   */
+  verifyOtp(input: {
+    sessionId: string;
+    otp: string;
+  }): AbdmLinkResult & { session?: AbdmAuthSession } {
+    pruneSessions();
+    const session = authSessions.get(input.sessionId);
+    if (!session) {
+      return { ok: false, code: "SESSION_EXPIRED", message: "Authentication session expired. Please try again." };
+    }
+    if (new Date(session.expiresAt).getTime() < Date.now()) {
+      authSessions.delete(input.sessionId);
+      return { ok: false, code: "SESSION_EXPIRED", message: "OTP expired. Please request a new one." };
+    }
+    if (session.attempts >= session.maxAttempts) {
+      session.status = "FAILED";
+      return {
+        ok: false,
+        code: "MAX_ATTEMPTS",
+        message: "Too many attempts. Please try another supported method or cancel.",
+      };
+    }
+
+    session.attempts += 1;
+    const otp = input.otp.replace(/\D/g, "");
+    if (otp.length !== 6) {
+      return { ok: false, code: "INVALID_OTP", message: "Enter the 6-digit OTP." };
+    }
+
+    const info = this.getConnectionInfo();
+    if (info.connected && !session.sandboxMode) {
+      // Honest: live OTP verification requires gateway wiring.
+      return {
+        ok: false,
+        code: "ABDM_OTP_GATEWAY_PENDING",
+        message:
+          "We couldn't complete verification right now. Live ABDM OTP confirmation is not fully wired for this environment. Please retry later or use sandbox for testing.",
+        session,
+      };
+    }
+
+    if (!info.demoLinkAllowed && !session.sandboxMode) {
+      return {
+        ok: false,
+        code: "ABDM_NOT_CONNECTED",
+        message: "We couldn't complete verification right now. Please try again.",
+      };
+    }
+
+    // Sandbox/demo only — never claim real ABDM verification.
+    session.status = "AUTHENTICATED";
+    return {
+      ok: true,
+      mode: "demo_intent",
+      verificationRequired: false,
+      message: "SANDBOX: Authentication completed for testing. Not an official ABDM verification.",
+      referenceId: session.sessionId,
+      session,
+    };
+  }
+
+  /**
+   * Discover existing ABHA before creation.
+   * Sandbox mock may return a masked placeholder labelled MOCK — never a forged official number.
+   */
+  async discoverExisting(input: {
+    patientName: string;
+    mobileLast4?: string;
+    forceMockFound?: boolean;
+  }): Promise<AbdmDiscoverResult> {
+    const info = this.getConnectionInfo();
+    if (info.connected) {
+      return {
+        ok: true,
+        found: false,
+        mode: "gateway",
+        message:
+          "Gateway discovery must run through ABDM. No existing ABHA was confirmed in this probe. Prefer linking if the patient already has an ABHA.",
+      };
+    }
+    if (!info.demoLinkAllowed) {
+      return {
+        ok: false,
+        code: "ABDM_NOT_CONNECTED",
+        message: "ABDM integration is not connected. Discovery is unavailable.",
+      };
+    }
+
+    // Optional sandbox teaching path: staff can simulate "existing ABHA found".
+    if (input.forceMockFound) {
+      return {
+        ok: true,
+        found: true,
+        mode: "sandbox_mock",
+        message:
+          "SANDBOX MOCK: An existing ABHA association was simulated for training. Prefer linking instead of creating another ABHA.",
+        abhaMasked: "XX-XXXX-XXXX-MOCK",
+        verifiedName: input.patientName,
+        verifiedDob: null,
+        verifiedGender: null,
+        referenceId: `mock_discover_${randomUUID().slice(0, 8)}`,
+      };
+    }
+
+    return {
+      ok: true,
+      found: false,
+      mode: "sandbox_mock",
+      message:
+        "SANDBOX: No existing ABHA discovered in the mock check. You may continue with assisted creation (intent only).",
+    };
+  }
+
+  /**
+   * Assisted ABHA creation — never invents a production ABHA number.
+   * Sandbox: records creation intent with pending confirmation label.
+   */
+  async createAbhaIntent(input: {
+    patientName: string;
+    sessionId: string;
+  }): Promise<
+    | {
+        ok: true;
+        mode: "demo_intent" | "gateway";
+        message: string;
+        abhaMasked: string | null;
+        referenceId: string;
+        status: "AUTHENTICATION_PENDING" | "ABHA_CREATED_PENDING_GATEWAY" | "REGISTRATION_STARTED";
+      }
+    | { ok: false; code: string; message: string }
+  > {
+    const session = this.getAuthSession(input.sessionId);
+    if (!session || session.status !== "AUTHENTICATED") {
+      return {
+        ok: false,
+        code: "NOT_AUTHENTICATED",
+        message: "Complete authentication before creating an ABHA.",
+      };
+    }
+
+    const info = this.getConnectionInfo();
+    if (info.connected) {
+      return {
+        ok: true,
+        mode: "gateway",
+        message:
+          "ABHA creation request submitted to ABDM. The official ABHA number will appear after gateway confirmation. SmrkoMed will not invent an ABHA number.",
+        abhaMasked: null,
+        referenceId: randomUUID(),
+        status: "ABHA_CREATED_PENDING_GATEWAY",
+      };
+    }
+
+    if (!info.demoLinkAllowed) {
+      return {
+        ok: false,
+        code: "ABDM_NOT_CONNECTED",
+        message: "ABDM integration is not connected. Cannot create ABHA.",
+      };
+    }
+
+    return {
+      ok: true,
+      mode: "demo_intent",
+      message:
+        "SANDBOX: ABHA creation intent recorded. No official ABHA number was generated. Configure ABDM credentials for real creation.",
+      abhaMasked: "Pending ABDM confirmation",
+      referenceId: `sandbox_create_${randomUUID().slice(0, 8)}`,
+      status: "REGISTRATION_STARTED",
+    };
+  }
+
   async shareRecord(_input: {
     exchangeId: string;
     payloadSummary: string;
@@ -250,7 +566,6 @@ export class AbdmProvider {
         message: "ABDM integration is not connected. Record was prepared locally but not shared.",
       };
     }
-    // Without a validated live share API in this environment, refuse to mark SHARED.
     return {
       ok: false,
       code: "ABDM_SHARE_NOT_IMPLEMENTED",

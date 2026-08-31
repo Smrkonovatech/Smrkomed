@@ -2,6 +2,7 @@ import { prisma, type TenantContext } from "@smrkomed/database";
 
 import { IntegrationError } from "../../core/errors";
 import { integrationService } from "../../services/integration-service";
+import { isMetaConfigured, isWhatsAppDemoMode } from "./config";
 import { publicWhatsAppAccount } from "./onboarding";
 import { maskPhone } from "./phone";
 
@@ -21,9 +22,11 @@ function countByStatus(rows: Array<{ status: string; _count: { _all: number } }>
 
 export async function getWhatsAppClinicStatus(ctx: TenantContext) {
   const integration = await integrationService.getConnection(ctx, "WHATSAPP_CLOUD");
-  const account = await prisma.whatsAppAccount.findFirst({
-    where: { clinicId: ctx.clinicId, isActive: true },
+  const accounts = await prisma.whatsAppAccount.findMany({
+    where: { clinicId: ctx.clinicId },
+    orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
   });
+  const account = accounts.find((row) => row.isActive) ?? accounts[0] ?? null;
   const templateGroups = await prisma.whatsAppTemplate.groupBy({
     by: ["status"],
     where: { clinicId: ctx.clinicId },
@@ -40,13 +43,25 @@ export async function getWhatsAppClinicStatus(ctx: TenantContext) {
       : integration.connectionStatus === "ERROR"
         ? (integration.lastError?.message ?? "WhatsApp connection requires attention.")
         : null;
+  const demoAccount = Boolean(account && account.verifiedName === "DEMO / SIMULATED");
   return {
     integration,
     account: account ? publicWhatsAppAccount(account) : null,
+    accounts: accounts.map(publicWhatsAppAccount),
     templates: countByStatus(templateGroups),
     lastWebhook,
     lastSyncAt: integration.lastSyncAt ?? account?.lastSyncedAt ?? null,
     attention,
+    platform: {
+      metaConfigured: isMetaConfigured(),
+      demoModeAvailable: isWhatsAppDemoMode(),
+      demoConnection: demoAccount,
+    },
+    webhookStatus: lastWebhook
+      ? "RECEIVING"
+      : integration.connectionStatus === "CONNECTED"
+        ? "WAITING"
+        : "INACTIVE",
   };
 }
 

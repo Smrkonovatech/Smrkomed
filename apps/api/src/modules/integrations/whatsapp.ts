@@ -2,9 +2,19 @@ import { Hono } from "hono";
 import { PERMISSIONS } from "@smrkomed/database";
 import { z } from "zod";
 
-import { getWhatsAppAnalytics, getWhatsAppClinicStatus, getWhatsAppConversation, listWhatsAppConversations } from "../../integrations/providers/whatsapp/clinic";
+import {
+  getWhatsAppAnalytics,
+  getWhatsAppClinicStatus,
+  getWhatsAppConversation,
+  listWhatsAppConversations,
+} from "../../integrations/providers/whatsapp/clinic";
 import { sendWhatsAppTemplate } from "../../integrations/providers/whatsapp/messaging";
-import { completeWhatsAppConnect, startWhatsAppConnect } from "../../integrations/providers/whatsapp/onboarding";
+import {
+  completeWhatsAppConnect,
+  completeWhatsAppDemoConnect,
+  startWhatsAppConnect,
+  testWhatsAppConnection,
+} from "../../integrations/providers/whatsapp/onboarding";
 import { listWhatsAppTemplates, syncWhatsAppTemplates } from "../../integrations/providers/whatsapp/sync";
 import { integrationService } from "../../integrations/services/integration-service";
 import { requireAnyPermission, requirePermission } from "../../lib/authz";
@@ -17,6 +27,11 @@ const callbackSchema = z.object({
   code: z.string().min(1).max(4000).optional(),
   wabaId: z.string().min(1).max(128).optional(),
   phoneNumberId: z.string().min(1).max(128).optional(),
+});
+
+const demoCallbackSchema = z.object({
+  state: z.string().min(1).max(128),
+  phoneLabel: z.string().min(1).max(40).optional(),
 });
 
 const sendSchema = z.object({
@@ -54,13 +69,28 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
       }),
     );
   })
+  .post("/demo-callback", validate("json", demoCallbackSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    const body = c.req.valid("json");
+    return ok(
+      c,
+      await completeWhatsAppDemoConnect(tenant, {
+        state: body.state,
+        ...(body.phoneLabel ? { phoneLabel: body.phoneLabel } : {}),
+      }),
+    );
+  })
+  .post("/test", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
+    return ok(c, await testWhatsAppConnection(tenant));
+  })
   .post("/disconnect", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.SETTINGS_MANAGE);
     const result = await integrationService.disconnectConnection(tenant, "WHATSAPP_CLOUD");
     return ok(c, {
       ...result,
       disconnectScope:
-        "SmrkoMed unsubscribed from this WhatsApp Business Account. The clinic still owns the WABA and phone number in Meta. Historical conversations were not deleted.",
+        "SmrkoMed unsubscribed from this WhatsApp Business Account. The clinic still owns the WABA and phone number in Meta. Historical conversations and patient records were not deleted.",
     });
   })
   .post("/sync", async (c) => {
@@ -94,7 +124,6 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     return ok(c, await getWhatsAppConversation(tenant, c.req.valid("param").id));
   })
   .get("/analytics", async (c) => {
-    // Overview KPIs for Automation Center — clinic-scoped; not admin-only.
     const tenant = requireAnyPermission(c, [PERMISSIONS.PATIENTS_READ, PERMISSIONS.SETTINGS_MANAGE]);
     return ok(c, await getWhatsAppAnalytics(tenant));
   });

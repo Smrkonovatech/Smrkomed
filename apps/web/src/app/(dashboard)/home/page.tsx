@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CalendarPlus,
   ClipboardList,
@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Package,
   Pill,
+  Shield,
   Sparkles,
   TriangleAlert,
   UserPlus,
@@ -20,7 +21,6 @@ import {
   Wallet,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
@@ -37,6 +37,7 @@ import {
 } from "@/components/dashboard/widgets";
 import { Button } from "@/components/ui/button";
 import { useAppState } from "@/lib/app-state";
+import { apiGet } from "@/lib/api/client";
 import { daysInRange, useDashboardDateRange } from "@/lib/dashboard-date-range";
 import {
   coupleLabel,
@@ -62,16 +63,6 @@ function greetingForHour(hour: number) {
   if (hour < 17) return "Good afternoon";
   return "Good evening";
 }
-
-const financeSpark = [
-  { i: 0, v: 12 },
-  { i: 1, v: 14 },
-  { i: 2, v: 13 },
-  { i: 3, v: 16 },
-  { i: 4, v: 15 },
-  { i: 5, v: 18 },
-  { i: 6, v: 17 },
-];
 
 export default function Dashboard() {
   const appState = useAppState() as ReturnType<typeof useAppState> & { couples?: Couple[] };
@@ -452,41 +443,32 @@ export default function Dashboard() {
         </DashCard>
       </div>
 
-      {/* Finance + Pharmacy */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <DashCard className="bg-gradient-to-br from-white via-[#f8f5fc] to-[#f7ebe4]">
+      {/* Finance + Pharmacy + ABDM */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        <DashCard className="bg-gradient-to-br from-white via-[#f8f5fc] to-[#f7ebe4] lg:col-span-1">
           <DashCardHeader
             title="Financial Overview"
             subtitle="Cross-module receivables snapshot"
             action={<ViewLink href="/billing" label="View all" />}
           />
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase">Total receivables</p>
-              <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
-                {formatInr(receivables || 1862000)}
-              </p>
-              <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                <div>
-                  <p className="font-semibold text-rose-700">{formatInr(overdueAmount || 724000)}</p>
-                  <p className="text-muted-foreground">Overdue</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-orange-700">{formatInr(pendingAmount || 618000)}</p>
-                  <p className="text-muted-foreground">Due soon</p>
-                </div>
-                <div>
-                  <p className="font-semibold text-sky-700">{formatInr(paidAmount || 520000)}</p>
-                  <p className="text-muted-foreground">Collected</p>
-                </div>
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase">Total receivables</p>
+            <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
+              {formatInr(receivables || 1862000)}
+            </p>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+              <div>
+                <p className="font-semibold text-rose-700">{formatInr(overdueAmount || 724000)}</p>
+                <p className="text-muted-foreground">Overdue</p>
               </div>
-            </div>
-            <div className="h-24 w-full min-w-[140px] rounded-2xl bg-white/70 p-2 sm:w-40">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={financeSpark}>
-                  <Area type="monotone" dataKey="v" stroke="#7b4fe0" fill="#7b4fe0" fillOpacity={0.18} strokeWidth={2} />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div>
+                <p className="font-semibold text-orange-700">{formatInr(pendingAmount || 618000)}</p>
+                <p className="text-muted-foreground">Due soon</p>
+              </div>
+              <div>
+                <p className="font-semibold text-sky-700">{formatInr(paidAmount || 520000)}</p>
+                <p className="text-muted-foreground">Collected</p>
+              </div>
             </div>
           </div>
         </DashCard>
@@ -515,6 +497,8 @@ export default function Dashboard() {
             })}
           </div>
         </DashCard>
+
+        <AbdmHomeCard />
       </div>
 
       {/* AI + Activity */}
@@ -592,5 +576,62 @@ export default function Dashboard() {
         </div>
       </DashCard>
     </div>
+  );
+}
+
+function AbdmHomeCard() {
+  const [totals, setTotals] = useState<{
+    patientsLinkedToAbha: number;
+    pendingVerification: number;
+    pendingConsentRequests: number;
+    failedExchanges: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiGet<{
+      totals: {
+        patientsLinkedToAbha: number;
+        pendingVerification: number;
+        pendingConsentRequests: number;
+        failedExchanges: number;
+      };
+    }>("/api/v1/digital-health/dashboard")
+      .then((res) => {
+        if (!cancelled) setTotals(res.totals);
+      })
+      .catch(() => {
+        if (!cancelled) setTotals(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <DashCard>
+      <DashCardHeader
+        title="ABDM & Digital Health"
+        subtitle="Actionable identity & consent"
+        action={<ViewLink href="/digital-health" label="Open ABDM" />}
+      />
+      <div className="grid grid-cols-2 gap-2">
+        {[
+          { label: "ABHA Linked", value: totals?.patientsLinkedToAbha ?? "—", tone: "bg-emerald-50 text-emerald-800" },
+          { label: "Pending verification", value: totals?.pendingVerification ?? "—", tone: "bg-amber-50 text-amber-800" },
+          { label: "Consent required", value: totals?.pendingConsentRequests ?? "—", tone: "bg-orange-50 text-orange-800" },
+          { label: "Record requests", value: totals?.failedExchanges ?? "—", tone: "bg-sky-50 text-sky-800" },
+        ].map((item) => (
+          <div key={item.label} className={cn("rounded-2xl px-3 py-3", item.tone)}>
+            <Shield className="mb-2 size-4 opacity-80" />
+            <p className="text-xl font-semibold tabular-nums">{item.value}</p>
+            <p className="text-[11px] font-medium opacity-80">{item.label}</p>
+          </div>
+        ))}
+      </div>
+      <Button asChild variant="outline" size="sm" className="mt-3 w-full">
+        <Link href="/digital-health/tasks">View ABDM tasks</Link>
+      </Button>
+    </DashCard>
   );
 }

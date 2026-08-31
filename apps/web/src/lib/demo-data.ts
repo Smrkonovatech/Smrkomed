@@ -626,6 +626,7 @@ export const taskCategories = [
   "Procedure",
   "Payment",
   "Follow-up",
+  "Digital Health",
   "Custom",
 ];
 

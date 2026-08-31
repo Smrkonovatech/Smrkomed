@@ -38,3 +38,52 @@ export const shareExchangeSchema = z
     consentId: z.string().min(1).optional().nullable(),
   })
   .strict();
+
+export const journeyStartSchema = z
+  .object({
+    path: z.enum(["HAS_ABHA", "NO_ABHA", "NOT_SURE"]),
+  })
+  .strict();
+
+export const journeyConsentSchema = z
+  .object({
+    sessionPurpose: z.enum(["LINK_EXISTING", "CREATE_ABHA", "DISCOVER"]),
+    consentVersion: z.string().trim().min(1).max(40).default("abdm-consent-v1"),
+    agreed: z.literal(true),
+  })
+  .strict();
+
+export const journeyAuthStartSchema = z
+  .object({
+    purpose: z.enum(["LINK_EXISTING", "CREATE_ABHA", "DISCOVER"]),
+    authMethod: z.string().trim().min(2).max(40),
+  })
+  .strict();
+
+export const journeyOtpSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    otp: z.string().trim().min(4).max(8),
+  })
+  .strict();
+
+export const journeyDiscoverSchema = z
+  .object({
+    forceMockFound: z.boolean().optional(),
+  })
+  .strict();
+
+export const journeyCreateSchema = z
+  .object({
+    sessionId: z.string().uuid(),
+    detailsConfirmed: z.literal(true),
+  })
+  .strict();
+
+export const journeyMatchSchema = z
+  .object({
+    confirmed: z.boolean(),
+    abhaNumber: z.string().trim().min(8).max(32).optional(),
+    sessionId: z.string().uuid().optional(),
+  })
+  .strict();

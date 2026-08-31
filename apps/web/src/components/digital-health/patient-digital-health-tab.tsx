@@ -1,16 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import {
-  CheckCircle2,
-  FileText,
-  Link2,
-  Shield,
-  Unlink,
-} from "lucide-react";
-import { toast } from "sonner";
-
+import { AbhaSetupWizard } from "@/components/digital-health/abha-setup-wizard";
+import { DigitalHealthCard } from "@/components/digital-health/digital-health-card";
+import { AbdmEnvironmentBanner } from "@/components/digital-health/digital-health-nav";
 import { EmptyState, LoadingRows, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +16,22 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, apiDelete, apiGet, apiPost } from "@/lib/api/client";
+import {
+  ABHA_STATUS_LABELS,
+  abhaStatusTone,
+  resolveAbhaUiStatus,
+} from "@/lib/abdm/status";
 import { formatDate, formatDateTime } from "@/components/pharmacy/format";
+import {
+  CheckCircle2,
+  FileText,
+  Link2,
+  Shield,
+  Unlink,
+} from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 type Connection = {
   connected: boolean;
@@ -32,11 +39,13 @@ type Connection = {
   environment: string;
   message: string;
   demoLinkAllowed: boolean;
+  authMethods?: Array<{ id: string; label: string; description: string; sandboxOnly?: boolean }>;
 };
 
 type Identity = {
   status: string;
   abhaMasked: string | null;
+  abhaAddress?: string | null;
   verificationStatus: string | null;
   linkedAt: string | null;
   lastVerifiedAt: string | null;
@@ -92,13 +101,6 @@ type DigitalHealthPayload = {
   };
 };
 
-function toneForAbha(status: string) {
-  if (status === "LINKED") return "success" as const;
-  if (status === "PENDING" || status === "VERIFICATION_REQUIRED") return "warning" as const;
-  if (status === "ERROR") return "danger" as const;
-  return "muted" as const;
-}
-
 function toneForConsent(status: string) {
   if (status === "ACTIVE") return "success" as const;
   if (status === "PENDING") return "warning" as const;
@@ -111,6 +113,7 @@ export function PatientDigitalHealthTab({ patientId }: { patientId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DigitalHealthPayload | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [unlinkOpen, setUnlinkOpen] = useState(false);
   const [abhaInput, setAbhaInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -272,53 +275,67 @@ export function PatientDigitalHealthTab({ patientId }: { patientId: string }) {
   }
 
   const { connection, identity, consents, exchanges, records } = data;
+  const uiStatus = resolveAbhaUiStatus(identity);
 
   return (
     <div className="space-y-5">
+      <AbdmEnvironmentBanner environment={connection.environment} connected={connection.connected} />
+
       {!connection.connected && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
-          <p className="font-medium">ABDM integration is not connected.</p>
+          <p className="font-medium">ABDM services may be unavailable or not configured.</p>
           <p className="mt-1 text-xs text-amber-900/80">{connection.message}</p>
-          <Link href="/digital-health" className="mt-2 inline-block text-xs font-medium text-primary underline">
-            Open Digital Health dashboard / settings
+          <p className="mt-1 text-xs">You can continue clinic workflows and retry ABHA later.</p>
+          <Link href="/digital-health/settings" className="mt-2 inline-block text-xs font-medium text-primary underline">
+            Open ABDM settings
           </Link>
         </div>
       )}
 
-      {connection.environment === "sandbox" && connection.connected && (
-        <div className="inline-flex rounded-md bg-sky-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-sky-900">
-          ABDM SANDBOX
-        </div>
-      )}
+      <DigitalHealthCard
+        identity={identity}
+        recordsCount={records.timeline.length}
+        lastActivity={identity.lastVerifiedAt ? formatDateTime(identity.lastVerifiedAt) : null}
+        onSetup={() => setSetupOpen(true)}
+      />
 
       <section className="rounded-xl border bg-background p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h3 className="text-sm font-semibold">ABHA status</h3>
+            <h3 className="text-sm font-semibold">ABDM & Digital Health</h3>
             <p className="text-xs text-muted-foreground">{identity.consentHint}</p>
           </div>
-          <StatusBadge label={identity.status.replaceAll("_", " ")} tone={toneForAbha(identity.status)} />
+          <StatusBadge label={ABHA_STATUS_LABELS[uiStatus]} tone={abhaStatusTone(uiStatus)} />
         </div>
 
         {identity.status === "NOT_LINKED" ? (
           <EmptyState
-            title="ABHA is not linked to this patient."
-            description="Link an ABHA identity when ABDM is configured, or use demo mode for sandbox intents only."
+            title="ABHA not linked"
+            description="Create or link an ABHA through the official ABDM journey. Each individual in a couple needs their own ABHA."
             icon={Link2}
             action={
-              <Button className="rounded-lg" onClick={() => setLinkOpen(true)}>
-                Link ABHA
-              </Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button className="rounded-lg" onClick={() => setSetupOpen(true)}>
+                  + Create / Link ABHA
+                </Button>
+                <Button variant="outline" className="rounded-lg" onClick={() => setSetupOpen(true)}>
+                  Already have ABHA?
+                </Button>
+              </div>
             }
           />
         ) : (
           <div className="space-y-2 text-sm">
             <p>
-              <span className="text-muted-foreground">ABHA</span>{" "}
+              <span className="text-muted-foreground">ABHA Number</span>{" "}
               <span className="font-medium tabular-nums">{identity.abhaMasked ?? "—"}</span>
             </p>
+            <p>
+              <span className="text-muted-foreground">ABHA Address</span>{" "}
+              <span className="font-medium">{identity.abhaAddress || "Not set"}</span>
+            </p>
             <p className="text-xs text-muted-foreground">
-              Verification: {identity.verificationStatus ?? "—"}
+              KYC / verification: {identity.verificationStatus ?? "—"}
               {identity.linkedAt ? ` · Linked ${formatDate(identity.linkedAt)}` : ""}
               {identity.lastVerifiedAt ? ` · Last verified ${formatDate(identity.lastVerifiedAt)}` : ""}
               {identity.source ? ` · Source ${identity.source}` : ""}
@@ -328,20 +345,24 @@ export function PatientDigitalHealthTab({ patientId }: { patientId: string }) {
               <p className="text-xs text-amber-800">{identity.errorMessage}</p>
             )}
             <div className="flex flex-wrap gap-2 pt-2">
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => void verifyAbha()}>
-                Verify ABHA
+              <Button size="sm" onClick={() => setSetupOpen(true)}>
+                View / continue ABHA
               </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => void load()}>
-                Refresh status
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => void verifyAbha()}>
+                Verify
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => void createConsent()}>
+                Manage Consent
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setPrepareOpen(true)}>
+                Discover / Request Records
               </Button>
               <Button size="sm" variant="outline" disabled={busy} onClick={() => setUnlinkOpen(true)}>
                 <Unlink className="size-3.5" /> Unlink
               </Button>
-              {identity.status === "NOT_LINKED" || identity.status === "ERROR" ? (
-                <Button size="sm" onClick={() => setLinkOpen(true)}>
-                  Link ABHA
-                </Button>
-              ) : null}
+              <Button size="sm" variant="ghost" onClick={() => setLinkOpen(true)}>
+                Quick link
+              </Button>
             </div>
           </div>
         )}
@@ -544,6 +565,20 @@ export function PatientDigitalHealthTab({ patientId }: { patientId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AbhaSetupWizard
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        patientId={patientId}
+        connection={{
+          connected: connection.connected,
+          environment: connection.environment,
+          demoLinkAllowed: connection.demoLinkAllowed,
+          message: connection.message,
+          authMethods: connection.authMethods ?? [],
+        }}
+        onCompleted={() => void load()}
+      />
     </div>
   );
 }

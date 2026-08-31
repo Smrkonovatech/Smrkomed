@@ -13,6 +13,18 @@ export function isMetaConfigured() {
   return Boolean(cfg.appId && cfg.appSecret && cfg.configId && cfg.verifyToken);
 }
 
+/** Development-only simulated onboarding when Meta App credentials are not set. */
+export function isWhatsAppDemoMode() {
+  if (process.env["NODE_ENV"] === "production" && process.env["WHATSAPP_DEMO_MODE"] !== "1") {
+    return false;
+  }
+  if (isMetaConfigured()) return false;
+  return (
+    process.env["WHATSAPP_DEMO_MODE"] === "1" ||
+    process.env["MOCK_INTEGRATIONS_ENABLED"] === "1"
+  );
+}
+
 export function graphBaseUrl() {
   return `https://graph.facebook.com/${metaConfig().graphVersion}`;
 }
