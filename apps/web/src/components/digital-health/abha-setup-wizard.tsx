@@ -68,6 +68,14 @@ export function AbhaSetupWizard({
   const [abhaInput, setAbhaInput] = useState("");
   const [authMethod, setAuthMethod] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [maskedMobile, setMaskedMobile] = useState<string | null>(null);
+  const [verifiedProfile, setVerifiedProfile] = useState<{
+    id: string;
+    name: string;
+    gender?: string;
+    yearOfBirth?: number | null;
+  } | null>(null);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(300);
@@ -102,6 +110,9 @@ export function AbhaSetupWizard({
       setOtp(["", "", "", "", "", ""]);
       setConsentAgreed(false);
       setSessionId(null);
+      setTransactionId(null);
+      setMaskedMobile(null);
+      setVerifiedProfile(null);
       setMessage(null);
       setDiscoverFound(null);
       setSuccessMasked(null);
@@ -178,14 +189,19 @@ export function AbhaSetupWizard({
     try {
       const res = await apiPost<{
         sessionId: string;
+        transactionId?: string;
+        maskedMobile?: string;
         expiresAt: string;
         message: string;
         sandboxMode?: boolean;
       }>(`/api/v1/digital-health/patients/${patientId}/journey/auth/start`, {
         purpose,
         authMethod,
+        ...(abhaInput.trim() ? { identifier: abhaInput.trim() } : {}),
       });
       setSessionId(res.sessionId);
+      setTransactionId(res.transactionId ?? null);
+      setMaskedMobile(res.maskedMobile ?? null);
       setExpiresAt(res.expiresAt);
       setSandboxHint(Boolean(res.sandboxMode));
       setMessage(res.message);
@@ -206,12 +222,36 @@ export function AbhaSetupWizard({
     }
     setBusy(true);
     try {
-      const res = await apiPost<{ message: string; sandboxMode?: boolean }>(
+      const res = await apiPost<{
+        authenticated: boolean;
+        message: string;
+        sandboxMode?: boolean;
+        profile?: { id: string; name: string; gender?: string; yearOfBirth?: number | null };
+        officialAbhaNumber?: string;
+        officialAbhaAddress?: string;
+        identity?: { abhaMasked: string | null; abhaAddress: string | null };
+      }>(
         `/api/v1/digital-health/patients/${patientId}/journey/auth/verify`,
-        { sessionId, otp: otpValue },
+        {
+          sessionId,
+          otp: otpValue,
+          ...(transactionId ? { transactionId } : {}),
+        },
       );
       setSandboxHint(Boolean(res.sandboxMode));
       setMessage(res.message);
+
+      if (res.profile) {
+        setVerifiedProfile(res.profile);
+      }
+
+      if (res.identity) {
+        setSuccessMasked(res.identity.abhaMasked);
+        setStep("success_link");
+        toast.success("ABHA verified and linked successfully!");
+        return;
+      }
+
       if (purpose === "CREATE_ABHA" || purpose === "DISCOVER") {
         await runDiscoverThenCreate();
       } else {
@@ -495,6 +535,11 @@ export function AbhaSetupWizard({
             <p className="text-sm text-muted-foreground">
               Enter the OTP sent to the registered mobile number. OTP is never stored or shown in logs.
             </p>
+            {maskedMobile && (
+              <p className="rounded-lg bg-muted/60 p-2 text-center text-xs font-medium text-foreground">
+                OTP sent to registered mobile: <span className="font-mono font-semibold">{maskedMobile}</span>
+              </p>
+            )}
             {sandboxHint && (
               <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
                 SANDBOX MOCK: Enter any 6-digit code. This is not a real ABDM OTP.
@@ -558,40 +603,21 @@ export function AbhaSetupWizard({
         {step === "match" && (
           <div className="space-y-3">
             <p className="text-sm">Please verify this is the correct patient.</p>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl border p-3 text-sm">
-                <p className="text-xs font-semibold text-muted-foreground uppercase">SmrkoMed Patient</p>
-                <p className="mt-1 font-medium">{patient?.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  DOB: {patient?.dateOfBirth ?? "—"} · {patient?.gender ?? "—"}
-                </p>
-              </div>
-              <div className="rounded-xl border p-3 text-sm">
-                <p className="text-xs font-semibold text-muted-foreground uppercase">ABDM profile</p>
-                <p className="mt-1 font-medium">{patient?.name}</p>
-                <p className="text-xs text-muted-foreground">Confirm demographics match before linking.</p>
-              </div>
-            </div>
-            <div>
-              <Label>ABHA Number to link</Label>
-              <Input
-                className="mt-1"
-                value={abhaInput}
-                onChange={(e) => setAbhaInput(e.target.value)}
-                placeholder="14-digit ABHA"
-                autoComplete="off"
-              />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={busy || abhaInput.trim().length < 8} onClick={() => void finishLink()}>
-                Confirm & Link
+            <p className="text-xs text-muted-foreground">
+              Do not reassign an ABHA to a different patient record without confirming demographics.
+            </p>
+            <dl className="rounded-xl border px-3 py-2 text-sm">
+              <Row label="Patient" value={patient?.name ?? "—"} />
+              <Row label="Phone" value={patient?.phone ?? "—"} />
+              <Row label="ABHA Input" value={abhaInput ? `XX-XXXX-XXXX-${abhaInput.replace(/\D/g, "").slice(-4)}` : "—"} />
+            </dl>
+            <div className="flex gap-2">
+              <Button disabled={busy} onClick={() => void finishLink()}>
+                Confirm and link
               </Button>
               <Button
                 variant="outline"
-                onClick={async () => {
-                  await apiPost(`/api/v1/digital-health/patients/${patientId}/journey/match-confirm`, {
-                    confirmed: false,
-                  });
+                onClick={() => {
                   toast.message("Linking stopped due to mismatch review.");
                   onOpenChange(false);
                 }}
@@ -608,7 +634,7 @@ export function AbhaSetupWizard({
               {step === "success_link" ? "ABHA linked successfully" : "Your ABHA journey was recorded"}
             </p>
             <dl className="rounded-xl border px-3 py-2 text-sm">
-              <Row label="Patient" value={patient?.name ?? "—"} />
+              <Row label="Patient" value={verifiedProfile?.name ?? patient?.name ?? "—"} />
               <Row
                 label="ABHA Number"
                 value={
@@ -618,7 +644,17 @@ export function AbhaSetupWizard({
                     : "Pending ABDM confirmation")
                 }
               />
-              <Row label="Status" value={step === "success_link" ? "Linked / verification pending" : "Creation intent"} />
+              {verifiedProfile?.id && <Row label="ABHA Address" value={verifiedProfile.id} />}
+              <Row
+                label="Status"
+                value={
+                  step === "success_link"
+                    ? sandboxHint
+                      ? "SANDBOX Verified (Testing)"
+                      : "Official ABDM Verified & Linked"
+                    : "Creation intent"
+                }
+              />
             </dl>
             {message && <p className="text-xs text-muted-foreground">{message}</p>}
             <Button

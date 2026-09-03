@@ -1,16 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AuthSessionProvider } from "@/components/auth-session-provider";
 import "@/styles.css";
-
-const inter = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-inter",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: {
@@ -22,7 +14,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen font-sans antialiased">
         <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>

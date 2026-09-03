@@ -52,6 +52,7 @@ export const env = {
   abdmClientSecret: process.env["ABDM_CLIENT_SECRET"]?.trim() || "",
   abdmFacilityId: process.env["ABDM_FACILITY_ID"]?.trim() || "",
   abdmXCmId: process.env["ABDM_X_CM_ID"]?.trim() || "",
+  abdmCallbackBaseUrl: process.env["ABDM_CALLBACK_BASE_URL"]?.trim() || "",
   /** Allows local SANDBOX link intents without claiming gateway OTP success. */
   abdmDemoMode: process.env["ABDM_DEMO_MODE"] === "1",
 };

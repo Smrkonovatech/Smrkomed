@@ -1,11 +1,11 @@
-﻿/**
+/**
  * Phase 1 seed â€” ABC Fertility Centre + demo staff + couples/plans/tasks.
  * Password for all demo users: Demo@12345
  */
 import { hash } from "bcryptjs";
 import { CarePlanType, StaffRole } from "@prisma/client";
 
-import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS, prisma } from "../src";
+import { PERMISSIONS, ROLE_DEFS, ROLE_PERMISSIONS, prisma, seedTreatmentPlanTemplates } from "../src";
 import { fertilitySteps } from "./seed-demo-types";
 import { seedAbcClinicClinicalData } from "./seed-demo-clinic";
 import { seedClinicPharmacyData } from "./seed-demo-pharmacy";
@@ -331,6 +331,12 @@ async function main() {
       }));
     // Prefer first template of each type for couple linking defaults
     if (!templateIds[t.type]) templateIds[t.type] = template.id;
+  }
+
+  // Seed the rich 16-stage IVF templates
+  const richTemplateIds = await seedTreatmentPlanTemplates(prisma, clinic.id);
+  if (richTemplateIds["IVF — Standard Journey"]) {
+    templateIds["IVF"] = richTemplateIds["IVF — Standard Journey"];
   }
 
   const categories = [

@@ -93,19 +93,47 @@ export async function seedAbcClinicClinicalData(input: {
     const planStatus =
       item.coupleStatus === "COMPLETED" ? "COMPLETED" : item.careLoopActive ? "ACTIVE" : "CANCELLED";
 
+    const chosenTemplateId = templateIds[item.planType] ?? undefined;
+    const templateRecord = chosenTemplateId
+      ? await prisma.carePlanTemplate.findUnique({
+          where: { id: chosenTemplateId },
+          include: { steps: { orderBy: { sortOrder: "asc" } } },
+        })
+      : null;
+
+    const stepNames =
+      templateRecord && templateRecord.steps.length > 0
+        ? templateRecord.steps.map((s) => s.name)
+        : fertilitySteps;
+
     const plan = await prisma.carePlan.create({
       data: {
         clinicId,
         coupleId: couple.id,
-        ...(templateIds[item.planType] ? { templateId: templateIds[item.planType] } : {}),
+        templateId: templateRecord?.id,
+        templateVersion: templateRecord?.version ?? 1,
+        snapshotData: templateRecord
+          ? {
+              name: templateRecord.name,
+              version: templateRecord.version,
+              steps: templateRecord.steps.map((s) => ({ sortOrder: s.sortOrder, name: s.name, stageType: s.stageType })),
+            }
+          : undefined,
         type: item.planType,
         name: item.planName,
         status: planStatus,
+        approvalStatus: "APPROVED",
+        approvedById: doctor.id,
+        approvedAt: createdAt,
         startDate: createdAt,
         currentStep: item.stageIndex,
+        currentStageIndex: item.stageIndex,
+        currentStageName: item.stageName,
+        assignedDoctorId: doctor.id,
+        assignedCoordinatorId: coordinator.id,
         createdById: doctor.id,
         steps: {
-          create: fertilitySteps.map((name, sortOrder) => ({
+          create: stepNames.map((name, sortOrder) => ({
             sortOrder,
             name,
             status:
@@ -182,10 +210,12 @@ export async function seedAbcClinicClinicalData(input: {
       iuiCycleCount += 1;
     }
 
-    const currentStep = plan.steps.find((s) => s.sortOrder === item.stageIndex);
+    const currentStep = plan.steps.find((s) => s.sortOrder === item.stageIndex) ?? plan.steps[0];
     for (const task of item.tasks) {
+      const taskObj = task as typeof task & { dueTime?: string; note?: string };
       const assigneeId =
         task.assignTo === "doctor" ? doctor.id : task.assignTo === "kavya" ? kavya.id : meera.id;
+      const ownerRole = task.assignTo === "doctor" ? "DOCTOR" : task.assignTo === "patient" ? "PATIENT" : "COORDINATOR";
       const createdTask = await prisma.careTask.create({
         data: {
           clinicId,
@@ -193,11 +223,15 @@ export async function seedAbcClinicClinicalData(input: {
           carePlanId: plan.id,
           carePlanStepId: currentStep?.id,
           title: task.title,
+          description: taskObj.note ?? null,
           category: task.category,
           status: task.status,
           priority: task.priority,
+          taskType: task.category === "Medication" ? "MEDICATION_TASK" : task.category === "Appointment" ? "APPOINTMENT_TASK" : "STAFF_TASK",
+          ownerRole,
+          source: "TEMPLATE",
           dueDate: day(task.dueOffset),
-          dueTime: "10:00",
+          dueTime: taskObj.dueTime ?? "10:00",
           createdById: meera.id,
           completedAt: task.status === "COMPLETED" ? day(task.dueOffset) : null,
           automationEnabled: true,
@@ -209,6 +243,38 @@ export async function seedAbcClinicClinicalData(input: {
         data: { careTaskId: createdTask.id, userId: assigneeId },
       });
       taskCount += 1;
+
+      // Seed explicit open exceptions for primary demonstration couples
+      if (item.slug === "priya-rahul" && task.title === "Medication acknowledgement") {
+        await prisma.escalation.create({
+          data: {
+            clinicId,
+            coupleId: couple.id,
+            patientId: primary.id,
+            careTaskId: createdTask.id,
+            type: "TASK_OVERDUE",
+            severity: "HIGH",
+            reason: "Medication confirmation missing — 2 hours overdue",
+            status: "OPEN",
+            assignedToId: coordinator.id,
+          },
+        });
+      }
+      if (item.slug === "anita-rahul" && task.title === "Review monitoring report") {
+        await prisma.escalation.create({
+          data: {
+            clinicId,
+            coupleId: couple.id,
+            patientId: primary.id,
+            careTaskId: createdTask.id,
+            type: "CLINICAL",
+            severity: "HIGH",
+            reason: "Monitoring report ready for review — lead follicles 18mm & 17mm",
+            status: "OPEN",
+            assignedToId: doctor.id,
+          },
+        });
+      }
     }
 
     for (const esc of item.escalations ?? []) {

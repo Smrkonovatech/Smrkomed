@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   CalendarPlus,
   ClipboardList,
   FilePlus2,
@@ -15,6 +16,7 @@ import {
   Pill,
   Shield,
   Sparkles,
+  Stethoscope,
   TriangleAlert,
   UserPlus,
   Users,
@@ -350,35 +352,69 @@ export default function Dashboard() {
 
         <DashCard>
           <DashCardHeader
-            title="Patients Needing Attention"
-            subtitle="Exceptions requiring a human"
-            action={<ViewLink href="/care-loop" label="View all" />}
+            title="Clinical Decisions & Exceptions"
+            subtitle="Prioritized clinical reviews & patient exceptions"
+            action={<ViewLink href="/care-loop" label="Care Loop Hub" />}
           />
-          <ul className="space-y-1">
-            {attention.map((item) => {
-              const couple = findCouple(item.coupleId, couples);
-              if (!couple) return null;
-              const meta = exceptionMeta[item.kind];
-              return (
-                <li key={item.id}>
-                  <Link
-                    href={exceptionRoutes[item.kind]}
-                    className="flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-muted/60"
-                  >
-                    <CoupleAvatar label={coupleLabel(couple)} />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">{coupleLabel(couple)}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {couple.treatment} · {couple.stage}
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-foreground/80">{item.reason}</span>
-                    </span>
-                    <StatusBadge label={meta.label} tone={meta.tone} className="max-w-[7.5rem] truncate" />
+          <div className="space-y-3">
+            {/* Clinical Review section for doctors */}
+            <div className="rounded-xl border border-purple-200/80 bg-purple-50/40 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-purple-900 uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <Stethoscope className="size-3.5 text-purple-700" />
+                  Clinical Review
+                </span>
+                <span className="rounded bg-purple-200/70 px-1.5 py-0.2 text-[10px] text-purple-900">
+                  Doctor Decision Required
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-3 text-xs">
+                <div>
+                  <Link href="/patients/anita-rahul" className="font-bold text-foreground hover:underline text-sm block">
+                    Anita + Rahul
                   </Link>
-                </li>
-              );
-            })}
-          </ul>
+                  <span className="text-muted-foreground block text-[11px]">
+                    IVF — Follicular Monitoring (Cycle 01)
+                  </span>
+                  <p className="text-foreground/90 font-medium mt-0.5 text-xs">
+                    Monitoring report ready: lead follicles 18mm &amp; 17mm. Doctor review required for trigger.
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="h-7 text-xs shrink-0 border-purple-300 text-purple-900 font-semibold" asChild>
+                  <Link href="/patients/anita-rahul">Review &amp; Trigger</Link>
+                </Button>
+              </div>
+            </div>
+
+            {/* Needs Attention section for care team */}
+            <div className="rounded-xl border border-amber-200/80 bg-amber-50/40 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-900 uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <AlertTriangle className="size-3.5 text-amber-700" />
+                  Needs Attention
+                </span>
+                <span className="rounded bg-amber-200/70 px-1.5 py-0.2 text-[10px] text-amber-900">
+                  Care Coordinator
+                </span>
+              </div>
+              <div className="flex items-start justify-between gap-3 text-xs">
+                <div>
+                  <Link href="/patients/priya-rahul" className="font-bold text-foreground hover:underline text-sm block">
+                    Priya + Rahul
+                  </Link>
+                  <span className="text-muted-foreground block text-[11px]">
+                    IVF — Ovarian Stimulation (Stage 5)
+                  </span>
+                  <p className="text-amber-900 font-medium mt-0.5 text-xs">
+                    Medication confirmation missing — 2 hours overdue.
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="h-7 text-xs shrink-0 border-amber-300 text-amber-900 font-semibold" asChild>
+                  <Link href="/patients/priya-rahul">Open Patient</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
         </DashCard>
       </div>
 

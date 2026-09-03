@@ -1,6 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-
-import { env } from "../../config/env";
+import { abdmClient, AbdmClientError } from "./abdm-client";
+import { abdmEvents, mapAbdmErrorToUserMessage } from "./abdm-callbacks";
+import { getAbdmConfig } from "./abdm-config";
+import type {
+  AbdmAuthMode,
+  AbdmOnInitCallbackPayload,
+  AbdmOnConfirmCallbackPayload,
+  AbdmVerifiedPatientProfile,
+} from "./abdm-types";
 
 export type AbdmConnectionStatus = "NOT_CONNECTED" | "CONNECTED" | "ERROR";
 
@@ -60,6 +67,11 @@ export type AbdmAuthSession = {
   sandboxMode: boolean;
   /** Never store OTP; sandbox only tracks that a challenge was issued. */
   challengeIssued: boolean;
+  gatewayTransactionId?: string | undefined;
+  identifier?: string | undefined;
+  profile?: AbdmVerifiedPatientProfile | undefined;
+  officialAbhaNumber?: string | undefined;
+  officialAbhaAddress?: string | undefined;
 };
 
 export type AbdmDiscoverResult =
@@ -119,16 +131,12 @@ function pruneSessions() {
  */
 export class AbdmProvider {
   getConnectionInfo(): AbdmConnectionInfo {
-    const configured = Boolean(
-      env.abdmEnabled && env.abdmBaseUrl && env.abdmClientId && env.abdmClientSecret,
-    );
-    const environment: AbdmEnvironment = !env.abdmEnabled
+    const config = getAbdmConfig();
+    const environment: AbdmEnvironment = !config.isEnabled
       ? "unconfigured"
-      : env.abdmEnv === "production"
-        ? "production"
-        : "sandbox";
+      : config.environment;
 
-    const authMethods: AbdmConnectionInfo["authMethods"] = configured
+    const authMethods: AbdmConnectionInfo["authMethods"] = config.isConfigured
       ? [
           {
             id: "mobile_otp",
@@ -141,7 +149,7 @@ export class AbdmProvider {
             description: "Official ABDM Aadhaar OTP flow. Aadhaar is not stored in SmrkoMed.",
           },
         ]
-      : env.abdmDemoMode
+      : config.demoMode
         ? [
             {
               id: "sandbox_otp",
@@ -153,14 +161,14 @@ export class AbdmProvider {
           ]
         : [];
 
-    if (!configured) {
+    if (!config.isConfigured) {
       return {
         connected: false,
         status: "NOT_CONNECTED",
         environment,
-        baseUrl: env.abdmBaseUrl || null,
-        facilityId: env.abdmFacilityId || null,
-        facilityConfigured: Boolean(env.abdmFacilityId),
+        baseUrl: config.baseUrl || null,
+        facilityId: config.facilityId || null,
+        facilityConfigured: Boolean(config.facilityId),
         lastCheckedAt: new Date().toISOString(),
         message:
           "ABDM integration is not connected. Configure server-side ABDM credentials and set ABDM_ENABLED=1.",
@@ -173,7 +181,7 @@ export class AbdmProvider {
           createAbha: false,
           abhaAddress: false,
         },
-        demoLinkAllowed: env.abdmDemoMode,
+        demoLinkAllowed: config.demoMode,
         authMethods,
       };
     }
@@ -182,11 +190,11 @@ export class AbdmProvider {
       connected: true,
       status: "CONNECTED",
       environment,
-      baseUrl: env.abdmBaseUrl,
-      facilityId: env.abdmFacilityId || null,
-      facilityConfigured: Boolean(env.abdmFacilityId),
+      baseUrl: config.baseUrl,
+      facilityId: config.facilityId || null,
+      facilityConfigured: Boolean(config.facilityId),
       lastCheckedAt: new Date().toISOString(),
-      message: `ABDM ${environment} credentials are configured. Gateway calls are available when endpoints respond.`,
+      message: `ABDM ${environment} credentials are configured. Gateway token session available.`,
       capabilities: {
         discoverPatient: true,
         linkAbha: true,
@@ -196,7 +204,7 @@ export class AbdmProvider {
         createAbha: true,
         abhaAddress: true,
       },
-      demoLinkAllowed: env.abdmDemoMode && environment === "sandbox",
+      demoLinkAllowed: config.demoMode && environment === "sandbox",
       authMethods,
     };
   }
@@ -210,42 +218,44 @@ export class AbdmProvider {
         message: "ABDM integration is not connected.",
       };
     }
-    return {
-      ok: true,
-      mode: "gateway",
-      verificationRequired: false,
-      message: "ABDM client credentials are present. Live token exchange requires gateway reachability.",
-      referenceId: randomUUID(),
-    };
+    try {
+      await abdmClient.getGatewayToken();
+      return {
+        ok: true,
+        mode: "gateway",
+        verificationRequired: false,
+        message: "ABDM Gateway session token verified successfully.",
+        referenceId: randomUUID(),
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        code: "ABDM_AUTH_FAILED",
+        message: `ABDM session authentication failed: ${msg}`,
+      };
+    }
   }
 
   async verifyConnection(): Promise<AbdmConnectionInfo> {
     const info = this.getConnectionInfo();
     if (!info.connected) return info;
+
     try {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 5_000);
-      const res = await fetch(info.baseUrl!, {
-        method: "GET",
-        signal: controller.signal,
-        headers: { Accept: "application/json" },
-      }).finally(() => clearTimeout(timer));
-      if (!res.ok && res.status >= 500) {
-        return {
-          ...info,
-          status: "ERROR",
-          message: "ABDM services are temporarily unavailable. Your patient records were not changed.",
-        };
-      }
+      // Test real Gateway token acquisition
+      await abdmClient.getGatewayToken();
       return {
         ...info,
-        message: `ABDM endpoint responded with HTTP ${res.status}. Connection check completed (no secrets exchanged in this probe).`,
+        status: "CONNECTED",
+        message: "Connected to ABDM Gateway. Client credentials and session token verified successfully.",
       };
-    } catch {
+    } catch (err: unknown) {
+      const errCode = err instanceof AbdmClientError ? err.code : "ABDM_CONNECTION_ERROR";
+      const errMsg = err instanceof Error ? err.message : "ABDM services are temporarily unavailable.";
       return {
         ...info,
         status: "ERROR",
-        message: "ABDM services are temporarily unavailable. Your patient records were not changed.",
+        message: `ABDM Connection check failed [${errCode}]: ${errMsg}`,
       };
     }
   }
@@ -318,14 +328,13 @@ export class AbdmProvider {
   }
 
   /**
-   * Start an authentication session. OTP is never generated or stored here.
-   * Gateway mode: issues challenge reference for real ABDM OTP.
-   * Demo/sandbox: allows MOCK challenge for UX testing only.
+   * Start an authentication session (sync backward-compatible interface).
    */
   startAuthSession(input: {
     patientId: string;
     purpose: AbdmAuthSession["purpose"];
     authMethod: string;
+    identifier?: string;
   }): AbdmLinkResult & { session?: AbdmAuthSession } {
     pruneSessions();
     const info = this.getConnectionInfo();
@@ -358,6 +367,7 @@ export class AbdmProvider {
       environment: info.environment,
       sandboxMode: !info.connected || info.environment === "sandbox",
       challengeIssued: true,
+      identifier: input.identifier,
     };
     authSessions.set(session.sessionId, session);
 
@@ -373,15 +383,130 @@ export class AbdmProvider {
     };
   }
 
+  /**
+   * Asynchronous gateway auth initiation.
+   * Calls POST /v0.5/users/auth/init and listens for Gateway on-init callback.
+   */
+  async startAuthSessionAsync(input: {
+    patientId: string;
+    purpose: AbdmAuthSession["purpose"];
+    authMethod: string;
+    identifier: string;
+  }): Promise<
+    AbdmLinkResult & {
+      session?: AbdmAuthSession | undefined;
+      maskedMobile?: string | null | undefined;
+      transactionId?: string | undefined;
+    }
+  > {
+    pruneSessions();
+    const config = getAbdmConfig();
+    const info = this.getConnectionInfo();
+
+    // In demo mode: use simulated flow immediately
+    if (config.demoMode || !config.isConfigured) {
+      if (!info.demoLinkAllowed && !config.isConfigured) {
+        return {
+          ok: false,
+          code: "ABDM_NOT_CONNECTED",
+          message: "ABDM integration is not connected.",
+        };
+      }
+      return this.startAuthSession(input);
+    }
+
+    // Live ABDM Gateway Mode
+    const requestId = randomUUID();
+    const authMode: AbdmAuthMode =
+      input.authMethod === "aadhaar_otp" ? "AADHAAR_OTP" : "MOBILE_OTP";
+
+    try {
+      await abdmClient.initAuth({
+        id: input.identifier,
+        authMode,
+        purpose: "KYC_AND_LINK",
+        requestId,
+      });
+
+      const session: AbdmAuthSession = {
+        sessionId: requestId,
+        patientId: input.patientId,
+        purpose: input.purpose,
+        authMethod: input.authMethod,
+        status: "AWAITING_OTP",
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        attempts: 0,
+        maxAttempts: 3,
+        environment: info.environment,
+        sandboxMode: false,
+        challengeIssued: true,
+        identifier: input.identifier,
+      };
+      authSessions.set(session.sessionId, session);
+
+      // Race callback listener with a 3-second quick window (in case callback arrives immediately)
+      const callbackResult = await new Promise<{
+        transactionId?: string | undefined;
+        hint?: string | null | undefined;
+        error?: string | undefined;
+      }>((resolve) => {
+        const timer = setTimeout(() => resolve({}), 3000);
+        abdmEvents.once(`on-init:${requestId}`, (payload: AbdmOnInitCallbackPayload) => {
+          clearTimeout(timer);
+          if (payload.error) {
+            resolve({ error: payload.error.message });
+          } else {
+            resolve({
+              transactionId: payload.auth?.transactionId ?? undefined,
+              hint: payload.auth?.meta?.hint ?? undefined,
+            });
+          }
+        });
+      });
+
+      if (callbackResult.error) {
+        session.status = "FAILED";
+        return {
+          ok: false,
+          code: "ABDM_AUTH_INIT_FAILED",
+          message: mapAbdmErrorToUserMessage(undefined, callbackResult.error),
+          session,
+        };
+      }
+
+      if (callbackResult.transactionId) {
+        session.gatewayTransactionId = callbackResult.transactionId;
+      }
+
+      const hintText = callbackResult.hint ? ` (hint: ${callbackResult.hint})` : "";
+      return {
+        ok: true,
+        mode: "gateway",
+        verificationRequired: true,
+        message: `Authentication challenge initiated with ABDM${hintText}. Ask patient to enter the OTP sent to their registered mobile.`,
+        referenceId: requestId,
+        transactionId: callbackResult.transactionId ?? undefined,
+        maskedMobile: callbackResult.hint ?? undefined,
+        session,
+      };
+    } catch (err: unknown) {
+      const errCode = err instanceof AbdmClientError ? err.code : "ABDM_GATEWAY_ERROR";
+      const errMsg = err instanceof Error ? err.message : "Failed to initiate ABDM authentication.";
+      return {
+        ok: false,
+        code: errCode,
+        message: errMsg,
+      };
+    }
+  }
+
   getAuthSession(sessionId: string): AbdmAuthSession | null {
     pruneSessions();
     return authSessions.get(sessionId) ?? null;
   }
 
   /**
-   * Verify OTP. Never logs OTP.
-   * Production/gateway: refuses to invent success without live ABDM — returns awaiting gateway.
-   * Sandbox demo: accepts 6-digit codes only when demo mode is on.
+   * Verify OTP (sync backward-compatible interface).
    */
   verifyOtp(input: {
     sessionId: string;
@@ -413,7 +538,6 @@ export class AbdmProvider {
 
     const info = this.getConnectionInfo();
     if (info.connected && !session.sandboxMode) {
-      // Honest: live OTP verification requires gateway wiring.
       return {
         ok: false,
         code: "ABDM_OTP_GATEWAY_PENDING",
@@ -431,7 +555,7 @@ export class AbdmProvider {
       };
     }
 
-    // Sandbox/demo only — never claim real ABDM verification.
+    // Sandbox/demo only
     session.status = "AUTHENTICATED";
     return {
       ok: true,
@@ -441,6 +565,145 @@ export class AbdmProvider {
       referenceId: session.sessionId,
       session,
     };
+  }
+
+  /**
+   * Asynchronous live gateway OTP confirmation.
+   * Calls POST /v0.5/users/auth/confirm and waits for on-confirm callback.
+   */
+  async verifyOtpAsync(input: {
+    sessionId: string;
+    otp: string;
+    transactionId?: string | undefined;
+  }): Promise<
+    AbdmLinkResult & {
+      session?: AbdmAuthSession | undefined;
+      profile?: AbdmVerifiedPatientProfile | undefined;
+      officialAbhaNumber?: string | undefined;
+      officialAbhaAddress?: string | undefined;
+    }
+  > {
+    pruneSessions();
+    const session = authSessions.get(input.sessionId);
+    if (!session) {
+      return {
+        ok: false,
+        code: "SESSION_EXPIRED",
+        message: "Authentication session expired. Please try again.",
+      };
+    }
+
+    if (new Date(session.expiresAt).getTime() < Date.now()) {
+      authSessions.delete(input.sessionId);
+      return { ok: false, code: "SESSION_EXPIRED", message: "OTP expired. Please request a new one." };
+    }
+
+    if (session.attempts >= session.maxAttempts) {
+      session.status = "FAILED";
+      return {
+        ok: false,
+        code: "MAX_ATTEMPTS",
+        message: "Too many attempts. Please restart authentication.",
+      };
+    }
+
+    session.attempts += 1;
+    const otp = input.otp.replace(/\D/g, "");
+    if (otp.length !== 6) {
+      return { ok: false, code: "INVALID_OTP", message: "Enter the 6-digit OTP." };
+    }
+
+    const config = getAbdmConfig();
+    // Sandbox / Demo mode path
+    if (session.sandboxMode || config.demoMode || !config.isConfigured) {
+      session.status = "AUTHENTICATED";
+      return {
+        ok: true,
+        mode: "demo_intent",
+        verificationRequired: false,
+        message: "SANDBOX: Authentication completed for testing. Not an official ABDM verification.",
+        referenceId: session.sessionId,
+        session,
+      };
+    }
+
+    // Live Gateway OTP Confirmation
+    const gatewayTxId = input.transactionId || session.gatewayTransactionId;
+    if (!gatewayTxId) {
+      return {
+        ok: false,
+        code: "MISSING_TRANSACTION_ID",
+        message: "Gateway transaction ID missing. Please initiate verification again.",
+      };
+    }
+
+    const confirmRequestId = randomUUID();
+    try {
+      await abdmClient.confirmAuth({
+        transactionId: gatewayTxId,
+        otp,
+        requestId: confirmRequestId,
+      });
+
+      // Await callback from ABDM Gateway with a 5-second window
+      const callbackResult = await new Promise<{
+        patient?: AbdmVerifiedPatientProfile | undefined;
+        error?: string | undefined;
+        errorCode?: number | string | undefined;
+      }>((resolve) => {
+        const timer = setTimeout(() => resolve({}), 5000);
+        abdmEvents.once(`on-confirm:${confirmRequestId}`, (payload: AbdmOnConfirmCallbackPayload) => {
+          clearTimeout(timer);
+          if (payload.error) {
+            resolve({ error: payload.error.message, errorCode: payload.error.code });
+          } else {
+            resolve({
+              patient: payload.auth?.patient ?? undefined,
+            });
+          }
+        });
+      });
+
+      if (callbackResult.error) {
+        return {
+          ok: false,
+          code: "INVALID_OTP",
+          message: mapAbdmErrorToUserMessage(callbackResult.errorCode, callbackResult.error),
+          session,
+        };
+      }
+
+      session.status = "AUTHENTICATED";
+      if (callbackResult.patient) {
+        session.profile = callbackResult.patient;
+        const abhaIdent = callbackResult.patient.identifiers?.find(
+          (i) => i.type === "HEALTH_NUMBER" || i.type === "ABHA",
+        );
+        session.officialAbhaNumber = abhaIdent?.value ?? undefined;
+        session.officialAbhaAddress = callbackResult.patient.id;
+      }
+
+      return {
+        ok: true,
+        mode: "gateway",
+        verificationRequired: false,
+        message: "ABDM authentication verified successfully.",
+        referenceId: confirmRequestId,
+        session,
+        profile: session.profile ?? undefined,
+        officialAbhaNumber: session.officialAbhaNumber ?? undefined,
+        officialAbhaAddress: session.officialAbhaAddress ?? undefined,
+      };
+    } catch (err: unknown) {
+      const errCode = err instanceof AbdmClientError ? err.code : "ABDM_CONFIRM_FAILED";
+      const errMsg = err instanceof Error ? err.message : "ABDM Gateway OTP confirmation failed.";
+      return {
+        ok: false,
+        code: errCode,
+        message: errMsg,
+        session,
+      };
+    }
   }
 
   /**

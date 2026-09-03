@@ -39,4 +39,13 @@ export {
   type OperationalAlert,
   type UnifiedTimelineItem,
 } from "./patient-360";
+export { seedTreatmentPlanTemplates } from "./care-loop/seed-templates";
+export {
+  IVF_STANDARD_JOURNEY,
+  IVF_FREEZE_ALL_PROTOCOL,
+  IVF_BASIC_JOURNEY,
+  type SeedTemplateDef,
+  type SeedStageDef,
+  type SeedTaskDef,
+} from "./care-loop/ivf-template-seed-data";
 export type * from "@prisma/client";
