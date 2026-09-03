@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const bodySchema = z.object({
-  transcript: z.string().min(20).max(40_000),
+  transcript: z.string().min(5).max(40_000),
   coupleLabel: z.string().min(1).max(200),
   summaryLanguage: z.string().min(1).max(40).optional(),
 });

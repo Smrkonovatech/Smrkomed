@@ -23,11 +23,22 @@ export async function transcribeAudioBlob(
   });
 
   const language = whisperLanguageFor(options?.language);
+  const prompt =
+    options?.language === "kn"
+      ? "ವೈದ್ಯಕೀಯ ಸಮಾಲೋಚನೆ, IVF, fertility clinic consultation with medical terms in Kannada and English (Kanglish)."
+      : options?.language === "hi"
+        ? "डॉक्टर और मरीज की बातचीत, IVF, fertility clinic consultation in Hindi and English."
+        : options?.language === "ta"
+          ? "மருத்துவ ஆலோசனை, IVF, fertility clinic consultation in Tamil and English."
+          : options?.language === "ml"
+            ? "വൈദ്യപരിശോധന, IVF, fertility clinic consultation in Malayalam and English."
+            : undefined;
 
   const result = await client.audio.transcriptions.create({
     file: upload,
     model: AI_TRANSCRIBE_MODEL,
     ...(language ? { language } : {}),
+    ...(prompt ? { prompt } : {}),
   });
 
   const text = (result.text ?? "").trim();
@@ -44,7 +55,7 @@ export async function summarizeConsultationTranscript(input: {
   summaryLanguage?: string;
 }): Promise<{ summary: string; reasonForVisit?: string; nextSteps?: string }> {
   const transcript = input.transcript.trim().slice(0, AI_LIMITS.maxTranscriptChars);
-  if (transcript.length < 20) {
+  if (transcript.length < 5) {
     throw new AiUserError("Transcript is too short to summarize.");
   }
 
@@ -62,7 +73,7 @@ export async function summarizeConsultationTranscript(input: {
           `Doctor/Coordinator: ${input.clinicianName}`,
           `Date: ${new Date().toISOString()}`,
           input.summaryLanguage
-            ? `Write the structured summary in: ${input.summaryLanguage}`
+            ? `Write the content in: ${input.summaryLanguage}. IMPORTANT: Keep the standard English section headers (Reason for Visit, Discussion Summary, Patient Concerns, Doctor Notes, Next Steps, Follow-up Required) unchanged so medical charts can parse them.`
             : "Write the structured summary in English unless the clinic context clearly requires otherwise.",
           "",
           "TRANSCRIPT:",
@@ -75,8 +86,8 @@ export async function summarizeConsultationTranscript(input: {
   const summary = (completion.choices[0]?.message?.content ?? "").trim();
   if (!summary) throw new AiUserError("Unable to generate the consultation summary.");
 
-  const reasonMatch = summary.match(/Reason for Visit\s*\n+([\s\S]*?)(?:\n\n|\n[A-Z])/i);
-  const nextMatch = summary.match(/Plan \/ Next Steps\s*\n+([\s\S]*?)(?:\n\n|\n[A-Z])/i);
+  const reasonMatch = summary.match(/(?:Reason for Visit|ಭೇಟಿಯ ಕಾರಣ|कारण)\s*[:\n#*]+([\s\S]*?)(?:\n\n|\n[#A-Z]|$)/i);
+  const nextMatch = summary.match(/(?:Plan \/ Next Steps|Next Steps|ಮುಂದಿನ ಹಂತಗಳು|अगले कदम)\s*[:\n#*]+([\s\S]*?)(?:\n\n|\n[#A-Z]|$)/i);
 
   const reasonForVisit = reasonMatch?.[1]?.trim().slice(0, 500);
   const nextSteps = nextMatch?.[1]?.trim().slice(0, 1000);

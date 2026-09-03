@@ -25,6 +25,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   CONSULTATION_LANGUAGES,
+  googleLocaleFor,
   type ConsultationLanguageCode,
 } from "@/lib/voice/languages";
 
@@ -78,12 +79,15 @@ export function VoiceNotesPanel({
   const [notes, setNotes] = useState<NoteItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [liveTranscript, setLiveTranscript] = useState<string>("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
   const languageRef = useRef(language);
+  const recognitionRef = useRef<any>(null);
+  const googleTranscriptRef = useRef<string>("");
 
   useEffect(() => {
     languageRef.current = language;
@@ -103,6 +107,11 @@ export function VoiceNotesPanel({
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((track) => track.stop());
+      try {
+        recognitionRef.current?.abort();
+      } catch {
+        /* ignore */
+      }
     };
   }, []);
 
@@ -125,6 +134,9 @@ export function VoiceNotesPanel({
   const startRecording = async () => {
     setConsentOpen(false);
     setMicError(null);
+    setLiveTranscript("");
+    googleTranscriptRef.current = "";
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -138,6 +150,46 @@ export function VoiceNotesPanel({
         void processRecording();
       };
       recorder.start(1000);
+
+      // Start Google Web Speech Recognition in browser (native kn-IN / hi-IN / etc.)
+      const SpeechRecClass =
+        typeof window !== "undefined"
+          ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+          : null;
+
+      if (SpeechRecClass) {
+        try {
+          const rec = new SpeechRecClass();
+          rec.continuous = true;
+          rec.interimResults = true;
+          rec.lang = googleLocaleFor(languageRef.current);
+          rec.onresult = (event: any) => {
+            let finalStr = "";
+            let interimStr = "";
+            for (let i = 0; i < event.results.length; i++) {
+              const piece = event.results[i][0]?.transcript || "";
+              if (event.results[i].isFinal) {
+                finalStr += piece + " ";
+              } else {
+                interimStr += piece;
+              }
+            }
+            const combined = (finalStr + interimStr).trim();
+            if (combined) {
+              setLiveTranscript(combined);
+              googleTranscriptRef.current = combined;
+            }
+          };
+          rec.onerror = (e: any) => {
+            console.warn("Google Speech Recognition note:", e?.error);
+          };
+          rec.start();
+          recognitionRef.current = rec;
+        } catch (err) {
+          console.warn("Google Speech start skipped:", err);
+        }
+      }
+
       setRecording(true);
       setPaused(false);
       setElapsed(0);
@@ -154,6 +206,11 @@ export function VoiceNotesPanel({
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state !== "recording") return;
     recorder.pause();
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     setPaused(true);
     if (timerRef.current) {
       window.clearInterval(timerRef.current);
@@ -165,11 +222,22 @@ export function VoiceNotesPanel({
     const recorder = mediaRecorderRef.current;
     if (!recorder || recorder.state !== "paused") return;
     recorder.resume();
+    try {
+      recognitionRef.current?.start();
+    } catch {
+      /* ignore */
+    }
     setPaused(false);
     timerRef.current = window.setInterval(() => setElapsed((value) => value + 1), 1000);
   };
 
   const stopRecording = () => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
+    recognitionRef.current = null;
     mediaRecorderRef.current?.stop();
     setRecording(false);
     setPaused(false);
@@ -179,22 +247,30 @@ export function VoiceNotesPanel({
   const processRecording = async () => {
     setStage("uploading");
     try {
-      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      chunksRef.current = [];
-      const form = new FormData();
-      form.append("audio", blob, "consultation.webm");
-      form.append("language", languageRef.current);
+      let transcript = googleTranscriptRef.current.trim();
 
-      setStage("transcribing");
-      const transcribeRes = await fetch("/api/voice/transcribe", { method: "POST", body: form });
-      const transcribeJson = (await transcribeRes.json()) as {
-        success?: boolean;
-        data?: { transcript: string };
-        error?: { message?: string };
-      };
-      // Audio blob goes out of scope — never persisted client-side after this request.
-      if (!transcribeRes.ok || !transcribeJson.success || !transcribeJson.data?.transcript) {
-        throw new Error(transcribeJson.error?.message || "Voice processing failed. Please try again.");
+      // If Google speech captured the text, use it directly! Otherwise fall back to Whisper
+      if (transcript.length < 5) {
+        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+        chunksRef.current = [];
+        const form = new FormData();
+        form.append("audio", blob, "consultation.webm");
+        form.append("language", languageRef.current);
+
+        setStage("transcribing");
+        const transcribeRes = await fetch("/api/voice/transcribe", { method: "POST", body: form });
+        const transcribeJson = (await transcribeRes.json()) as {
+          success?: boolean;
+          data?: { transcript: string };
+          error?: { message?: string };
+        };
+        // Audio blob goes out of scope — never persisted client-side after this request.
+        if (!transcribeRes.ok || !transcribeJson.success || !transcribeJson.data?.transcript) {
+          throw new Error(transcribeJson.error?.message || "Voice processing failed. Please try again.");
+        }
+        transcript = transcribeJson.data.transcript;
+      } else {
+        chunksRef.current = [];
       }
 
       setStage("summarizing");
@@ -204,7 +280,7 @@ export function VoiceNotesPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          transcript: transcribeJson.data.transcript,
+          transcript,
           coupleLabel,
           summaryLanguage: langLabel,
         }),
@@ -319,24 +395,39 @@ export function VoiceNotesPanel({
       </div>
 
       {recording && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/30 bg-danger-soft px-3 py-3">
-          <span className="flex items-center gap-2 text-sm font-semibold text-danger">
-            <span className="size-2 animate-pulse rounded-full bg-danger" />
-            {paused ? "Paused" : "REC"}
-          </span>
-          <span className="font-mono text-sm tabular-nums">{formatElapsed}</span>
-          {paused ? (
-            <Button type="button" size="sm" variant="outline" onClick={resumeRecording}>
-              <Play className="size-3.5" /> Resume
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-danger/30 bg-danger-soft px-3 py-3">
+            <span className="flex items-center gap-2 text-sm font-semibold text-danger">
+              <span className="size-2 animate-pulse rounded-full bg-danger" />
+              {paused ? "Paused" : "REC"}
+            </span>
+            <span className="font-mono text-sm tabular-nums">{formatElapsed}</span>
+            {paused ? (
+              <Button type="button" size="sm" variant="outline" onClick={resumeRecording}>
+                <Play className="size-3.5" /> Resume
+              </Button>
+            ) : (
+              <Button type="button" size="sm" variant="outline" onClick={pauseRecording}>
+                <Pause className="size-3.5" /> Pause
+              </Button>
+            )}
+            <Button type="button" variant="destructive" size="sm" onClick={stopRecording}>
+              <Square className="size-3.5" /> Stop
             </Button>
-          ) : (
-            <Button type="button" size="sm" variant="outline" onClick={pauseRecording}>
-              <Pause className="size-3.5" /> Pause
-            </Button>
-          )}
-          <Button type="button" variant="destructive" size="sm" onClick={stopRecording}>
-            <Square className="size-3.5" /> Stop
-          </Button>
+          </div>
+
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
+            <div className="flex items-center justify-between text-muted-foreground mb-1">
+              <span className="font-medium text-foreground flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live Google Speech ({CONSULTATION_LANGUAGES.find((l) => l.code === language)?.label})
+              </span>
+              <span>Real-time recognition</span>
+            </div>
+            <p className="min-h-5 text-sm text-foreground/90 italic">
+              {liveTranscript || "Listening… speak in Kannada, English, or your selected language."}
+            </p>
+          </div>
         </div>
       )}
 
