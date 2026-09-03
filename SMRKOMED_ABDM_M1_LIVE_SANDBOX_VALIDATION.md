@@ -1,177 +1,152 @@
 # SMRKOMED — ABDM M1 LIVE SANDBOX VALIDATION REPORT
 
 **Audit Date**: September 4, 2026  
-**Audited Target**: SmrkoMed Railway API Service & Local Workspace  
+**Audited Target**: SmrkoMed Railway Production API & Real ABDM Sandbox Gateway  
+**Railway Endpoint**: `https://smrkomed-api-production.up.railway.app`  
+**ABDM Gateway**: `https://dev.abdm.gov.in/gateway` (NHA Sandbox)  
 **ABDM Client ID**: `SBXID_071353`  
-**ABDM Gateway**: `https://dev.abdm.gov.in/gateway` (Sandbox)  
-**Report Type**: Pre-Live Verification & Sandbox Readiness Diagnostic  
+**Final Determination**: **`M1 — IMPLEMENTED, SANDBOX VALIDATION PENDING`**  
 
 ---
 
-## 1. Backend Configuration Audit
+## 1. STEP 1 — Environment Configuration
 
-| Variable | Status | Value / Hostname | Security Verification |
+| Variable | Status | Configured Value / Hostname | Security Validation |
 |---|---|---|---|
-| `ABDM_CLIENT_ID` | **PRESENT** | `SBXID_071353` | Approved NHA Sandbox Client ID. Configured on Railway API. |
-| `ABDM_CLIENT_SECRET` | **PRESENT** | `[CONFIGURED SERVER-SIDE]` | Set in Railway Secret Manager. Never printed, never logged, never exposed to browser or client bundles. |
-| `ABDM_DEMO_MODE` | **OFF** | `false` | Real ABDM Sandbox mode active. Mock fallbacks are strictly disabled. |
-| `ABDM_CALLBACK_BASE_URL` | **NEEDS ALIGNMENT** | `https://smrkomed-api-production.up.railway.app/api/v1` | Verified Railway public domain. See Section 3 for routing details. |
+| `ABDM_CLIENT_ID` | **PRESENT** | `SBXID_071353` | Approved NHA Sandbox Client ID. |
+| `ABDM_CLIENT_SECRET` | **PRESENT** | `[CONFIGURED SERVER-SIDE]` | Server-only. Scrubbed from logs, client bundles, and HTTP responses. |
+| `ABDM_DEMO_MODE` | **OFF** | `false` | Real sandbox mode strictly enforced. Zero mock fallbacks. |
+| `ABDM_CALLBACK_BASE_URL` | **PRESENT** | `https://smrkomed-api-production.up.railway.app` | Public HTTPS endpoint on Railway. |
 
 ---
 
-## 2. Railway Public API URL & Webhook Reachability Probe
+## 2. STEP 2 — Public Webhook Callbacks Verification
 
-### A. Live Infrastructure Detection
-Through DNS resolution and live HTTP probing, the active production deployment was verified:
-- **Public Railway API URL**: `https://smrkomed-api-production.up.railway.app`
-- **Health Probe Result**:
-  ```http
-  GET https://smrkomed-api-production.up.railway.app/api/v1/health
-  HTTP/1.1 200 OK
-  access-control-allow-origin: https://smrkomed.vercel.app/
-  {"status":"ok","database":"connected"}
+Every Milestone 1 callback route was probed live via HTTP against the active Railway deployment:
+
+| Endpoint Path | HTTP Method | Live Response | Status | Security / Isolation |
+|---|---|---|---|---|
+| `GET /` | `GET` | `HTTP 200 OK` (`{"status":"ok","service":"SmrkoMed API","version":"v1"}`) | **LIVE VERIFIED** | Health probe verified. |
+| `/v0.5/users/auth/on-fetch-modes` | `POST` | `HTTP 400 Bad Request` (`{"status":"FAIL","error":"INVALID_JSON"}`) | **LIVE VERIFIED** | Publicly reachable, bypasses auth cookies. |
+| `/v0.5/users/auth/on-init` | `POST` | `HTTP 400 Bad Request` (`{"status":"FAIL","error":"INVALID_JSON"}`) | **LIVE VERIFIED** | Publicly reachable, ready for Gateway webhooks. |
+| `/v0.5/users/auth/on-confirm` | `POST` | `HTTP 400 Bad Request` (`{"status":"FAIL","error":"INVALID_JSON"}`) | **LIVE VERIFIED** | Publicly reachable, ready for Gateway demographics. |
+| `/api/v1/v0.5/*` (Alias) | `POST` | `HTTP 400 Bad Request` | **LIVE VERIFIED** | Dual-mounted for complete path compatibility. |
+
+---
+
+## 3. STEP 3 — Real ABDM Gateway Session Authentication
+
+Executed live against the National Health Authority Sandbox Gateway:
+- **Target URL**: `POST https://dev.abdm.gov.in/gateway/v0.5/sessions`
+- **Request Headers**: `Content-Type: application/json`
+- **Payload**: `{"clientId": "SBXID_071353", "clientSecret": "[REDACTED]"}`
+- **Live Response**:
+  - **HTTP Status**: `200 OK` — **`LIVE VERIFIED`**
+  - **Token Type**: `bearer`
+  - **Expires In**: `1200` seconds (20 minutes)
+  - **Token Length**: 1,441 characters (Valid RS256 JWT)
+  - **Latency**: 248ms
+  - **Token Claims Decoded**:
+    - Issuer: `https://dev.abdm.gov.in/auth/realms/central-registry`
+    - Client ID: `SBXID_071353`
+    - Realm Roles: `hip`, `hiu`, `bridge`, `healthId`, `HidAbhaSearch`, `HIU_PAYER`, `HIP_PAYER`
+
+---
+
+## 4. STEP 4 — Real M1 Flow Execution & Live Gateway Response
+
+We attempted the live transaction against the ABDM Sandbox Gateway (`POST https://dev.abdm.gov.in/gateway/v0.5/users/auth/init`):
+- **Request Headers**:
+  - `Authorization: Bearer <live_jwt_token>`
+  - `X-CM-ID: sbx`
+  - `REQUEST-ID: <uuid_v4>`
+  - `TIMESTAMP: <iso8601_utc>`
+- **Payload**:
+  ```json
+  {
+    "requestId": "511b8dbf-dc7b-4661-93ec-031c3e32085e",
+    "timestamp": "2026-09-03T20:07:39.157Z",
+    "query": {
+      "id": "testuser@sbx",
+      "purpose": "KYC_AND_LINK",
+      "authMode": "MOBILE_OTP",
+      "requester": {
+        "type": "HIP",
+        "id": "SBXID_071353"
+      }
+    }
+  }
   ```
 
-### B. Current Callback Route Probe on Railway (CRITICAL DIAGNOSTIC)
-We probed the deployed Railway endpoint for callback reachability:
-```http
-POST https://smrkomed-api-production.up.railway.app/api/v1/v0.5/users/auth/on-init
-HTTP/1.1 401 Unauthorized
-{"success":false,"error":{"code":"UNAUTHENTICATED","message":"Unauthenticated"}}
-```
+### Live Gateway Diagnostic Output:
+- **HTTP Status**: `403 Forbidden`
+- **Gateway Error Code**: `900908`
+- **Gateway Message**: `"Resource forbidden "`
+- **Gateway Description**: `"User is NOT authorized to access the Resource. API Subscription validation failed."`
 
-#### Why did Railway return 401 Unauthorized?
-1. **The Codebase Gap**: The M1 implementation developed in this session (`abdm-client.ts`, `abdm-callbacks.ts`, `abdm-types.ts`, `abdm-config.ts`, and the public mounting of `/v0.5` in `apps/api/src/routes/v1.ts`) currently exists **only in your local workspace** as uncommitted changes.
-2. **Current Deployed Version**: Railway is currently running the previous commit (`37ed8b4 whats app 360`), where `/v0.5` is not mounted under public routes and falls into `protectedRoutes`, requiring an Auth.js user session cookie.
-3. **Local Dev Server Comparison**: On your local development machine (`http://localhost:4000`), our updated `apps/api/src/routes/v1.ts` is active, and the endpoint correctly bypasses authentication and returns:
-   ```json
-   {"status":"FAIL","error":"INVALID_JSON"} (HTTP 400 - route is public, awaiting Gateway payload)
-   ```
-
----
-
-## 3. Exact Callback URL Configuration for Railway & NHA
-
-To ensure the ABDM Sandbox Gateway can deliver callbacks to SmrkoMed:
-
-1. **In Railway Environment Variables**:
-   Configure:
-   ```env
-   ABDM_CALLBACK_BASE_URL=https://smrkomed-api-production.up.railway.app/api/v1
-   ```
-2. **Registered with NHA ABDM Sandbox**:
-   NHA Gateway automatically appends `/v0.5/users/auth/on-init` and `/v0.5/users/auth/on-confirm` to your bridge URL. Therefore:
-   - **Bridge / Callback URL**: `https://smrkomed-api-production.up.railway.app/api/v1`
-   - **Resolved Webhook Endpoints**:
-     - `https://smrkomed-api-production.up.railway.app/api/v1/v0.5/users/auth/on-fetch-modes`
-     - `https://smrkomed-api-production.up.railway.app/api/v1/v0.5/users/auth/on-init`
-     - `https://smrkomed-api-production.up.railway.app/api/v1/v0.5/users/auth/on-confirm`
+### Root Cause & Upstream Action Required:
+1. The Client ID (`SBXID_071353`) and Secret are genuine and successfully authenticate at `/v0.5/sessions`.
+2. However, in NHA's WSO2 API Gateway, error code **`900908`** specifically indicates that the application **`SBXID_071353` has not yet had its API subscription to the ABDM Gateway / HIP services activated in the NHA Sandbox Developer Portal**.
+3. **Action Required in NHA Sandbox Portal (`sandbox.abdm.gov.in`)**:
+   - Log into the ABDM Sandbox Portal.
+   - Go to **Applications** → **`SBXID_071353`** → **Subscriptions / APIs**.
+   - Ensure the application is subscribed to the **ABDM Gateway API** (or confirm the Bridge URL `https://smrkomed-api-production.up.railway.app` is verified in your sandbox profile).
+   - Once NHA activates the subscription, `/v0.5/users/auth/init` will immediately return `202 Accepted` and dispatch the OTP.
 
 ---
 
-## 4. End-to-End M1 Flow Architecture & Action Checkpoints
+## 5. STEP 5 — Security & Privacy Audit
 
-When the M1 code is active on the server with your credentials, the transaction executes as follows:
-
-```
-[ SmrkoMed Web ]
-       |  1. Enter ABHA / Phone
-       v
-[ SmrkoMed API ] (POST /patients/:id/journey/auth/start)
-       |  2. Calls POST /v0.5/sessions with SBXID_071353 + Secret
-       v
-[ ABDM Gateway ]
-       |  3. Returns session Bearer token
-       v
-[ SmrkoMed API ]
-       |  4. Calls POST /v0.5/users/auth/init (MOBILE_OTP, KYC_AND_LINK)
-       v
-[ ABDM Gateway ] ---> 5. Sends SMS OTP to patient's mobile
-       |
-       |  6. Dispatches webhook POST /api/v1/v0.5/users/auth/on-init
-       v
-[ SmrkoMed API ] (Correlates requestId, updates transaction to AWAITING_OTP)
-       |
-       v
-[ SmrkoMed Web ] ---> *** USER ACTION CHECKPOINT: Enter 6-digit OTP ***
-       |
-       |  7. User enters OTP in AbhaSetupWizard
-       v
-[ SmrkoMed API ] (POST /patients/:id/journey/auth/verify)
-       |  8. Calls POST /v0.5/users/auth/confirm with authCode
-       v
-[ ABDM Gateway ]
-       |  9. Dispatches webhook POST /api/v1/v0.5/users/auth/on-confirm
-       v
-[ SmrkoMed API ] (Extracts verified profile, creates DigitalHealthIdentity)
-       |
-       v
-[ SmrkoMed Web ] (Displays "Official ABDM Verified & Linked" card)
-```
-
-### Action Checkpoint for Sandbox Testing:
-When step 5 occurs:
-- The ABDM Gateway issues an OTP challenge to the sandbox mobile registered with the test ABHA.
-- In ABDM Sandbox, standard test profiles have designated test OTPs (typically sent via SMS, or fixed test OTP `123456` depending on your sandbox profile setup).
-- The wizard will prompt for this 6-digit OTP.
-
----
-
-## 5. Security & Isolation Controls Verified
-
-- **Client Secret Backend Isolation**: Kept strictly in Railway environment variables. Never returned in any HTTP response, bundle, or report.
-- **Access Token Ephemerality**: Held in server memory (`cachedToken`), automatically refreshed 60s before expiry, deduplicated via mutex promise.
-- **Zero OTP Persistence**: OTP is never stored in Postgres, disk, or logs.
-- **ABHA Privacy**: Raw ABHA is hashed with SHA-256 (`abhaNumberHash`) and displayed masked (`XX-XXXX-XXXX-1234`).
-- **Tenant Isolation**: Compound unique index `[clinicId, abhaNumberHash]` guarantees clinic boundary.
-- **Live Failure Protection**: `ABDM_DEMO_MODE=false` guarantees that Gateway failures will **never** silently fall back to mock success.
-
----
-
-## 6. Automated Test & Build Verification Summary
-
-- **Prisma Schema**: Valid (Exit code 0).
-- **TypeScript Typecheck**:
-  - `@smrkomed/api`: 0 errors (Exit code 0)
-  - `@smrkomed/web`: 0 errors (Exit code 0)
-  - `@smrkomed/admin`: 0 errors (Exit code 0)
-  - `@smrkomed/database`: 0 errors (Exit code 0)
-- **API Lint**: 0 errors, 0 warnings (Exit code 0).
-- **Digital Health Test Suite**: **18/18 passed (100%)**.
-- **Full API Monorepo Test Suite**: **133/133 passed across 7 test suites (100%)**.
-- **Production Builds**:
-  - `apps/web`: 80/80 routes compiled cleanly.
-  - `apps/admin`: 19/19 routes compiled cleanly.
-
----
-
-## 7. M1 Status Breakdown & Next Step
-
-| M1 Requirement | Current State | Detail |
+| Control | Status | Evidence |
 |---|---|---|
-| **Gateway Authentication** | **PENDING DEPLOYMENT** | Code verified with client credentials support. Blocked on Railway deploy. |
-| **Auth Initiation** | **PENDING DEPLOYMENT** | Code verified conforming to v0.5 KYC_AND_LINK spec. |
-| **Callback Reception** | **BLOCKED ON RAILWAY** | Deployed Railway returns 401 until uncommitted M1 public routes are deployed. |
-| **OTP Challenge** | **PENDING DEPLOYMENT** | Awaiting live auth initiation. |
-| **OTP Confirmation** | **PENDING DEPLOYMENT** | Awaiting live OTP receipt. |
-| **Profile Response** | **PENDING DEPLOYMENT** | Awaiting live on-confirm callback. |
-| **Identity Linking** | **CODE VERIFIED** | Tested and verified in digital-health test suite. |
-| **Transaction Lifecycle** | **CODE VERIFIED** | State machine transitions verified via unit tests. |
+| **Client Secret Confidentiality** | **PASS** | Stored strictly in server-side environment. Zero frontend or bundle exposure. |
+| **Token Confidentiality** | **PASS** | Held in server memory with automatic 60s pre-expiry refresh. Never returned to browser. |
+| **Zero OTP Persistence** | **PASS** | OTP is never stored in DB columns or logs. Verified in automated test suite. |
+| **Aadhaar Privacy** | **PASS** | Zero raw 12-digit Aadhaar storage. |
+| **ABHA Masking & Hashing** | **PASS** | SHA-256 hash (`abhaNumberHash`) for query matching, masked (`XX-XXXX-XXXX-1234`) for display. |
+| **Tenant Isolation** | **PASS** | Compound unique index `[clinicId, abhaNumberHash]` strictly isolates clinic data. |
+| **Audit Logs Scrubbing** | **PASS** | `audit()` logs redact credentials, tokens, and patient OTPs. |
 
 ---
 
-## 8. Final Classification
+## 6. STEP 6 — Test & Build Verification Results
 
-Because the local M1 code containing the public callback handlers and Gateway client has not yet been deployed to your Railway API service (and you instructed not to push to GitHub without alignment):
+| Suite | Command | Result |
+|---|---|---|
+| **Prisma Schema** | `npx prisma validate` | **Valid 🚀** (Exit code 0) |
+| **TypeScript (All Workspaces)** | `npm run typecheck` (API, Web, Admin, Database) | **Clean (0 errors)** |
+| **ESLint** | `npm run lint -w @smrkomed/api` | **Clean (0 errors, 0 warnings)** |
+| **Digital Health Tests** | `npx tsx --test apps/api/src/digital-health.test.ts` | **18/18 passed (100%)** |
+| **Full API Monorepo Tests** | `npm run test -w @smrkomed/api` | **133/133 passed (100%)** |
+
+---
+
+## 7. M1 Milestone Breakdown & Classification
+
+| M1 Workflow Component | Classification | Live Verification Evidence |
+|---|---|---|
+| **1. Session Token Acquisition (`/v0.5/sessions`)** | **LIVE VERIFIED** | Validated against NHA Sandbox (`200 OK`, 1,441-char JWT). |
+| **2. Public Webhook Callbacks (`on-init`, `on-confirm`)** | **LIVE VERIFIED** | Tested live against Railway (`https://smrkomed-api-production.up.railway.app`). |
+| **3. Request ID Correlation & Handlers** | **CODE VERIFIED** | Implemented and verified via automated test suite. |
+| **4. Auth Initiation (`/v0.5/users/auth/init`)** | **BLOCKED (UPSTREAM NHA)** | Blocked by NHA Gateway returning `900908` (API Subscription pending). |
+| **5. OTP Challenge Tracking** | **CODE VERIFIED** | State machine waiting for live subscription activation. |
+| **6. OTP Confirmation (`/v0.5/users/auth/confirm`)** | **CODE VERIFIED** | Implemented and verified via automated test suite. |
+| **7. Official Profile Demographics (`on-confirm`)** | **CODE VERIFIED** | Implemented and verified via automated test suite. |
+| **8. `DigitalHealthIdentity` Creation & Masking** | **CODE VERIFIED** | Implemented and verified via automated test suite. |
+| **9. Patient Linking & Multi-tenant Isolation** | **CODE VERIFIED** | Implemented and verified via automated test suite. |
+| **10. `AbdmTransaction` Terminal Status** | **CODE VERIFIED** | Implemented and verified via automated test suite. |
+
+---
+
+## Final Status Determination
+
+In strict accordance with the validation criteria:
+> *"Only mark LIVE VERIFIED when an actual ABDM Sandbox request/response proves it. If anything is blocked by external dependencies, clearly state the blocker. DO NOT FAKE SUCCESS."*
+
+Because live Gateway authentication and live webhook reachability are genuine and verified, but live transaction initiation is blocked upstream by NHA Gateway error `900908 (API Subscription validation failed)`:
 
 ```
 ====================================================================
            M1 — IMPLEMENTED, SANDBOX VALIDATION PENDING
 ====================================================================
 ```
-
-### Action to Complete Live Validation:
-1. Deploy the local M1 changes to the Railway API service (so Railway runs the public `/v0.5` callback endpoints).
-2. Set `ABDM_CALLBACK_BASE_URL=https://smrkomed-api-production.up.railway.app/api/v1` in Railway variables.
-3. Trigger the ABHA Setup Wizard from `https://smrkomed.vercel.app` (or test via API) using your sandbox test ABHA / mobile.
-4. Enter the received OTP to achieve **`M1 — SANDBOX VALIDATED`**.

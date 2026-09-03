@@ -30,13 +30,12 @@ export function VoiceSection() {
   return (
     <Section id="ai">
       <div className="max-w-[50ch]">
-        <Eyebrow>Voice</Eyebrow>
+        <Eyebrow>Voice & Documentation</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
-          From conversation to <span className="font-semibold">structured care.</span>
+          AI-Assisted Clinical Documentation <span className="font-semibold">and Care Tasks</span>
         </h2>
         <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">
-          Record a consultation with consent. SMRKOMED converts what was said into a structured summary and the next
-          steps your team can act on.
+          SMRKOMED can turn approved consultation information into structured summaries, next steps and tasks, helping healthcare teams spend less time on administrative work.
         </p>
       </div>
 
@@ -44,7 +43,7 @@ export function VoiceSection() {
         <div className="photo-frame">
           <img
             src="/branding/photo-voice.webp"
-            alt="Doctor in consultation with a patient while the visit is captured"
+            alt="Doctor in consultation with a patient using SMRKOMED AI-assisted clinical documentation"
             width={1920}
             height={1102}
             loading="lazy"
@@ -119,8 +118,7 @@ export function VoiceSection() {
           </div>
 
           <p className="text-[13px] leading-relaxed text-muted-foreground">
-            Audio is processed temporarily and is not stored as a permanent recording. Only approved consultation
-            information is retained.
+            Audio is processed temporarily with patient consent and is not stored as a permanent recording. SMRKOMED never makes clinical decisions. Only approved consultation information is retained.
           </p>
         </div>
       </div>
@@ -162,7 +160,7 @@ export function ConversationToAction() {
         <div className="photo-frame">
           <img
             src="/branding/photo-recording.webp"
-            alt="Consultation being captured on a phone beside the doctor and patient"
+            alt="Consultation dialogue being captured securely on mobile for SMRKOMED clinical workflows"
             width={1024}
             height={1024}
             loading="lazy"

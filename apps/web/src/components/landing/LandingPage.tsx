@@ -10,6 +10,7 @@ import { VoiceSection, ConversationToAction } from "./Voice";
 import { PatientJourney } from "./Journey";
 import { SmrkoAI, AiHuman } from "./Ai";
 import { Trust, HowItWorks, DemoSection } from "./Trust";
+import { FaqSection } from "./Faq";
 import { CtaSection, FinalCta, Footer } from "./Closing";
 
 export function LandingPage() {
@@ -30,6 +31,7 @@ export function LandingPage() {
       <SpecialtyEcosystem />
       <Trust />
       <HowItWorks />
+      <FaqSection />
       <DemoSection />
       <CtaSection />
       <FinalCta />

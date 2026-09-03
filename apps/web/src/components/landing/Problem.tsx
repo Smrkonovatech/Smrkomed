@@ -20,8 +20,8 @@ export function DisconnectedSystems() {
           Healthcare shouldn&apos;t be a collection of <span className="font-semibold">disconnected systems.</span>
         </h2>
         <p className="mx-auto mt-6 max-w-[58ch] text-[17px] leading-relaxed text-muted-foreground">
-          Everything your care team needs, connected around the patient — instead of scattered across tools nobody
-          keeps in sync.
+          Clinic teams often manage patient records, appointments, treatment plans, communication, follow-ups and operational tasks
+          across multiple systems. SMRKOMED brings these workflows together in one healthcare management system built around the patient.
         </p>
       </div>
 
@@ -30,7 +30,7 @@ export function DisconnectedSystems() {
         <div className="photo-frame relative">
           <img
             src="/branding/clinic-team.jpg"
-            alt="Care team collaborating in a modern clinic"
+            alt="Care team collaborating in a modern clinic using SMRKOMED clinic management software"
             width={1280}
             height={960}
             loading="lazy"

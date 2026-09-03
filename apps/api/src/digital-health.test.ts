@@ -23,25 +23,43 @@ describe("digital health foundation", () => {
   });
 
   it("reports ABDM not connected without credentials", () => {
-    const provider = new AbdmProvider();
-    const info = provider.getConnectionInfo();
-    assert.equal(info.connected, false);
-    assert.equal(info.status, "NOT_CONNECTED");
-    assert.match(info.message, /not connected/i);
+    const origId = process.env["ABDM_CLIENT_ID"];
+    const origSecret = process.env["ABDM_CLIENT_SECRET"];
+    process.env["ABDM_CLIENT_ID"] = "";
+    process.env["ABDM_CLIENT_SECRET"] = "";
+    try {
+      const provider = new AbdmProvider();
+      const info = provider.getConnectionInfo();
+      assert.equal(info.connected, false);
+      assert.equal(info.status, "NOT_CONNECTED");
+      assert.match(info.message, /not connected/i);
+    } finally {
+      if (origId) process.env["ABDM_CLIENT_ID"] = origId;
+      if (origSecret) process.env["ABDM_CLIENT_SECRET"] = origSecret;
+    }
   });
 
   it("linkAbha refuses OTP fakery when not connected and demo off", async () => {
-    const provider = new AbdmProvider();
-    const result = await provider.linkAbha({
-      abhaNumber: "12345678901234",
-      patientName: "Test Patient",
-    });
-    if (result.ok && result.mode === "demo_intent") {
-      assert.ok(result.verificationRequired);
-      assert.match(result.message, /sandbox|demo/i);
-    } else {
-      assert.equal(result.ok, false);
-      if (!result.ok) assert.equal(result.code, "ABDM_NOT_CONNECTED");
+    const origId = process.env["ABDM_CLIENT_ID"];
+    const origSecret = process.env["ABDM_CLIENT_SECRET"];
+    process.env["ABDM_CLIENT_ID"] = "";
+    process.env["ABDM_CLIENT_SECRET"] = "";
+    try {
+      const provider = new AbdmProvider();
+      const result = await provider.linkAbha({
+        abhaNumber: "12345678901234",
+        patientName: "Test Patient",
+      });
+      if (result.ok && result.mode === "demo_intent") {
+        assert.ok(result.verificationRequired);
+        assert.match(result.message, /sandbox|demo/i);
+      } else {
+        assert.equal(result.ok, false);
+        if (!result.ok) assert.equal(result.code, "ABDM_NOT_CONNECTED");
+      }
+    } finally {
+      if (origId) process.env["ABDM_CLIENT_ID"] = origId;
+      if (origSecret) process.env["ABDM_CLIENT_SECRET"] = origSecret;
     }
   });
 
@@ -379,6 +397,10 @@ describe("ABDM Live Authentication & OTP Verification Lifecycle", () => {
 
   it("ensures OTP is never stored in auth session object", () => {
     const origDemo = process.env["ABDM_DEMO_MODE"];
+    const origId = process.env["ABDM_CLIENT_ID"];
+    const origSecret = process.env["ABDM_CLIENT_SECRET"];
+    process.env["ABDM_CLIENT_ID"] = "";
+    process.env["ABDM_CLIENT_SECRET"] = "";
     process.env["ABDM_DEMO_MODE"] = "1";
     try {
       const provider = new AbdmProvider();
@@ -399,6 +421,8 @@ describe("ABDM Live Authentication & OTP Verification Lifecycle", () => {
       } else {
         delete process.env["ABDM_DEMO_MODE"];
       }
+      if (origId) process.env["ABDM_CLIENT_ID"] = origId;
+      if (origSecret) process.env["ABDM_CLIENT_SECRET"] = origSecret;
     }
   });
 });

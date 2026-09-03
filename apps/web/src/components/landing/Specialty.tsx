@@ -74,11 +74,13 @@ export function SpecialtySelector() {
     <Section id="specialties" className="gradient-veil border-y border-border">
       <div className="mx-auto max-w-3xl text-center">
         <h2 className="text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
-          One platform. <span className="font-semibold">Multiple healthcare journeys.</span>
+          One Healthcare Management Platform. <span className="font-semibold">Multiple Specialties.</span>
         </h2>
         <p className="mx-auto mt-6 max-w-[58ch] text-[17px] leading-relaxed text-muted-foreground">
-          Built to adapt to the way modern healthcare teams work — from fertility and IVF to dental, dermatology,
-          maternity, aesthetics and beyond.
+          SMRKOMED is built for modern healthcare teams that need more than disconnected systems. Manage patients,
+          treatment journeys, appointments, care plans, tasks, communication and follow-ups from one connected healthcare
+          management platform — supporting fertility clinics, IVF clinics, dental clinics, dermatology clinics, maternity clinics,
+          aesthetics and multispecialty healthcare teams.
         </p>
       </div>
 
@@ -102,7 +104,7 @@ export function SpecialtySelector() {
         <div className="photo-frame">
           <img
             src="/branding/photo-consult.webp"
-            alt="Doctor discussing a treatment plan with a patient"
+            alt="Doctor discussing a treatment plan with a patient using SMRKOMED clinic management software"
             width={1920}
             height={1280}
             loading="lazy"
@@ -142,14 +144,15 @@ type RingItem = {
   label: string;
   img: string | null;
   status: "LIVE" | "COMING NEXT" | "ROADMAP";
+  alt?: string;
 };
 
 const ring: RingItem[] = [
-  { label: "Fertility", img: "/branding/spec-fertility.jpg", status: "LIVE" },
+  { label: "Fertility", img: "/branding/spec-fertility.jpg", status: "LIVE", alt: "Fertility and IVF clinic management software workflows" },
   { label: "IVF", img: null, status: "COMING NEXT" },
-  { label: "Dental", img: "/branding/spec-dental.jpg", status: "COMING NEXT" },
-  { label: "Dermatology", img: "/branding/spec-derm.jpg", status: "COMING NEXT" },
-  { label: "Maternity", img: "/branding/spec-maternity.jpg", status: "COMING NEXT" },
+  { label: "Dental", img: "/branding/spec-dental.jpg", status: "COMING NEXT", alt: "Dental clinic management and treatment tracking" },
+  { label: "Dermatology", img: "/branding/spec-derm.jpg", status: "COMING NEXT", alt: "Dermatology clinic management and patient monitoring" },
+  { label: "Maternity", img: "/branding/spec-maternity.jpg", status: "COMING NEXT", alt: "Maternity clinic management and care journey tracking" },
   { label: "Aesthetics", img: null, status: "ROADMAP" },
   { label: "Diagnostics", img: null, status: "ROADMAP" },
   { label: "Specialty Clinics", img: null, status: "ROADMAP" },
@@ -162,8 +165,12 @@ export function SpecialtyEcosystem() {
       <div className="mx-auto max-w-3xl text-center">
         <Eyebrow>Ecosystem</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
-          One platform. <span className="font-semibold">Many healthcare specialties.</span>
+          Healthcare Management Software <span className="font-semibold">for Multiple Specialties</span>
         </h2>
+        <p className="mx-auto mt-5 max-w-[58ch] text-[16px] leading-relaxed text-muted-foreground">
+          Designed as a modular healthcare management platform that adapts to specialized clinical workflows — from IVF and fertility
+          to dental, dermatology, maternity and multispecialty healthcare organisations.
+        </p>
       </div>
 
       {/* radial composition on large screens */}
@@ -192,7 +199,7 @@ export function SpecialtyEcosystem() {
                 >
                   <img
                     src={r.img}
-                    alt={r.label}
+                    alt={r.alt || `${r.label} clinic workflows`}
                     width={512}
                     height={512}
                     loading="lazy"

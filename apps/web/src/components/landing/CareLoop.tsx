@@ -5,11 +5,11 @@ import { Btn, Eyebrow, Section } from "./primitives";
 
 const stages = [
   { t: "Consultation", d: "Doctor defines the care path" },
-  { t: "Treatment Plan", d: "Steps, timing and owners" },
-  { t: "Task Created", d: "Assigned to patient or team" },
-  { t: "Patient Follow-up", d: "Automated check-in" },
-  { t: "Appointment", d: "Scheduled and confirmed" },
-  { t: "Next Consultation", d: "Doctor has full context" },
+  { t: "Treatment Plan", d: "Structured steps, timing and owners" },
+  { t: "Task Created", d: "Assigned to patient or clinic staff" },
+  { t: "Patient Follow-up", d: "Automated check-ins and communication" },
+  { t: "Appointment & Review", d: "Scheduled, confirmed and tracked" },
+  { t: "Next Consultation", d: "Doctor has full clinical context" },
 ];
 
 export function CareLoopSection() {
@@ -23,12 +23,15 @@ export function CareLoopSection() {
   return (
     <Section id="care-loop" className="gradient-veil border-y border-border">
       <div className="glow-orb top-6 right-[8%] h-[380px] w-[380px] bg-brand-soft" />
-      <div className="relative max-w-[52ch]">
+      <div className="relative max-w-[54ch]">
         <Eyebrow>Care Loop</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[48px]">
-          Doctors create the care path.{" "}
-          <span className="font-semibold">Care Loop keeps patients moving forward.</span>
+          Care Loop: Healthcare Workflow Automation{" "}
+          <span className="font-semibold">That Keeps Patients Moving</span>
         </h2>
+        <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">
+          SMRKOMED Care Loop connects treatment plans, tasks, reminders, follow-ups and patient communication so healthcare teams can see what needs attention and keep care journeys moving forward.
+        </p>
       </div>
 
       <div className="relative mt-14 grid items-start gap-12 lg:grid-cols-[0.95fr_1.05fr]">
@@ -36,7 +39,7 @@ export function CareLoopSection() {
           <div className="photo-frame">
             <img
               src="/branding/careloop-doctor.jpg"
-              alt="Doctor explaining a treatment plan to a patient"
+              alt="Doctor explaining a treatment plan using SMRKOMED Care Loop workflow automation"
               width={1104}
               height={1280}
               loading="lazy"
@@ -93,10 +96,10 @@ export function CareLoopIntelligence() {
       <div className="mx-auto max-w-3xl text-center">
         <Eyebrow>Intelligence</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[42px]">
-          See who needs you — <span className="font-semibold">before they fall behind.</span>
+          Healthcare Teams See <span className="font-semibold">What Needs Attention</span>
         </h2>
-        <p className="mx-auto mt-5 max-w-[52ch] text-[16px] leading-relaxed text-muted-foreground">
-          Illustrative Care Loop status cards showing how clinics stay ahead of follow-ups.
+        <p className="mx-auto mt-5 max-w-[58ch] text-[16px] leading-relaxed text-muted-foreground">
+          SMRKOMED helps clinics identify overdue follow-ups, upcoming tasks, patients waiting for action and journeys that may need attention.
         </p>
       </div>
 

@@ -31,27 +31,27 @@ export function Hero() {
           >
             <img
               src="/branding/smrkomed-mark.png"
-              alt=""
+              alt="SMRKOMED healthcare management software mark"
               width={28}
               height={28}
               className="h-7 w-7 rounded-full"
             />
             <span className="text-[13px] text-muted-foreground">
-              The connected operating layer for modern healthcare
+              Healthcare Management Software
             </span>
           </div>
 
-          <h1 className="max-w-[15ch] text-[46px] leading-[1.05] font-light tracking-tight text-foreground md:text-[66px]">
-            Building the <span className="font-semibold text-gradient-brand">connected</span> future of healthcare.
+          <h1 className="max-w-[17ch] text-[42px] leading-[1.08] font-light tracking-tight text-foreground md:text-[60px]">
+            Healthcare Management Software for <span className="font-semibold text-gradient-brand">Modern Clinics & Hospitals</span>
           </h1>
 
-          <p className="mt-7 max-w-[52ch] text-[17px] leading-relaxed text-muted-foreground md:text-[19px]">
-            Modular healthcare technology connecting clinics, care teams and patients.
+          <p className="mt-7 max-w-[54ch] text-[17px] leading-relaxed text-muted-foreground md:text-[19px]">
+            SMRKOMED connects patients, care teams and workflows in one modular healthcare management system — helping clinics manage patient care, treatment plans, appointments, tasks, communication and follow-ups.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-3">
             <a href="#demo">
-              <Btn>See Demo</Btn>
+              <Btn>See SMRKOMED in Action</Btn>
             </a>
             <Link href="/login">
               <Btn variant="secondary">Login</Btn>
@@ -79,7 +79,7 @@ export function Hero() {
           >
             <img
               src="/branding/hero-clinic.jpg"
-              alt="Doctor working in a modern clinic with the SMRKOMED workspace"
+              alt="Doctor using SMRKOMED healthcare management software in a modern clinic"
               width={1280}
               height={1280}
               className="h-full w-full object-cover"

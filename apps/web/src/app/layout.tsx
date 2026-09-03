@@ -11,23 +11,20 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.smrkomed.com"),
   title: {
-    default: "SMRKOMED — Connected Healthcare Technology",
+    default: "Healthcare Management Software for Clinics & Hospitals | SMRKOMED",
     template: "%s | SMRKOMED",
   },
   description:
-    "SMRKOMED connects clinics, care teams and patients through modular healthcare workflows. Start with Care Loop.",
+    "SMRKOMED is healthcare management software for modern clinics and hospitals. Manage patients, care journeys, appointments, treatment plans, tasks, communication and follow-ups in one connected platform.",
   openGraph: {
-    title: "SMRKOMED — Building the connected future of healthcare",
-    description: "Modular healthcare technology connecting clinics, care teams and patients.",
+    title: "Healthcare Management Software for Clinics & Hospitals | SMRKOMED",
+    description: "SMRKOMED is healthcare management software for modern clinics and hospitals. Manage patients, care journeys, appointments, treatment plans, tasks, communication and follow-ups in one connected platform.",
     type: "website",
   },
   icons: {
     icon: "/branding/favicon.png",
-  },
-  robots: {
-    index: false,
-    follow: false,
   },
 };
 

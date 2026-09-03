@@ -11,12 +11,14 @@ export function getAbdmConfig() {
   
   // In sandbox, if base URL is not specified or blank, default to official ABDM sandbox gateway
   const baseUrl = rawBaseUrl || (environment === "sandbox" ? ABDM_DEFAULT_SANDBOX_URL : "");
-  const clientId = env.abdmClientId?.trim() || process.env["ABDM_CLIENT_ID"]?.trim() || "";
-  const clientSecret = env.abdmClientSecret?.trim() || process.env["ABDM_CLIENT_SECRET"]?.trim() || "";
-  const facilityId = env.abdmFacilityId?.trim() || process.env["ABDM_FACILITY_ID"]?.trim() || "";
-  const xCmId = env.abdmXCmId?.trim() || process.env["ABDM_X_CM_ID"]?.trim() || (environment === "sandbox" ? "sbx" : "");
-  const callbackBaseUrl = env.abdmCallbackBaseUrl?.trim() || process.env["ABDM_CALLBACK_BASE_URL"]?.trim() || "";
-  const demoMode = env.abdmDemoMode || process.env["ABDM_DEMO_MODE"] === "1";
+  const clientId = (process.env["ABDM_CLIENT_ID"] !== undefined ? process.env["ABDM_CLIENT_ID"] : env.abdmClientId)?.trim() || "";
+  const clientSecret = (process.env["ABDM_CLIENT_SECRET"] !== undefined ? process.env["ABDM_CLIENT_SECRET"] : env.abdmClientSecret)?.trim() || "";
+  const facilityId = (process.env["ABDM_FACILITY_ID"] !== undefined ? process.env["ABDM_FACILITY_ID"] : env.abdmFacilityId)?.trim() || "";
+  const xCmId = (process.env["ABDM_X_CM_ID"] !== undefined ? process.env["ABDM_X_CM_ID"] : env.abdmXCmId)?.trim() || (environment === "sandbox" ? "sbx" : "");
+  const callbackBaseUrl = (process.env["ABDM_CALLBACK_BASE_URL"] !== undefined ? process.env["ABDM_CALLBACK_BASE_URL"] : env.abdmCallbackBaseUrl)?.trim() || "";
+  const demoMode = process.env["ABDM_DEMO_MODE"] !== undefined
+    ? (process.env["ABDM_DEMO_MODE"] === "1" || process.env["ABDM_DEMO_MODE"] === "true")
+    : env.abdmDemoMode;
 
   const isConfigured = Boolean(
     isEnabled && baseUrl && clientId && clientSecret,

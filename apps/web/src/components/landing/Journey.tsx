@@ -12,13 +12,13 @@ const timeline = [
 export function PatientJourney() {
   return (
     <Section>
-      <div className="max-w-[50ch]">
+      <div className="max-w-[54ch]">
         <Eyebrow>Patient journey</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
-          Know what happened <span className="font-semibold">before the next conversation.</span>
+          Connected Patient Management <span className="font-semibold">From Consultation to Follow-Up</span>
         </h2>
         <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">
-          Give every doctor the context they need before meeting a patient.
+          Give healthcare teams a clear view of what happened, what is due next and which actions need attention across the patient&apos;s care journey.
         </p>
       </div>
 
@@ -26,7 +26,7 @@ export function PatientJourney() {
         <div className="photo-frame">
           <img
             src="/branding/patient-journey.jpg"
-            alt="Patient checking her care plan on a phone at home"
+            alt="Patient viewing her personalized care journey on a mobile device"
             width={1104}
             height={1280}
             loading="lazy"

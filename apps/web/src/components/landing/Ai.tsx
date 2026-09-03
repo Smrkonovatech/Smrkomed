@@ -14,13 +14,13 @@ const metrics = [
 export function SmrkoAI() {
   return (
     <Section className="gradient-veil border-y border-border">
-      <div className="max-w-[46ch]">
+      <div className="max-w-[52ch]">
         <Eyebrow>SMRKOMED AI</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
-          Meet <span className="font-semibold">SMRKOMED AI.</span>
+          AI-Assisted <span className="font-semibold">Healthcare Management</span>
         </h2>
         <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">
-          Your clinic&apos;s operational intelligence layer.
+          SMRKOMED AI helps healthcare teams summarise information, organise work, identify follow-ups, prepare consultations and draft routine communication — while keeping people responsible for decisions.
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export function AiHuman() {
           <div className="photo-frame relative">
             <img
               src="/branding/ai-human.jpg"
-              alt="Doctor in a modern clinic"
+              alt="Healthcare professional managing clinic workflows with SMRKOMED AI assistance"
               width={1024}
               height={1280}
               loading="lazy"

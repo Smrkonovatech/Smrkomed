@@ -15,7 +15,7 @@ export function CtaSection() {
             Build a more <span className="font-semibold">connected clinic.</span>
           </h2>
           <p className="mt-5 text-[17px] leading-relaxed text-white/75">
-            Bring patients, care teams and workflows together in one modular platform — so nothing falls through the
+            Bring patients, care teams and workflows together in one modular healthcare management platform — so nothing falls through the
             cracks between visits.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
@@ -45,7 +45,7 @@ export function FinalCta() {
         <div className="mt-12 flex flex-col items-center gap-3">
           <img
             src="/branding/smrkomed-logo.png"
-            alt="SMRKOMED"
+            alt="SMRKOMED healthcare management software"
             width={44}
             height={44}
             className="h-10 w-auto"
@@ -63,6 +63,7 @@ const navLinks = [
   { label: "Platform", href: "#platform" },
   { label: "Care Loop", href: "#care-loop" },
   { label: "Features", href: "#features" },
+  { label: "FAQ", href: "#faq" },
   { label: "Future of Healthcare", href: "#future" },
 ] as const;
 
@@ -74,7 +75,7 @@ export function Footer() {
           <div className="flex items-center gap-3">
             <img
               src="/branding/smrkomed-logo.png"
-              alt="SMRKOMED"
+              alt="SMRKOMED healthcare management software"
               width={36}
               height={36}
               className="h-8 w-auto"
@@ -82,7 +83,7 @@ export function Footer() {
             />
             <span className="text-[16px] font-semibold tracking-[0.14em] text-foreground">SMRKOMED</span>
           </div>
-          <p className="mt-4 max-w-[28ch] text-[14px] text-muted-foreground">Connected healthcare technology.</p>
+          <p className="mt-4 max-w-[28ch] text-[14px] text-muted-foreground">Healthcare management software for modern clinics and hospitals.</p>
           <a
             href="https://smrkonova.com/"
             target="_blank"

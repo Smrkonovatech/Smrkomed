@@ -6,23 +6,28 @@ import { Btn, Eyebrow, Section } from "./primitives";
 /* ---------------- 12 · Trust ---------------- */
 
 const trust = [
-  { t: "Clinic-scoped data", d: "Each clinic sees its own data — nothing more." },
+  { t: "Clinic-scoped data", d: "Each clinic sees its own data — strictly isolated." },
   { t: "Human approval", d: "AI suggestions require confirmation before any action." },
   {
     t: "No autonomous clinical decisions",
-    d: "SMRKOMED supports healthcare teams — it doesn't replace them.",
+    d: "SMRKOMED supports healthcare teams — it doesn't replace clinical judgement.",
   },
-  { t: "Secure access", d: "Role-based access for every member of the care team." },
+  { t: "Secure access", d: "Role-based access controls for doctors, administrators and care teams." },
 ];
 
 export function Trust() {
   return (
     <Section className="gradient-veil border-y border-border">
       <div className="mx-auto max-w-3xl text-center">
-        <Eyebrow>Trust</Eyebrow>
+        <Eyebrow>Trust & Responsibility</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
           Built around the patient. <span className="font-semibold">Designed with responsibility.</span>
         </h2>
+        <p className="mx-auto mt-6 max-w-[58ch] text-[17px] leading-relaxed text-muted-foreground">
+          Built for modern healthcare teams in India and designed to support growing clinics and healthcare organisations.
+          For clinic owners and healthcare administrators, SMRKOMED provides one secure place to manage patient workflows, care coordination,
+          appointments, treatment plans, communication and operational tasks.
+        </p>
       </div>
 
       <div className="mt-14 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -40,10 +45,10 @@ export function Trust() {
 /* ---------------- 13 · How it works ---------------- */
 
 const steps = [
-  ["01", "Connect your clinic", "Create your clinic and invite your care team."],
-  ["02", "Bring your workflows together", "Patients, appointments, care plans, tasks and communication."],
-  ["03", "Let SMRKOMED assist", "AI summarises, prepares, identifies follow-ups and drafts communication."],
-  ["04", "Keep care moving", "Your team stays focused on patients."],
+  ["01", "Connect your clinic", "Create your clinic workspace and invite your healthcare team."],
+  ["02", "Bring your workflows together", "Manage patients, appointments, treatment plans, tasks and communication."],
+  ["03", "Let SMRKOMED assist", "AI summarises visits, prepares consultations, identifies follow-ups and drafts messages."],
+  ["04", "Keep care moving", "Your clinic team stays proactive and patients receive timely care."],
 ];
 
 export function HowItWorks() {
@@ -73,8 +78,8 @@ export function DemoSection() {
       <div className="glow-orb -top-20 right-[10%] h-[420px] w-[420px] bg-white/25" />
       <div className="relative mx-auto w-full max-w-6xl text-center">
         <span className="text-[12px] tracking-[0.2em] text-white/65 uppercase">See SMRKOMED in action</span>
-        <h2 className="mx-auto mt-6 max-w-[20ch] text-[32px] leading-[1.12] font-light text-primary-foreground md:text-[48px]">
-          One connected workspace <span className="font-semibold">for modern healthcare teams.</span>
+        <h2 className="mx-auto mt-6 max-w-[24ch] text-[32px] leading-[1.12] font-light text-primary-foreground md:text-[48px]">
+          Healthcare Management Software <span className="font-semibold">for Modern Clinics & Hospitals</span>
         </h2>
 
         <div className="mt-10 flex flex-wrap justify-center gap-3">

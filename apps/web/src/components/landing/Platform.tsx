@@ -18,14 +18,13 @@ export function ModularPlatform() {
   return (
     <Section id="platform" className="gradient-veil border-y border-border">
       <div id="features" className="pointer-events-none absolute top-0 h-0 w-0" aria-hidden="true" />
-      <div className="max-w-[46ch]">
+      <div className="max-w-[48ch]">
         <Eyebrow>Platform</Eyebrow>
         <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[46px]">
-          Everything your clinic needs, <span className="font-semibold">connected around the patient.</span>
+          Complete Healthcare Management Software, <span className="font-semibold">Built Around the Patient</span>
         </h2>
         <p className="mt-5 text-[17px] text-muted-foreground">
-          Activate the capabilities you need today. Add more as your clinic grows — alongside the systems you already
-          use.
+          SMRKOMED brings core clinic management workflows into one connected platform, while allowing healthcare organisations to activate additional capabilities as they grow.
         </p>
       </div>
 
@@ -34,7 +33,7 @@ export function ModularPlatform() {
           <div className="text-[12px] tracking-[0.2em] uppercase opacity-80">Core</div>
           <div className="mt-3 text-[30px] leading-tight font-semibold">SMRKOMED CORE</div>
           <p className="mt-4 text-[14px] leading-relaxed opacity-85">
-            Identity, patient journeys, tasks and intelligence — the layer every module plugs into.
+            Identity, patient care journeys, treatment plans, tasks, care coordination and intelligence — the connected layer every module plugs into.
           </p>
         </div>
 
