@@ -63,7 +63,9 @@ export type CoupleDemo = {
     status: CareTaskStatus;
     priority: CareTaskPriority;
     dueOffset: number;
-    assignTo: "meera" | "doctor" | "kavya";
+    assignTo: "meera" | "doctor" | "kavya" | "patient";
+    dueTime?: string;
+    note?: string;
   }>;
   escalations?: Array<{
     type: EscalationType;

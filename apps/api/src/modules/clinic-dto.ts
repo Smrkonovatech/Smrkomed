@@ -133,6 +133,12 @@ const TASK_UI: Record<CareTaskStatus, TaskDto["status"]> = {
   OVERDUE: "overdue",
   ESCALATED: "escalated",
   CANCELLED: "waiting",
+  ACTIVE: "in_progress",
+  PENDING: "waiting",
+  NOT_STARTED: "waiting",
+  UPCOMING: "waiting",
+  SKIPPED: "completed",
+  BLOCKED: "escalated",
 };
 
 const APPOINTMENT_UI: Record<AppointmentStatus, AppointmentDto["status"]> = {

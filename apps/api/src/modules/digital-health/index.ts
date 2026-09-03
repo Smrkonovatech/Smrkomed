@@ -1342,6 +1342,36 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
       });
     },
   )
+  .get(
+    "/patients/:patientId/journey/status",
+    validate("param", patientIdParam),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+      const { patientId } = c.req.valid("param");
+      const refId = c.req.query("referenceId") || c.req.query("sessionId");
+
+      const session = refId ? abdmProvider.getAuthSession(refId) : null;
+      const tx = refId
+        ? await prisma.abdmTransaction.findFirst({
+            where: { clinicId: tenant.clinicId, referenceId: refId },
+            orderBy: { createdAt: "desc" },
+          })
+        : null;
+
+      const identity = await prisma.digitalHealthIdentity.findUnique({ where: { patientId } });
+
+      return ok(c, {
+        status: session?.status || tx?.status || "UNKNOWN",
+        userMessage: tx?.userMessage || session?.status,
+        errorCode: tx?.errorCode || null,
+        gatewayTransactionId: session?.gatewayTransactionId,
+        identity: identity ? serializeIdentity(identity, patientId) : null,
+        profile: session?.profile || null,
+        officialAbhaNumber: session?.officialAbhaNumber || null,
+        officialAbhaAddress: session?.officialAbhaAddress || null,
+      });
+    },
+  )
   .post(
     "/patients/:patientId/journey/auth/start",
     validate("param", patientIdParam),
@@ -1350,12 +1380,26 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
       const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
       const { patientId } = c.req.valid("param");
       const body = c.req.valid("json");
-      await loadPatient(tenant, patientId);
-      const result = abdmProvider.startAuthSession({
+      const patient = await loadPatient(tenant, patientId);
+
+      const existingIdentity = await prisma.digitalHealthIdentity.findUnique({
+        where: { patientId },
+      });
+
+      const identifier =
+        body.identifier ||
+        existingIdentity?.abhaAddress ||
+        existingIdentity?.abhaMasked ||
+        patient.phone ||
+        patientId;
+
+      const result = await abdmProvider.startAuthSessionAsync({
         patientId,
         purpose: body.purpose,
         authMethod: body.authMethod,
+        identifier,
       });
+
       if (!result.ok) {
         await recordAbdmTransaction(tenant, {
           patientId,
@@ -1368,6 +1412,7 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
         });
         throw new HttpError(422, result.code, result.message);
       }
+
       await prisma.digitalHealthIdentity.upsert({
         where: { patientId },
         create: {
@@ -1383,19 +1428,24 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
           verificationStatus: "AUTHENTICATION_PENDING",
         },
       });
+
       await recordAbdmTransaction(tenant, {
         patientId,
         operation: "OTP_REQUEST",
         status: "SENT",
         referenceId: result.referenceId ?? null,
         userMessage: result.message,
+        technicalDetail: result.transactionId ? JSON.stringify({ gatewayTxId: result.transactionId }) : null,
         completed: true,
       });
+
       return ok(c, {
-        sessionId: result.session?.sessionId,
+        sessionId: result.session?.sessionId || result.referenceId,
+        transactionId: result.transactionId || result.session?.gatewayTransactionId,
+        maskedMobile: result.maskedMobile,
         expiresAt: result.session?.expiresAt,
         maxAttempts: result.session?.maxAttempts,
-        sandboxMode: result.session?.sandboxMode,
+        sandboxMode: result.session?.sandboxMode ?? (result.mode === "demo_intent"),
         message: result.message,
         connection: abdmProvider.getConnectionInfo(),
       });
@@ -1410,7 +1460,13 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
       const { patientId } = c.req.valid("param");
       const body = c.req.valid("json");
       await loadPatient(tenant, patientId);
-      const result = abdmProvider.verifyOtp({ sessionId: body.sessionId, otp: body.otp });
+
+      const result = await abdmProvider.verifyOtpAsync({
+        sessionId: body.sessionId,
+        otp: body.otp,
+        ...(body.transactionId ? { transactionId: body.transactionId } : {}),
+      });
+
       if (!result.ok) {
         await recordAbdmTransaction(tenant, {
           patientId,
@@ -1424,6 +1480,7 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
         });
         throw new HttpError(422, result.code, result.message);
       }
+
       await recordAbdmTransaction(tenant, {
         patientId,
         operation: "OTP_VERIFY",
@@ -1432,11 +1489,82 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
         userMessage: result.message,
         completed: true,
       });
+
+      // If official ABHA profile or official ABHA number was verified from Gateway:
+      let linkedIdentity = null;
+      if (result.officialAbhaNumber || result.profile) {
+        const rawAbha = result.officialAbhaNumber || result.profile?.id || "";
+        const digits = normalizeAbhaDigits(rawAbha);
+        const abhaHash = digits.length >= 8 ? hashAbha(digits) : null;
+        const masked = digits.length >= 4 ? maskAbha(digits) : result.profile?.id || "XX-XXXX-XXXX-XXXX";
+
+        // Check duplicate protection across clinic
+        if (abhaHash) {
+          const existingSame = await prisma.digitalHealthIdentity.findFirst({
+            where: {
+              clinicId: tenant.clinicId,
+              abhaNumberHash: abhaHash,
+              status: "LINKED",
+              NOT: { patientId },
+            },
+            include: { patient: true },
+          });
+          if (existingSame) {
+            throw new HttpError(
+              409,
+              "ABHA_ALREADY_LINKED",
+              `This verified ABHA is already linked to patient ${existingSame.patient.firstName} ${existingSame.patient.lastName}.`,
+            );
+          }
+        }
+
+        linkedIdentity = await prisma.digitalHealthIdentity.upsert({
+          where: { patientId },
+          create: {
+            clinicId: tenant.clinicId,
+            patientId,
+            abhaNumberHash: abhaHash,
+            abhaMasked: masked,
+            abhaAddress: result.officialAbhaAddress || result.profile?.id || null,
+            status: "LINKED",
+            verificationStatus: result.mode === "gateway" ? "GATEWAY_VERIFIED" : "DEMO_VERIFIED",
+            source: result.mode === "gateway" ? "ABDM_GATEWAY" : "DEMO_SEED",
+            sandboxMode: result.mode !== "gateway",
+            linkedAt: new Date(),
+            lastVerifiedAt: new Date(),
+          },
+          update: {
+            abhaNumberHash: abhaHash,
+            abhaMasked: masked,
+            abhaAddress: result.officialAbhaAddress || result.profile?.id || null,
+            status: "LINKED",
+            verificationStatus: result.mode === "gateway" ? "GATEWAY_VERIFIED" : "DEMO_VERIFIED",
+            source: result.mode === "gateway" ? "ABDM_GATEWAY" : "DEMO_SEED",
+            sandboxMode: result.mode !== "gateway",
+            linkedAt: new Date(),
+            lastVerifiedAt: new Date(),
+            errorMessage: null,
+          },
+        });
+
+        await audit(tenant, "abha.verified", "DigitalHealthIdentity", linkedIdentity.id, {
+          mode: result.mode,
+          source: linkedIdentity.source,
+        });
+        await audit(tenant, "abha.linked", "DigitalHealthIdentity", linkedIdentity.id, {
+          mode: result.mode,
+        });
+      }
+
       return ok(c, {
         authenticated: true,
         sandboxMode: result.mode === "demo_intent",
         message: result.message,
         sessionId: body.sessionId,
+        profile: result.profile ?? null,
+        officialAbhaNumber: result.officialAbhaNumber ?? null,
+        officialAbhaAddress: result.officialAbhaAddress ?? null,
+        identity: linkedIdentity ? serializeIdentity(linkedIdentity, patientId) : null,
       });
     },
   )

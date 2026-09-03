@@ -57,13 +57,15 @@ export const journeyAuthStartSchema = z
   .object({
     purpose: z.enum(["LINK_EXISTING", "CREATE_ABHA", "DISCOVER"]),
     authMethod: z.string().trim().min(2).max(40),
+    identifier: z.string().trim().min(3).max(60).optional(),
   })
   .strict();
 
 export const journeyOtpSchema = z
   .object({
-    sessionId: z.string().uuid(),
+    sessionId: z.string().min(1),
     otp: z.string().trim().min(4).max(8),
+    transactionId: z.string().trim().optional(),
   })
   .strict();
 

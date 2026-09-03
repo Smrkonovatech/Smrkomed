@@ -1,16 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Poppins } from "next/font/google";
 import type { ReactNode } from "react";
 
 import { AuthSessionProvider } from "@/components/auth-session-provider";
 import "@/styles.css";
-
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-poppins",
-  display: "swap",
-});
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -41,7 +33,15 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={poppins.variable}>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-screen font-sans antialiased">
         <AuthSessionProvider>{children}</AuthSessionProvider>
       </body>

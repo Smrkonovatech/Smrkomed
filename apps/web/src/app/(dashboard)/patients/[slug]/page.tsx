@@ -32,6 +32,7 @@ import { AiPatientSummary } from "@/components/ai/ai-patient-summary";
 import { PatientJourneySummary } from "@/components/ai/patient-journey-summary";
 import { PrepareConsultation } from "@/components/ai/prepare-consultation";
 import { Patient360Panel } from "@/components/patients/patient-360-panel";
+import { PatientTreatmentJourneySection } from "@/components/patients/patient-treatment-journey-section";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { useCreateTask } from "@/components/create-task-drawer";
 import { JourneyStrip } from "@/components/journey-strip";
@@ -299,6 +300,7 @@ export default function PatientProfile() {
         <TabsContent value="overview" className="mt-4">
           <div className="mb-4 space-y-4">
             <Patient360Panel coupleIdOrSlug={couple.slug || couple.id} />
+            <PatientTreatmentJourneySection couple={couple} onRefresh={() => void appState.reload()} />
             <AiPatientSummary
               couple={couple}
               tasks={coupleTasks}
@@ -419,60 +421,7 @@ export default function PatientProfile() {
         </TabsContent>
 
         <TabsContent value="journey" className="mt-4">
-          <section className="surface-card p-4 lg:p-5">
-            <SectionHeading
-              title="Care journey"
-              subtitle="Complete doctor-defined plan and current progress"
-              icon={HeartHandshake}
-              tone="teal"
-            />
-            <JourneyStrip
-              stages={carePlanSteps.map((step) => ({
-                label: step.title,
-                state: step.state,
-                detail: step.detail,
-              }))}
-            />
-            <ol className="mt-5 grid gap-2">
-              {carePlanSteps.map((step) => (
-                <li
-                  key={step.id}
-                  className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border p-3"
-                >
-                  <span
-                    className={cn(
-                      "grid size-8 place-items-center rounded-full text-xs font-bold",
-                      step.state === "done"
-                        ? "bg-success-soft text-success"
-                        : step.state === "attention"
-                          ? "bg-warning-soft text-warning"
-                          : step.state === "current"
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted text-muted-foreground",
-                    )}
-                  >
-                    {step.state === "done" ? <CheckCircle2 className="size-4" /> : step.id}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-semibold">{step.title}</span>
-                    <span className="block text-xs text-muted-foreground">{step.detail}</span>
-                  </span>
-                  <StatusBadge
-                    label={step.meta}
-                    tone={
-                      step.state === "done"
-                        ? "success"
-                        : step.state === "attention"
-                          ? "warning"
-                          : step.state === "current"
-                            ? "primary"
-                            : "muted"
-                    }
-                  />
-                </li>
-              ))}
-            </ol>
-          </section>
+          <PatientTreatmentJourneySection couple={couple} onRefresh={() => void appState.reload()} />
         </TabsContent>
 
         <TabsContent value="appointments" className="mt-4">

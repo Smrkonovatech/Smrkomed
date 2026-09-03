@@ -79,6 +79,12 @@ enum CareTaskStatus {
   OVERDUE
   ESCALATED
   CANCELLED
+  NOT_STARTED
+  UPCOMING
+  ACTIVE
+  PENDING
+  SKIPPED
+  BLOCKED
 }
 
 enum CareTaskPriority {
@@ -503,6 +509,9 @@ model User {
   digitalHealthConsentsRequested DigitalHealthConsent[] @relation("DigitalHealthConsentRequester")
   healthRecordExchangesCreated HealthRecordExchange[] @relation("HealthRecordExchangeCreator")
   abdmTransactionsInitiated AbdmTransaction[] @relation("AbdmTransactionActor")
+  approvedCarePlans CarePlan[] @relation("CarePlanApprover")
+  doctorCarePlans   CarePlan[] @relation("CarePlanDoctor")
+  coordinatorCarePlans CarePlan[] @relation("CarePlanCoordinator")
 }
 
 model Role {
@@ -635,68 +644,133 @@ model Couple {
 // ─── Care plans & tasks ──────────────────────────────────────────────────────
 
 model CarePlanTemplate {
-  id          String       @id @default(cuid())
-  clinicId    String
-  type        CarePlanType
-  name        String
-  description String?
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  clinicId       String
+  organizationId String?
+  type           CarePlanType
+  name           String
+  description    String?
+  specialty      String       @default("FERTILITY")
+  version        Int          @default(1)
+  isSystem       Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  config         Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   steps  CarePlanTemplateStep[]
+  tasks  CarePlanTemplateTask[]
   plans  CarePlan[]
 
   @@index([clinicId])
 }
 
 model CarePlanTemplateStep {
-  id         String @id @default(cuid())
-  templateId String
-  sortOrder  Int
-  name       String
-  description String?
+  id                 String  @id @default(cuid())
+  templateId         String
+  sortOrder          Int
+  name               String
+  description        String?
+  stageType          String?
+  completionStrategy String  @default("ALL_REQUIRED_TASKS_COMPLETE")
+  config             Json?
 
-  template CarePlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template CarePlanTemplate       @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  tasks    CarePlanTemplateTask[]
 
   @@index([templateId])
 }
 
-model CarePlan {
-  id           String         @id @default(cuid())
-  clinicId     String
-  coupleId     String
-  templateId   String?
-  type         CarePlanType
-  name         String
-  status       CarePlanStatus @default(ACTIVE)
-  startDate    DateTime?
-  currentStep  Int            @default(0)
-  createdById  String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+model CarePlanTemplateTask {
+  id                  String           @id @default(cuid())
+  templateId          String
+  stepId              String
+  title               String
+  description         String?
+  taskType            String           @default("PATIENT_TASK")
+  ownerRole           String           @default("PATIENT")
+  priority            CareTaskPriority @default(NORMAL)
+  triggerEvent        String?
+  dueTimingDays       Int              @default(0)
+  dueTimingHours      Int?
+  communicationConfig Json?
+  reminderConfig      Json?
+  escalationConfig    Json?
+  completionCondition Json?
+  requiredAction      String?
+  sortOrder           Int              @default(0)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-  clinic   Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  couple   Couple            @relation(fields: [coupleId], references: [id], onDelete: Cascade)
-  template CarePlanTemplate? @relation(fields: [templateId], references: [id])
-  steps    CarePlanStep[]
-  tasks    CareTask[]
-  treatments Treatment[]
+  template CarePlanTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  step     CarePlanTemplateStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([stepId])
+}
+
+model CarePlan {
+  id                    String         @id @default(cuid())
+  clinicId              String
+  coupleId              String
+  templateId            String?
+  type                  CarePlanType
+  name                  String
+  status                CarePlanStatus @default(ACTIVE)
+  startDate             DateTime?
+  currentStep           Int            @default(0)
+  createdById           String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  templateVersion       Int            @default(1)
+  snapshotData          Json?
+  approvalStatus        String         @default("APPROVED")
+  approvedById          String?
+  approvedAt            DateTime?
+  pausedAt              DateTime?
+  pauseReason           String?
+  resumedAt             DateTime?
+  currentStageIndex     Int            @default(0)
+  currentStageName      String?
+  assignedDoctorId      String?
+  assignedCoordinatorId String?
+  selectedBranch        String?
+  outcome               String?
+  outcomeNotes          String?
+  outcomeRecordedAt     DateTime?
+
+  clinic              Clinic            @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple              Couple            @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  template            CarePlanTemplate? @relation(fields: [templateId], references: [id])
+  approvedBy          User?             @relation("CarePlanApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  assignedDoctor      User?             @relation("CarePlanDoctor", fields: [assignedDoctorId], references: [id], onDelete: SetNull)
+  assignedCoordinator User?             @relation("CarePlanCoordinator", fields: [assignedCoordinatorId], references: [id], onDelete: SetNull)
+  steps               CarePlanStep[]
+  tasks               CareTask[]
+  treatments          Treatment[]
 
   @@index([clinicId])
   @@index([coupleId])
+  @@index([assignedDoctorId])
+  @@index([assignedCoordinatorId])
 }
 
 model CarePlanStep {
-  id         String             @id @default(cuid())
-  carePlanId String
-  sortOrder  Int
-  name       String
-  status     CarePlanStepStatus @default(PENDING)
-  detail     String?
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
+  id                 String             @id @default(cuid())
+  carePlanId         String
+  sortOrder          Int
+  name               String
+  status             CarePlanStepStatus @default(PENDING)
+  detail             String?
+  stageType          String?
+  completionStrategy String             @default("ALL_REQUIRED_TASKS_COMPLETE")
+  completedAt        DateTime?
+  completedById      String?
+  stageConfig        Json?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   carePlan CarePlan   @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
   tasks    CareTask[]
@@ -705,47 +779,68 @@ model CarePlanStep {
 }
 
 model CareTask {
-  id                  String           @id @default(cuid())
-  clinicId            String
-  coupleId            String?
-  leadId              String?
-  carePlanId          String?
-  carePlanStepId      String?
-  title               String
-  description         String?
-  category            String?
-  status              CareTaskStatus   @default(WAITING)
-  priority            CareTaskPriority @default(NORMAL)
-  dueDate             DateTime?
-  dueTime             String?
-  createdById         String?
-  automationEnabled   Boolean          @default(true)
-  aiFollowUpEnabled   Boolean          @default(true)
-  voiceFollowUpEnabled Boolean         @default(false)
-  escalationEnabled   Boolean          @default(true)
-  completedAt         DateTime?
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  clinicId             String
+  coupleId             String?
+  leadId               String?
+  carePlanId           String?
+  carePlanStepId       String?
+  title                String
+  description          String?
+  category             String?
+  status               CareTaskStatus   @default(WAITING)
+  priority             CareTaskPriority @default(NORMAL)
+  dueDate              DateTime?
+  dueTime              String?
+  createdById          String?
+  automationEnabled    Boolean          @default(true)
+  aiFollowUpEnabled    Boolean          @default(true)
+  voiceFollowUpEnabled Boolean          @default(false)
+  escalationEnabled    Boolean          @default(true)
+  completedAt          DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
-  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Cascade)
-  couple       Couple?       @relation(fields: [coupleId], references: [id], onDelete: Cascade)
-  lead         Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
-  carePlan     CarePlan?     @relation(fields: [carePlanId], references: [id])
-  carePlanStep CarePlanStep? @relation(fields: [carePlanStepId], references: [id])
-  createdBy    User?         @relation("CreatedTasks", fields: [createdById], references: [id])
-  reminders    TaskReminder[]
-  assignments  TaskAssignment[]
-  escalations  Escalation[]
-  documents    Document[]
-  aiInteractions AIInteraction[]
-  medicationReminders MedicationReminder[]
+  taskType             String           @default("PATIENT_TASK")
+  ownerRole            String           @default("PATIENT")
+  source               String           @default("TEMPLATE")
+  triggerEvent         String?
+  completionCondition  Json?
+  completionEvidence   Json?
+  escalationState      Json?
+  escalationConfig     Json?
+  reminderConfig       Json?
+  communicationConfig  Json?
+  metadata             Json?
+  completedBy          String?
+  skippedAt            DateTime?
+  skippedReason        String?
+  rescheduledAt        DateTime?
+  rescheduledReason    String?
+  originalDueDate      DateTime?
+  exceptionId          String?
+
+  clinic                    Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+  couple                    Couple?                   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
+  lead                      Lead?                     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  carePlan                  CarePlan?                 @relation(fields: [carePlanId], references: [id])
+  carePlanStep              CarePlanStep?             @relation(fields: [carePlanStepId], references: [id])
+  createdBy                 User?                     @relation("CreatedTasks", fields: [createdById], references: [id])
+  reminders                 TaskReminder[]
+  assignments               TaskAssignment[]
+  escalations               Escalation[]
+  documents                 Document[]
+  aiInteractions            AIInteraction[]
+  medicationReminders       MedicationReminder[]
   pharmacyPrescriptionItems PharmacyPrescriptionItem[]
-  insuranceQueries InsuranceQuery[]
+  insuranceQueries          InsuranceQuery[]
 
   @@index([clinicId, status])
   @@index([coupleId])
   @@index([leadId])
   @@index([dueDate])
+  @@index([carePlanId])
+  @@index([carePlanStepId])
 }
 
 model TaskReminder {

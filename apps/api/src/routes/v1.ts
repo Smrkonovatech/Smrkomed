@@ -4,7 +4,12 @@ import { authMiddleware } from "../middleware/auth";
 import { tenantMiddleware } from "../middleware/tenant";
 import { analyticsRoutes } from "../modules/analytics";
 import { appointmentRoutes } from "../modules/appointments";
-import { carePlanRoutes, careTaskRoutes } from "../modules/care-loop";
+import {
+  careLoopRoutes,
+  carePlanRoutes,
+  careTaskRoutes,
+  treatmentPlanTemplateRoutes,
+} from "../modules/care-loop";
 import { clinicRoutes } from "../modules/clinics";
 import { coupleRoutes } from "../modules/couples";
 import { documentRoutes } from "../modules/documents";
@@ -26,6 +31,7 @@ import { paymentWebhookRoutes } from "../modules/payments/webhooks";
 import { publicIntegrationRoutes } from "../modules/integrations/public";
 import { whatsappAutomationRoutes } from "../modules/whatsapp-automation";
 import { digitalHealthRoutes } from "../modules/digital-health";
+import { abdmCallbackRoutes } from "../modules/digital-health/abdm-callbacks";
 import type { AppEnv } from "../types";
 
 const protectedRoutes = new Hono<AppEnv>();
@@ -42,7 +48,9 @@ protectedRoutes.route("/campaigns", campaignRoutes);
 protectedRoutes.route("/crm", crmRoutes);
 protectedRoutes.route("/appointments", appointmentRoutes);
 protectedRoutes.route("/care-plans", carePlanRoutes);
+protectedRoutes.route("/treatment-plan-templates", treatmentPlanTemplateRoutes);
 protectedRoutes.route("/care-tasks", careTaskRoutes);
+protectedRoutes.route("/care-loop", careLoopRoutes);
 protectedRoutes.route("/documents", documentRoutes);
 protectedRoutes.route("/activity", activityRoutes);
 protectedRoutes.route("/analytics", analyticsRoutes);
@@ -57,5 +65,7 @@ export const v1 = new Hono<AppEnv>();
 v1.route("/health", healthRoutes);
 v1.route("/public", publicLeadRoutes);
 v1.route("/payments/webhooks", paymentWebhookRoutes);
+v1.route("/digital-health/abdm/v0.5", abdmCallbackRoutes);
+v1.route("/v0.5", abdmCallbackRoutes);
 v1.route("/", publicIntegrationRoutes);
 v1.route("/", protectedRoutes);

@@ -1,0 +1,2 @@
+ALTER TABLE "CarePlanStep" ADD COLUMN IF NOT EXISTS "stageType" TEXT;
+ALTER TABLE "CareTask" ADD COLUMN IF NOT EXISTS "escalationConfig" JSONB;
