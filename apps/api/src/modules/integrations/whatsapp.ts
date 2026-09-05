@@ -101,6 +101,10 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     return ok(c, await testWhatsAppConnection(tenant));
   })
+  .post("/verify", async (c) => {
+    const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
+    return ok(c, await testWhatsAppConnection(tenant));
+  })
   .post("/disconnect", async (c) => {
     const tenant = requireAnyPermission(c, WHATSAPP_CONNECT_PERMS);
     const result = await integrationService.disconnectConnection(tenant, "WHATSAPP_CLOUD");

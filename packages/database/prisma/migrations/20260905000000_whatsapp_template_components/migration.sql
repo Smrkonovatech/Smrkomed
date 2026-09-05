@@ -1,0 +1,7 @@
+-- AlterTable
+ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "header" TEXT;
+ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "body" TEXT;
+ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "footer" TEXT;
+ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "buttons" JSONB;
+ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "variables" JSONB;
+ALTER TABLE "WhatsAppTemplate" ADD COLUMN IF NOT EXISTS "components" JSONB;

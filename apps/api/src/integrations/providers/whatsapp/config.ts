@@ -11,16 +11,40 @@ export function metaConfig() {
     verifyToken: process.env["WHATSAPP_VERIFY_TOKEN"] ?? process.env["META_WEBHOOK_VERIFY_TOKEN"] ?? "",
     graphVersion: process.env["META_GRAPH_API_VERSION"] ?? process.env["META_API_VERSION"] ?? "v21.0",
     env: whatsAppEnv(),
+    // Direct connection mode assets:
+    directPhoneNumberId: process.env["WHATSAPP_PHONE_NUMBER_ID"] ?? "",
+    directBusinessAccountId: process.env["WHATSAPP_BUSINESS_ACCOUNT_ID"] ?? "",
+    directDisplayPhoneNumber: process.env["WHATSAPP_PHONE_NUMBER"] ?? "+91 86607 17328",
+    directAccessToken:
+      process.env["WHATSAPP_ACCESS_TOKEN"] ??
+      process.env["META_SYSTEM_USER_TOKEN"] ??
+      process.env["META_ACCESS_TOKEN"] ??
+      "",
   };
 }
 
-export function isMetaConfigured() {
+/**
+ * Returns true if direct Meta connection mode is configured via server-side environment variables.
+ * In this mode, Embedded Signup is not required.
+ */
+export function isDirectMetaConfigured(): boolean {
+  const cfg = metaConfig();
+  return Boolean(
+    cfg.appId &&
+    cfg.appSecret &&
+    cfg.directPhoneNumberId &&
+    cfg.directBusinessAccountId
+  );
+}
+
+export function isMetaConfigured(): boolean {
   const cfg = metaConfig();
   return Boolean(cfg.appId && cfg.appSecret && cfg.configId && cfg.verifyToken);
 }
 
 /** Development-only simulated onboarding when Meta App credentials are not set. */
-export function isWhatsAppDemoMode() {
+export function isWhatsAppDemoMode(): boolean {
+  if (isDirectMetaConfigured()) return false;
   if (process.env["NODE_ENV"] === "production" && process.env["WHATSAPP_DEMO_MODE"] !== "1") {
     return false;
   }
@@ -31,6 +55,6 @@ export function isWhatsAppDemoMode() {
   );
 }
 
-export function graphBaseUrl() {
+export function graphBaseUrl(): string {
   return `https://graph.facebook.com/${metaConfig().graphVersion}`;
 }

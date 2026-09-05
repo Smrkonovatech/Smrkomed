@@ -8,6 +8,8 @@ import { parseWhatsAppPayload, verifyMetaSignature, verifyWebhookChallenge } fro
 import { normalizeWhatsAppPhone, phonesMatch } from "./phone";
 import { mapMetaTemplateStatus } from "./templates";
 import { attachWhatsAppInboundToCrm } from "./crm-capture";
+import { metaConfig } from "./config";
+import { ensureDirectWhatsAppConnection } from "./service";
 
 const PAYLOAD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -31,6 +33,8 @@ function metaStatusToMessage(status: string) {
 async function findActiveIntegration(event: NormalizedWebhookEvent) {
   const phoneNumberId = event.externalAccountId;
   const wabaId = typeof event.metadata["wabaId"] === "string" ? event.metadata["wabaId"] : null;
+  const cfg = metaConfig();
+
   if (phoneNumberId) {
     const byPhone = await prisma.whatsAppAccount.findFirst({
       where: { phoneNumberId, isActive: true },
@@ -39,8 +43,31 @@ async function findActiveIntegration(event: NormalizedWebhookEvent) {
     if (byPhone?.integration?.status === "ACTIVE") {
       return { account: byPhone, integration: byPhone.integration };
     }
+
+    // Direct Meta fallback if phone matches configured server phone
+    if (cfg.directPhoneNumberId && phoneNumberId === cfg.directPhoneNumberId) {
+      const primaryClinic = await prisma.clinic.findFirst({
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, organizationId: true, organization: { select: { name: true } } },
+      });
+      if (primaryClinic) {
+        const direct = await ensureDirectWhatsAppConnection({
+          clinicId: primaryClinic.id,
+          clinicName: primaryClinic.name,
+          organizationId: primaryClinic.organizationId,
+          organizationName: primaryClinic.organization.name,
+          userId: "system_webhook",
+          role: "CLINIC_ADMIN",
+        });
+        if (direct && direct.integration.status === "ACTIVE") {
+          return { account: direct.account, integration: direct.integration };
+        }
+      }
+    }
+
     return null;
   }
+
   if (wabaId) {
     const byWaba = await prisma.whatsAppAccount.findFirst({
       where: { businessAccountId: wabaId, isActive: true },
@@ -49,7 +76,29 @@ async function findActiveIntegration(event: NormalizedWebhookEvent) {
     if (byWaba?.integration?.status === "ACTIVE") {
       return { account: byWaba, integration: byWaba.integration };
     }
+
+    // Direct Meta fallback if WABA matches configured server WABA
+    if (cfg.directBusinessAccountId && wabaId === cfg.directBusinessAccountId) {
+      const primaryClinic = await prisma.clinic.findFirst({
+        orderBy: { createdAt: "asc" },
+        select: { id: true, name: true, organizationId: true, organization: { select: { name: true } } },
+      });
+      if (primaryClinic) {
+        const direct = await ensureDirectWhatsAppConnection({
+          clinicId: primaryClinic.id,
+          clinicName: primaryClinic.name,
+          organizationId: primaryClinic.organizationId,
+          organizationName: primaryClinic.organization.name,
+          userId: "system_webhook",
+          role: "CLINIC_ADMIN",
+        });
+        if (direct && direct.integration.status === "ACTIVE") {
+          return { account: direct.account, integration: direct.integration };
+        }
+      }
+    }
   }
+
   return null;
 }
 
@@ -137,6 +186,14 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
         unmatched: !patient,
         channel: "WHATSAPP",
         status: "OPEN",
+      },
+    });
+  } else {
+    conversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        updatedAt: new Date(),
+        status: conversation.status === "CLOSED" ? "OPEN" : conversation.status,
       },
     });
   }

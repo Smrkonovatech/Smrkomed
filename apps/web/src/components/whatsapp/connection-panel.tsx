@@ -59,6 +59,7 @@ type WhatsAppStatus = {
     metaConfigured: boolean;
     demoModeAvailable: boolean;
     demoConnection: boolean;
+    directConnection?: boolean;
   };
 };
 
@@ -159,6 +160,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
     try {
       const start = await apiPost<{
         demo?: boolean;
+        direct?: boolean;
         state: string;
         appId?: string;
         configId?: string;
@@ -167,6 +169,13 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
       }>("/api/v1/integrations/whatsapp/connect");
 
       setOauthState(start.state);
+
+      if (start.direct) {
+        setProgress("Activating direct Meta connection...");
+        toast.success(start.message ?? "Direct Meta WhatsApp connected.");
+        await load();
+        return;
+      }
 
       if (start.demo) {
         setProgress("DEMO / SIMULATED — finishing local connection...");
@@ -300,7 +309,7 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
         />
       ) : null}
 
-      {(status?.platform?.demoModeAvailable || demo) && (
+      {(status?.platform?.demoModeAvailable || demo) && !status?.platform?.directConnection && (
         <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold tracking-wide text-sky-900 uppercase">
           DEMO / SIMULATED — Not a live Meta production connection
         </div>
@@ -313,10 +322,15 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
               ? "You do not have permission to manage WhatsApp"
               : error.kind === "meta_sdk"
                 ? "Unable to connect to Meta"
-                : "WhatsApp connection could not be completed"}
+                : error.message.includes("Meta WhatsApp API error")
+                  ? "Meta WhatsApp API Error"
+                  : "WhatsApp connection could not be completed"}
           </p>
           <p className="mt-1 text-sm">{error.message}</p>
-          {error.kind !== "permission" && error.kind !== "meta_sdk" && error.kind !== "config" ? (
+          {error.kind !== "permission" &&
+          error.kind !== "meta_sdk" &&
+          error.kind !== "config" &&
+          !error.message.includes("Meta WhatsApp API error") ? (
             <p className="mt-2 text-xs text-amber-900/80">
               This usually means Meta onboarding was cancelled, phone verification failed, business setup is
               incomplete, or the number is not eligible. SmrkoMed never asks you for API tokens.
@@ -431,9 +445,11 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
               >
                 {busy === "connect"
                   ? "Connecting to Meta…"
-                  : status?.platform?.demoModeAvailable
-                    ? "Connect WhatsApp (Demo)"
-                    : "Connect WhatsApp"}
+                  : status?.platform?.directConnection
+                    ? "Connect SMRKOMED WhatsApp"
+                    : status?.platform?.demoModeAvailable
+                      ? "Connect WhatsApp (Demo)"
+                      : "Connect WhatsApp"}
               </Button>
             </div>
 
@@ -462,7 +478,8 @@ export function WhatsAppConnectionPanel({ compact = false }: { compact?: boolean
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="text-lg font-semibold">WhatsApp Connected</h2>
                 <StatusBadge label="Connected" tone="success" />
-                {demo && <StatusBadge label="DEMO" tone="info" />}
+                {status?.platform?.directConnection && <StatusBadge label="Direct Meta" tone="success" />}
+                {!status?.platform?.directConnection && demo && <StatusBadge label="DEMO" tone="info" />}
               </div>
               <p className="mt-2 text-sm font-medium">
                 Business: {status?.account?.displayName ?? status?.integration.displayName ?? "WhatsApp Business"}
@@ -703,9 +720,16 @@ function classifyConnectError(err: unknown): ConnectError {
       technical,
     };
   }
+  if (lower.includes("meta whatsapp api error") || lower.includes("meta api error")) {
+    return {
+      kind: "generic",
+      message: raw,
+      technical,
+    };
+  }
   return {
     kind: "generic",
-    message: "Something went wrong while connecting WhatsApp. Please try again.",
+    message: raw || "Something went wrong while connecting WhatsApp. Please try again.",
     technical,
   };
 }

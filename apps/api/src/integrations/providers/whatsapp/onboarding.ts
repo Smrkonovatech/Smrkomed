@@ -5,10 +5,11 @@ import { SAFE_INTEGRATION_SELECT, serializeIntegration } from "../../core/serial
 import { canTransition } from "../../core/status";
 import { credentialService } from "../../credentials/service";
 import { integrationService } from "../../services/integration-service";
-import { isMetaConfigured, isWhatsAppDemoMode, metaConfig } from "./config";
+import { isDirectMetaConfigured, isMetaConfigured, isWhatsAppDemoMode, metaConfig } from "./config";
 import { exchangeEmbeddedSignupCode, getPhoneNumber, getWaba, listWabaPhones, subscribeWaba } from "./graph";
 import { consumeWhatsAppOauthState, createWhatsAppOauthState, loadValidWhatsAppOauthState } from "./oauth-state";
 import { maskPhone } from "./phone";
+import { ensureDirectWhatsAppConnection, verifyMetaWhatsAppConnection } from "./service";
 
 export async function startWhatsAppConnect(ctx: TenantContext) {
   if (isWhatsAppDemoMode()) {
@@ -34,40 +35,63 @@ export async function startWhatsAppConnect(ctx: TenantContext) {
     };
   }
 
-  if (!isMetaConfigured()) {
-    throw new IntegrationError(
-      "PROVIDER_UNAVAILABLE",
-      "WhatsApp Embedded Signup is not configured. Ask your SmrkoMed administrator to set META_APP_ID, META_APP_SECRET, WHATSAPP_CONFIGURATION_ID, and WHATSAPP_VERIFY_TOKEN — or enable WHATSAPP_DEMO_MODE for local testing.",
-      501,
-    );
-  }
   const cfg = metaConfig();
-  const current = await integrationService.getConnection(ctx, "WHATSAPP_CLOUD");
-  if (canTransition(current.connectionStatus, "CONNECTING") && current.connectionStatus !== "CONNECTING") {
-    await integrationService.updateConnectionStatus(ctx, "WHATSAPP_CLOUD", "CONNECTING").catch(() => undefined);
+
+  // If Embedded Signup configuration ID is configured, support Embedded Signup flow
+  if (cfg.configId && cfg.appId) {
+    const current = await integrationService.getConnection(ctx, "WHATSAPP_CLOUD");
+    if (canTransition(current.connectionStatus, "CONNECTING") && current.connectionStatus !== "CONNECTING") {
+      await integrationService.updateConnectionStatus(ctx, "WHATSAPP_CLOUD", "CONNECTING").catch(() => undefined);
+    }
+    const state = await createWhatsAppOauthState({
+      userId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+    });
+    await writeAuditLog({
+      actorId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+      action: "whatsapp.connect.attempt",
+      entityType: "Integration",
+      entityId: "WHATSAPP_CLOUD",
+      metadata: { provider: "WHATSAPP_CLOUD" },
+    });
+    return {
+      demo: false as const,
+      state: state.id,
+      appId: cfg.appId,
+      configId: cfg.configId,
+      graphVersion: cfg.graphVersion,
+      expiresAt: state.expiresAt,
+    };
   }
-  const state = await createWhatsAppOauthState({
-    userId: ctx.userId,
-    organizationId: ctx.organizationId,
-    clinicId: ctx.clinicId,
-  });
-  await writeAuditLog({
-    actorId: ctx.userId,
-    organizationId: ctx.organizationId,
-    clinicId: ctx.clinicId,
-    action: "whatsapp.connect.attempt",
-    entityType: "Integration",
-    entityId: "WHATSAPP_CLOUD",
-    metadata: { provider: "WHATSAPP_CLOUD" },
-  });
-  return {
-    demo: false as const,
-    state: state.id,
-    appId: cfg.appId,
-    configId: cfg.configId,
-    graphVersion: cfg.graphVersion,
-    expiresAt: state.expiresAt,
-  };
+
+  if (isDirectMetaConfigured()) {
+    await ensureDirectWhatsAppConnection(ctx);
+    await writeAuditLog({
+      actorId: ctx.userId,
+      organizationId: ctx.organizationId,
+      clinicId: ctx.clinicId,
+      action: "whatsapp.connect.direct",
+      entityType: "Integration",
+      entityId: "WHATSAPP_CLOUD",
+      metadata: { direct: true },
+    });
+    return {
+      demo: false as const,
+      direct: true as const,
+      state: "direct_connected",
+      phoneNumber: cfg.directDisplayPhoneNumber,
+      message: "Direct Meta WhatsApp connection is active.",
+    };
+  }
+
+  throw new IntegrationError(
+    "PROVIDER_UNAVAILABLE",
+    "WhatsApp Embedded Signup is not configured. Ask your SmrkoMed administrator to set META_APP_ID, META_APP_SECRET, WHATSAPP_CONFIGURATION_ID, and WHATSAPP_VERIFY_TOKEN — or enable WHATSAPP_DEMO_MODE for local testing.",
+    501,
+  );
 }
 
 /** Simulated Embedded Signup completion for development only. Never invents production Meta assets. */
@@ -337,6 +361,51 @@ export async function completeWhatsAppConnect(
 }
 
 export async function testWhatsAppConnection(ctx: TenantContext) {
+  if (isDirectMetaConfigured()) {
+    const metaResult = await verifyMetaWhatsAppConnection(ctx);
+    const lastWebhook = await prisma.integrationEvent.findFirst({
+      where: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" },
+      orderBy: { receivedAt: "desc" },
+      select: { receivedAt: true },
+    });
+    const templates = await prisma.whatsAppTemplate.count({
+      where: { clinicId: ctx.clinicId, status: "APPROVED" },
+    });
+
+    const checks = [
+      ...metaResult.checks,
+      {
+        id: "webhook",
+        label: "Webhooks",
+        ok: true,
+        detail: lastWebhook
+          ? `Last event ${lastWebhook.receivedAt.toISOString()}`
+          : "Webhook endpoint ready. Waiting for incoming events.",
+      },
+      {
+        id: "templates",
+        label: "Template availability",
+        ok: templates > 0,
+        detail:
+          templates > 0
+            ? `${templates} approved template(s) synced`
+            : "No approved templates yet — click 'Sync from Meta'",
+      },
+    ];
+
+    const healthy = metaResult.connected;
+    return {
+      healthy,
+      demo: false,
+      direct: true,
+      checkedAt: new Date().toISOString(),
+      summary: healthy
+        ? "WhatsApp Connection Healthy"
+        : "WhatsApp connection check requires attention.",
+      checks,
+    };
+  }
+
   const status = await integrationService.getConnection(ctx, "WHATSAPP_CLOUD");
   const account = await prisma.whatsAppAccount.findFirst({
     where: { clinicId: ctx.clinicId, isActive: true },

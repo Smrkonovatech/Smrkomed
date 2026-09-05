@@ -2,9 +2,10 @@ import { prisma, type TenantContext } from "@smrkomed/database";
 
 import { IntegrationError } from "../../core/errors";
 import { integrationService } from "../../services/integration-service";
-import { isMetaConfigured, isWhatsAppDemoMode } from "./config";
+import { isDirectMetaConfigured, isMetaConfigured, isWhatsAppDemoMode } from "./config";
 import { publicWhatsAppAccount } from "./onboarding";
 import { maskPhone } from "./phone";
+import { ensureDirectWhatsAppConnection } from "./service";
 
 function countByStatus(rows: Array<{ status: string; _count: { _all: number } }>) {
   const counts = { pending: 0, approved: 0, rejected: 0, disabled: 0, paused: 0, total: 0 };
@@ -21,6 +22,9 @@ function countByStatus(rows: Array<{ status: string; _count: { _all: number } }>
 }
 
 export async function getWhatsAppClinicStatus(ctx: TenantContext) {
+  if (isDirectMetaConfigured()) {
+    await ensureDirectWhatsAppConnection(ctx);
+  }
   const integration = await integrationService.getConnection(ctx, "WHATSAPP_CLOUD");
   const accounts = await prisma.whatsAppAccount.findMany({
     where: { clinicId: ctx.clinicId },
@@ -56,6 +60,7 @@ export async function getWhatsAppClinicStatus(ctx: TenantContext) {
       metaConfigured: isMetaConfigured(),
       demoModeAvailable: isWhatsAppDemoMode(),
       demoConnection: demoAccount,
+      directConnection: isDirectMetaConfigured(),
     },
     webhookStatus: lastWebhook
       ? "RECEIVING"
