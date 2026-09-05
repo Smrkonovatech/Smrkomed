@@ -269,13 +269,20 @@ export async function sendWhatsAppSessionText(
   ctx: TenantContext,
   input: { conversationId: string; body: string; senderType?: "STAFF" | "AI" },
 ) {
-  assertRateLimit(ctx.userId, ctx.clinicId);
   const body = input.body.trim();
   if (!body || body.length > 4096) {
     throw new IntegrationError("INVALID_TEMPLATE", "Message body is required (max 4096 chars).", 422);
   }
   const senderType = input.senderType ?? "STAFF";
   const label = senderType === "AI" ? "✦ Smrko AI" : "STAFF";
+
+  if (senderType === "AI") {
+    if (!perClinic.consume(`wa-clinic-ai:${ctx.clinicId}`).allowed) {
+      throw new IntegrationError("PROVIDER_RATE_LIMITED", "Clinic WhatsApp AI send limit reached.", 429);
+    }
+  } else {
+    assertRateLimit(ctx.userId, ctx.clinicId);
+  }
 
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },

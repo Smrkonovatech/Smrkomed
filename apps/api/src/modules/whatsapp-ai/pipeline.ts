@@ -74,20 +74,37 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   if (conversation.aiPausedAt || conversation.status === "HUMAN_HANDOFF") {
-    // Recover conversations frozen by older soft escalations (e.g. "Hi doctor" / clinical)
-    // so the patient does not stay silent until staff clicks Resume AI.
-    const softPrior =
-      conversation.handoffReason === "CLINICAL_UNCERTAINTY" ||
-      conversation.handoffReason === "EMPTY_MESSAGE";
-    if (softPrior && input.trigger === "inbound" && !input.force) {
-      await resumeWhatsAppAi(input.tenant, conversation.id);
-      const refreshed = await prisma.conversation.findFirst({
-        where: { id: input.conversationId, clinicId: input.tenant.clinicId },
+    // Patient messaged again: resume AI unless staff recently replied (active human chat).
+    // This stops conversations freezing after Take over / false escalations.
+    let keepPaused = false;
+    if (input.trigger === "inbound" && !input.force) {
+      const recentStaff = await prisma.message.findFirst({
+        where: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType: "STAFF",
+          createdAt: { gte: new Date(Date.now() - 30 * 60_000) },
+        },
+        select: { id: true },
       });
-      if (refreshed) {
-        Object.assign(conversation, refreshed);
+      if (recentStaff) {
+        keepPaused = true;
+      } else {
+        await resumeWhatsAppAi(input.tenant, conversation.id);
+        const refreshed = await prisma.conversation.findFirst({
+          where: { id: input.conversationId, clinicId: input.tenant.clinicId },
+        });
+        if (refreshed) Object.assign(conversation, refreshed);
+        console.log("[WhatsApp AI] auto-resumed after patient inbound", {
+          conversationId: conversation.id,
+          priorReason: conversation.handoffReason,
+        });
       }
     } else {
+      keepPaused = true;
+    }
+
+    if (keepPaused) {
       const interaction = await recordAiInteraction({
         clinicId: input.tenant.clinicId,
         conversationId: conversation.id,
@@ -97,7 +114,7 @@ export async function runWhatsAppAiPipeline(input: {
         status: "SKIPPED",
         classification: "AI_PAUSED",
         handoffReason: conversation.handoffReason,
-        rawSummary: "AI paused — human control",
+        rawSummary: "AI paused — staff recently replied (active human chat)",
       });
       return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };
     }

@@ -228,6 +228,12 @@ export async function handleInboundWhatsAppAutomation(input: {
     tenant,
     conversationId: input.conversationId,
     inboundVars: vars,
+  }).catch((err) => {
+    console.error(
+      "[WhatsApp automation] resume wait-for-reply failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return [] as Awaited<ReturnType<typeof resumeWaitForReplyExecutions>>;
   });
 
   const dispatched = await dispatchWhatsAppTrigger({
@@ -238,9 +244,15 @@ export async function handleInboundWhatsAppAutomation(input: {
     coupleId,
     conversationId: input.conversationId,
     vars,
+  }).catch((err) => {
+    console.error(
+      "[WhatsApp automation] INCOMING_WHATSAPP dispatch failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return { matched: 0, executions: [] as string[] };
   });
 
-  // Phase 5: optional Smrko AI auto-reply (clinic opt-in; skipped if AI paused / handoff)
+  // AI auto-reply runs independently of automation — never blocked by flow errors.
   let ai: unknown = null;
   try {
     const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
@@ -250,6 +262,14 @@ export async function handleInboundWhatsAppAutomation(input: {
       patientMessage: input.messageText || `(${input.messageType} message)`,
       trigger: "inbound",
       mode: "send",
+    });
+    console.log("[WhatsApp AI] inbound result", {
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      skipped: Boolean((ai as { skipped?: boolean })?.skipped),
+      reason: (ai as { reason?: string })?.reason ?? null,
+      handoff: Boolean((ai as { handoff?: boolean })?.handoff),
+      sentMessageId: (ai as { messageId?: string })?.messageId ?? null,
     });
   } catch (err) {
     console.error(

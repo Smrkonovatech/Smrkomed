@@ -12,6 +12,26 @@ test("Hi-style greeting does not force handoff", () => {
   assert.equal(s.pauseAi, false);
 });
 
+test("hii greeting gets a warm fallback reply without KB", async () => {
+  const { isSimpleGreeting, generateWhatsAppAiReply } = await import("./modules/whatsapp-ai/generate");
+  assert.equal(isSimpleGreeting("hii"), true);
+  assert.equal(isSimpleGreeting("Hii!"), true);
+  const result = await generateWhatsAppAiReply({
+    patientMessage: "hii",
+    ctx: {
+      clinicName: "Demo Clinic",
+      patientFirstName: "Rahul",
+      appointmentSummary: null,
+      journeyStage: null,
+      careTaskTitle: null,
+      recentMessages: [],
+    },
+    knowledge: [],
+  });
+  assert.ok(/smrko ai/i.test(result.text));
+  assert.ok(/Rahul|Demo Clinic|help/i.test(result.text));
+});
+
 test("Hi doctor greeting does not pause AI (common clinic opener)", () => {
   const s = detectHandoffSignals("Hi doctor");
   assert.equal(s.handoff, false);
