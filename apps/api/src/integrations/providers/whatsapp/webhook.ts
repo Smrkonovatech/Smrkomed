@@ -11,6 +11,9 @@ import { attachWhatsAppInboundToCrm } from "./crm-capture";
 import { metaConfig } from "./config";
 import { ensureDirectWhatsAppConnection } from "./service";
 import { realtimeBus } from "../../../modules/realtime/bus";
+import { triggerBackgroundMediaDownload } from "../../../modules/media/service";
+import { sanitizeFilename } from "../../../modules/media/storage";
+import type { WhatsAppMediaType, WhatsAppMediaStatus } from "@smrkomed/database";
 
 const PAYLOAD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -153,27 +156,142 @@ async function matchPatient(clinicId: string, phone: string) {
   return candidates.find((row) => phonesMatch(row.whatsappNumber, phone) || phonesMatch(row.phone, phone)) ?? null;
 }
 
-function extractInboundText(rawBody: string, messageId: string) {
-  const payload = JSON.parse(rawBody) as {
-    entry?: Array<{
-      changes?: Array<{ value?: { messages?: Array<{ id?: string; text?: { body?: string }; type?: string }> } }>;
-    }>;
-  };
-  for (const entry of payload.entry ?? []) {
-    for (const change of entry.changes ?? []) {
-      const match = change.value?.messages?.find((row) => row.id === messageId);
-      if (match?.type && match.type !== "text") return { type: match.type, text: null };
-      if (match?.text?.body) return { type: "text", text: match.text.body };
+export interface InboundMediaMeta {
+  type: WhatsAppMediaType;
+  providerMediaId: string;
+  mimeType: string;
+  filename?: string | null;
+  caption?: string | null;
+  sha256?: string | null;
+  isVoice?: boolean;
+}
+
+export interface ExtractedInboundMessage {
+  type: string;
+  text: string;
+  media: InboundMediaMeta | null;
+}
+
+function extractInboundMessage(rawBody: string, messageId: string): ExtractedInboundMessage {
+  try {
+    const payload = JSON.parse(rawBody) as {
+      entry?: Array<{
+        changes?: Array<{
+          value?: {
+            messages?: Array<{
+              id?: string;
+              type?: string;
+              text?: { body?: string };
+              audio?: { id?: string; mime_type?: string; sha256?: string; voice?: boolean };
+              image?: { id?: string; mime_type?: string; sha256?: string; caption?: string };
+              video?: { id?: string; mime_type?: string; sha256?: string; caption?: string; filename?: string };
+              document?: { id?: string; mime_type?: string; sha256?: string; caption?: string; filename?: string };
+              sticker?: { id?: string; mime_type?: string; sha256?: string; animated?: boolean };
+            }>;
+          };
+        }>;
+      }>;
+    };
+    for (const entry of payload.entry ?? []) {
+      for (const change of entry.changes ?? []) {
+        const match = change.value?.messages?.find((row) => row.id === messageId);
+        if (!match) continue;
+
+        if (match.type === "text" && match.text?.body) {
+          return { type: "text", text: match.text.body, media: null };
+        }
+
+        if (match.type === "audio" && match.audio?.id) {
+          const isVoice = Boolean(match.audio.voice);
+          return {
+            type: "audio",
+            text: isVoice ? "🎤 Voice message" : "🎵 Audio message",
+            media: {
+              type: "AUDIO",
+              providerMediaId: match.audio.id,
+              mimeType: match.audio.mime_type || "audio/ogg",
+              sha256: match.audio.sha256 ?? null,
+              isVoice,
+            },
+          };
+        }
+
+        if (match.type === "image" && match.image?.id) {
+          return {
+            type: "image",
+            text: match.image.caption || "📷 Photo",
+            media: {
+              type: "IMAGE",
+              providerMediaId: match.image.id,
+              mimeType: match.image.mime_type || "image/jpeg",
+              caption: match.image.caption ?? null,
+              sha256: match.image.sha256 ?? null,
+            },
+          };
+        }
+
+        if (match.type === "video" && match.video?.id) {
+          return {
+            type: "video",
+            text: match.video.caption || "📹 Video",
+            media: {
+              type: "VIDEO",
+              providerMediaId: match.video.id,
+              mimeType: match.video.mime_type || "video/mp4",
+              filename: match.video.filename ?? null,
+              caption: match.video.caption ?? null,
+              sha256: match.video.sha256 ?? null,
+            },
+          };
+        }
+
+        if (match.type === "document" && match.document?.id) {
+          return {
+            type: "document",
+            text: match.document.filename || match.document.caption || "📄 Document",
+            media: {
+              type: "DOCUMENT",
+              providerMediaId: match.document.id,
+              mimeType: match.document.mime_type || "application/pdf",
+              filename: match.document.filename ?? null,
+              caption: match.document.caption ?? null,
+              sha256: match.document.sha256 ?? null,
+            },
+          };
+        }
+
+        if (match.type === "sticker" && match.sticker?.id) {
+          return {
+            type: "sticker",
+            text: "Sticker",
+            media: {
+              type: "STICKER",
+              providerMediaId: match.sticker.id,
+              mimeType: match.sticker.mime_type || "image/webp",
+              sha256: match.sticker.sha256 ?? null,
+            },
+          };
+        }
+
+        if (match.type) {
+          return {
+            type: "unknown",
+            text: `Unsupported WhatsApp media: ${match.type}`,
+            media: null,
+          };
+        }
+      }
     }
+  } catch (err) {
+    console.error("[WhatsApp Webhook] Error parsing inbound message payload:", err);
   }
-  return { type: "unknown", text: null };
+  return { type: "unknown", text: "Unsupported WhatsApp message", media: null };
 }
 
 async function processInbound(event: NormalizedWebhookEvent, clinicId: string, rawBody: string) {
   const from = typeof event.metadata["from"] === "string" ? normalizeWhatsAppPhone(event.metadata["from"]) : "";
   if (!from) return "IGNORED" as const;
-  const inbound = extractInboundText(rawBody, event.externalEventId);
-  if (inbound.type !== "text") return "IGNORED" as const;
+  const inbound = extractInboundMessage(rawBody, event.externalEventId);
   const patient = await matchPatient(clinicId, from);
   let conversation = patient
     ? await prisma.conversation.findFirst({ where: { clinicId, channel: "WHATSAPP", patientId: patient.id } })
@@ -215,7 +333,7 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
         direction: "INBOUND",
         senderType: "PATIENT",
         content: inbound.text ?? "",
-        messageType: "text",
+        messageType: inbound.type,
         providerMessageId: event.externalEventId,
         status: "DELIVERED",
       },
@@ -234,7 +352,87 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
     if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
     createdMessage = null;
   }
+
+  // Create associated media record if inbound message contains media
+  let mediaRecord: {
+    id: string;
+    type: WhatsAppMediaType;
+    mimeType: string;
+    filename: string | null;
+    caption: string | null;
+    sizeBytes: number | null;
+    durationSeconds: number | null;
+    isVoice: boolean;
+    status: WhatsAppMediaStatus;
+  } | null = null;
+
+  if (inbound.media && createdMessage) {
+    try {
+      mediaRecord = await prisma.whatsAppMedia.create({
+        data: {
+          clinicId,
+          conversationId: conversation.id,
+          messageId: createdMessage.id,
+          provider: "WHATSAPP_CLOUD",
+          providerMediaId: inbound.media.providerMediaId,
+          type: inbound.media.type,
+          mimeType: inbound.media.mimeType,
+          filename: sanitizeFilename(inbound.media.filename) || null,
+          caption: inbound.media.caption ?? null,
+          sha256: inbound.media.sha256 ?? null,
+          isVoice: inbound.media.isVoice ?? false,
+          status: "PENDING",
+        },
+        select: {
+          id: true,
+          type: true,
+          mimeType: true,
+          filename: true,
+          caption: true,
+          sizeBytes: true,
+          durationSeconds: true,
+          isVoice: true,
+          status: true,
+        },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        mediaRecord = await prisma.whatsAppMedia.findUnique({
+          where: { clinicId_providerMediaId: { clinicId, providerMediaId: inbound.media.providerMediaId } },
+          select: {
+            id: true,
+            type: true,
+            mimeType: true,
+            filename: true,
+            caption: true,
+            sizeBytes: true,
+            durationSeconds: true,
+            isVoice: true,
+            status: true,
+          },
+        });
+      } else {
+        console.error("[WhatsApp Media] Failed to create media record:", error);
+      }
+    }
+  }
+
   if (createdMessage) {
+    const mediaPayload = mediaRecord
+      ? {
+          id: mediaRecord.id,
+          type: mediaRecord.type,
+          mimeType: mediaRecord.mimeType,
+          filename: mediaRecord.filename,
+          caption: mediaRecord.caption,
+          sizeBytes: mediaRecord.sizeBytes,
+          durationSeconds: mediaRecord.durationSeconds,
+          isVoice: mediaRecord.isVoice,
+          status: mediaRecord.status,
+          url: `/api/v1/whatsapp-automation/inbox/media/${mediaRecord.id}`,
+        }
+      : null;
+
     // Real-time publish to connected browser sessions
     realtimeBus.publish({
       type: "MESSAGE_CREATED",
@@ -249,6 +447,7 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
         createdAt: createdMessage.createdAt.toISOString(),
         status: createdMessage.status,
         label: "PATIENT",
+        media: mediaPayload,
       },
       conversation: {
         id: conversation.id,
@@ -266,6 +465,13 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       },
     });
 
+    // Trigger async background media download without blocking the webhook
+    if (mediaRecord && mediaRecord.status === "PENDING") {
+      triggerBackgroundMediaDownload(clinicId, mediaRecord.id);
+    }
+  }
+
+  if (createdMessage) {
     realtimeBus.publish({
       type: "CONVERSATION_UPDATED",
       clinicId,
@@ -393,10 +599,8 @@ export async function receiveWhatsAppWebhook(headers: Headers, rawBody: string) 
     }
     try {
       let status: "PROCESSED" | "IGNORED" = "IGNORED";
-      if (event.eventType === "inbound_text") {
+      if (event.eventType === "inbound_text" || event.eventType.startsWith("inbound_")) {
         status = await processInbound(event, match.integration.clinicId, rawBody);
-      } else if (event.eventType.startsWith("inbound_")) {
-        status = "IGNORED";
       } else if (event.eventType.startsWith("status_")) {
         status = await processStatus(event, match.integration.clinicId);
       } else if (event.eventType === "template_status") {

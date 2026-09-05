@@ -57,6 +57,7 @@ import {
   processCampaignBatch,
 } from "./campaigns";
 import { sendWhatsAppSessionText } from "../../integrations/providers/whatsapp/messaging";
+import { mediaStorageProvider, getExtensionForMime } from "../media/storage";
 
 function serializeKb(row: {
   id: string;
@@ -963,6 +964,76 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
   .get("/inbox/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_VIEW);
     return ok(c, await getInboxConversationDetail(tenant, c.req.valid("param").id));
+  })
+
+  .get("/inbox/media/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_VIEW);
+    const mediaId = c.req.valid("param").id;
+    const media = await prisma.whatsAppMedia.findUnique({
+      where: { id: mediaId },
+    });
+    if (!media) {
+      throw new HttpError(404, "NOT_FOUND", "Media record not found");
+    }
+    if (media.clinicId !== tenant.clinicId) {
+      throw new HttpError(403, "FORBIDDEN", "Access to media for foreign clinic denied");
+    }
+    if (media.status !== "READY" || !media.storageKey) {
+      throw new HttpError(404, "NOT_FOUND", "Media content is not ready or failed to download");
+    }
+    const exists = await mediaStorageProvider.exists(media.storageKey);
+    if (!exists) {
+      throw new HttpError(404, "NOT_FOUND", "Media binary not found in storage");
+    }
+    const buffer = await mediaStorageProvider.getBuffer(media.storageKey);
+    const filename = media.filename || `media_${media.id}${getExtensionForMime(media.mimeType || "")}`;
+    const disposition = media.type === "DOCUMENT"
+      ? `attachment; filename="${encodeURIComponent(filename)}"`
+      : `inline; filename="${encodeURIComponent(filename)}"`;
+
+    const rangeHeader = c.req.header("range");
+    const totalSize = buffer.length;
+
+    if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+      const parts = rangeHeader.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0] ?? "0", 10) || 0;
+      const end = parts[1] ? parseInt(parts[1], 10) : totalSize - 1;
+
+      if (start >= totalSize || end >= totalSize || start > end) {
+        return new Response("Requested Range Not Satisfiable", {
+          status: 416,
+          headers: {
+            "Content-Range": `bytes */${totalSize}`,
+          },
+        });
+      }
+
+      const chunk = buffer.subarray(start, end + 1);
+      return new Response(new Uint8Array(chunk), {
+        status: 206,
+        headers: {
+          "Content-Type": media.mimeType || "application/octet-stream",
+          "Content-Range": `bytes ${start}-${end}/${totalSize}`,
+          "Accept-Ranges": "bytes",
+          "Content-Length": chunk.length.toString(),
+          "Content-Disposition": disposition,
+          "Cache-Control": "private, max-age=86400",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+
+    return new Response(new Uint8Array(buffer), {
+      status: 200,
+      headers: {
+        "Content-Type": media.mimeType || "application/octet-stream",
+        "Content-Length": totalSize.toString(),
+        "Accept-Ranges": "bytes",
+        "Content-Disposition": disposition,
+        "Cache-Control": "private, max-age=86400",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   })
 
   .get("/inbox/:id/context", validate("param", idParam), async (c) => {

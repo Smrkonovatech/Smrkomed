@@ -182,3 +182,59 @@ export async function sendTextMessage(input: {
     }),
   });
 }
+
+export interface MetaMediaMetadata {
+  id: string;
+  url: string;
+  mimeType: string;
+  sha256?: string | undefined;
+  fileSizeBytes?: number | undefined;
+}
+
+export async function getWhatsAppMediaMetadata(mediaId: string, accessToken: string): Promise<MetaMediaMetadata> {
+  const json = await graphRequest(`/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  return {
+    id: String(json["id"] ?? mediaId),
+    url: String(json["url"] ?? ""),
+    mimeType: String(json["mime_type"] ?? "application/octet-stream"),
+    sha256: typeof json["sha256"] === "string" ? json["sha256"] : undefined,
+    fileSizeBytes: typeof json["file_size"] === "number" ? json["file_size"] : undefined,
+  };
+}
+
+export async function downloadWhatsAppMediaBinary(
+  downloadUrl: string,
+  accessToken: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const response = await graphFetch(downloadUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "User-Agent": "SmrkoMed/1.0",
+    },
+  });
+  if (!response.ok) {
+    const status: 400 | 401 | 403 | 404 | 429 | 500 =
+      response.status === 401
+        ? 401
+        : response.status === 403
+          ? 403
+          : response.status === 404
+            ? 404
+            : response.status === 429
+              ? 429
+              : 500;
+    throw new IntegrationError(
+      "PROVIDER_UNAVAILABLE",
+      `Failed to download media from Meta Graph API (status ${response.status})`,
+      status,
+    );
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") || "application/octet-stream";
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    mimeType: contentType,
+  };
+}

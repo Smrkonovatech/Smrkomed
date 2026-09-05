@@ -39,3 +39,5 @@ out
 *.tsbuildinfo
 apps/*/.next
 apps/*/tsconfig.tsbuildinfo
+.storage
+*/.storage

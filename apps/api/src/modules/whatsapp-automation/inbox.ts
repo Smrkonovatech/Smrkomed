@@ -215,6 +215,20 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
           messageType: true,
           status: true,
           createdAt: true,
+          whatsappMedia: {
+            select: {
+              id: true,
+              type: true,
+              mimeType: true,
+              filename: true,
+              caption: true,
+              sizeBytes: true,
+              durationSeconds: true,
+              isVoice: true,
+              status: true,
+              error: true,
+            },
+          },
         },
       },
     },
@@ -263,7 +277,12 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
     couple: conversation.couple,
     clinicName: tenant.clinicName,
     messages: conversation.messages.map((m) => ({
-      ...m,
+      id: m.id,
+      direction: m.direction,
+      senderType: m.senderType,
+      content: m.content,
+      messageType: m.messageType,
+      status: m.status,
       createdAt: m.createdAt.toISOString(),
       label:
         m.senderType === "SYSTEM"
@@ -273,6 +292,21 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
             : m.senderType === "STAFF"
               ? "STAFF"
               : "PATIENT",
+      media: m.whatsappMedia
+        ? {
+            id: m.whatsappMedia.id,
+            type: m.whatsappMedia.type,
+            mimeType: m.whatsappMedia.mimeType,
+            filename: m.whatsappMedia.filename,
+            caption: m.whatsappMedia.caption,
+            sizeBytes: m.whatsappMedia.sizeBytes,
+            durationSeconds: m.whatsappMedia.durationSeconds,
+            isVoice: m.whatsappMedia.isVoice,
+            status: m.whatsappMedia.status,
+            error: m.whatsappMedia.error,
+            url: `/api/v1/whatsapp-automation/inbox/media/${m.whatsappMedia.id}`,
+          }
+        : null,
     })),
     automation: activeAutomation,
   };

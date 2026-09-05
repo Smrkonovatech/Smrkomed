@@ -9,10 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+import { MediaBubble } from "@/components/whatsapp/media-bubble";
 import {
   useRealtimeInbox,
   type RealtimeConversationUpdatedPayload,
+  type RealtimeMedia,
   type RealtimeMessageCreatedPayload,
+  type RealtimeMessageMediaUpdatedPayload,
   type RealtimeMessageStatusPayload,
   type RealtimeTypingPayload,
 } from "@/lib/realtime/use-realtime-inbox";
@@ -59,9 +62,11 @@ type Detail = {
     direction: string;
     senderType: string;
     content: string;
+    messageType?: string;
     createdAt: string;
     status: string;
     label: string;
+    media?: RealtimeMedia | null;
   }>;
   automation: {
     executionId: string;
@@ -236,9 +241,11 @@ export default function WhatsAppInboxPage() {
             direction: payload.message.direction,
             senderType: payload.message.senderType,
             content: payload.message.content,
+            messageType: payload.message.messageType,
             createdAt: payload.message.createdAt,
             status: payload.message.status,
             label: payload.message.label ?? (payload.message.direction === "INBOUND" ? "PATIENT" : "STAFF"),
+            media: payload.message.media ?? null,
           };
           return { ...prev, messages: [...prev.messages, newMsg] };
         });
@@ -338,6 +345,28 @@ export default function WhatsAppInboxPage() {
     });
   }, []);
 
+  const onMessageMediaUpdated = useCallback(
+    (payload: RealtimeMessageMediaUpdatedPayload) => {
+      if (activeId && payload.conversationId === activeId) {
+        setDetail((prev) => {
+          if (!prev || prev.id !== payload.conversationId) return prev;
+          return {
+            ...prev,
+            messages: prev.messages.map((m) =>
+              m.id === payload.messageId
+                ? {
+                    ...m,
+                    media: payload.media,
+                  }
+                : m,
+            ),
+          };
+        });
+      }
+    },
+    [activeId],
+  );
+
   const onConversationUpdated = useCallback(
     (payload: RealtimeConversationUpdatedPayload) => {
       setRows((prev) =>
@@ -411,6 +440,7 @@ export default function WhatsAppInboxPage() {
   const { isConnected, isReconnecting, notifyTyping } = useRealtimeInbox({
     onMessageCreated,
     onMessageStatusUpdated,
+    onMessageMediaUpdated,
     onConversationUpdated,
     onTyping,
     onReconnected,
@@ -731,10 +761,18 @@ export default function WhatsAppInboxPage() {
                       <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                         {m.label}
                       </p>
-                      <p className="whitespace-pre-wrap">{m.content}</p>
-                      <p className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                      {m.media ? (
+                        <div className="my-1.5">
+                          <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap">{m.content}</p>
+                      )}
+                      <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                         <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        <span>{renderDeliveryStatus(m.status)}</span>
+                        <span>
+                          {m.direction === "INBOUND" ? "Received via WhatsApp" : renderDeliveryStatus(m.status)}
+                        </span>
                       </p>
                     </div>
                   ))}

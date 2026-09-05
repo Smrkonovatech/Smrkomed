@@ -5,6 +5,20 @@ import { apiPost } from "@/lib/api/client";
 
 export type RealtimeStatus = "connected" | "reconnecting" | "disconnected";
 
+export type RealtimeMedia = {
+  id: string;
+  type: "AUDIO" | "IMAGE" | "VIDEO" | "DOCUMENT" | "STICKER" | "OTHER";
+  mimeType: string;
+  filename?: string | null;
+  caption?: string | null;
+  sizeBytes?: number | null;
+  durationSeconds?: number | null;
+  isVoice?: boolean;
+  status: "PENDING" | "DOWNLOADING" | "READY" | "FAILED" | "EXPIRED";
+  url?: string;
+  error?: string | null;
+};
+
 export type RealtimeMessage = {
   id: string;
   direction: "INBOUND" | "OUTBOUND";
@@ -14,6 +28,7 @@ export type RealtimeMessage = {
   createdAt: string;
   status: string;
   label?: string;
+  media?: RealtimeMedia | null;
 };
 
 export type RealtimeConversationPatch = {
@@ -65,6 +80,15 @@ export type RealtimeMessageStatusPayload = {
   status: "SENT" | "DELIVERED" | "READ" | "FAILED";
 };
 
+export type RealtimeMessageMediaUpdatedPayload = {
+  eventId: string;
+  type: "MESSAGE_MEDIA_UPDATED";
+  clinicId: string;
+  conversationId: string;
+  messageId: string;
+  media: RealtimeMedia;
+};
+
 export type RealtimeConversationUpdatedPayload = {
   eventId: string;
   type: "CONVERSATION_UPDATED";
@@ -85,6 +109,7 @@ export type RealtimeTypingPayload = {
 type UseRealtimeInboxOptions = {
   onMessageCreated?: (payload: RealtimeMessageCreatedPayload) => void;
   onMessageStatusUpdated?: (payload: RealtimeMessageStatusPayload) => void;
+  onMessageMediaUpdated?: (payload: RealtimeMessageMediaUpdatedPayload) => void;
   onConversationUpdated?: (payload: RealtimeConversationUpdatedPayload) => void;
   onTyping?: (payload: RealtimeTypingPayload) => void;
   onReconnected?: () => void;
@@ -154,6 +179,16 @@ export function useRealtimeInbox(options: UseRealtimeInboxOptions = {}) {
         try {
           const data = JSON.parse(e.data) as RealtimeMessageStatusPayload;
           optionsRef.current.onMessageStatusUpdated?.(data);
+        } catch {
+          // ignore parse error
+        }
+      });
+
+      es.addEventListener("MESSAGE_MEDIA_UPDATED", (e) => {
+        if (e.lastEventId) lastEventIdRef.current = e.lastEventId;
+        try {
+          const data = JSON.parse(e.data) as RealtimeMessageMediaUpdatedPayload;
+          optionsRef.current.onMessageMediaUpdated?.(data);
         } catch {
           // ignore parse error
         }

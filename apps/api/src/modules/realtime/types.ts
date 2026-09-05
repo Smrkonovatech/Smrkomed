@@ -1,6 +1,7 @@
 export type RealtimeEventType =
   | "MESSAGE_CREATED"
   | "MESSAGE_STATUS_UPDATED"
+  | "MESSAGE_MEDIA_UPDATED"
   | "CONVERSATION_UPDATED"
   | "UNREAD_COUNT_UPDATED"
   | "TYPING_STARTED"
@@ -16,6 +17,20 @@ export type BaseRealtimeEvent = {
   timestamp: string;
 };
 
+export type RealtimeMediaPayload = {
+  id: string;
+  type: "AUDIO" | "IMAGE" | "VIDEO" | "DOCUMENT" | "STICKER" | "OTHER";
+  mimeType: string;
+  filename?: string | null;
+  caption?: string | null;
+  sizeBytes?: number | null;
+  durationSeconds?: number | null;
+  isVoice?: boolean;
+  status: "PENDING" | "DOWNLOADING" | "READY" | "FAILED" | "EXPIRED";
+  url?: string;
+  error?: string | null;
+};
+
 export type MessageCreatedEvent = BaseRealtimeEvent & {
   type: "MESSAGE_CREATED";
   conversationId: string;
@@ -28,6 +43,7 @@ export type MessageCreatedEvent = BaseRealtimeEvent & {
     createdAt: string;
     status: string;
     label?: string;
+    media?: RealtimeMediaPayload | null;
   };
   conversation?: {
     id: string;
@@ -50,6 +66,13 @@ export type MessageStatusUpdatedEvent = BaseRealtimeEvent & {
   messageId?: string;
   providerMessageId?: string;
   status: "SENT" | "DELIVERED" | "READ" | "FAILED";
+};
+
+export type MessageMediaUpdatedEvent = BaseRealtimeEvent & {
+  type: "MESSAGE_MEDIA_UPDATED";
+  conversationId: string;
+  messageId: string;
+  media: RealtimeMediaPayload;
 };
 
 export type ConversationUpdatedEvent = BaseRealtimeEvent & {
@@ -108,6 +131,7 @@ export type CareLoopEscalationEvent = BaseRealtimeEvent & {
 export type RealtimeEvent =
   | MessageCreatedEvent
   | MessageStatusUpdatedEvent
+  | MessageMediaUpdatedEvent
   | ConversationUpdatedEvent
   | UnreadCountUpdatedEvent
   | TypingEvent
@@ -121,4 +145,5 @@ export type RealtimeEventInput = DistributiveOmit<RealtimeEvent, "eventId" | "ti
   eventId?: string;
   timestamp?: string;
 };
+
 
