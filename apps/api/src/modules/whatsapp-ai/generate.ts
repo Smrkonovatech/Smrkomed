@@ -71,31 +71,38 @@ function kbFallbackReply(input: {
 
 async function callOpenAiChat(system: string, user: string, model: string): Promise<string> {
   const key = process.env["OPENAI_API_KEY"]?.trim();
-  if (!key) throw new Error("OPENAI_API_KEY missing");
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.3,
-      max_tokens: 400,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`OpenAI error ${res.status}: ${body.slice(0, 200)}`);
+  if (!key) throw new Error("OPENAI_API_KEY missing on API server");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model,
+        temperature: 0.3,
+        max_tokens: 400,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`OpenAI error ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const json = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    return String(json.choices?.[0]?.message?.content ?? "").trim();
+  } finally {
+    clearTimeout(timer);
   }
-  const json = (await res.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return String(json.choices?.[0]?.message?.content ?? "").trim();
 }
 
 export async function generateWhatsAppAiReply(input: {
@@ -104,11 +111,24 @@ export async function generateWhatsAppAiReply(input: {
   knowledge: KbHit[];
   promptHint?: string;
   forceEscalationCopy?: boolean;
+  /** Webhook path: skip OpenAI for greetings so Meta gets a reply within timeout. */
+  preferFast?: boolean;
 }): Promise<GenerateAiResult> {
   if (input.forceEscalationCopy) {
     return {
       text: CLINICAL_ESCALATION_MESSAGE,
       model: "safety",
+      usedLlm: false,
+      blocked: false,
+    };
+  }
+
+  // Inbound greetings must be instant — do not wait on OpenAI inside Meta's webhook budget.
+  if (input.preferFast && isSimpleGreeting(input.patientMessage)) {
+    console.log("[WhatsApp AI] fast greeting reply (no OpenAI wait)");
+    return {
+      text: greetingReply(input.ctx),
+      model: "greeting-fast",
       usedLlm: false,
       blocked: false,
     };
@@ -125,7 +145,7 @@ export async function generateWhatsAppAiReply(input: {
   const key = process.env["OPENAI_API_KEY"]?.trim();
   // Tests / local without key: KB-only deterministic reply (never invent clinical advice)
   if (!key || env.nodeEnv === "test" || process.env["WHATSAPP_AI_FORCE_FALLBACK"] === "1") {
-    console.log("[WhatsApp AI] generate using KB/greeting fallback (no OpenAI key or test mode)");
+    console.log("[WhatsApp AI] generate using KB/greeting fallback (no OpenAI key on API or test mode)");
     return {
       text: kbFallbackReply(input),
       model: "kb-fallback",

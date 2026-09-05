@@ -542,10 +542,25 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       timestampIso: createdMessage.createdAt.toISOString(),
     };
 
-    // CRITICAL: await AI inside the webhook so the reply cannot be dropped after HTTP 200.
-    // Meta allows ~15–20s; greeting + Meta send typically finishes well under that.
+    // Await AI in webhook (fast for greetings). If it fails/times out, also run AI in background.
+    let aiOk = false;
     try {
-      await runInboundWhatsAppAi(inboundJob);
+      const raced = await Promise.race([
+        runInboundWhatsAppAi(inboundJob).then((r) => ({ kind: "ok" as const, r })),
+        new Promise<{ kind: "timeout" }>((resolve) => {
+          setTimeout(() => resolve({ kind: "timeout" }), 12_000);
+        }),
+      ]);
+      if (raced.kind === "ok") {
+        aiOk = Boolean(raced.r.messageId);
+        console.log("[WhatsApp AI] webhook await finished", {
+          skipped: Boolean(raced.r.skipped),
+          reason: raced.r.reason ?? null,
+          messageId: raced.r.messageId ?? null,
+        });
+      } else {
+        console.error("[WhatsApp AI] webhook await timed out at 12s — background will retry");
+      }
     } catch (err) {
       console.error(
         "[WhatsApp AI] webhook-awaited AI failed:",
@@ -553,8 +568,8 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       );
     }
 
-    // Automation / wait-resume continues in background (AI already done).
-    scheduleInboundWhatsAppAutomation({ ...inboundJob, skipAi: true });
+    // Always schedule automation; re-run AI in background only if webhook path did not send.
+    scheduleInboundWhatsAppAutomation({ ...inboundJob, skipAi: aiOk });
   }
 
   return "PROCESSED" as const;

@@ -240,6 +240,7 @@ export async function runInboundWhatsAppAi(input: InboundPayload) {
       trigger: "inbound",
       mode: "send",
       force: true,
+      inboundMessageId: input.messageId,
     });
     console.log("[WhatsApp AI] inbound result", {
       conversationId: input.conversationId,

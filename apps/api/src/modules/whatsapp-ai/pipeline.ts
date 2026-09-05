@@ -48,6 +48,8 @@ export async function runWhatsAppAiPipeline(input: {
   specialtyHint?: string | null;
   /** When false, skip Meta send even in send mode (simulation) */
   simulation?: boolean;
+  /** Inbound message id — used to avoid duplicate auto-replies */
+  inboundMessageId?: string;
 }): Promise<AiPipelineResult> {
   const conversation = await prisma.conversation.findFirst({
     where: { id: input.conversationId, clinicId: input.tenant.clinicId },
@@ -74,10 +76,10 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   if (conversation.aiPausedAt || conversation.status === "HUMAN_HANDOFF") {
-    // Patient messaged again: resume AI unless staff recently replied (active human chat).
-    // This stops conversations freezing after Take over / false escalations.
+    // Patient inbound must auto-resume (even when force=true for settings bypass).
+    // force=true used to skip this and permanently block auto-reply after Take over.
     let keepPaused = false;
-    if (input.trigger === "inbound" && !input.force) {
+    if (input.trigger === "inbound") {
       const recentStaff = await prisma.message.findFirst({
         where: {
           conversationId: conversation.id,
@@ -97,14 +99,23 @@ export async function runWhatsAppAiPipeline(input: {
         if (refreshed) Object.assign(conversation, refreshed);
         console.log("[WhatsApp AI] auto-resumed after patient inbound", {
           conversationId: conversation.id,
-          priorReason: conversation.handoffReason,
         });
       }
+    } else if (input.force) {
+      await resumeWhatsAppAi(input.tenant, conversation.id);
+      const refreshed = await prisma.conversation.findFirst({
+        where: { id: input.conversationId, clinicId: input.tenant.clinicId },
+      });
+      if (refreshed) Object.assign(conversation, refreshed);
     } else {
       keepPaused = true;
     }
 
-    if (keepPaused) {
+    if (
+      keepPaused ||
+      conversation.aiPausedAt != null ||
+      conversation.status === "HUMAN_HANDOFF"
+    ) {
       const interaction = await recordAiInteraction({
         clinicId: input.tenant.clinicId,
         conversationId: conversation.id,
@@ -114,7 +125,9 @@ export async function runWhatsAppAiPipeline(input: {
         status: "SKIPPED",
         classification: "AI_PAUSED",
         handoffReason: conversation.handoffReason,
-        rawSummary: "AI paused — staff recently replied (active human chat)",
+        rawSummary: keepPaused
+          ? "AI paused — staff recently replied (active human chat)"
+          : "AI paused — human control",
       });
       return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };
     }
@@ -281,6 +294,7 @@ export async function runWhatsAppAiPipeline(input: {
     patientMessage: input.patientMessage,
     ctx,
     knowledge,
+    preferFast: input.trigger === "inbound",
     ...(input.promptHint ? { promptHint: input.promptHint } : {}),
   });
 
@@ -349,6 +363,32 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   try {
+    // Avoid double auto-reply if webhook + background both fire.
+    if (input.inboundMessageId) {
+      const inbound = await prisma.message.findFirst({
+        where: { id: input.inboundMessageId, conversationId: conversation.id },
+        select: { createdAt: true },
+      });
+      if (inbound) {
+        const already = await prisma.message.findFirst({
+          where: {
+            conversationId: conversation.id,
+            direction: "OUTBOUND",
+            senderType: "AI",
+            createdAt: { gte: inbound.createdAt },
+          },
+          select: { id: true },
+        });
+        if (already) {
+          return {
+            messageId: already.id,
+            text: generated.text,
+            reason: "AI already replied to this inbound",
+          };
+        }
+      }
+    }
+
     const sent = await sendWhatsAppAiSessionText(input.tenant, {
       conversationId: conversation.id,
       body: generated.text,
