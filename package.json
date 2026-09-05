@@ -25,6 +25,7 @@
     "db:seed": "npm run db:seed -w @smrkomed/database",
     "db:setup": "npm run db:setup -w @smrkomed/database",
     "db:studio": "npm run db:studio -w @smrkomed/database",
-    "test": "npm run test -w @smrkomed/database && npm run test -w @smrkomed/api"
+    "test": "npm run test -w @smrkomed/database && npm run test -w @smrkomed/api",
+    "wa:link": "node scripts/link-whatsapp-clinic.mjs"
   }
 }
