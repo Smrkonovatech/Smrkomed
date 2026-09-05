@@ -369,9 +369,10 @@ test("WhatsApp Inbound Media: Inbound Voice Note webhook persists message, media
   if (createdEvt && createdEvt.type === "MESSAGE_CREATED") {
     assert.equal(createdEvt.message.messageType, "audio");
     assert.ok(createdEvt.message.media, "Event message must contain media payload");
-    assert.equal(createdEvt.message.media?.providerMediaId, undefined); // Sensitive provider ID not exposed
-    assert.equal(createdEvt.message.media?.type, "AUDIO");
-    assert.equal(createdEvt.message.media?.isVoice, true);
+    assert.equal(createdEvt.message.media.id, message.whatsappMedia.id);
+    assert.equal("providerMediaId" in (createdEvt.message.media as object), false); // Sensitive provider ID not exposed
+    assert.equal(createdEvt.message.media.type, "AUDIO");
+    assert.equal(createdEvt.message.media.isVoice, true);
   }
 
   unsubscribe();
