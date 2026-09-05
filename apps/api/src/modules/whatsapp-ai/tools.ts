@@ -392,9 +392,10 @@ export async function executePatientTool(
             reason: result.reason ?? "NO_OPEN_SLOTS_IN_RANGE",
             timezone: result.timezone,
             message:
-              "No open appointment slots were found in clinic working hours for the next days. Connect the patient with the care team.",
+              "No open appointment slots were found in clinic working hours for the requested window. Tell the patient clearly — do not invent times. Offer care team help if they want.",
           },
-          handoffRecommended: true,
+          // Soft signal: pipeline should NOT pause AI / claim booking is impossible.
+          handoffRecommended: false,
           handoffReason: "NO_SUITABLE_APPOINTMENT_SLOT",
         };
       }
@@ -413,17 +414,28 @@ export async function executePatientTool(
       const idempotencyKey = `slot_choice_${auth.conversationId}_${Date.now()}`;
       const purpose = str("purpose") === "RESCHEDULE" ? "RESCHEDULE" : "BOOK";
       const appointmentId = str("appointmentId") || undefined;
-      await setConversationPendingAction({
-        clinicId,
-        conversationId: auth.conversationId,
-        action: {
-          kind: "SLOT_CHOICE",
-          purpose,
-          ...(appointmentId ? { appointmentId } : {}),
-          slots: labeled.map((s) => ({ index: s.index, slotId: s.slotId, label: s.label })),
-          idempotencyKey,
-        },
-      });
+      let pendingActionPersisted = true;
+      try {
+        await setConversationPendingAction({
+          clinicId,
+          conversationId: auth.conversationId,
+          action: {
+            kind: "SLOT_CHOICE",
+            purpose,
+            ...(appointmentId ? { appointmentId } : {}),
+            slots: labeled.map((s) => ({ index: s.index, slotId: s.slotId, label: s.label })),
+            idempotencyKey,
+          },
+        });
+      } catch (err) {
+        pendingActionPersisted = false;
+        console.error("[WhatsApp AI] pendingAction persist failed", {
+          clinicId,
+          conversationId: auth.conversationId,
+          errorName: err instanceof Error ? err.name : "unknown",
+          // Likely missing migration columns — still return slots to the patient.
+        });
+      }
       return {
         tool,
         ok: true,
@@ -432,11 +444,18 @@ export async function executePatientTool(
           available: true,
           timezone: result.timezone,
           slots: labeled,
+          pendingActionPersisted,
           doctorScheduleNote:
             "Slots are clinic working-hour openings, not doctor-verified calendars. doctorId is null until DoctorSchedule exists.",
           instruction:
             "Present these REAL slots to the patient numbered 1..N. Ask them to reply with the number. Do not invent other times. Do not attribute slots to a named doctor.",
         },
+        ...(pendingActionPersisted
+          ? {}
+          : {
+              handoffRecommended: true,
+              handoffReason: "PENDING_ACTION_PERSIST_FAILED",
+            }),
       };
     }
 
@@ -643,17 +662,19 @@ export async function executePatientTool(
   }
 }
 
-/** Run allowlisted tools for an intent; stop early if handoff recommended. */
+/** Run allowlisted tools for an intent; stop early only for hard handoffs. */
 export async function runToolsForIntent(input: {
   auth: ToolAuth;
   toolNames: string[];
   intent?: string;
+  /** Extra tool args (e.g. preferredDate from NL parse). */
+  args?: Record<string, unknown>;
   maxTools?: number;
 }): Promise<ToolResult[]> {
   const results: ToolResult[] = [];
   const unique = [...new Set(input.toolNames)].slice(0, input.maxTools ?? 4);
 
-  const baseArgs: Record<string, unknown> = {};
+  const baseArgs: Record<string, unknown> = { ...(input.args ?? {}) };
   if (input.intent === "APPOINTMENT_RESCHEDULE") {
     baseArgs["purpose"] = "RESCHEDULE";
     const next = await prisma.appointment.findFirst({
@@ -684,7 +705,13 @@ export async function runToolsForIntent(input: {
     try {
       const result = await executePatientTool(name, input.auth, baseArgs);
       results.push(result);
-      if (result.handoffRecommended) break;
+      // Soft no-slot result must not block remaining tools (e.g. getAppointments).
+      if (
+        result.handoffRecommended &&
+        result.handoffReason !== "NO_SUITABLE_APPOINTMENT_SLOT"
+      ) {
+        break;
+      }
     } catch (err) {
       results.push({
         tool: name,
@@ -701,4 +728,22 @@ export function formatToolResultsForPrompt(results: ToolResult[]): string {
   return results
     .map((r) => `### Tool ${r.tool} (${r.ok ? "ok" : "failed"})\n${JSON.stringify(r.data)}`)
     .join("\n\n");
+}
+
+/** Deterministic WhatsApp copy for real slot lists — avoids LLM inventing inability. */
+export function formatAppointmentSlotsPatientMessage(input: {
+  clinicName: string;
+  slots: Array<{ index: number; label: string }>;
+  purpose?: string;
+}): string {
+  const header =
+    input.purpose === "RESCHEDULE"
+      ? `Here are available times to reschedule your appointment at ${input.clinicName}:`
+      : `Here are available appointment times at ${input.clinicName}:`;
+  const lines = input.slots.map((s) => `${s.index}. ${s.label}`);
+  return `✦ Smrko AI\n\n${header}\n\n${lines.join("\n")}\n\nReply with the number of the time you prefer (for example: 2).`;
+}
+
+export function formatNoSlotsPatientMessage(clinicName: string): string {
+  return `✦ Smrko AI\n\nI checked ${clinicName}'s open hours and there are no available appointment times in the next few days. I can try another day if you suggest one, or connect you with our care team — just say "speak to staff".`;
 }

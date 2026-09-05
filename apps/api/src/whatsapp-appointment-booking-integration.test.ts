@@ -637,8 +637,29 @@ test("AI-to-tool path: intent → getAvailableAppointmentSlots → structured sl
   assert.deepEqual(namedData.slots, []);
 });
 
-test("intent: named doctor request hands off (no invented slots)", () => {
-  const r = classifyPatientIntent("I want to see Dr. Ananya");
-  assert.equal(r.intent, "REQUEST_DOCTOR");
-  assert.ok(r.suggestedTools.includes("requestHuman"));
+test("intent→tool: Show available slots executes appointment_slots", async () => {
+  const intent = classifyPatientIntent("Show available slots");
+  assert.equal(intent.intent, "APPOINTMENT_BOOKING");
+  const results = await runToolsForIntent({
+    auth: {
+      tenant: fixture.ctxA,
+      conversationId: fixture.conversationAId,
+      patientId: fixture.patientAId,
+      coupleId: fixture.coupleAId,
+    },
+    toolNames: intent.suggestedTools,
+    intent: intent.intent,
+  });
+  const slotTool = results.find((r) => r.tool === "getAvailableAppointmentSlots");
+  assert.ok(slotTool?.ok);
+  const data = slotTool!.data as { type?: string; available?: boolean; slots?: unknown[] };
+  assert.equal(data.type, "appointment_slots");
+  assert.equal(data.available, true);
+  assert.ok((data.slots?.length ?? 0) > 0);
+});
+
+test("date parse: reschedule to 6th resolves in current/next month", async () => {
+  const { extractPreferredDateIso } = await import("./modules/whatsapp-ai/date-parse");
+  const now = new Date(2026, 8, 5); // 5 Sep 2026
+  assert.equal(extractPreferredDateIso("Can you reschedule to 6th", now), "2026-09-06");
 });

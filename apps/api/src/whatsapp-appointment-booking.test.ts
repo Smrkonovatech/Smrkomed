@@ -34,17 +34,26 @@ test("default clinic hours exist for weekday slot generation", () => {
   assert.equal(DEFAULT_HOURS.sun, null);
 });
 
-test("booking and cancel intents map to write tools", () => {
+test("show available slots and need a appointment classify as booking", () => {
+  assert.equal(classifyPatientIntent("Show available slots").intent, "APPOINTMENT_BOOKING");
+  assert.equal(classifyPatientIntent("Need a appointment").intent, "APPOINTMENT_BOOKING");
+  assert.equal(classifyPatientIntent("Hi can you book appointment").intent, "APPOINTMENT_BOOKING");
+  assert.equal(classifyPatientIntent("Can you reschedule to 6th").intent, "APPOINTMENT_RESCHEDULE");
   assert.ok(
     classifyPatientIntent("I want to book an appointment").suggestedTools.includes(
       "getAvailableAppointmentSlots",
     ),
   );
   assert.ok(classifyPatientIntent("Cancel my appointment").suggestedTools.includes("cancelAppointment"));
-  assert.ok(
-    classifyPatientIntent("I want to reschedule").suggestedTools.includes("getAvailableAppointmentSlots"),
-  );
 });
+
+test("appointment phrases are not hard human handoff", async () => {
+  const { detectHandoffSignals } = await import("./modules/whatsapp-ai/safety");
+  assert.equal(detectHandoffSignals("Need a appointment").handoff, false);
+  assert.equal(detectHandoffSignals("I want to book appointment").pauseAi, false);
+  assert.equal(detectHandoffSignals("Can you reschedule to 6th").handoff, false);
+});
+
 
 test("named doctor appointment request does not suggest slot invention tools", () => {
   const r = classifyPatientIntent("I want to see Dr. Ananya");

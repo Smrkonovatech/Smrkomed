@@ -16,6 +16,12 @@ const HUMAN_REQUEST =
   /\b((speak|talk|connect|chat)\s+(to|with)\s+(a\s+)?(doctor|human|staff|agent|nurse|consultant|coordinator|person)|(want|need)\s+(a\s+)?(human|real\s+person|staff\s+member)|real\s+person|human\s+please|call\s+me\s+back|transfer\s+me)\b/i;
 const REQUEST_DOCTOR =
   /\b((want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)|connect\s+me\s+(to|with)\s+(a\s+)?doctor)\b/i;
+
+function isAppointmentOperationalRequest(text: string): boolean {
+  return /\b(appointment|appt|slot|slots|reschedule|book|schedule|cancel\s+(my\s+)?(appointment|appt))\b/i.test(
+    text,
+  );
+}
 const EMERGENCY =
   /\b(emergency|urgent|chest pain|bleeding heavily|can't breathe|cannot breathe|suicide|overdose|severe pain|ambulance|911|112)\b/i;
 const COMPLAINT =
@@ -44,7 +50,7 @@ export function detectHandoffSignals(text: string): HandoffSignal {
   if (ADVERSE.test(t) || MED_CHANGE.test(t)) {
     return { handoff: true, pauseAi: true, reason: "MEDICATION_CLINICAL_CONCERN", confidence: "high" };
   }
-  if (HUMAN_REQUEST.test(t) || REQUEST_DOCTOR.test(t)) {
+  if (HUMAN_REQUEST.test(t) || (REQUEST_DOCTOR.test(t) && !isAppointmentOperationalRequest(t))) {
     return { handoff: true, pauseAi: true, reason: "PATIENT_REQUESTED_HUMAN", confidence: "high" };
   }
   if (COMPLAINT.test(t)) {
@@ -91,6 +97,21 @@ say the care team needs to review it and that a staff member will follow up.
 Use only:
 - the provided clinic knowledge articles (DEMO / DEVELOPMENT content may be present — never claim it is verified medical advice)
 - permitted conversation / appointment / journey context
+- SYSTEM TOOL FACTS (these are the source of truth for appointments, slots, Care Loop, and clinic profile)
+
+When SYSTEM TOOL FACTS include real appointment slots (type appointment_slots with available true):
+- You MUST present those numbered slots to the patient
+- Ask them to reply with a slot number
+- Do NOT say you cannot book, reschedule, or show slots
+- Do NOT invent additional times
+
+When SYSTEM TOOL FACTS show available false for slots:
+- Say no open times were found in clinic hours for the requested window
+- Offer to connect care team — do not invent times
+- Do NOT claim the system is unable to perform appointment booking in general
+
+When classified intent is APPOINTMENT_BOOKING, APPOINTMENT_RESCHEDULE, or APPOINTMENT_CANCEL and tools returned facts:
+- Use the tool facts; never claim you lack the ability to help with appointments
 
 Keep replies short (2–6 sentences), warm, and operational for WhatsApp.
 Sign implicitly as Smrko AI (do not invent a human name).`;

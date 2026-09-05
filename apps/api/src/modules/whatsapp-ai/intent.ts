@@ -56,32 +56,14 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
     confidence: "high",
   },
   {
-    intent: "REQUEST_DOCTOR",
-    re: /\b(want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)\b|\bconnect\s+me\s+(to|with)\s+(a\s+)?doctor\b|\bi\s+want\s+to\s+see\s+dr\.?\s+\w+/i,
-    tools: ["requestHuman"],
-    confidence: "high",
-  },
-  {
-    intent: "COMPLAINT",
-    re: /\b(complaint|lawsuit|lawyer|refund|horrible|worst|negligence|malpractice|angry|furious)\b/i,
-    tools: ["requestHuman"],
-    confidence: "high",
-  },
-  {
-    intent: "CLINICAL_CONCERN",
-    re: /\b(diagnos|prescrib|dosage|dose|medication change|should i take|extra\s+(injection|dose|pill)|missed\s+(my\s+)?(dose|injection|medicine)|adverse|side\s*effect|reaction|treat(ment)?\s+for)\b/i,
-    tools: ["requestHuman"],
-    confidence: "high",
-  },
-  {
     intent: "APPOINTMENT_BOOKING",
-    re: /\b(book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation)|want\s+(an?\s+)?appointment|need\s+(an?\s+)?appointment\b/i,
+    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation)|want\s+(an?\s+)?appointment|need\s+(an?\s+)?appointment|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?)|available\s+(slots?|appointments?|timings?)|any\s+(open\s+)?slots?)\b/i,
     tools: ["getAvailableAppointmentSlots", "getAppointments"],
     confidence: "high",
   },
   {
     intent: "APPOINTMENT_RESCHEDULE",
-    re: /\b(reschedule|change\s+(my\s+)?(appointment|appt)|can't\s+come|cannot\s+come|move\s+(my\s+)?appointment)\b/i,
+    re: /\b(reschedule|change\s+(my\s+)?(appointment|appt)|can't\s+come|cannot\s+come|move\s+(my\s+)?appointment|reschedule\s+to)\b/i,
     tools: ["getAppointments", "getAvailableAppointmentSlots"],
     confidence: "high",
   },
@@ -101,6 +83,25 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
     intent: "APPOINTMENT_STATUS",
     re: /\b(my\s+)?(next\s+)?appointment|when\s+is\s+my\s+(appointment|visit|scan)|appointment\s+status\b/i,
     tools: ["getAppointments"],
+    confidence: "high",
+  },
+  {
+    intent: "REQUEST_DOCTOR",
+    // After appointment rules so "need an appointment" is never treated as doctor handoff.
+    re: /\b(want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)\b|\bconnect\s+me\s+(to|with)\s+(a\s+)?doctor\b|\bi\s+want\s+to\s+see\s+dr\.?\s+\w+/i,
+    tools: ["requestHuman"],
+    confidence: "high",
+  },
+  {
+    intent: "COMPLAINT",
+    re: /\b(complaint|lawsuit|lawyer|refund|horrible|worst|negligence|malpractice|angry|furious)\b/i,
+    tools: ["requestHuman"],
+    confidence: "high",
+  },
+  {
+    intent: "CLINICAL_CONCERN",
+    re: /\b(diagnos|prescrib|dosage|dose|medication change|should i take|extra\s+(injection|dose|pill)|missed\s+(my\s+)?(dose|injection|medicine)|adverse|side\s*effect|reaction|treat(ment)?\s+for)\b/i,
+    tools: ["requestHuman"],
     confidence: "high",
   },
   {

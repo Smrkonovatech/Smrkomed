@@ -11,10 +11,16 @@ import { loadWhatsAppAiContext } from "./context";
 import { generateWhatsAppAiReply } from "./generate";
 import { escalateToHuman, recordAiInteraction, resumeWhatsAppAi } from "./handoff";
 import { classifyPatientIntent } from "./intent";
+import { extractPreferredDateIso } from "./date-parse";
 import { retrieveKnowledgeArticles } from "./knowledge";
 import { tryResolvePendingAppointmentAction } from "./pending-actions";
 import { detectHandoffSignals, CLINICAL_ESCALATION_MESSAGE } from "./safety";
-import { formatToolResultsForPrompt, runToolsForIntent } from "./tools";
+import {
+  formatAppointmentSlotsPatientMessage,
+  formatNoSlotsPatientMessage,
+  formatToolResultsForPrompt,
+  runToolsForIntent,
+} from "./tools";
 
 export type AiPipelineMode = "draft" | "send";
 
@@ -254,15 +260,28 @@ export async function runWhatsAppAiPipeline(input: {
 
   const signals = detectHandoffSignals(input.patientMessage);
   const intentResult = classifyPatientIntent(input.patientMessage);
+  const preferredDate = extractPreferredDateIso(input.patientMessage);
   console.log("[WhatsApp AI] intent", {
+    clinicId: input.tenant.clinicId,
     conversationId: conversation.id,
+    messageId: input.inboundMessageId ?? null,
     intent: intentResult.intent,
     confidence: intentResult.confidence,
     tools: intentResult.suggestedTools,
+    preferredDate,
+    pipelineStage: "intent",
   });
 
+  // Appointment operational intents must not be swallowed by soft clinical paths.
+  const isAppointmentIntent =
+    intentResult.intent === "APPOINTMENT_BOOKING" ||
+    intentResult.intent === "APPOINTMENT_RESCHEDULE" ||
+    intentResult.intent === "APPOINTMENT_CANCEL" ||
+    intentResult.intent === "APPOINTMENT_CONFIRM" ||
+    intentResult.intent === "APPOINTMENT_STATUS";
+
   // Tool-driven hard handoff (e.g. booking with no slot service) after signal checks.
-  if (signals.handoff && signals.pauseAi) {
+  if (signals.handoff && signals.pauseAi && !isAppointmentIntent) {
     const escalated = await escalateToHuman({
       tenant: input.tenant,
       conversationId: conversation.id,
@@ -329,7 +348,8 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   // Soft clinical escalation: safe reply + staff task, AI stays on for the conversation.
-  if (signals.handoff && !signals.pauseAi) {
+  // Skip when the patient is clearly asking about appointments (tools handle that).
+  if (signals.handoff && !signals.pauseAi && !isAppointmentIntent) {
     await prisma.careTask
       .create({
         data: {
@@ -417,15 +437,205 @@ export async function runWhatsAppAiPipeline(input: {
           },
           toolNames: intentResult.suggestedTools,
           intent: intentResult.intent,
+          args: {
+            ...(preferredDate ? { preferredDate } : {}),
+          },
         })
       : [];
 
+  console.log("[WhatsApp AI] tools executed", {
+    clinicId: input.tenant.clinicId,
+    conversationId: conversation.id,
+    messageId: input.inboundMessageId ?? null,
+    intent: intentResult.intent,
+    toolExecuted: toolResults.map((t) => t.tool),
+    toolResultCount: toolResults.length,
+    handoffReasons: toolResults.map((t) => t.handoffReason ?? null),
+    pipelineStage: "tools",
+  });
+
+  const slotTool = toolResults.find((t) => t.tool === "getAvailableAppointmentSlots" && t.ok);
+  const slotData = slotTool?.data as
+    | {
+        type?: string;
+        available?: boolean;
+        slots?: Array<{ index: number; label: string; slotId: string }>;
+        pendingActionPersisted?: boolean;
+        needsConfirmation?: boolean;
+      }
+    | undefined;
+
+  // Deterministic slot list — do not let the LLM claim it cannot show/book appointments.
+  if (
+    slotData?.type === "appointment_slots" &&
+    slotData.available &&
+    Array.isArray(slotData.slots) &&
+    slotData.slots.length > 0 &&
+    !input.simulation &&
+    input.mode === "send"
+  ) {
+    let text = formatAppointmentSlotsPatientMessage({
+      clinicName: input.tenant.clinicName,
+      slots: slotData.slots,
+      purpose:
+        intentResult.intent === "APPOINTMENT_RESCHEDULE" ? "RESCHEDULE" : "BOOK",
+    });
+    if (slotData.pendingActionPersisted === false) {
+      text +=
+        "\n\n(I couldn't save your selection session — please reply \"speak to staff\" so the team can finish booking these times.)";
+      await escalateToHuman({
+        tenant: input.tenant,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        coupleId: conversation.coupleId,
+        reason: "PENDING_ACTION_PERSIST_FAILED",
+      }).catch(() => undefined);
+    }
+    try {
+      const sent = await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: conversation.id,
+        body: text,
+      });
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        messageId: sent.id,
+        trigger: input.trigger,
+        intent: intentResult.intent,
+        model: "appointment-slots",
+        classification: "APPOINTMENT_SLOTS",
+        safeToAutoReply: true,
+        status: "SENT",
+        rawSummary: `Presented ${slotData.slots.length} real slots`,
+      });
+      console.log("[WhatsApp AI] response sent", {
+        conversationId: conversation.id,
+        inboundMessageId: input.inboundMessageId ?? null,
+        sentMessageId: sent.id,
+        interactionId: interaction.id,
+        pipelineStage: "deterministic_slots",
+      });
+      return {
+        messageId: sent.id,
+        text,
+        interactionId: interaction.id,
+      };
+    } catch (err) {
+      console.error("[WhatsApp AI] slot reply send failed", {
+        conversationId: conversation.id,
+        errorName: err instanceof Error ? err.name : "unknown",
+      });
+    }
+  }
+
+  if (
+    slotData?.type === "appointment_slots" &&
+    slotData.available === false &&
+    !input.simulation &&
+    input.mode === "send" &&
+    isAppointmentIntent
+  ) {
+    const text = formatNoSlotsPatientMessage(input.tenant.clinicName);
+    // Soft staff visibility without pausing AI.
+    await prisma.careTask
+      .create({
+        data: {
+          clinicId: input.tenant.clinicId,
+          coupleId: conversation.coupleId,
+          title: "WhatsApp — no appointment slots available",
+          description: "AI found no open slots in clinic working hours for the patient's request.",
+          category: "APPOINTMENT",
+          status: "WAITING",
+          priority: "NORMAL",
+        },
+      })
+      .catch(() => undefined);
+    try {
+      const sent = await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: conversation.id,
+        body: text,
+      });
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        messageId: sent.id,
+        trigger: input.trigger,
+        intent: intentResult.intent,
+        model: "appointment-no-slots",
+        classification: "NO_SUITABLE_APPOINTMENT_SLOT",
+        safeToAutoReply: true,
+        status: "SENT",
+        rawSummary: "No open slots — informed patient without inventing availability",
+      });
+      return {
+        messageId: sent.id,
+        text,
+        interactionId: interaction.id,
+      };
+    } catch {
+      /* fall through to generate */
+    }
+  }
+
+  const cancelTool = toolResults.find((t) => t.tool === "cancelAppointment" && t.ok);
+  const cancelData = cancelTool?.data as
+    | { needsConfirmation?: boolean; startsAt?: string; doctorName?: string | null; type?: string }
+    | undefined;
+  if (
+    cancelData?.needsConfirmation &&
+    cancelData.startsAt &&
+    !input.simulation &&
+    input.mode === "send"
+  ) {
+    const when = new Date(cancelData.startsAt).toLocaleString("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+    const text = `✦ Smrko AI\n\nWould you like to cancel your appointment on ${when}${cancelData.doctorName ? ` with ${cancelData.doctorName}` : ""}?\n\nReply Yes to cancel, or No to keep it.`;
+    try {
+      const sent = await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: conversation.id,
+        body: text,
+      });
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        messageId: sent.id,
+        trigger: input.trigger,
+        intent: "APPOINTMENT_CANCEL",
+        model: "appointment-cancel-confirm",
+        classification: "CANCEL_CONFIRM",
+        safeToAutoReply: true,
+        status: "SENT",
+        rawSummary: "Asked cancellation confirmation",
+      });
+      return {
+        messageId: sent.id,
+        text,
+        interactionId: interaction.id,
+      };
+    } catch {
+      /* fall through */
+    }
+  }
+
   const toolHandoff = toolResults.find((t) => t.handoffRecommended);
+  // Hard handoff only for true exceptions — NOT for empty slot lists (handled above).
   if (
     toolHandoff &&
-    (intentResult.intent === "APPOINTMENT_BOOKING" ||
-      intentResult.intent === "APPOINTMENT_RESCHEDULE" ||
-      toolHandoff.handoffReason === "NO_SUITABLE_APPOINTMENT_SLOT")
+    toolHandoff.handoffReason !== "NO_SUITABLE_APPOINTMENT_SLOT" &&
+    (toolHandoff.handoffReason === "DOCTOR_SCHEDULE_NOT_VERIFIABLE" ||
+      toolHandoff.handoffReason === "PATIENT_NOT_LINKED_TO_COUPLE" ||
+      toolHandoff.handoffReason === "PENDING_ACTION_PERSIST_FAILED" ||
+      toolHandoff.handoffReason === "PATIENT_REQUESTED_HUMAN" ||
+      toolHandoff.tool === "requestHuman")
   ) {
     const escalated = await escalateToHuman({
       tenant: input.tenant,
@@ -435,7 +645,11 @@ export async function runWhatsAppAiPipeline(input: {
       reason: toolHandoff.handoffReason ?? "APPOINTMENT_EXCEPTION",
     });
     const handoffText =
-      "I'd like to connect you with our care team to help with your appointment. I've shared your request and someone will assist you shortly.";
+      toolHandoff.handoffReason === "DOCTOR_SCHEDULE_NOT_VERIFIABLE"
+        ? "✦ Smrko AI\n\nI can't verify a specific doctor's calendar yet. I've connected you with our care team so they can help with that request."
+        : toolHandoff.handoffReason === "PENDING_ACTION_PERSIST_FAILED"
+          ? "✦ Smrko AI\n\nI found times, but I couldn't save your booking session safely. I've connected you with our care team to finish booking."
+          : "✦ Smrko AI\n\nI'd like to connect you with our care team to help with your appointment. I've shared your request and someone will assist you shortly.";
     let messageId: string | undefined;
     if (!input.simulation && input.mode === "send") {
       try {
