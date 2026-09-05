@@ -10,6 +10,7 @@ import { mapMetaTemplateStatus } from "./templates";
 import { attachWhatsAppInboundToCrm } from "./crm-capture";
 import { metaConfig } from "./config";
 import { ensureDirectWhatsAppConnection } from "./service";
+import { realtimeBus } from "../../../modules/realtime/bus";
 
 const PAYLOAD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -146,7 +147,7 @@ async function matchPatient(clinicId: string, phone: string) {
         { phone: { contains: suffix } },
       ],
     },
-    select: { id: true, phone: true, whatsappNumber: true },
+    select: { id: true, firstName: true, lastName: true, phone: true, whatsappNumber: true },
     take: 50,
   });
   return candidates.find((row) => phonesMatch(row.whatsappNumber, phone) || phonesMatch(row.phone, phone)) ?? null;
@@ -197,9 +198,18 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       },
     });
   }
-  let createdMessage = true;
+  let createdMessage: {
+    id: string;
+    conversationId: string;
+    direction: "INBOUND" | "OUTBOUND";
+    senderType: string;
+    content: string;
+    messageType: string;
+    status: string;
+    createdAt: Date;
+  } | null = null;
   try {
-    await prisma.message.create({
+    createdMessage = await prisma.message.create({
       data: {
         conversationId: conversation.id,
         direction: "INBOUND",
@@ -209,12 +219,72 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
         providerMessageId: event.externalEventId,
         status: "DELIVERED",
       },
+      select: {
+        id: true,
+        conversationId: true,
+        direction: true,
+        senderType: true,
+        content: true,
+        messageType: true,
+        status: true,
+        createdAt: true,
+      },
     });
   } catch (error) {
     if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")) throw error;
-    createdMessage = false;
+    createdMessage = null;
   }
   if (createdMessage) {
+    // Real-time publish to connected browser sessions
+    realtimeBus.publish({
+      type: "MESSAGE_CREATED",
+      clinicId,
+      conversationId: conversation.id,
+      message: {
+        id: createdMessage.id,
+        direction: "INBOUND",
+        senderType: createdMessage.senderType,
+        content: createdMessage.content,
+        messageType: createdMessage.messageType,
+        createdAt: createdMessage.createdAt.toISOString(),
+        status: createdMessage.status,
+        label: "PATIENT",
+      },
+      conversation: {
+        id: conversation.id,
+        status: conversation.status,
+        unreadCount: 1,
+        updatedAt: conversation.updatedAt.toISOString(),
+        contactPhone: conversation.contactPhone,
+        patient: patient
+          ? {
+              id: patient.id,
+              firstName: patient.firstName,
+              lastName: patient.lastName,
+            }
+          : null,
+      },
+    });
+
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId,
+      conversationId: conversation.id,
+      patch: {
+        status: conversation.status,
+        unreadCount: 1,
+        updatedAt: conversation.updatedAt.toISOString(),
+        lastMessage: {
+          id: createdMessage.id,
+          preview: createdMessage.content.slice(0, 100),
+          createdAt: createdMessage.createdAt.toISOString(),
+          direction: "INBOUND",
+          senderType: createdMessage.senderType,
+          status: createdMessage.status,
+        },
+      },
+    });
+
     const clinic = await prisma.clinic.findUnique({
       where: { id: clinicId },
       select: { organizationId: true },
@@ -248,15 +318,33 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
   return "PROCESSED" as const;
 }
 
-async function processStatus(event: NormalizedWebhookEvent) {
+async function processStatus(event: NormalizedWebhookEvent, clinicId: string) {
   const providerMessageId = typeof event.metadata["providerMessageId"] === "string" ? event.metadata["providerMessageId"] : "";
   const statusRaw = typeof event.metadata["status"] === "string" ? event.metadata["status"] : "";
   const mapped = metaStatusToMessage(statusRaw);
   if (!providerMessageId || !mapped) return "IGNORED" as const;
+
+  const existing = await prisma.message.findFirst({
+    where: { providerMessageId },
+    select: { id: true, conversationId: true, conversation: { select: { clinicId: true } } },
+  });
+
   await prisma.message.updateMany({
     where: { providerMessageId },
     data: { status: mapped },
   });
+
+  if (existing) {
+    const targetClinicId = existing.conversation?.clinicId ?? clinicId;
+    realtimeBus.publish({
+      type: "MESSAGE_STATUS_UPDATED",
+      clinicId: targetClinicId,
+      conversationId: existing.conversationId,
+      messageId: existing.id,
+      providerMessageId,
+      status: mapped,
+    });
+  }
   return "PROCESSED" as const;
 }
 
@@ -310,7 +398,7 @@ export async function receiveWhatsAppWebhook(headers: Headers, rawBody: string) 
       } else if (event.eventType.startsWith("inbound_")) {
         status = "IGNORED";
       } else if (event.eventType.startsWith("status_")) {
-        status = await processStatus(event);
+        status = await processStatus(event, match.integration.clinicId);
       } else if (event.eventType === "template_status") {
         status = await processTemplateStatus(event, match.integration.id, match.integration.clinicId);
       }

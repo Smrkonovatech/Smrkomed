@@ -1,12 +1,13 @@
 "use client";
 
 import { Bot, MessageCircle, Phone } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { WhatsAppThread, VoiceCallPanel, conversationFor, type ChatMessage } from "@/components/whatsapp-thread";
 import { Avatar, PageHeader, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { couples, coupleLabel } from "@/lib/demo-data";
 import { apiGet } from "@/lib/api/client";
+import { useRealtimeInbox, type RealtimeMessageCreatedPayload } from "@/lib/realtime/use-realtime-inbox";
 import { cn } from "@/lib/utils";
 
 const initials = (n: string) =>
@@ -43,47 +44,64 @@ export default function CommunicationPage() {
   const activeLive = live?.find((row) => row.id === activeId) ?? live?.[0];
   const activeDemo = couples.find((c) => c.id === activeId) ?? couples[0]!;
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const rows = await apiGet<ConversationRow[]>("/api/v1/integrations/whatsapp/conversations");
-        if (cancelled) return;
-        setLive(rows);
-        if (rows[0]) setActiveId(rows[0].id);
-      } catch {
-        if (!cancelled) setLive([]);
-      }
+  const loadConversations = useCallback(async () => {
+    try {
+      const rows = await apiGet<ConversationRow[]>("/api/v1/integrations/whatsapp/conversations");
+      setLive(rows);
+      if (rows[0] && !live) setActiveId(rows[0].id);
+    } catch {
+      setLive([]);
     }
-    void load();
-    return () => {
-      cancelled = true;
-    };
+  }, [live]);
+
+  useEffect(() => {
+    void loadConversations();
+  }, [loadConversations]);
+
+  const loadMessages = useCallback(async (convId: string) => {
+    try {
+      const detail = await apiGet<ConversationDetail>(`/api/v1/integrations/whatsapp/conversations/${convId}`);
+      setLiveMessages(
+        detail.messages.map((row) => ({
+          from: row.direction === "INBOUND" ? "patient" : "loop",
+          text: row.content,
+          time: new Date(row.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        })),
+      );
+    } catch {
+      setLiveMessages([]);
+    }
   }, []);
 
   useEffect(() => {
     if (!usingLive) return;
-    let cancelled = false;
-    async function load() {
-      try {
-        const detail = await apiGet<ConversationDetail>(`/api/v1/integrations/whatsapp/conversations/${activeId}`);
-        if (cancelled) return;
-        setLiveMessages(
-          detail.messages.map((row) => ({
-            from: row.direction === "INBOUND" ? "patient" : "loop",
-            text: row.content,
-            time: new Date(row.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          })),
-        );
-      } catch {
-        if (!cancelled) setLiveMessages([]);
+    void loadMessages(activeId);
+  }, [activeId, usingLive, loadMessages]);
+
+  const onMessageCreated = useCallback(
+    (payload: RealtimeMessageCreatedPayload) => {
+      if (payload.conversationId === activeId) {
+        setLiveMessages((prev) => [
+          ...(prev ?? []),
+          {
+            from: payload.message.direction === "INBOUND" ? "patient" : "loop",
+            text: payload.message.content,
+            time: new Date(payload.message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ]);
       }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeId, usingLive]);
+      void loadConversations();
+    },
+    [activeId, loadConversations],
+  );
+
+  const { isConnected, isReconnecting } = useRealtimeInbox({
+    onMessageCreated,
+    onReconnected: () => {
+      void loadConversations();
+      if (usingLive) void loadMessages(activeId);
+    },
+  });
 
   const title = usingLive
     ? activeLive?.patient
@@ -98,6 +116,32 @@ export default function CommunicationPage() {
       <PageHeader
         title="Communication"
         subtitle="WhatsApp conversations belong to this clinic. Unknown numbers stay unmatched until staff associate them."
+        actions={
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                title="Real-time communication connected"
+              >
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
+            ) : isReconnecting ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+                title="Reconnecting to real-time events…"
+              >
+                <span className="size-2 rounded-full bg-amber-500 animate-ping" />
+                Reconnecting…
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-muted bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <span className="size-2 rounded-full bg-muted-foreground/50" />
+                Offline
+              </span>
+            )}
+          </div>
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px]">

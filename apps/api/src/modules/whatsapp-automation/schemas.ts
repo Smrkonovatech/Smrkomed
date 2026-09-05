@@ -284,3 +284,8 @@ export const createCampaignSchema = z.object({
 export const sessionTextSchema = z.object({
   body: z.string().min(1).max(4096),
 });
+
+export const typingSchema = z.object({
+  typing: z.boolean(),
+});
+

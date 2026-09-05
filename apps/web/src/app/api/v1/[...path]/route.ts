@@ -22,6 +22,10 @@ async function proxy(req: NextRequest, path: string[]) {
   if (contentType) headers.set("content-type", contentType);
   const authorization = req.headers.get("authorization");
   if (authorization) headers.set("authorization", authorization);
+  const lastEventId = req.headers.get("last-event-id");
+  if (lastEventId) headers.set("last-event-id", lastEventId);
+  const accept = req.headers.get("accept");
+  if (accept) headers.set("accept", accept);
 
   const method = req.method.toUpperCase();
   const hasBody = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -49,6 +53,12 @@ async function proxy(req: NextRequest, path: string[]) {
     const out = new Headers();
     const type = upstream.headers.get("content-type");
     if (type) out.set("content-type", type);
+    const cacheControl = upstream.headers.get("cache-control");
+    if (cacheControl) out.set("cache-control", cacheControl);
+    const connection = upstream.headers.get("connection");
+    if (connection) out.set("connection", connection);
+    const xAccelBuffering = upstream.headers.get("x-accel-buffering");
+    if (xAccelBuffering) out.set("x-accel-buffering", xAccelBuffering);
     out.set("x-smrko-upstream-host", upstreamHost);
     out.set("x-smrko-upstream-status", String(upstream.status));
     return new NextResponse(upstream.body, { status: upstream.status, headers: out });

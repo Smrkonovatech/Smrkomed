@@ -6,6 +6,7 @@ import { createMemoryRateLimiter } from "../../../middleware/rate-limit";
 import { sendTemplateMessage, sendTextMessage } from "./graph";
 import { normalizeWhatsAppPhone } from "./phone";
 import { isSendableTemplateStatus } from "./templates";
+import { realtimeBus } from "../../../modules/realtime/bus";
 
 const perUser = createMemoryRateLimiter(10, 60_000);
 const perClinic = createMemoryRateLimiter(30, 60_000);
@@ -118,6 +119,53 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
         messageType: "template",
         providerMessageId: providerMessageId || null,
         status: "SENT",
+      },
+    });
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        status: conversation.status === "CLOSED" ? "OPEN" : "WAITING_PATIENT",
+        updatedAt: new Date(),
+        lastStaffReadAt: new Date(),
+      },
+    });
+    realtimeBus.publish({
+      type: "MESSAGE_CREATED",
+      clinicId: ctx.clinicId,
+      conversationId: conversation.id,
+      message: {
+        id: stored.id,
+        direction: "OUTBOUND",
+        senderType: "STAFF",
+        content: stored.content,
+        messageType: stored.messageType,
+        createdAt: stored.createdAt.toISOString(),
+        status: stored.status,
+        label: "STAFF",
+      },
+      conversation: {
+        id: conversation.id,
+        status: updatedConversation.status,
+        unreadCount: 0,
+        updatedAt: updatedConversation.updatedAt.toISOString(),
+      },
+    });
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId: ctx.clinicId,
+      conversationId: conversation.id,
+      patch: {
+        status: updatedConversation.status,
+        unreadCount: 0,
+        updatedAt: updatedConversation.updatedAt.toISOString(),
+        lastMessage: {
+          id: stored.id,
+          preview: stored.content.slice(0, 100),
+          createdAt: stored.createdAt.toISOString(),
+          direction: "OUTBOUND",
+          senderType: "STAFF",
+          status: stored.status,
+        },
       },
     });
     await writeAuditLog({
@@ -245,12 +293,51 @@ export async function sendWhatsAppSessionText(
         status: "SENT",
       },
     });
-    await prisma.conversation.update({
+    const updatedConv = await prisma.conversation.update({
       where: { id: conversation.id },
       data: {
         status: conversation.status === "CLOSED" ? "OPEN" : "WAITING_PATIENT",
         updatedAt: new Date(),
         lastStaffReadAt: new Date(),
+      },
+    });
+    realtimeBus.publish({
+      type: "MESSAGE_CREATED",
+      clinicId: ctx.clinicId,
+      conversationId: conversation.id,
+      message: {
+        id: stored.id,
+        direction: "OUTBOUND",
+        senderType: "STAFF",
+        content: stored.content,
+        messageType: "text",
+        createdAt: stored.createdAt.toISOString(),
+        status: stored.status,
+        label: "STAFF",
+      },
+      conversation: {
+        id: conversation.id,
+        status: updatedConv.status,
+        unreadCount: 0,
+        updatedAt: updatedConv.updatedAt.toISOString(),
+      },
+    });
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId: ctx.clinicId,
+      conversationId: conversation.id,
+      patch: {
+        status: updatedConv.status,
+        unreadCount: 0,
+        updatedAt: updatedConv.updatedAt.toISOString(),
+        lastMessage: {
+          id: stored.id,
+          preview: stored.content.slice(0, 100),
+          createdAt: stored.createdAt.toISOString(),
+          direction: "OUTBOUND",
+          senderType: "STAFF",
+          status: stored.status,
+        },
       },
     });
     await writeAuditLog({

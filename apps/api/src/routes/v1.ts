@@ -32,6 +32,7 @@ import { publicIntegrationRoutes } from "../modules/integrations/public";
 import { whatsappAutomationRoutes } from "../modules/whatsapp-automation";
 import { digitalHealthRoutes } from "../modules/digital-health";
 import { abdmCallbackRoutes } from "../modules/digital-health/abdm-callbacks";
+import { realtimeRoutes } from "../modules/realtime/routes";
 import type { AppEnv } from "../types";
 
 const protectedRoutes = new Hono<AppEnv>();
@@ -60,6 +61,7 @@ protectedRoutes.route("/payments", paymentRoutes);
 protectedRoutes.route("/integrations", integrationRoutes);
 protectedRoutes.route("/whatsapp-automation", whatsappAutomationRoutes);
 protectedRoutes.route("/digital-health", digitalHealthRoutes);
+protectedRoutes.route("/realtime", realtimeRoutes);
 
 export const v1 = new Hono<AppEnv>();
 v1.route("/health", healthRoutes);

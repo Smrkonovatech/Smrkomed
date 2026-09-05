@@ -32,12 +32,14 @@ import {
   sessionTextSchema,
   takeoverSchema,
   testFlowSchema,
+  typingSchema,
   updateCommSettingsSchema,
   updateConsentSchema,
   updateFlowSchema,
   updateKbSchema,
   updatePreferencesSchema,
 } from "./schemas";
+import { realtimeBus } from "../realtime/bus";
 import { getClinicCommSettings } from "./safety";
 import { parseDefinition, validateFlowDefinition } from "./validate";
 import {
@@ -991,6 +993,16 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     await audit(tenant, "whatsapp.conversation.assign", "Conversation", id, {
       assignedStaffId: body.assignedStaffId,
     });
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId: tenant.clinicId,
+      conversationId: updated.id,
+      patch: {
+        assignedStaffId: updated.assignedStaffId,
+        assignedStaff: updated.assignedStaff,
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
     if (body.assignedStaffId) {
       await prisma.notification.create({
         data: {
@@ -1024,7 +1036,31 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       status: body.status,
       ...(body.priority ? { priority: body.priority } : {}),
     });
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId: tenant.clinicId,
+      conversationId: updated.id,
+      patch: {
+        status: updated.status,
+        priority: updated.priority,
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
     return ok(c, { id: updated.id, status: updated.status, priority: updated.priority });
+  })
+
+  .post("/inbox/:id/typing", validate("param", idParam), validate("json", typingSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_VIEW);
+    const { id } = c.req.valid("param");
+    const { typing } = c.req.valid("json");
+    realtimeBus.publish({
+      type: typing ? "TYPING_STARTED" : "TYPING_STOPPED",
+      clinicId: tenant.clinicId,
+      conversationId: id,
+      userId: tenant.userId,
+      userName: tenant.clinicName ? `${tenant.clinicName} Staff` : "Staff",
+    });
+    return ok(c, { received: true });
   })
 
   .post("/inbox/:id/reply", validate("param", idParam), validate("json", sessionTextSchema), async (c) => {
@@ -1079,6 +1115,16 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       },
     });
     await audit(tenant, "whatsapp.automation.resume", "Conversation", id, {});
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId: tenant.clinicId,
+      conversationId: updated.id,
+      patch: {
+        automationPaused: false,
+        status: updated.status,
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
     return ok(c, {
       id: updated.id,
       automationPausedAt: null,
@@ -1106,11 +1152,20 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       });
       paused = result.count;
     }
-    await prisma.conversation.update({
+    const updated = await prisma.conversation.update({
       where: { id },
       data: { automationPausedAt: new Date() },
     });
     await audit(tenant, "whatsapp.automation.pause", "Conversation", id, { paused });
+    realtimeBus.publish({
+      type: "CONVERSATION_UPDATED",
+      clinicId: tenant.clinicId,
+      conversationId: updated.id,
+      patch: {
+        automationPaused: true,
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+    });
     return ok(c, { pausedExecutions: paused });
   })
 
@@ -1476,7 +1531,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       const assigneeId = body.assignToUserId ?? tenant.userId;
       if (body.assignToUserId) await assertClinicStaff(tenant.clinicId, body.assignToUserId);
 
-      await prisma.conversation.update({
+      const updated = await prisma.conversation.update({
         where: { id: conversationId },
         data: {
           status: "HUMAN_HANDOFF",
@@ -1484,6 +1539,25 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           handoffReason: body.reason,
           automationPausedAt: body.pauseAutomation ? new Date() : conversation.automationPausedAt,
           assignedStaffId: assigneeId,
+        },
+      });
+
+      realtimeBus.publish({
+        type: "AI_HANDOFF",
+        clinicId: tenant.clinicId,
+        conversationId,
+        reason: body.reason,
+      });
+
+      realtimeBus.publish({
+        type: "CONVERSATION_UPDATED",
+        clinicId: tenant.clinicId,
+        conversationId,
+        patch: {
+          status: "HUMAN_HANDOFF",
+          assignedStaffId: assigneeId,
+          automationPaused: body.pauseAutomation ? true : Boolean(conversation.automationPausedAt),
+          updatedAt: updated.updatedAt.toISOString(),
         },
       });
 

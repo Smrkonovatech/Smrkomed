@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+import {
+  useRealtimeInbox,
+  type RealtimeConversationUpdatedPayload,
+  type RealtimeMessageCreatedPayload,
+  type RealtimeMessageStatusPayload,
+  type RealtimeTypingPayload,
+} from "@/lib/realtime/use-realtime-inbox";
 import { cn } from "@/lib/utils";
 
 type InboxRow = {
@@ -18,7 +25,7 @@ type InboxRow = {
   unmatched: boolean;
   contactPhone: string | null;
   patient: { id: string; firstName: string; lastName: string; initials: string; status: string } | null;
-  assignedStaff: { id: string; name: string; initials: string | null } | null;
+  assignedStaff: { id: string; name: string; initials?: string | null; title?: string | null } | null;
   unreadCount: number;
   automationPaused: boolean;
   handoffReason: string | null;
@@ -83,7 +90,7 @@ type Context = {
 
 type Staff = { id: string; name: string; role: string };
 
-const FILTERS: Array<{ id: InboxRow extends never ? never : string; label: string }> = [
+const FILTERS: Array<{ id: string; label: string }> = [
   { id: "all", label: "All" },
   { id: "unread", label: "Unread" },
   { id: "assigned_to_me", label: "Assigned to me" },
@@ -102,6 +109,22 @@ function labelTone(status: string) {
   return "info" as const;
 }
 
+function renderDeliveryStatus(status: string) {
+  if (status === "READ") {
+    return <span className="font-semibold text-primary">✓✓ Read</span>;
+  }
+  if (status === "DELIVERED") {
+    return <span>✓✓ Delivered</span>;
+  }
+  if (status === "SENT") {
+    return <span>✓ Sent</span>;
+  }
+  if (status === "FAILED") {
+    return <span className="font-medium text-destructive">⚠ Failed</span>;
+  }
+  return <span>{status}</span>;
+}
+
 export default function WhatsAppInboxPage() {
   const [filter, setFilter] = useState("all");
   const [q, setQ] = useState("");
@@ -115,6 +138,27 @@ export default function WhatsAppInboxPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showContext, setShowContext] = useState(false);
+
+  // Scroll & Realtime UX state
+  const [hasNewMessageBelow, setHasNewMessageBelow] = useState(false);
+  const [typingStaff, setTypingStaff] = useState<string | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const isNearBottom = useCallback(() => {
+    if (!messagesContainerRef.current) return true;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    return scrollHeight - scrollTop - clientHeight < 120;
+  }, []);
+
+  const scrollToBottom = useCallback((smooth = true) => {
+    if (!messagesContainerRef.current) return;
+    messagesContainerRef.current.scrollTo({
+      top: messagesContainerRef.current.scrollHeight,
+      behavior: smooth ? "smooth" : "auto",
+    });
+    setHasNewMessageBelow(false);
+  }, []);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -159,6 +203,11 @@ export default function WhatsAppInboxPage() {
         if (!cancelled) {
           setDetail(d);
           setContext(ctx);
+          // Mark conversation as read locally in rows
+          setRows((prev) =>
+            prev.map((r) => (r.id === activeId ? { ...r, unreadCount: 0 } : r)),
+          );
+          setTimeout(() => scrollToBottom(false), 50);
         }
       } catch (err) {
         if (!cancelled) toast.error(err instanceof ApiError ? err.message : "Failed to load conversation");
@@ -169,18 +218,214 @@ export default function WhatsAppInboxPage() {
     return () => {
       cancelled = true;
     };
-  }, [activeId]);
+  }, [activeId, scrollToBottom]);
+
+  // Real-time Event Callbacks
+  const onMessageCreated = useCallback(
+    (payload: RealtimeMessageCreatedPayload) => {
+      // 1. If currently viewing this conversation, append new message deduplicated by ID
+      if (activeId && payload.conversationId === activeId) {
+        const nearBottom = isNearBottom();
+        setDetail((prev) => {
+          if (!prev || prev.id !== payload.conversationId) return prev;
+          // Deduplication: message must never appear twice
+          if (prev.messages.some((m) => m.id === payload.message.id)) return prev;
+
+          const newMsg = {
+            id: payload.message.id,
+            direction: payload.message.direction,
+            senderType: payload.message.senderType,
+            content: payload.message.content,
+            createdAt: payload.message.createdAt,
+            status: payload.message.status,
+            label: payload.message.label ?? (payload.message.direction === "INBOUND" ? "PATIENT" : "STAFF"),
+          };
+          return { ...prev, messages: [...prev.messages, newMsg] };
+        });
+
+        if (nearBottom) {
+          setTimeout(() => scrollToBottom(true), 60);
+        } else {
+          setHasNewMessageBelow(true);
+        }
+      } else {
+        // Message arrived for another conversation: show subtle toast notification
+        const senderName = payload.conversation?.patient
+          ? `${payload.conversation.patient.firstName} ${payload.conversation.patient.lastName}`.trim()
+          : payload.conversation?.contactPhone ?? "Patient";
+        toast.info(`New message from ${senderName}`, {
+          description: payload.message.content.slice(0, 50),
+          action: {
+            label: "View",
+            onClick: () => setActiveId(payload.conversationId),
+          },
+        });
+      }
+
+      // 2. Update conversation list: move to top and update preview + unread count
+      setRows((prev) => {
+        const existingIdx = prev.findIndex((r) => r.id === payload.conversationId);
+        const isCurrentActive = activeId === payload.conversationId;
+
+        if (existingIdx >= 0) {
+          const existing = prev[existingIdx]!;
+          const updated: InboxRow = {
+            ...existing,
+            updatedAt: payload.message.createdAt,
+            unreadCount: isCurrentActive ? 0 : existing.unreadCount + 1,
+            lastMessage: {
+              preview: payload.message.content.slice(0, 100),
+              createdAt: payload.message.createdAt,
+              direction: payload.message.direction,
+              senderType: payload.message.senderType,
+            },
+            ...(payload.conversation?.status ? { status: payload.conversation.status } : {}),
+          };
+          return [updated, ...prev.slice(0, existingIdx), ...prev.slice(existingIdx + 1)];
+        } else if (payload.conversation) {
+          // Brand new inbound conversation
+          const initials = payload.conversation.patient
+            ? `${payload.conversation.patient.firstName.charAt(0)}${payload.conversation.patient.lastName.charAt(0)}`.toUpperCase() || "?"
+            : "?";
+          const newRow: InboxRow = {
+            id: payload.conversation.id,
+            status: payload.conversation.status,
+            priority: "NORMAL",
+            unmatched: !payload.conversation.patient,
+            contactPhone: payload.conversation.contactPhone ?? null,
+            patient: payload.conversation.patient
+              ? {
+                  id: payload.conversation.patient.id,
+                  firstName: payload.conversation.patient.firstName,
+                  lastName: payload.conversation.patient.lastName,
+                  initials,
+                  status: "ACTIVE",
+                }
+              : null,
+            assignedStaff: null,
+            unreadCount: 1,
+            automationPaused: false,
+            handoffReason: null,
+            automation: null,
+            lastMessage: {
+              preview: payload.message.content.slice(0, 100),
+              createdAt: payload.message.createdAt,
+              direction: payload.message.direction,
+              senderType: payload.message.senderType,
+            },
+            updatedAt: payload.conversation.updatedAt,
+          };
+          return [newRow, ...prev];
+        }
+        return prev;
+      });
+    },
+    [activeId, isNearBottom, scrollToBottom],
+  );
+
+  const onMessageStatusUpdated = useCallback((payload: RealtimeMessageStatusPayload) => {
+    setDetail((prev) => {
+      if (!prev) return prev;
+      let matched = false;
+      const nextMessages = prev.messages.map((m) => {
+        if (m.id === payload.messageId || (payload.providerMessageId && m.id === payload.providerMessageId)) {
+          matched = true;
+          return { ...m, status: payload.status };
+        }
+        return m;
+      });
+      return matched ? { ...prev, messages: nextMessages } : prev;
+    });
+  }, []);
+
+  const onConversationUpdated = useCallback(
+    (payload: RealtimeConversationUpdatedPayload) => {
+      setRows((prev) =>
+        prev.map((r) => {
+          if (r.id === payload.conversationId) {
+            return {
+              ...r,
+              ...(payload.patch.status ? { status: payload.patch.status } : {}),
+              ...(payload.patch.priority ? { priority: payload.patch.priority } : {}),
+              ...(payload.patch.assignedStaff !== undefined ? { assignedStaff: payload.patch.assignedStaff } : {}),
+              ...(payload.patch.automationPaused !== undefined ? { automationPaused: payload.patch.automationPaused } : {}),
+              ...(payload.patch.unreadCount !== undefined ? { unreadCount: payload.patch.unreadCount } : {}),
+              ...(payload.patch.updatedAt ? { updatedAt: payload.patch.updatedAt } : {}),
+              ...(payload.patch.lastMessage
+                ? {
+                    lastMessage: {
+                      preview: payload.patch.lastMessage.preview,
+                      createdAt: payload.patch.lastMessage.createdAt,
+                      direction: payload.patch.lastMessage.direction,
+                      senderType: payload.patch.lastMessage.senderType,
+                    },
+                  }
+                : {}),
+            };
+          }
+          return r;
+        }),
+      );
+
+      if (activeId === payload.conversationId) {
+        setDetail((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            ...(payload.patch.status ? { status: payload.patch.status } : {}),
+            ...(payload.patch.priority ? { priority: payload.patch.priority } : {}),
+            ...(payload.patch.assignedStaff !== undefined ? { assignedStaff: payload.patch.assignedStaff } : {}),
+            ...(payload.patch.automationPaused !== undefined
+              ? { automationPausedAt: payload.patch.automationPaused ? new Date().toISOString() : null }
+              : {}),
+          };
+        });
+      }
+    },
+    [activeId],
+  );
+
+  const onTyping = useCallback(
+    (payload: RealtimeTypingPayload) => {
+      if (activeId && payload.conversationId === activeId) {
+        if (payload.type === "TYPING_STARTED") {
+          setTypingStaff(payload.userName);
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => setTypingStaff(null), 3500);
+        } else {
+          setTypingStaff(null);
+        }
+      }
+    },
+    [activeId],
+  );
+
+  const onReconnected = useCallback(() => {
+    void loadList();
+    if (activeId) {
+      void apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`).then(setDetail).catch(() => {});
+    }
+  }, [activeId, loadList]);
+
+  // Hook connection
+  const { isConnected, isReconnecting, notifyTyping } = useRealtimeInbox({
+    onMessageCreated,
+    onMessageStatusUpdated,
+    onConversationUpdated,
+    onTyping,
+    onReconnected,
+  });
 
   async function sendReply() {
     if (!activeId || !reply.trim()) return;
+    const bodyText = reply.trim();
+    setReply("");
     try {
-      await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/reply`, { body: reply.trim() });
-      setReply("");
+      await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/reply`, { body: bodyText });
       toast.success("Message sent (staff)");
-      const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
-      setDetail(d);
-      await loadList();
     } catch (err) {
+      // restore reply text on failure
+      setReply(bodyText);
       toast.error(
         err instanceof ApiError
           ? err.message
@@ -197,7 +442,6 @@ export default function WhatsAppInboxPage() {
         pauseAutomation: true,
       });
       toast.success("Human takeover");
-      setActiveId(activeId);
       const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
       setDetail(d);
       await loadList();
@@ -211,7 +455,6 @@ export default function WhatsAppInboxPage() {
     try {
       await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/assign`, { assignedStaffId: staffId });
       toast.success(staffId ? "Assigned" : "Unassigned");
-      await loadList();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Assign failed");
     }
@@ -254,11 +497,35 @@ export default function WhatsAppInboxPage() {
     <div className="space-y-4">
       <PageHeader
         title="Inbox"
-        subtitle="Operational patient communication — automation and staff clearly labeled. Not a consumer chat clone."
+        subtitle="Operational patient communication console with real-time Meta WhatsApp sync."
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link href="/whatsapp/templates">Templates</Link>
-          </Button>
+          <div className="flex items-center gap-2.5">
+            {isConnected ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                title="Real-time communication connected"
+              >
+                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                Live
+              </span>
+            ) : isReconnecting ? (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
+                title="Reconnecting to real-time events…"
+              >
+                <span className="size-2 rounded-full bg-amber-500 animate-ping" />
+                Reconnecting…
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-muted bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                <span className="size-2 rounded-full bg-muted-foreground/50" />
+                Offline
+              </span>
+            )}
+            <Button asChild variant="outline" size="sm">
+              <Link href="/whatsapp/templates">Templates</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -269,8 +536,8 @@ export default function WhatsAppInboxPage() {
             type="button"
             onClick={() => setFilter(f.id)}
             className={cn(
-              "rounded-lg px-2.5 py-1 text-xs font-medium",
-              filter === f.id ? "bg-primary-soft text-primary" : "bg-muted text-muted-foreground",
+              "rounded-lg px-2.5 py-1 text-xs font-medium transition-colors",
+              filter === f.id ? "bg-primary-soft text-primary font-semibold" : "bg-muted text-muted-foreground hover:bg-muted/80",
             )}
           >
             {f.label}
@@ -310,25 +577,25 @@ export default function WhatsAppInboxPage() {
                       type="button"
                       onClick={() => setActiveId(row.id)}
                       className={cn(
-                        "flex w-full flex-col gap-0.5 border-b px-3 py-3 text-left text-sm",
+                        "flex w-full flex-col gap-0.5 border-b px-3 py-3 text-left text-sm transition-colors",
                         active ? "bg-primary-soft" : "hover:bg-muted/60",
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="flex items-center gap-2 font-medium">
-                          <span className="flex size-7 items-center justify-center rounded-full bg-muted text-[10px]">
+                          <span className="flex size-7 items-center justify-center rounded-full bg-muted text-[10px] font-semibold">
                             {row.patient?.initials ?? "?"}
                           </span>
-                          {name}
+                          <span className="truncate">{name}</span>
                         </span>
                         {row.unreadCount > 0 ? (
-                          <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground">
+                          <span className="rounded-full bg-primary px-1.5 py-0.2 text-[10px] font-semibold text-primary-foreground">
                             {row.unreadCount}
                           </span>
                         ) : null}
                       </div>
                       <p className="truncate text-xs text-muted-foreground">{row.lastMessage?.preview ?? "No messages"}</p>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="mt-1 flex flex-wrap items-center gap-1">
                         <StatusBadge label={row.status} tone={labelTone(row.status)} />
                         {row.automation ? <StatusBadge label="Automation" tone="info" /> : null}
                         {row.assignedStaff ? (
@@ -344,7 +611,7 @@ export default function WhatsAppInboxPage() {
             </ul>
           </aside>
 
-          <section className="flex max-h-[70vh] flex-col border-b lg:border-b-0 lg:border-r">
+          <section className="relative flex max-h-[70vh] flex-col border-b lg:border-b-0 lg:border-r">
             {detailLoading ? (
               <div className="p-4">
                 <LoadingRows rows={4} />
@@ -353,10 +620,10 @@ export default function WhatsAppInboxPage() {
               <p className="p-4 text-sm text-muted-foreground">Select a conversation.</p>
             ) : (
               <>
-                <header className="space-y-2 border-b px-4 py-3">
+                <header className="space-y-2 border-b px-4 py-3 bg-card/40">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-base">
                         {detail.patient
                           ? `${detail.patient.firstName} ${detail.patient.lastName}`
                           : "Unmatched contact"}
@@ -442,36 +709,74 @@ export default function WhatsAppInboxPage() {
                   </div>
                 </header>
 
-                <div className="flex-1 space-y-2 overflow-y-auto bg-muted/20 p-4">
+                <div
+                  ref={messagesContainerRef}
+                  onScroll={() => {
+                    if (isNearBottom()) {
+                      setHasNewMessageBelow(false);
+                    }
+                  }}
+                  className="flex-1 space-y-2.5 overflow-y-auto bg-muted/20 p-4"
+                >
                   {detail.messages.map((m) => (
                     <div
                       key={m.id}
                       className={cn(
-                        "max-w-[85%] rounded-lg px-3 py-2 text-sm shadow-sm",
-                        m.direction === "INBOUND" ? "bg-card" : "ml-auto bg-primary/10",
+                        "max-w-[85%] rounded-lg px-3 py-2 text-sm shadow-sm transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
+                        m.direction === "INBOUND"
+                          ? "bg-card border"
+                          : "ml-auto bg-primary/10 border border-primary/20",
                       )}
                     >
                       <p className="mb-1 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
                         {m.label}
                       </p>
                       <p className="whitespace-pre-wrap">{m.content}</p>
-                      <p className="mt-1 text-[10px] text-muted-foreground">
-                        {new Date(m.createdAt).toLocaleString()} · {m.status}
+                      <p className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                        <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                        <span>{renderDeliveryStatus(m.status)}</span>
                       </p>
                     </div>
                   ))}
                 </div>
 
-                <footer className="space-y-2 border-t p-3">
+                {hasNewMessageBelow && (
+                  <div className="absolute bottom-28 left-0 right-0 z-10 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => scrollToBottom(true)}
+                      className="flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-1 text-xs font-semibold text-primary-foreground shadow-lg transition-transform hover:scale-105 active:scale-95"
+                    >
+                      <span>1 new message</span>
+                      <span>↓ Jump to latest</span>
+                    </button>
+                  </div>
+                )}
+
+                {typingStaff && (
+                  <div className="border-t bg-muted/30 px-4 py-1.5 text-xs italic text-muted-foreground animate-in fade-in">
+                    {typingStaff} is typing…
+                  </div>
+                )}
+
+                <footer className="space-y-2 border-t p-3 bg-card/60">
                   <p className="text-[10px] text-muted-foreground">
-                    Staff reply uses Meta session window. Outside 24h, use an approved template. Never shown as a doctor
-                    personal message.
+                    Replying as Clinic Staff. Outside 24h Meta session window, use an approved template.
                   </p>
                   <Textarea
                     rows={2}
                     placeholder="Write a staff reply…"
                     value={reply}
-                    onChange={(e) => setReply(e.target.value)}
+                    onChange={(e) => {
+                      setReply(e.target.value);
+                      if (activeId) notifyTyping(activeId);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                        e.preventDefault();
+                        void sendReply();
+                      }
+                    }}
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => void sendReply()} disabled={!reply.trim()}>
