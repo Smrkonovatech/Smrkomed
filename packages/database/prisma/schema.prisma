@@ -461,6 +461,7 @@ model Clinic {
   whatsappFlowExecutions WhatsAppFlowExecution[]
   whatsappKnowledgeArticles WhatsAppKnowledgeArticle[]
   whatsappClinicSettings WhatsAppClinicSettings?
+  whatsappBookingIdempotencies WhatsAppBookingIdempotency[]
   communicationPreferences CommunicationPreference[]
   whatsappCampaigns WhatsAppCampaign[]
   digitalHealthIdentities DigitalHealthIdentity[]
@@ -1002,6 +1003,9 @@ model Conversation {
   automationPausedAt DateTime?
   /// When set, Smrko AI auto-replies are paused until staff explicitly resumes AI
   aiPausedAt       DateTime?
+  /// Ephemeral multi-turn WhatsApp AI action (slot pick / booking confirm)
+  pendingAction    Json?
+  pendingActionExpiresAt DateTime?
   lastStaffReadAt  DateTime?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
@@ -2529,6 +2533,22 @@ model WhatsAppKnowledgeArticle {
   @@index([clinicId, status])
   @@index([clinicId, category])
   @@index([clinicId, specialty])
+}
+
+/// Idempotency for WhatsApp AI appointment book/reschedule/cancel.
+model WhatsAppBookingIdempotency {
+  id             String   @id @default(cuid())
+  clinicId       String
+  key            String
+  appointmentId  String
+  conversationId String?
+  createdAt      DateTime @default(now())
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, key])
+  @@index([appointmentId])
+  @@index([clinicId, createdAt])
 }
 
 /// Clinic WhatsApp communication safety settings (working hours, frequency, consent mode).

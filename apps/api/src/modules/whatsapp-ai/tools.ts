@@ -45,8 +45,9 @@ const ACTION_TOOLS = new Set([
   "requestHuman",
   "pauseAI",
   "confirmAppointment",
-  // Mutations reserved for later sub-phases with interactive confirm:
-  // bookAppointment, rescheduleAppointment, cancelAppointment, completeCareTask
+  "bookAppointment",
+  "rescheduleAppointment",
+  "cancelAppointment",
 ]);
 
 export function isKnownPatientTool(name: string): boolean {
@@ -77,7 +78,7 @@ async function assertConversation(auth: ToolAuth) {
 export async function executePatientTool(
   tool: string,
   auth: ToolAuth,
-  _args: Record<string, unknown> = {},
+  args: Record<string, unknown> = {},
 ): Promise<ToolResult> {
   if (!isKnownPatientTool(tool)) {
     return { tool, ok: false, data: { error: "UNKNOWN_TOOL" } };
@@ -94,6 +95,8 @@ export async function executePatientTool(
     conversationId: auth.conversationId,
     patientId: patientId ?? null,
   });
+
+  const str = (k: string) => (typeof args[k] === "string" ? String(args[k]).trim() : "");
 
   switch (tool) {
     case "getPatientContext": {
@@ -349,20 +352,242 @@ export async function executePatientTool(
     }
 
     case "getAvailableAppointmentSlots": {
-      // Slot calendar service not yet implemented — never invent availability.
+      const { getAvailableAppointmentSlots } = await import("../appointments/availability");
+      const { formatSlotLabel, setConversationPendingAction } = await import(
+        "../appointments/whatsapp-booking"
+      );
+      let doctorName = str("doctorName") || null;
+      if (!doctorName && coupleId) {
+        const couple = await prisma.couple.findFirst({
+          where: { id: coupleId, clinicId },
+          select: { assignedDoctor: { select: { name: true } } },
+        });
+        doctorName = couple?.assignedDoctor?.name ?? null;
+      }
+      const result = await getAvailableAppointmentSlots({
+        clinicId,
+        doctorName,
+        appointmentType: str("appointmentType") || "Consultation",
+        preferredDate: str("preferredDate") || null,
+      });
+      if (!result.available) {
+        return {
+          tool,
+          ok: true,
+          data: {
+            type: "appointment_slots",
+            slots: [],
+            available: false,
+            reason: result.reason ?? "NO_OPEN_SLOTS_IN_RANGE",
+            timezone: result.timezone,
+            message:
+              "No open appointment slots were found in clinic working hours for the next days. Connect the patient with the care team.",
+          },
+          handoffRecommended: true,
+          handoffReason: "NO_SUITABLE_APPOINTMENT_SLOT",
+        };
+      }
+      const labeled = result.slots.map((s, index) => ({
+        index: index + 1,
+        slotId: s.slotId,
+        label: formatSlotLabel(s),
+        startTime: s.startTime,
+        endTime: s.endTime,
+        doctorName: s.doctorName,
+        appointmentType: s.appointmentType,
+        timezone: s.timezone,
+        location: s.location,
+      }));
+      const idempotencyKey = `slot_choice_${auth.conversationId}_${Date.now()}`;
+      const purpose = str("purpose") === "RESCHEDULE" ? "RESCHEDULE" : "BOOK";
+      const appointmentId = str("appointmentId") || undefined;
+      await setConversationPendingAction({
+        clinicId,
+        conversationId: auth.conversationId,
+        action: {
+          kind: "SLOT_CHOICE",
+          purpose,
+          ...(appointmentId ? { appointmentId } : {}),
+          slots: labeled.map((s) => ({ index: s.index, slotId: s.slotId, label: s.label })),
+          idempotencyKey,
+        },
+      });
       return {
         tool,
         ok: true,
         data: {
-          slots: [],
-          available: false,
-          reason: "SLOT_SERVICE_NOT_CONFIGURED",
-          message:
-            "Live slot booking is being connected. Offer to connect the patient with the care team to book.",
+          type: "appointment_slots",
+          available: true,
+          timezone: result.timezone,
+          slots: labeled,
+          instruction:
+            "Present these REAL slots to the patient numbered 1..N. Ask them to reply with the number. Do not invent other times.",
         },
-        handoffRecommended: true,
-        handoffReason: "NO_SUITABLE_APPOINTMENT_SLOT",
       };
+    }
+
+    case "bookAppointment": {
+      const slotId = str("slotId");
+      if (!slotId) return { tool, ok: false, data: { error: "MISSING_SLOT_ID" } };
+      const { bookAppointmentFromSlot, setConversationPendingAction } = await import(
+        "../appointments/whatsapp-booking"
+      );
+      const idempotencyKey =
+        str("idempotencyKey") || `book_${auth.conversationId}_${slotId}`;
+      const booked = await bookAppointmentFromSlot({
+        tenant: auth.tenant,
+        conversationId: auth.conversationId,
+        patientId,
+        coupleId,
+        slotId,
+        idempotencyKey,
+      });
+      await setConversationPendingAction({
+        clinicId,
+        conversationId: auth.conversationId,
+        action: null,
+      });
+      if (!booked.ok) {
+        return {
+          tool,
+          ok: false,
+          data: booked,
+          handoffRecommended: Boolean(booked.handoffRecommended),
+          handoffReason: booked.reason,
+        };
+      }
+      return {
+        tool,
+        ok: true,
+        data: {
+          booked: true,
+          alreadyExisted: booked.alreadyExisted,
+          appointmentId: booked.appointmentId,
+          startsAt: booked.startsAt,
+          doctorName: booked.doctorName,
+          type: booked.type,
+          message: "Appointment booked in SmrkoMed. Confirm details to the patient.",
+        },
+      };
+    }
+
+    case "rescheduleAppointment": {
+      const appointmentId = str("appointmentId");
+      const slotId = str("slotId");
+      if (!appointmentId || !slotId) {
+        return { tool, ok: false, data: { error: "MISSING_APPOINTMENT_OR_SLOT" } };
+      }
+      const { rescheduleAppointmentFromSlot, setConversationPendingAction } = await import(
+        "../appointments/whatsapp-booking"
+      );
+      const idempotencyKey =
+        str("idempotencyKey") || `reschedule_${auth.conversationId}_${appointmentId}_${slotId}`;
+      const result = await rescheduleAppointmentFromSlot({
+        tenant: auth.tenant,
+        conversationId: auth.conversationId,
+        appointmentId,
+        slotId,
+        idempotencyKey,
+      });
+      await setConversationPendingAction({
+        clinicId,
+        conversationId: auth.conversationId,
+        action: null,
+      });
+      if (!result.ok) {
+        return {
+          tool,
+          ok: false,
+          data: result,
+          handoffRecommended: Boolean(result.handoffRecommended),
+          handoffReason: result.reason,
+        };
+      }
+      return { tool, ok: true, data: { rescheduled: true, ...result } };
+    }
+
+    case "cancelAppointment": {
+      const appointmentId = str("appointmentId");
+      if (!appointmentId) {
+        // Load next appointment and ask confirm
+        const appts = await prisma.appointment.findMany({
+          where: {
+            clinicId,
+            status: { in: ["CONFIRMED", "WAITING"] },
+            startsAt: { gte: new Date() },
+            ...(coupleId ? { coupleId } : {}),
+          },
+          orderBy: { startsAt: "asc" },
+          take: 1,
+        });
+        if (!appts[0]) {
+          return { tool, ok: true, data: { cancelled: false, reason: "NO_UPCOMING_APPOINTMENT" } };
+        }
+        const appt = appts[0];
+        const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
+        const idempotencyKey = `cancel_${auth.conversationId}_${appt.id}`;
+        await setConversationPendingAction({
+          clinicId,
+          conversationId: auth.conversationId,
+          action: {
+            kind: "CANCEL_CONFIRM",
+            appointmentId: appt.id,
+            idempotencyKey,
+          },
+        });
+        return {
+          tool,
+          ok: true,
+          data: {
+            needsConfirmation: true,
+            appointmentId: appt.id,
+            startsAt: appt.startsAt.toISOString(),
+            doctorName: appt.doctorName,
+            type: appt.type,
+            instruction: 'Ask: "Would you like to cancel your appointment on [date]? Reply Yes to cancel or No to keep it."',
+          },
+        };
+      }
+      if (str("confirmed") !== "true" && args["confirmed"] !== true) {
+        const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
+        const idempotencyKey = `cancel_${auth.conversationId}_${appointmentId}`;
+        await setConversationPendingAction({
+          clinicId,
+          conversationId: auth.conversationId,
+          action: { kind: "CANCEL_CONFIRM", appointmentId, idempotencyKey },
+        });
+        return {
+          tool,
+          ok: true,
+          data: { needsConfirmation: true, appointmentId },
+        };
+      }
+      const { cancelAppointmentForWhatsApp, setConversationPendingAction } = await import(
+        "../appointments/whatsapp-booking"
+      );
+      const idempotencyKey =
+        str("idempotencyKey") || `cancel_${auth.conversationId}_${appointmentId}`;
+      const result = await cancelAppointmentForWhatsApp({
+        tenant: auth.tenant,
+        conversationId: auth.conversationId,
+        appointmentId,
+        idempotencyKey,
+      });
+      await setConversationPendingAction({
+        clinicId,
+        conversationId: auth.conversationId,
+        action: null,
+      });
+      if (!result.ok) {
+        return {
+          tool,
+          ok: false,
+          data: result,
+          handoffRecommended: Boolean(result.handoffRecommended),
+          handoffReason: result.reason,
+        };
+      }
+      return { tool, ok: true, data: { cancelled: true, ...result } };
     }
 
     case "confirmAppointment": {
@@ -371,8 +596,8 @@ export async function executePatientTool(
         ok: true,
         data: {
           confirmed: false,
-          reason: "CONFIRM_REQUIRES_INTERACTIVE_FLOW",
-          message: "Ask patient to confirm via staff or upcoming interactive confirm flow.",
+          reason: "USE_NATURAL_LANGUAGE_OR_SLOT_NUMBER",
+          message: "Ask the patient to reply Confirm or a slot number from the list.",
         },
       };
     }
@@ -408,13 +633,30 @@ export async function executePatientTool(
 export async function runToolsForIntent(input: {
   auth: ToolAuth;
   toolNames: string[];
+  intent?: string;
   maxTools?: number;
 }): Promise<ToolResult[]> {
   const results: ToolResult[] = [];
   const unique = [...new Set(input.toolNames)].slice(0, input.maxTools ?? 4);
+
+  const baseArgs: Record<string, unknown> = {};
+  if (input.intent === "APPOINTMENT_RESCHEDULE") {
+    baseArgs["purpose"] = "RESCHEDULE";
+    const next = await prisma.appointment.findFirst({
+      where: {
+        clinicId: input.auth.tenant.clinicId,
+        status: { in: ["CONFIRMED", "WAITING"] },
+        startsAt: { gte: new Date() },
+        ...(input.auth.coupleId ? { coupleId: input.auth.coupleId } : {}),
+      },
+      orderBy: { startsAt: "asc" },
+      select: { id: true },
+    });
+    if (next) baseArgs["appointmentId"] = next.id;
+  }
+
   for (const name of unique) {
     if (!isKnownPatientTool(name)) continue;
-    // requestHuman is handled by pipeline handoff path — skip duplicate escalate here
     if (name === "requestHuman") {
       results.push({
         tool: name,
@@ -426,7 +668,7 @@ export async function runToolsForIntent(input: {
       break;
     }
     try {
-      const result = await executePatientTool(name, input.auth);
+      const result = await executePatientTool(name, input.auth, baseArgs);
       results.push(result);
       if (result.handoffRecommended) break;
     } catch (err) {

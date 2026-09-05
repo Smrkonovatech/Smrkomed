@@ -15,7 +15,7 @@ export type ClinicCommSettings = {
   aiAutoReplyEnabled: boolean;
 };
 
-const DEFAULT_HOURS: WorkingHoursMap = {
+export const DEFAULT_HOURS: WorkingHoursMap = {
   mon: { start: "09:00", end: "18:00" },
   tue: { start: "09:00", end: "18:00" },
   wed: { start: "09:00", end: "18:00" },

@@ -12,6 +12,7 @@ import { generateWhatsAppAiReply } from "./generate";
 import { escalateToHuman, recordAiInteraction, resumeWhatsAppAi } from "./handoff";
 import { classifyPatientIntent } from "./intent";
 import { retrieveKnowledgeArticles } from "./knowledge";
+import { tryResolvePendingAppointmentAction } from "./pending-actions";
 import { detectHandoffSignals, CLINICAL_ESCALATION_MESSAGE } from "./safety";
 import { formatToolResultsForPrompt, runToolsForIntent } from "./tools";
 
@@ -127,6 +128,94 @@ export async function runWhatsAppAiPipeline(input: {
     trigger: input.trigger,
     mode: input.mode,
   });
+
+  // Multi-turn appointment confirm / slot pick (before new intent tools).
+  if (input.trigger === "inbound" && input.mode === "send" && !input.simulation) {
+    const pending = await tryResolvePendingAppointmentAction({
+      tenant: input.tenant,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      coupleId: conversation.coupleId,
+      patientMessage: input.patientMessage,
+    });
+    if (pending.handled) {
+      if (pending.handoffRecommended) {
+        const escalated = await escalateToHuman({
+          tenant: input.tenant,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          coupleId: conversation.coupleId,
+          reason: "APPOINTMENT_EXCEPTION",
+        });
+        let messageId: string | undefined;
+        try {
+          const sent = await sendWhatsAppAiSessionText(input.tenant, {
+            conversationId: conversation.id,
+            body: pending.text,
+          });
+          messageId = sent.id;
+        } catch {
+          /* best effort */
+        }
+        const interaction = await recordAiInteraction({
+          clinicId: input.tenant.clinicId,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          careTaskId: escalated.careTaskId,
+          messageId: messageId ?? null,
+          trigger: input.trigger,
+          intent: "APPOINTMENT_EXCEPTION",
+          classification: "APPOINTMENT_EXCEPTION",
+          safeToAutoReply: false,
+          status: "HANDOFF",
+          handoffReason: "APPOINTMENT_EXCEPTION",
+          rawSummary: pending.text,
+        });
+        return {
+          handoff: true,
+          handoffReason: "APPOINTMENT_EXCEPTION",
+          text: pending.text,
+          ...(messageId ? { messageId } : {}),
+          interactionId: interaction.id,
+        };
+      }
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: pending.text,
+        });
+        const interaction = await recordAiInteraction({
+          clinicId: input.tenant.clinicId,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          messageId: sent.id,
+          trigger: input.trigger,
+          intent: pending.booked
+            ? "APPOINTMENT_BOOKING"
+            : pending.cancelled
+              ? "APPOINTMENT_CANCEL"
+              : pending.rescheduled
+                ? "APPOINTMENT_RESCHEDULE"
+                : "APPOINTMENT_STATUS",
+          model: "pending-action",
+          safeToAutoReply: true,
+          status: "SENT",
+          rawSummary: pending.text,
+        });
+        return {
+          messageId: sent.id,
+          text: pending.text,
+          interactionId: interaction.id,
+        };
+      } catch (err) {
+        return {
+          skipped: true,
+          reason: err instanceof Error ? err.message.slice(0, 400) : "pending action send failed",
+          text: pending.text,
+        };
+      }
+    }
+  }
 
   // Idempotency: if this inbound already got an AI outbound, stop before OpenAI/KB work.
   if (input.inboundMessageId && input.mode === "send" && !input.simulation) {
@@ -327,6 +416,7 @@ export async function runWhatsAppAiPipeline(input: {
             coupleId: conversation.coupleId,
           },
           toolNames: intentResult.suggestedTools,
+          intent: intentResult.intent,
         })
       : [];
 

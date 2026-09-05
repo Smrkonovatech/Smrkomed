@@ -88,7 +88,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   {
     intent: "APPOINTMENT_CANCEL",
     re: /\b(cancel)\s+(my\s+)?(appointment|appt|visit)\b/i,
-    tools: ["getAppointments"],
+    tools: ["cancelAppointment"],
     confidence: "high",
   },
   {
