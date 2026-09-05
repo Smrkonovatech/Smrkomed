@@ -42,7 +42,7 @@ function buildUserPrompt(input: {
 
 /** Short greetings like "hi" / "hii" — always answer warmly without needing a KB hit. */
 export function isSimpleGreeting(text: string): boolean {
-  return /^(hi+|h+i+e*|hello|hey|yo|namaste|namaskar|good\s*(morning|afternoon|evening)|hola)\s*[!.]*$/i.test(
+  return /^(hi+|h+i+e*|hello|heyy*|yo|namaste|namaskar|good\s*(morning|afternoon|evening)|hola)\s*[!.]*$/i.test(
     text.trim(),
   );
 }

@@ -80,32 +80,15 @@ export async function runWhatsAppAiPipeline(input: {
     // force=true used to skip this and permanently block auto-reply after Take over.
     let keepPaused = false;
     if (input.trigger === "inbound") {
-      // Only stay in human mode if staff is actively chatting (last 5 min).
-      // Longer windows blocked patient "hi" after Take over even with Auto AI ON.
-      const recentStaff = await prisma.message.findFirst({
-        where: {
-          conversationId: conversation.id,
-          direction: "OUTBOUND",
-          senderType: "STAFF",
-          createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
-        },
-        select: { id: true },
+      // Patient wrote again with Auto AI path — always resume so replies are not stuck after Take over.
+      await resumeWhatsAppAi(input.tenant, conversation.id);
+      const refreshed = await prisma.conversation.findFirst({
+        where: { id: input.conversationId, clinicId: input.tenant.clinicId },
       });
-      if (recentStaff) {
-        keepPaused = true;
-        console.log("[WhatsApp AI] skip — staff active in last 5m", {
-          conversationId: conversation.id,
-        });
-      } else {
-        await resumeWhatsAppAi(input.tenant, conversation.id);
-        const refreshed = await prisma.conversation.findFirst({
-          where: { id: input.conversationId, clinicId: input.tenant.clinicId },
-        });
-        if (refreshed) Object.assign(conversation, refreshed);
-        console.log("[WhatsApp AI] auto-resumed after patient inbound", {
-          conversationId: conversation.id,
-        });
-      }
+      if (refreshed) Object.assign(conversation, refreshed);
+      console.log("[WhatsApp AI] auto-resumed after patient inbound", {
+        conversationId: conversation.id,
+      });
     } else if (input.force) {
       await resumeWhatsAppAi(input.tenant, conversation.id);
       const refreshed = await prisma.conversation.findFirst({
@@ -131,7 +114,7 @@ export async function runWhatsAppAiPipeline(input: {
         classification: "AI_PAUSED",
         handoffReason: conversation.handoffReason,
         rawSummary: keepPaused
-          ? "AI paused — staff recently replied (active human chat)"
+          ? "AI paused — human control (not an inbound auto-resume)"
           : "AI paused — human control",
       });
       return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };

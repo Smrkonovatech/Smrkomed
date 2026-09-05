@@ -332,17 +332,22 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
   return { resumed, dispatched, ai };
 }
 
-/** Fire-and-forget automation after AI (webhook awaits AI separately). */
+/**
+ * Fire-and-forget inbound AI + automation.
+ * Must respect `skipAi` — hardcoding true previously dropped all AI retries when
+ * the webhook await timed out or Meta aborted the request.
+ */
 export function scheduleInboundWhatsAppAutomation(
   input: InboundPayload & { skipAi?: boolean },
 ) {
+  const skipAi = Boolean(input.skipAi);
   console.log("[WhatsApp inbound] scheduled automation", {
     conversationId: input.conversationId,
     messageId: input.messageId,
-    skipAi: Boolean(input.skipAi),
+    skipAi,
   });
   scheduleBackground(async () => {
-    await handleInboundWhatsAppAutomation({ ...input, skipAi: true });
+    await handleInboundWhatsAppAutomation({ ...input, skipAi });
   });
 }
 

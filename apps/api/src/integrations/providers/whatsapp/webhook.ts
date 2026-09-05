@@ -13,7 +13,7 @@ import { ensureDirectWhatsAppConnection } from "./service";
 import { realtimeBus } from "../../../modules/realtime/bus";
 import { triggerBackgroundMediaDownload } from "../../../modules/media/service";
 import { sanitizeFilename } from "../../../modules/media/storage";
-import { scheduleInboundWhatsAppAutomation, runInboundWhatsAppAi } from "../../../modules/whatsapp-automation/inbound-dispatch";
+import { scheduleInboundWhatsAppAutomation } from "../../../modules/whatsapp-automation/inbound-dispatch";
 import type { WhatsAppMediaType, WhatsAppMediaStatus } from "@smrkomed/database";
 
 const PAYLOAD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -542,34 +542,10 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       timestampIso: createdMessage.createdAt.toISOString(),
     };
 
-    // Await AI in webhook (fast for greetings). If it fails/times out, also run AI in background.
-    let aiOk = false;
-    try {
-      const raced = await Promise.race([
-        runInboundWhatsAppAi(inboundJob).then((r) => ({ kind: "ok" as const, r })),
-        new Promise<{ kind: "timeout" }>((resolve) => {
-          setTimeout(() => resolve({ kind: "timeout" }), 12_000);
-        }),
-      ]);
-      if (raced.kind === "ok") {
-        aiOk = Boolean(raced.r.messageId);
-        console.log("[WhatsApp AI] webhook await finished", {
-          skipped: Boolean(raced.r.skipped),
-          reason: raced.r.reason ?? null,
-          messageId: raced.r.messageId ?? null,
-        });
-      } else {
-        console.error("[WhatsApp AI] webhook await timed out at 12s — background will retry");
-      }
-    } catch (err) {
-      console.error(
-        "[WhatsApp AI] webhook-awaited AI failed:",
-        err instanceof Error ? err.message : err,
-      );
-    }
-
-    // Always schedule automation; re-run AI in background only if webhook path did not send.
-    scheduleInboundWhatsAppAutomation({ ...inboundJob, skipAi: aiOk });
+    // Schedule AI + automation immediately (do not await). Awaiting inside Meta's webhook
+    // caused aborts/timeouts and previously skipped AI because skipAi was hardcoded true.
+    // Railway keeps the process alive so void background work completes after we return 200.
+    scheduleInboundWhatsAppAutomation({ ...inboundJob, skipAi: false });
   }
 
   return "PROCESSED" as const;
