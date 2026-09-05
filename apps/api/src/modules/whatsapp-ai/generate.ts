@@ -23,6 +23,8 @@ function buildUserPrompt(input: {
   ctx: WhatsAppAiContext;
   knowledge: KbHit[];
   promptHint?: string;
+  intent?: string;
+  toolFacts?: string;
 }) {
   const lines = [
     `Clinic: ${input.ctx.clinicName}`,
@@ -30,17 +32,22 @@ function buildUserPrompt(input: {
     input.ctx.appointmentSummary ? `Upcoming appointment: ${input.ctx.appointmentSummary}` : null,
     input.ctx.journeyStage ? `Journey stage: ${input.ctx.journeyStage}` : null,
     input.ctx.careTaskTitle ? `Open care task: ${input.ctx.careTaskTitle}` : null,
+    input.intent ? `Classified intent: ${input.intent}` : null,
     "",
     "Recent conversation:",
     ...input.ctx.recentMessages.map((m) => `${m.role}: ${m.text}`),
+    "",
+    "System tool facts (SOURCE OF TRUTH — never invent beyond this):",
+    input.toolFacts?.trim() || "No tools were run.",
     "",
     "Knowledge (may include DEMO / DEVELOPMENT CONTENT — not verified medical advice):",
     formatKnowledgeForPrompt(input.knowledge),
     "",
     "Rules for this reply:",
-    "- Use ONLY the knowledge and context above for clinic-specific facts.",
-    "- Do NOT invent pricing, doctor availability, clinic timings, or medical claims.",
-    "- If the answer is not in knowledge, say so and offer staff help.",
+    "- Use ONLY tool facts + knowledge + context for clinic-specific facts.",
+    "- Do NOT invent pricing, slots, doctor availability, clinic timings, doses, or medical claims.",
+    "- If tool facts say slots are unavailable, offer to connect care team — do not invent times.",
+    "- If information is missing, say so and offer staff help.",
     "",
     input.promptHint ? `Staff instruction: ${input.promptHint}` : null,
     `Patient message: ${input.patientMessage}`,
@@ -142,6 +149,8 @@ export async function generateWhatsAppAiReply(input: {
   forceEscalationCopy?: boolean;
   /** Inbound path: skip OpenAI for greetings/acks so replies stay fast. */
   preferFast?: boolean;
+  intent?: string;
+  toolFacts?: string;
 }): Promise<GenerateAiResult> {
   if (input.forceEscalationCopy) {
     return {
@@ -178,6 +187,8 @@ export async function generateWhatsAppAiReply(input: {
     ctx: input.ctx,
     knowledge: input.knowledge,
     ...(input.promptHint ? { promptHint: input.promptHint } : {}),
+    ...(input.intent ? { intent: input.intent } : {}),
+    ...(input.toolFacts ? { toolFacts: input.toolFacts } : {}),
   });
 
   const key = process.env["OPENAI_API_KEY"]?.trim();

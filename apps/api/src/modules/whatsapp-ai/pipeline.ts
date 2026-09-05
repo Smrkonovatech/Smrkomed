@@ -10,8 +10,10 @@ import { sendWhatsAppAiSessionText } from "../../integrations/providers/whatsapp
 import { loadWhatsAppAiContext } from "./context";
 import { generateWhatsAppAiReply } from "./generate";
 import { escalateToHuman, recordAiInteraction, resumeWhatsAppAi } from "./handoff";
+import { classifyPatientIntent } from "./intent";
 import { retrieveKnowledgeArticles } from "./knowledge";
 import { detectHandoffSignals, CLINICAL_ESCALATION_MESSAGE } from "./safety";
+import { formatToolResultsForPrompt, runToolsForIntent } from "./tools";
 
 export type AiPipelineMode = "draft" | "send";
 
@@ -162,6 +164,15 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   const signals = detectHandoffSignals(input.patientMessage);
+  const intentResult = classifyPatientIntent(input.patientMessage);
+  console.log("[WhatsApp AI] intent", {
+    conversationId: conversation.id,
+    intent: intentResult.intent,
+    confidence: intentResult.confidence,
+    tools: intentResult.suggestedTools,
+  });
+
+  // Tool-driven hard handoff (e.g. booking with no slot service) after signal checks.
   if (signals.handoff && signals.pauseAi) {
     const escalated = await escalateToHuman({
       tenant: input.tenant,
@@ -208,7 +219,7 @@ export async function runWhatsAppAiPipeline(input: {
       careTaskId: escalated.careTaskId,
       messageId: messageId ?? null,
       trigger: input.trigger,
-      intent: "handoff",
+      intent: intentResult.intent,
       classification: signals.reason,
       safeToAutoReply: false,
       status: "HANDOFF",
@@ -305,6 +316,71 @@ export async function runWhatsAppAiPipeline(input: {
     }
   }
 
+  // Controlled tools (clinic-scoped). Never invent slots/appointments/meds.
+  const toolResults =
+    input.trigger === "inbound" || input.trigger === "staff"
+      ? await runToolsForIntent({
+          auth: {
+            tenant: input.tenant,
+            conversationId: conversation.id,
+            patientId: conversation.patientId,
+            coupleId: conversation.coupleId,
+          },
+          toolNames: intentResult.suggestedTools,
+        })
+      : [];
+
+  const toolHandoff = toolResults.find((t) => t.handoffRecommended);
+  if (
+    toolHandoff &&
+    (intentResult.intent === "APPOINTMENT_BOOKING" ||
+      intentResult.intent === "APPOINTMENT_RESCHEDULE" ||
+      toolHandoff.handoffReason === "NO_SUITABLE_APPOINTMENT_SLOT")
+  ) {
+    const escalated = await escalateToHuman({
+      tenant: input.tenant,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      coupleId: conversation.coupleId,
+      reason: toolHandoff.handoffReason ?? "APPOINTMENT_EXCEPTION",
+    });
+    const handoffText =
+      "I'd like to connect you with our care team to help with your appointment. I've shared your request and someone will assist you shortly.";
+    let messageId: string | undefined;
+    if (!input.simulation && input.mode === "send") {
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: handoffText,
+        });
+        messageId = sent.id;
+      } catch {
+        /* best-effort notify */
+      }
+    }
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      careTaskId: escalated.careTaskId,
+      messageId: messageId ?? null,
+      trigger: input.trigger,
+      intent: intentResult.intent,
+      classification: toolHandoff.handoffReason ?? "APPOINTMENT_EXCEPTION",
+      safeToAutoReply: false,
+      status: "HANDOFF",
+      handoffReason: toolHandoff.handoffReason ?? "APPOINTMENT_EXCEPTION",
+      rawSummary: handoffText,
+    });
+    return {
+      handoff: true,
+      handoffReason: toolHandoff.handoffReason ?? "APPOINTMENT_EXCEPTION",
+      text: handoffText,
+      interactionId: interaction.id,
+      ...(messageId !== undefined ? { messageId } : {}),
+    };
+  }
+
   const ctx = await loadWhatsAppAiContext(input.tenant, {
     conversationId: conversation.id,
     patientId: conversation.patientId,
@@ -325,9 +401,12 @@ export async function runWhatsAppAiPipeline(input: {
     topTitle: knowledge[0]?.title?.slice(0, 80) ?? null,
   });
 
+  const toolFacts = formatToolResultsForPrompt(toolResults);
   console.log("[WhatsApp AI] generating response", {
     conversationId: conversation.id,
     messageId: input.inboundMessageId ?? null,
+    intent: intentResult.intent,
+    toolsRun: toolResults.map((t) => t.tool),
     openaiKey: process.env["OPENAI_API_KEY"]?.trim() ? "CONFIGURED" : "MISSING",
   });
 
@@ -336,6 +415,8 @@ export async function runWhatsAppAiPipeline(input: {
     ctx,
     knowledge,
     preferFast: input.trigger === "inbound",
+    intent: intentResult.intent,
+    toolFacts,
     ...(input.promptHint ? { promptHint: input.promptHint } : {}),
   });
 

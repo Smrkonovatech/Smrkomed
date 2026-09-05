@@ -14,34 +14,51 @@ export type HandoffSignal = {
 /** Explicit ask for a human — not greetings like "Hi doctor". */
 const HUMAN_REQUEST =
   /\b((speak|talk|connect|chat)\s+(to|with)\s+(a\s+)?(doctor|human|staff|agent|nurse|consultant|coordinator|person)|(want|need)\s+(a\s+)?(human|real\s+person|staff\s+member)|real\s+person|human\s+please|call\s+me\s+back|transfer\s+me)\b/i;
+const REQUEST_DOCTOR =
+  /\b((want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)|connect\s+me\s+(to|with)\s+(a\s+)?doctor)\b/i;
 const EMERGENCY =
   /\b(emergency|urgent|chest pain|bleeding heavily|can't breathe|cannot breathe|suicide|overdose|severe pain|ambulance|911|112)\b/i;
 const COMPLAINT =
   /\b(complaint|lawsuit|lawyer|refund|horrible|worst|negligence|malpractice|angry|furious)\b/i;
+const MED_CHANGE =
+  /\b(extra\s+(injection|dose|pill|tablet)|change\s+(my\s+)?(dose|dosage|medication)|increase\s+(the\s+)?dose|missed\s+(my\s+)?(dose|injection|medicine)|double\s+dose|skip\s+(my\s+)?(dose|injection))\b/i;
+const ADVERSE =
+  /\b(adverse\s+reaction|allergic\s+reaction|side\s*effects?|swelling|rash\s+after\s+(injection|medicine)|problem\s+after\s+(my\s+)?injection)\b/i;
 const CLINICAL =
   /\b(diagnos|prescrib|dosage|dose|medication change|should i take|what medicine|treat(ment)? for|is it cancer|ivf success|pregnant\?|miscarriage risk)\b/i;
+const BILLING_DISPUTE =
+  /\b(billing\s+dispute|wrong\s+(bill|charge)|overcharged|refund\s+(my\s+)?(money|payment))\b/i;
+const INSURANCE_EXCEPTION =
+  /\b(insurance\s+(denied|reject|problem|issue|exception)|claim\s+(denied|reject))\b/i;
 const UNSUPPORTED =
   /\b(hack|password|otp code|credit card|bank account)\b/i;
 
 export function detectHandoffSignals(text: string): HandoffSignal {
   const t = text.trim();
-  // Empty / media placeholders: still let AI greet — do not freeze the conversation.
   if (!t) {
     return { handoff: false, pauseAi: false, reason: null, confidence: "low" };
   }
   if (EMERGENCY.test(t)) {
     return { handoff: true, pauseAi: true, reason: "EMERGENCY_LANGUAGE", confidence: "high" };
   }
-  if (HUMAN_REQUEST.test(t)) {
+  if (ADVERSE.test(t) || MED_CHANGE.test(t)) {
+    return { handoff: true, pauseAi: true, reason: "MEDICATION_CLINICAL_CONCERN", confidence: "high" };
+  }
+  if (HUMAN_REQUEST.test(t) || REQUEST_DOCTOR.test(t)) {
     return { handoff: true, pauseAi: true, reason: "PATIENT_REQUESTED_HUMAN", confidence: "high" };
   }
   if (COMPLAINT.test(t)) {
     return { handoff: true, pauseAi: true, reason: "COMPLAINT", confidence: "high" };
   }
+  if (BILLING_DISPUTE.test(t)) {
+    return { handoff: true, pauseAi: true, reason: "BILLING_DISPUTE", confidence: "high" };
+  }
+  if (INSURANCE_EXCEPTION.test(t)) {
+    return { handoff: true, pauseAi: true, reason: "INSURANCE_EXCEPTION", confidence: "high" };
+  }
   if (UNSUPPORTED.test(t)) {
     return { handoff: true, pauseAi: true, reason: "UNSUPPORTED_QUESTION", confidence: "medium" };
   }
-  // Clinical uncertainty: reply safely and notify staff, but keep AI available for follow-ups.
   if (CLINICAL.test(t)) {
     return { handoff: true, pauseAi: false, reason: "CLINICAL_UNCERTAINTY", confidence: "medium" };
   }
@@ -82,4 +99,4 @@ export const CLINICAL_ESCALATION_MESSAGE =
   "I'm Smrko AI, and I can't give medical advice. Your care team needs to review this — a staff member will follow up with you shortly. Feel free to ask me about appointments, clinic hours, or other non-medical questions in the meantime.";
 
 export const HUMAN_HANDOFF_MESSAGE =
-  "I'm connecting you with our care team now. A staff member will continue this conversation shortly.";
+  "I'd like to connect you with our care team. I've shared your request with them and someone will assist you shortly.";
