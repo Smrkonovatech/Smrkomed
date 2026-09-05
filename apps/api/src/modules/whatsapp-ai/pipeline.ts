@@ -11,16 +11,18 @@ import { loadWhatsAppAiContext } from "./context";
 import { generateWhatsAppAiReply } from "./generate";
 import { escalateToHuman, recordAiInteraction, resumeWhatsAppAi } from "./handoff";
 import { classifyPatientIntent } from "./intent";
-import { extractPreferredDateIso } from "./date-parse";
+import { extractPreferredDateIso, formatPreferredDateLabel } from "./date-parse";
 import { retrieveKnowledgeArticles } from "./knowledge";
 import { tryResolvePendingAppointmentAction } from "./pending-actions";
 import { detectHandoffSignals, CLINICAL_ESCALATION_MESSAGE } from "./safety";
 import {
   formatAppointmentSlotsPatientMessage,
+  formatAppointmentToolErrorMessage,
   formatNoSlotsPatientMessage,
   formatToolResultsForPrompt,
   runToolsForIntent,
 } from "./tools";
+import { getClinicCommSettings } from "../whatsapp-automation/safety";
 
 export type AiPipelineMode = "draft" | "send";
 
@@ -260,7 +262,12 @@ export async function runWhatsAppAiPipeline(input: {
 
   const signals = detectHandoffSignals(input.patientMessage);
   const intentResult = classifyPatientIntent(input.patientMessage);
-  const preferredDate = extractPreferredDateIso(input.patientMessage);
+  const clinicComm = await getClinicCommSettings(input.tenant.clinicId);
+  const clinicTz = clinicComm.timezone || "Asia/Kolkata";
+  const preferredDate = extractPreferredDateIso(input.patientMessage, new Date(), clinicTz);
+  const preferredDateLabel = preferredDate
+    ? formatPreferredDateLabel(preferredDate, clinicTz)
+    : null;
   console.log("[WhatsApp AI] intent", {
     clinicId: input.tenant.clinicId,
     conversationId: conversation.id,
@@ -279,6 +286,9 @@ export async function runWhatsAppAiPipeline(input: {
     intentResult.intent === "APPOINTMENT_CANCEL" ||
     intentResult.intent === "APPOINTMENT_CONFIRM" ||
     intentResult.intent === "APPOINTMENT_STATUS";
+  const isSlotListingIntent =
+    intentResult.intent === "APPOINTMENT_BOOKING" ||
+    intentResult.intent === "APPOINTMENT_RESCHEDULE";
 
   // Tool-driven hard handoff (e.g. booking with no slot service) after signal checks.
   if (signals.handoff && signals.pauseAi && !isAppointmentIntent) {
@@ -448,134 +458,225 @@ export async function runWhatsAppAiPipeline(input: {
     conversationId: conversation.id,
     messageId: input.inboundMessageId ?? null,
     intent: intentResult.intent,
+    preferredDate,
     toolExecuted: toolResults.map((t) => t.tool),
     toolResultCount: toolResults.length,
     handoffReasons: toolResults.map((t) => t.handoffReason ?? null),
     pipelineStage: "tools",
   });
 
-  const slotTool = toolResults.find((t) => t.tool === "getAvailableAppointmentSlots" && t.ok);
-  const slotData = slotTool?.data as
+  const slotTool = toolResults.find((t) => t.tool === "getAvailableAppointmentSlots");
+  const slotData = (slotTool?.ok ? slotTool.data : null) as
     | {
         type?: string;
         available?: boolean;
         slots?: Array<{ index: number; label: string; slotId: string }>;
         pendingActionPersisted?: boolean;
-        needsConfirmation?: boolean;
+        reason?: string;
       }
-    | undefined;
+    | null;
 
-  // Deterministic slot list — do not let the LLM claim it cannot show/book appointments.
-  if (
-    slotData?.type === "appointment_slots" &&
-    slotData.available &&
-    Array.isArray(slotData.slots) &&
-    slotData.slots.length > 0 &&
-    !input.simulation &&
-    input.mode === "send"
-  ) {
-    let text = formatAppointmentSlotsPatientMessage({
-      clinicName: input.tenant.clinicName,
-      slots: slotData.slots,
-      purpose:
-        intentResult.intent === "APPOINTMENT_RESCHEDULE" ? "RESCHEDULE" : "BOOK",
-    });
-    if (slotData.pendingActionPersisted === false) {
-      text +=
-        "\n\n(I couldn't save your selection session — please reply \"speak to staff\" so the team can finish booking these times.)";
-      await escalateToHuman({
-        tenant: input.tenant,
-        conversationId: conversation.id,
-        patientId: conversation.patientId,
-        coupleId: conversation.coupleId,
-        reason: "PENDING_ACTION_PERSIST_FAILED",
-      }).catch(() => undefined);
-    }
-    try {
-      const sent = await sendWhatsAppAiSessionText(input.tenant, {
-        conversationId: conversation.id,
-        body: text,
-      });
-      const interaction = await recordAiInteraction({
-        clinicId: input.tenant.clinicId,
-        conversationId: conversation.id,
-        patientId: conversation.patientId,
-        messageId: sent.id,
-        trigger: input.trigger,
-        intent: intentResult.intent,
-        model: "appointment-slots",
-        classification: "APPOINTMENT_SLOTS",
-        safeToAutoReply: true,
-        status: "SENT",
-        rawSummary: `Presented ${slotData.slots.length} real slots`,
-      });
-      console.log("[WhatsApp AI] response sent", {
-        conversationId: conversation.id,
-        inboundMessageId: input.inboundMessageId ?? null,
-        sentMessageId: sent.id,
-        interactionId: interaction.id,
-        pipelineStage: "deterministic_slots",
-      });
-      return {
-        messageId: sent.id,
-        text,
-        interactionId: interaction.id,
-      };
-    } catch (err) {
-      console.error("[WhatsApp AI] slot reply send failed", {
-        conversationId: conversation.id,
-        errorName: err instanceof Error ? err.name : "unknown",
-      });
-    }
-  }
+  const slotCount = Array.isArray(slotData?.slots) ? slotData!.slots!.length : 0;
+  console.log("[WhatsApp AI] appointment_slots outcome", {
+    clinicId: input.tenant.clinicId,
+    conversationId: conversation.id,
+    messageId: input.inboundMessageId ?? null,
+    preferredDate,
+    toolOk: slotTool?.ok ?? false,
+    slotCount,
+    available: slotData?.available ?? null,
+    handoffRecommended: slotTool?.handoffRecommended ?? false,
+    handoffReason: slotTool?.handoffReason ?? null,
+    reason: slotData?.reason ?? null,
+    pipelineStage: "slot_outcome",
+  });
 
-  if (
-    slotData?.type === "appointment_slots" &&
-    slotData.available === false &&
-    !input.simulation &&
-    input.mode === "send" &&
-    isAppointmentIntent
-  ) {
-    const text = formatNoSlotsPatientMessage(input.tenant.clinicName);
-    // Soft staff visibility without pausing AI.
-    await prisma.careTask
-      .create({
-        data: {
-          clinicId: input.tenant.clinicId,
+  // BOOKING / RESCHEDULE: never fall through to KB/LLM for slot listing.
+  if (isSlotListingIntent && !input.simulation && input.mode === "send") {
+    const purpose =
+      intentResult.intent === "APPOINTMENT_RESCHEDULE" ? "RESCHEDULE" : "BOOK";
+    const hardSlotHandoff =
+      Boolean(slotTool?.handoffRecommended) &&
+      Boolean(slotTool?.handoffReason) &&
+      slotTool!.handoffReason !== "NO_SUITABLE_APPOINTMENT_SLOT";
+
+    if (!hardSlotHandoff) {
+      // ERROR — tool missing or failed
+      if (!slotTool || !slotTool.ok || slotData?.type !== "appointment_slots") {
+        const text = formatAppointmentToolErrorMessage(input.tenant.clinicName);
+        await escalateToHuman({
+          tenant: input.tenant,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
           coupleId: conversation.coupleId,
-          title: "WhatsApp — no appointment slots available",
-          description: "AI found no open slots in clinic working hours for the patient's request.",
-          category: "APPOINTMENT",
-          status: "WAITING",
-          priority: "NORMAL",
-        },
-      })
-      .catch(() => undefined);
-    try {
-      const sent = await sendWhatsAppAiSessionText(input.tenant, {
-        conversationId: conversation.id,
-        body: text,
+          reason: "APPOINTMENT_TOOL_ERROR",
+        }).catch(() => undefined);
+        try {
+          const sent = await sendWhatsAppAiSessionText(input.tenant, {
+            conversationId: conversation.id,
+            body: text,
+          });
+          const interaction = await recordAiInteraction({
+            clinicId: input.tenant.clinicId,
+            conversationId: conversation.id,
+            patientId: conversation.patientId,
+            messageId: sent.id,
+            trigger: input.trigger,
+            intent: intentResult.intent,
+            model: "appointment-tool-error",
+            classification: "APPOINTMENT_TOOL_ERROR",
+            safeToAutoReply: false,
+            status: "HANDOFF",
+            handoffReason: "APPOINTMENT_TOOL_ERROR",
+            rawSummary: "appointment_slots tool failed or missing — deterministic error, no KB/LLM",
+          });
+          return {
+            handoff: true,
+            handoffReason: "APPOINTMENT_TOOL_ERROR",
+            messageId: sent.id,
+            text,
+            interactionId: interaction.id,
+          };
+        } catch (err) {
+          console.error("[WhatsApp AI] appointment error reply send failed", {
+            conversationId: conversation.id,
+            errorName: err instanceof Error ? err.name : "unknown",
+          });
+          return {
+            handoff: true,
+            handoffReason: "APPOINTMENT_TOOL_ERROR",
+            text,
+          };
+        }
+      }
+
+      if (slotData?.available && slotCount > 0) {
+        let text = formatAppointmentSlotsPatientMessage({
+          clinicName: input.tenant.clinicName,
+          slots: slotData.slots!,
+          purpose,
+          dateLabel: preferredDateLabel,
+        });
+        if (slotData.pendingActionPersisted === false) {
+          text +=
+            '\n\n(I couldn\'t save your selection session — please reply "speak to staff" so the team can finish booking these times.)';
+          await escalateToHuman({
+            tenant: input.tenant,
+            conversationId: conversation.id,
+            patientId: conversation.patientId,
+            coupleId: conversation.coupleId,
+            reason: "PENDING_ACTION_PERSIST_FAILED",
+          }).catch(() => undefined);
+        }
+        try {
+          const sent = await sendWhatsAppAiSessionText(input.tenant, {
+            conversationId: conversation.id,
+            body: text,
+          });
+          const interaction = await recordAiInteraction({
+            clinicId: input.tenant.clinicId,
+            conversationId: conversation.id,
+            patientId: conversation.patientId,
+            messageId: sent.id,
+            trigger: input.trigger,
+            intent: intentResult.intent,
+            model: "appointment-slots",
+            classification: "APPOINTMENT_SLOTS_AVAILABLE",
+            safeToAutoReply: true,
+            status: "SENT",
+            rawSummary: `Presented ${slotCount} real slots (deterministic)`,
+          });
+          console.log("[WhatsApp AI] response sent", {
+            conversationId: conversation.id,
+            inboundMessageId: input.inboundMessageId ?? null,
+            sentMessageId: sent.id,
+            interactionId: interaction.id,
+            responseMode: "deterministic_slots",
+            slotCount,
+            pipelineStage: "deterministic_slots",
+          });
+          return {
+            messageId: sent.id,
+            text,
+            interactionId: interaction.id,
+          };
+        } catch (err) {
+          console.error("[WhatsApp AI] slot reply send failed", {
+            conversationId: conversation.id,
+            errorName: err instanceof Error ? err.name : "unknown",
+          });
+          const text = formatAppointmentToolErrorMessage(input.tenant.clinicName);
+          await escalateToHuman({
+            tenant: input.tenant,
+            conversationId: conversation.id,
+            patientId: conversation.patientId,
+            coupleId: conversation.coupleId,
+            reason: "APPOINTMENT_SEND_FAILED",
+          }).catch(() => undefined);
+          return {
+            handoff: true,
+            handoffReason: "APPOINTMENT_SEND_FAILED",
+            text,
+          };
+        }
+      }
+
+      // NO_SLOTS — deterministic, never KB/LLM
+      const text = formatNoSlotsPatientMessage({
+        clinicName: input.tenant.clinicName,
+        dateLabel: preferredDateLabel,
       });
-      const interaction = await recordAiInteraction({
-        clinicId: input.tenant.clinicId,
-        conversationId: conversation.id,
-        patientId: conversation.patientId,
-        messageId: sent.id,
-        trigger: input.trigger,
-        intent: intentResult.intent,
-        model: "appointment-no-slots",
-        classification: "NO_SUITABLE_APPOINTMENT_SLOT",
-        safeToAutoReply: true,
-        status: "SENT",
-        rawSummary: "No open slots — informed patient without inventing availability",
-      });
-      return {
-        messageId: sent.id,
-        text,
-        interactionId: interaction.id,
-      };
-    } catch {
-      /* fall through to generate */
+      await prisma.careTask
+        .create({
+          data: {
+            clinicId: input.tenant.clinicId,
+            coupleId: conversation.coupleId,
+            title: "WhatsApp — no appointment slots available",
+            description: `AI found no open slots${preferredDate ? ` for ${preferredDate}` : ""} in clinic working hours.`,
+            category: "APPOINTMENT",
+            status: "WAITING",
+            priority: "NORMAL",
+          },
+        })
+        .catch(() => undefined);
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: text,
+        });
+        const interaction = await recordAiInteraction({
+          clinicId: input.tenant.clinicId,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          messageId: sent.id,
+          trigger: input.trigger,
+          intent: intentResult.intent,
+          model: "appointment-no-slots",
+          classification: "APPOINTMENT_NO_SLOTS",
+          safeToAutoReply: true,
+          status: "SENT",
+          rawSummary: `No open slots (deterministic)${preferredDate ? ` preferredDate=${preferredDate}` : ""}`,
+        });
+        console.log("[WhatsApp AI] response sent", {
+          conversationId: conversation.id,
+          inboundMessageId: input.inboundMessageId ?? null,
+          sentMessageId: sent.id,
+          responseMode: "deterministic_no_slots",
+          slotCount: 0,
+          preferredDate,
+          pipelineStage: "deterministic_no_slots",
+        });
+        return {
+          messageId: sent.id,
+          text,
+          interactionId: interaction.id,
+        };
+      } catch {
+        return {
+          text,
+          reason: "no_slots_send_failed",
+        };
+      }
     }
   }
 
@@ -713,6 +814,54 @@ export async function runWhatsAppAiPipeline(input: {
     toolsRun: toolResults.map((t) => t.tool),
     openaiKey: process.env["OPENAI_API_KEY"]?.trim() ? "CONFIGURED" : "MISSING",
   });
+
+  // Final guard: booking/reschedule must never use KB/LLM slot answers.
+  if (isSlotListingIntent && input.mode === "send" && !input.simulation) {
+    const text = formatAppointmentToolErrorMessage(input.tenant.clinicName);
+    console.error("[WhatsApp AI] slot listing reached generate path — blocked", {
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      intent: intentResult.intent,
+      preferredDate,
+      slotCount,
+    });
+    await escalateToHuman({
+      tenant: input.tenant,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      coupleId: conversation.coupleId,
+      reason: "APPOINTMENT_ROUTING_FALLTHROUGH",
+    }).catch(() => undefined);
+    try {
+      const sent = await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: conversation.id,
+        body: text,
+      });
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        messageId: sent.id,
+        trigger: input.trigger,
+        intent: intentResult.intent,
+        model: "appointment-fallthrough-blocked",
+        classification: "APPOINTMENT_ROUTING_FALLTHROUGH",
+        safeToAutoReply: false,
+        status: "HANDOFF",
+        handoffReason: "APPOINTMENT_ROUTING_FALLTHROUGH",
+        rawSummary: "Blocked KB/LLM fallthrough for appointment slot listing",
+      });
+      return {
+        handoff: true,
+        handoffReason: "APPOINTMENT_ROUTING_FALLTHROUGH",
+        messageId: sent.id,
+        text,
+        interactionId: interaction.id,
+      };
+    } catch {
+      return { handoff: true, handoffReason: "APPOINTMENT_ROUTING_FALLTHROUGH", text };
+    }
+  }
 
   const generated = await generateWhatsAppAiReply({
     patientMessage: input.patientMessage,

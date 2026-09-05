@@ -660,6 +660,37 @@ test("intent→tool: Show available slots executes appointment_slots", async () 
 
 test("date parse: reschedule to 6th resolves in current/next month", async () => {
   const { extractPreferredDateIso } = await import("./modules/whatsapp-ai/date-parse");
-  const now = new Date(2026, 8, 5); // 5 Sep 2026
-  assert.equal(extractPreferredDateIso("Can you reschedule to 6th", now), "2026-09-06");
+  const now = new Date(2026, 8, 5); // 5 Sep 2026 local
+  assert.equal(extractPreferredDateIso("Can you reschedule to 6th", now, "Asia/Kolkata"), "2026-09-06");
+});
+
+test("intent→tool: next monday preferredDate reaches appointment_slots", async () => {
+  const intent = classifyPatientIntent("Show available slots next monday");
+  assert.equal(intent.intent, "APPOINTMENT_BOOKING");
+  const { extractPreferredDateIso } = await import("./modules/whatsapp-ai/date-parse");
+  const preferredDate = extractPreferredDateIso(
+    "Show available slots next monday",
+    new Date(Date.UTC(2026, 8, 5, 19, 30, 0)),
+    "Asia/Kolkata",
+  );
+  assert.equal(preferredDate, "2026-09-07");
+  const results = await runToolsForIntent({
+    auth: {
+      tenant: fixture.ctxA,
+      conversationId: fixture.conversationAId,
+      patientId: fixture.patientAId,
+      coupleId: fixture.coupleAId,
+    },
+    toolNames: intent.suggestedTools,
+    intent: intent.intent,
+    args: { preferredDate },
+  });
+  const slotTool = results.find((r) => r.tool === "getAvailableAppointmentSlots");
+  assert.ok(slotTool?.ok);
+  const data = slotTool!.data as { type?: string; available?: boolean; slots?: Array<{ startTime: string }> };
+  assert.equal(data.type, "appointment_slots");
+  // Monday under DEFAULT_HOURS should produce slots unless conflicts
+  assert.equal(data.available, true);
+  assert.ok((data.slots?.length ?? 0) > 0);
+  assert.ok(data.slots!.every((s) => s.startTime.startsWith("2026-09-07") || s.startTime.includes("2026-09-07")));
 });

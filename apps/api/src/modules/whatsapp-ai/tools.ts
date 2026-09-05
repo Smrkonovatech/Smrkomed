@@ -735,15 +735,25 @@ export function formatAppointmentSlotsPatientMessage(input: {
   clinicName: string;
   slots: Array<{ index: number; label: string }>;
   purpose?: string;
+  dateLabel?: string | null;
 }): string {
+  const when = input.dateLabel ? ` for ${input.dateLabel}` : "";
   const header =
     input.purpose === "RESCHEDULE"
-      ? `Here are available times to reschedule your appointment at ${input.clinicName}:`
-      : `Here are available appointment times at ${input.clinicName}:`;
+      ? `Here are available times to reschedule your appointment at ${input.clinicName}${when}:`
+      : `Available appointments${when} at ${input.clinicName}:`;
   const lines = input.slots.map((s) => `${s.index}. ${s.label}`);
-  return `✦ Smrko AI\n\n${header}\n\n${lines.join("\n")}\n\nReply with the number of the time you prefer (for example: 2).`;
+  return `✦ Smrko AI\n\n${header}\n\n${lines.join("\n")}\n\nReply with the number of your preferred slot (for example: 2).`;
 }
 
-export function formatNoSlotsPatientMessage(clinicName: string): string {
-  return `✦ Smrko AI\n\nI checked ${clinicName}'s open hours and there are no available appointment times in the next few days. I can try another day if you suggest one, or connect you with our care team — just say "speak to staff".`;
+export function formatNoSlotsPatientMessage(input: {
+  clinicName: string;
+  dateLabel?: string | null;
+}): string {
+  const when = input.dateLabel ? ` for ${input.dateLabel}` : " for the next few days";
+  return `✦ Smrko AI\n\nI checked ${input.clinicName}'s open hours${when}, but I couldn't find an available appointment slot. Would you like me to check another date?`;
+}
+
+export function formatAppointmentToolErrorMessage(clinicName: string): string {
+  return `✦ Smrko AI\n\nI'm having trouble checking appointments at ${clinicName} right now. I'll connect you with our care team so they can help.`;
 }

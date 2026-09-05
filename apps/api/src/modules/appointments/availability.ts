@@ -94,7 +94,7 @@ export async function getAvailableAppointmentSlots(input: {
   const timezone = settings.timezone || "Asia/Kolkata";
   const durationMin = input.durationMin ?? 30;
   const limit = Math.min(input.limit ?? 12, 24);
-  const days = Math.min(input.days ?? 7, 14);
+  const days = Math.min(input.days ?? (input.preferredDate ? 14 : 7), 21);
 
   const clinic = await prisma.clinic.findUnique({
     where: { id: input.clinicId },
