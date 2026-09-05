@@ -15,6 +15,9 @@ export type GenerateAiResult = {
   blocked: boolean;
 };
 
+const SAFE_UNAVAILABLE_REPLY =
+  "✦ Smrko AI\n\nI'm having trouble processing that right now. I can connect you with our care team — reply \"speak to staff\" if you'd like a human to take over.";
+
 function buildUserPrompt(input: {
   patientMessage: string;
   ctx: WhatsAppAiContext;
@@ -34,6 +37,11 @@ function buildUserPrompt(input: {
     "Knowledge (may include DEMO / DEVELOPMENT CONTENT — not verified medical advice):",
     formatKnowledgeForPrompt(input.knowledge),
     "",
+    "Rules for this reply:",
+    "- Use ONLY the knowledge and context above for clinic-specific facts.",
+    "- Do NOT invent pricing, doctor availability, clinic timings, or medical claims.",
+    "- If the answer is not in knowledge, say so and offer staff help.",
+    "",
     input.promptHint ? `Staff instruction: ${input.promptHint}` : null,
     `Patient message: ${input.patientMessage}`,
   ].filter((x): x is string => Boolean(x));
@@ -47,9 +55,21 @@ export function isSimpleGreeting(text: string): boolean {
   );
 }
 
+/** Short acknowledgements — reply quickly without OpenAI. */
+export function isSimpleAck(text: string): boolean {
+  return /^(thanks|thank\s*you|thx|ok|okay|k|yes|yep|yeah|sure|got\s*it|alright|cool|great|nice)\s*[!.]*$/i.test(
+    text.trim(),
+  );
+}
+
 function greetingReply(ctx: WhatsAppAiContext): string {
   const name = ctx.patientFirstName ? ` ${ctx.patientFirstName}` : "";
   return `✦ Smrko AI\n\nHello${name}! Thanks for messaging ${ctx.clinicName}. How can I help you today — appointments, clinic info, or something else? (I'm Smrko AI, not a doctor.)`;
+}
+
+function ackReply(ctx: WhatsAppAiContext): string {
+  const name = ctx.patientFirstName ? ` ${ctx.patientFirstName}` : "";
+  return `✦ Smrko AI\n\nYou're welcome${name}! If you have another question about appointments or clinic info, just send it here.`;
 }
 
 function kbFallbackReply(input: {
@@ -59,6 +79,9 @@ function kbFallbackReply(input: {
 }): string {
   if (isSimpleGreeting(input.patientMessage)) {
     return greetingReply(input.ctx);
+  }
+  if (isSimpleAck(input.patientMessage)) {
+    return ackReply(input.ctx);
   }
   const name = input.ctx.patientFirstName ? ` ${input.ctx.patientFirstName}` : "";
   const hit = input.knowledge.find((k) => k.score > 0) ?? input.knowledge[0];
@@ -75,6 +98,7 @@ async function callOpenAiChat(system: string, user: string, model: string): Prom
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 8_000);
   try {
+    console.log("[WhatsApp AI] OpenAI request started", { model });
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -99,7 +123,12 @@ async function callOpenAiChat(system: string, user: string, model: string): Prom
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
     };
-    return String(json.choices?.[0]?.message?.content ?? "").trim();
+    const text = String(json.choices?.[0]?.message?.content ?? "").trim();
+    console.log("[WhatsApp AI] OpenAI response received", {
+      model,
+      chars: text.length,
+    });
+    return text;
   } finally {
     clearTimeout(timer);
   }
@@ -111,7 +140,7 @@ export async function generateWhatsAppAiReply(input: {
   knowledge: KbHit[];
   promptHint?: string;
   forceEscalationCopy?: boolean;
-  /** Webhook path: skip OpenAI for greetings so Meta gets a reply within timeout. */
+  /** Inbound path: skip OpenAI for greetings/acks so replies stay fast. */
   preferFast?: boolean;
 }): Promise<GenerateAiResult> {
   if (input.forceEscalationCopy) {
@@ -123,12 +152,21 @@ export async function generateWhatsAppAiReply(input: {
     };
   }
 
-  // Inbound greetings must be instant — do not wait on OpenAI inside Meta's webhook budget.
+  // Fast path — still produces an outbound reply (not silence).
   if (input.preferFast && isSimpleGreeting(input.patientMessage)) {
-    console.log("[WhatsApp AI] fast greeting reply (no OpenAI wait)");
+    console.log("[WhatsApp AI] fallback used", { reason: "greeting-fast" });
     return {
       text: greetingReply(input.ctx),
       model: "greeting-fast",
+      usedLlm: false,
+      blocked: false,
+    };
+  }
+  if (input.preferFast && isSimpleAck(input.patientMessage)) {
+    console.log("[WhatsApp AI] fallback used", { reason: "ack-fast" });
+    return {
+      text: ackReply(input.ctx),
+      model: "ack-fast",
       usedLlm: false,
       blocked: false,
     };
@@ -143,9 +181,10 @@ export async function generateWhatsAppAiReply(input: {
   });
 
   const key = process.env["OPENAI_API_KEY"]?.trim();
-  // Tests / local without key: KB-only deterministic reply (never invent clinical advice)
   if (!key || env.nodeEnv === "test" || process.env["WHATSAPP_AI_FORCE_FALLBACK"] === "1") {
-    console.log("[WhatsApp AI] generate using KB/greeting fallback (no OpenAI key on API or test mode)");
+    console.log("[WhatsApp AI] fallback used", {
+      reason: !key ? "OPENAI_API_KEY=MISSING" : "test_or_force_fallback",
+    });
     return {
       text: kbFallbackReply(input),
       model: "kb-fallback",
@@ -159,28 +198,38 @@ export async function generateWhatsAppAiReply(input: {
       ? `${PATIENT_AI_SYSTEM_PROMPT}\n\nThe patient sent a short greeting. Reply with a warm 1–3 sentence welcome from Smrko AI for this clinic and invite their question. Do not diagnose.`
       : PATIENT_AI_SYSTEM_PROMPT;
     let text = await callOpenAiChat(system, user, model);
-    if (!text || isUnsafeAiOutput(text)) {
+    if (!text) {
+      console.log("[WhatsApp AI] fallback used", { reason: "empty_openai_text" });
       return {
-        text: isSimpleGreeting(input.patientMessage)
-          ? greetingReply(input.ctx)
-          : CLINICAL_ESCALATION_MESSAGE,
+        text: kbFallbackReply(input) || SAFE_UNAVAILABLE_REPLY,
+        model: "kb-fallback-empty",
+        usedLlm: true,
+        blocked: false,
+      };
+    }
+    if (isUnsafeAiOutput(text)) {
+      return {
+        text: CLINICAL_ESCALATION_MESSAGE,
         model,
         usedLlm: true,
-        blocked: Boolean(text && isUnsafeAiOutput(text)),
+        blocked: true,
       };
     }
     if (!/smrko ai/i.test(text)) {
       text = `✦ Smrko AI\n\n${text}`;
     }
-    console.log("[WhatsApp AI] generate used OpenAI", { model, knowledgeHits: input.knowledge.length });
     return { text, model, usedLlm: true, blocked: false };
   } catch (err) {
     console.error(
       "[WhatsApp AI] OpenAI failed — using KB/greeting fallback:",
       err instanceof Error ? err.message : err,
     );
+    console.log("[WhatsApp AI] fallback used", {
+      reason: err instanceof Error ? err.message.slice(0, 120) : "openai_error",
+    });
+    const fallback = kbFallbackReply(input);
     return {
-      text: kbFallbackReply(input),
+      text: fallback || SAFE_UNAVAILABLE_REPLY,
       model: "kb-fallback-error",
       usedLlm: false,
       blocked: false,

@@ -76,6 +76,13 @@ export async function retrieveKnowledgeArticles(input: {
   });
 
   scored.sort((a, b) => b.score - a.score);
+  // Prefer specialty-matched published hits when scores tie (clinic fertility → hospital → platform).
+  scored.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    const rank = (s: string | null) =>
+      s === "FERTILITY" ? 3 : s === "HOSPITAL" ? 2 : s === "SMRKOMED" ? 1 : 0;
+    return rank(b.specialty) - rank(a.specialty);
+  });
   const top = scored.filter((s) => s.score > 0).slice(0, limit);
   if (top.length) return top;
   // Fallback: newest published (bounded) when no keyword hit

@@ -58,9 +58,16 @@ export async function runWhatsAppAiPipeline(input: {
     return { skipped: true, reason: "Conversation not found" };
   }
 
-  if (!input.force && input.trigger === "inbound") {
+  // Global clinic kill switch — always enforced for inbound auto-reply.
+  // Staff/automation may pass force:true to bypass (explicit Send AI / AI_DRAFT node).
+  if (input.trigger === "inbound" && !input.force) {
     const enabled = await clinicAiEnabled(input.tenant.clinicId);
     if (!enabled) {
+      console.log("[WhatsApp AI] pipeline skipped — clinic auto-reply OFF", {
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        messageId: input.inboundMessageId ?? null,
+      });
       const interaction = await recordAiInteraction({
         clinicId: input.tenant.clinicId,
         conversationId: conversation.id,
@@ -75,35 +82,27 @@ export async function runWhatsAppAiPipeline(input: {
     }
   }
 
+  // Human takeover: stay paused until staff Resume AI or explicit staff Send AI (force).
+  // Do NOT auto-resume on patient inbound — that would ignore Take over.
   if (conversation.aiPausedAt || conversation.status === "HUMAN_HANDOFF") {
-    // Patient inbound must auto-resume (even when force=true for settings bypass).
-    // force=true used to skip this and permanently block auto-reply after Take over.
-    let keepPaused = false;
-    if (input.trigger === "inbound") {
-      // Patient wrote again with Auto AI path — always resume so replies are not stuck after Take over.
+    if (input.force && input.trigger !== "inbound") {
       await resumeWhatsAppAi(input.tenant, conversation.id);
       const refreshed = await prisma.conversation.findFirst({
         where: { id: input.conversationId, clinicId: input.tenant.clinicId },
       });
       if (refreshed) Object.assign(conversation, refreshed);
-      console.log("[WhatsApp AI] auto-resumed after patient inbound", {
+      console.log("[WhatsApp AI] resumed via staff/automation force", {
         conversationId: conversation.id,
+        trigger: input.trigger,
       });
-    } else if (input.force) {
-      await resumeWhatsAppAi(input.tenant, conversation.id);
-      const refreshed = await prisma.conversation.findFirst({
-        where: { id: input.conversationId, clinicId: input.tenant.clinicId },
-      });
-      if (refreshed) Object.assign(conversation, refreshed);
-    } else {
-      keepPaused = true;
     }
 
-    if (
-      keepPaused ||
-      conversation.aiPausedAt != null ||
-      conversation.status === "HUMAN_HANDOFF"
-    ) {
+    if (conversation.aiPausedAt != null || conversation.status === "HUMAN_HANDOFF") {
+      console.log("[WhatsApp AI] pipeline skipped — human takeover active", {
+        conversationId: conversation.id,
+        messageId: input.inboundMessageId ?? null,
+        trigger: input.trigger,
+      });
       const interaction = await recordAiInteraction({
         clinicId: input.tenant.clinicId,
         conversationId: conversation.id,
@@ -113,11 +112,52 @@ export async function runWhatsAppAiPipeline(input: {
         status: "SKIPPED",
         classification: "AI_PAUSED",
         handoffReason: conversation.handoffReason,
-        rawSummary: keepPaused
-          ? "AI paused — human control (not an inbound auto-resume)"
-          : "AI paused — human control",
+        rawSummary: "AI paused — human takeover (Resume AI to continue auto-reply)",
       });
       return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };
+    }
+  }
+
+  console.log("[WhatsApp AI] pipeline started", {
+    clinicId: input.tenant.clinicId,
+    conversationId: conversation.id,
+    messageId: input.inboundMessageId ?? null,
+    trigger: input.trigger,
+    mode: input.mode,
+  });
+
+  // Idempotency: if this inbound already got an AI outbound, stop before OpenAI/KB work.
+  if (input.inboundMessageId && input.mode === "send" && !input.simulation) {
+    const inbound = await prisma.message.findFirst({
+      where: {
+        id: input.inboundMessageId,
+        conversationId: conversation.id,
+        direction: "INBOUND",
+        senderType: "PATIENT",
+      },
+      select: { createdAt: true },
+    });
+    if (inbound) {
+      const already = await prisma.message.findFirst({
+        where: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType: "AI",
+          createdAt: { gte: inbound.createdAt },
+        },
+        select: { id: true },
+      });
+      if (already) {
+        console.log("[WhatsApp AI] pipeline completed — already replied", {
+          conversationId: conversation.id,
+          messageId: input.inboundMessageId,
+          sentMessageId: already.id,
+        });
+        return {
+          messageId: already.id,
+          reason: "AI already replied to this inbound",
+        };
+      }
     }
   }
 
@@ -275,7 +315,20 @@ export async function runWhatsAppAiPipeline(input: {
     clinicId: input.tenant.clinicId,
     query: input.patientMessage,
     limit: 5,
-    specialtyHint: input.specialtyHint ?? null,
+    specialtyHint: input.specialtyHint ?? inferSpecialtyHint(input.patientMessage),
+  });
+  console.log("[WhatsApp AI] knowledge retrieved", {
+    conversationId: conversation.id,
+    messageId: input.inboundMessageId ?? null,
+    hits: knowledge.length,
+    topScore: knowledge[0]?.score ?? 0,
+    topTitle: knowledge[0]?.title?.slice(0, 80) ?? null,
+  });
+
+  console.log("[WhatsApp AI] generating response", {
+    conversationId: conversation.id,
+    messageId: input.inboundMessageId ?? null,
+    openaiKey: process.env["OPENAI_API_KEY"]?.trim() ? "CONFIGURED" : "MISSING",
   });
 
   const generated = await generateWhatsAppAiReply({
@@ -351,31 +404,11 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   try {
-    // Avoid double auto-reply if webhook + background both fire.
-    if (input.inboundMessageId) {
-      const inbound = await prisma.message.findFirst({
-        where: { id: input.inboundMessageId, conversationId: conversation.id },
-        select: { createdAt: true },
-      });
-      if (inbound) {
-        const already = await prisma.message.findFirst({
-          where: {
-            conversationId: conversation.id,
-            direction: "OUTBOUND",
-            senderType: "AI",
-            createdAt: { gte: inbound.createdAt },
-          },
-          select: { id: true },
-        });
-        if (already) {
-          return {
-            messageId: already.id,
-            text: generated.text,
-            reason: "AI already replied to this inbound",
-          };
-        }
-      }
-    }
+    console.log("[WhatsApp AI] sending response", {
+      conversationId: conversation.id,
+      messageId: input.inboundMessageId ?? null,
+      model: generated.model,
+    });
 
     const sent = await sendWhatsAppAiSessionText(input.tenant, {
       conversationId: conversation.id,
@@ -395,6 +428,17 @@ export async function runWhatsAppAiPipeline(input: {
       rawSummary: generated.text,
     });
 
+    console.log("[WhatsApp AI] response sent", {
+      conversationId: conversation.id,
+      inboundMessageId: input.inboundMessageId ?? null,
+      sentMessageId: sent.id,
+      interactionId: interaction.id,
+    });
+    console.log("[WhatsApp AI] pipeline completed", {
+      conversationId: conversation.id,
+      sentMessageId: sent.id,
+    });
+
     return {
       messageId: sent.id,
       text: generated.text,
@@ -402,6 +446,11 @@ export async function runWhatsAppAiPipeline(input: {
       knowledgeIds: knowledge.map((k) => k.id),
     };
   } catch (err) {
+    console.error("[WhatsApp AI] pipeline failed", {
+      conversationId: conversation.id,
+      messageId: input.inboundMessageId ?? null,
+      error: err instanceof Error ? err.message.slice(0, 200) : "send failed",
+    });
     const interaction = await recordAiInteraction({
       clinicId: input.tenant.clinicId,
       conversationId: conversation.id,
@@ -424,6 +473,14 @@ export async function runWhatsAppAiPipeline(input: {
       knowledgeIds: knowledge.map((k) => k.id),
     };
   }
+}
+
+function inferSpecialtyHint(message: string): string | null {
+  const t = message.toLowerCase();
+  if (/\b(ivf|iui|fet|fertility|embryo|follicular|semen)\b/.test(t)) return "FERTILITY";
+  if (/\b(opd|billing|insurance|pharmacy|hospital|registration)\b/.test(t)) return "HOSPITAL";
+  if (/\b(smrkomed|care loop|whatsapp)\b/.test(t)) return "SMRKOMED";
+  return null;
 }
 
 export { resumeWhatsAppAi };
