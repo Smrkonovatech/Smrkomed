@@ -1,6 +1,9 @@
 /**
  * Real appointment slot availability from clinic working hours + existing Appointment rows.
  * Never invents slots outside open hours or over existing CONFIRMED/WAITING bookings.
+ *
+ * LIMITATION: There is no DoctorSchedule / leave / holiday / blocking calendar in Prisma.
+ * doctorId on generated slots is always null. Do not attribute clinic-hour slots to a named doctor.
  */
 
 import { prisma } from "@smrkomed/database";

@@ -356,17 +356,28 @@ export async function executePatientTool(
       const { formatSlotLabel, setConversationPendingAction } = await import(
         "../appointments/whatsapp-booking"
       );
-      let doctorName = str("doctorName") || null;
-      if (!doctorName && coupleId) {
-        const couple = await prisma.couple.findFirst({
-          where: { id: coupleId, clinicId },
-          select: { assignedDoctor: { select: { name: true } } },
-        });
-        doctorName = couple?.assignedDoctor?.name ?? null;
+      // Doctor-specific availability requires DoctorSchedule/calendar — never invent.
+      const requestedDoctor = str("doctorName") || str("requestedDoctor") || null;
+      if (requestedDoctor) {
+        return {
+          tool,
+          ok: true,
+          data: {
+            type: "appointment_slots",
+            slots: [],
+            available: false,
+            reason: "DOCTOR_SCHEDULE_NOT_VERIFIABLE",
+            message:
+              "Doctor-specific availability cannot be verified without DoctorSchedule/calendar. Connect the patient with the care team. Do not show generic clinic slots as belonging to this doctor.",
+          },
+          handoffRecommended: true,
+          handoffReason: "DOCTOR_SCHEDULE_NOT_VERIFIABLE",
+        };
       }
+      // Clinic working-hours slots only — doctorId/doctorName stay null (no DoctorSchedule).
       const result = await getAvailableAppointmentSlots({
         clinicId,
-        doctorName,
+        doctorName: null,
         appointmentType: str("appointmentType") || "Consultation",
         preferredDate: str("preferredDate") || null,
       });
@@ -393,6 +404,7 @@ export async function executePatientTool(
         label: formatSlotLabel(s),
         startTime: s.startTime,
         endTime: s.endTime,
+        doctorId: s.doctorId,
         doctorName: s.doctorName,
         appointmentType: s.appointmentType,
         timezone: s.timezone,
@@ -420,8 +432,10 @@ export async function executePatientTool(
           available: true,
           timezone: result.timezone,
           slots: labeled,
+          doctorScheduleNote:
+            "Slots are clinic working-hour openings, not doctor-verified calendars. doctorId is null until DoctorSchedule exists.",
           instruction:
-            "Present these REAL slots to the patient numbered 1..N. Ask them to reply with the number. Do not invent other times.",
+            "Present these REAL slots to the patient numbered 1..N. Ask them to reply with the number. Do not invent other times. Do not attribute slots to a named doctor.",
         },
       };
     }

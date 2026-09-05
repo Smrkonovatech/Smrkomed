@@ -72,12 +72,55 @@ async function dispatchApptTrigger(input: {
   }).catch(() => undefined);
 }
 
+function appointmentCareDueTime(startsAt: Date): string {
+  const hh = String(startsAt.getHours()).padStart(2, "0");
+  const mm = String(startsAt.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+async function notifyStaffAiAppointmentAction(input: {
+  clinicId: string;
+  conversationId: string;
+  title: string;
+  body: string;
+}) {
+  const { realtimeBus } = await import("../realtime/bus");
+  realtimeBus.publish({
+    type: "CONVERSATION_UPDATED",
+    clinicId: input.clinicId,
+    conversationId: input.conversationId,
+    patch: { updatedAt: new Date().toISOString() },
+  });
+  const staff = await prisma.clinicMembership.findFirst({
+    where: { clinicId: input.clinicId, status: "ACTIVE" },
+    select: { userId: true },
+  });
+  if (!staff) return;
+  await prisma.notification
+    .create({
+      data: {
+        clinicId: input.clinicId,
+        userId: staff.userId,
+        title: input.title,
+        body: input.body,
+        href: "/whatsapp/inbox",
+        status: "UNREAD",
+      },
+    })
+    .catch(() => undefined);
+}
+
+/** Create once, or update existing open CareTask for this appointment (no duplicates). */
 async function ensureCareTaskForAppointment(input: {
   clinicId: string;
   coupleId: string | null;
   appointmentId: string;
   title: string;
   description: string;
+  startsAt: Date;
+  doctorName?: string | null;
+  appointmentType?: string | null;
+  mode?: "create" | "reschedule";
 }) {
   if (!input.coupleId) return;
   const existing = await prisma.careTask.findFirst({
@@ -88,9 +131,44 @@ async function ensureCareTaskForAppointment(input: {
       description: { contains: input.appointmentId },
       status: { notIn: ["COMPLETED", "CANCELLED", "SKIPPED"] },
     },
-    select: { id: true },
+    select: { id: true, dueDate: true },
   });
-  if (existing) return existing.id;
+
+  const dueDate = input.startsAt;
+  const dueTime = appointmentCareDueTime(input.startsAt);
+  const metadata = {
+    appointmentId: input.appointmentId,
+    doctorName: input.doctorName ?? null,
+    appointmentType: input.appointmentType ?? null,
+    source: "WHATSAPP_AI",
+    startsAt: input.startsAt.toISOString(),
+  };
+
+  if (existing) {
+    await prisma.careTask.update({
+      where: { id: existing.id },
+      data: {
+        title: input.title,
+        description: input.description,
+        dueDate,
+        dueTime,
+        ...(input.mode === "reschedule"
+          ? {
+              rescheduledAt: new Date(),
+              rescheduledReason: "WhatsApp AI reschedule",
+              originalDueDate: existing.dueDate ?? dueDate,
+            }
+          : {}),
+        metadata,
+      },
+    });
+    return existing.id;
+  }
+
+  if (input.mode === "reschedule") {
+    // Established book path creates CareTasks; if none exists on reschedule, create one.
+  }
+
   const task = await prisma.careTask.create({
     data: {
       clinicId: input.clinicId,
@@ -100,6 +178,10 @@ async function ensureCareTaskForAppointment(input: {
       category: "APPOINTMENT",
       status: "WAITING",
       priority: "NORMAL",
+      dueDate,
+      dueTime,
+      source: "WHATSAPP_AI",
+      metadata,
     },
   });
   return task.id;
@@ -196,15 +278,8 @@ export async function bookAppointmentFromSlot(input: {
   }
 
   const startTime = new Date(decoded.startMs);
-  const doctorName =
-    decoded.doctorName ||
-    (
-      await prisma.couple.findFirst({
-        where: { id: coupleId, clinicId: input.tenant.clinicId },
-        select: { assignedDoctor: { select: { name: true } } },
-      })
-    )?.assignedDoctor?.name ||
-    null;
+  // Appointment.doctorName is free-text only — never invent a doctor from unverified schedule.
+  const doctorName = decoded.doctorName || null;
 
   const valid = await validateSlotStillAvailable({
     clinicId: input.tenant.clinicId,
@@ -251,6 +326,26 @@ export async function bookAppointmentFromSlot(input: {
       },
     }).catch(() => undefined);
 
+    await ensureCareTaskForAppointment({
+      clinicId: input.tenant.clinicId,
+      coupleId,
+      appointmentId: appointment.id,
+      title: `AI booked appointment — ${appointment.type}`,
+      description: `WhatsApp AI booked appointment ${appointment.id} at ${appointment.startsAt.toISOString()}`,
+      startsAt: appointment.startsAt,
+      doctorName: appointment.doctorName,
+      appointmentType: appointment.type,
+      mode: "create",
+    }).catch(() => undefined);
+
+    await notifyStaffAiAppointmentAction({
+      clinicId: input.tenant.clinicId,
+      conversationId: input.conversationId,
+      title: "AI booked appointment",
+      body: `${appointment.type} · ${appointment.startsAt.toISOString()}${appointment.doctorName ? ` · ${appointment.doctorName}` : ""}`,
+    }).catch(() => undefined);
+
+    // Emit automation only after successful mutation (+ idempotency row).
     await dispatchApptTrigger({
       tenant: input.tenant,
       triggerType: "APPOINTMENT_BOOKED",
@@ -259,14 +354,6 @@ export async function bookAppointmentFromSlot(input: {
       doctorName: appointment.doctorName,
       startsAt: appointment.startsAt,
     });
-
-    await ensureCareTaskForAppointment({
-      clinicId: input.tenant.clinicId,
-      coupleId,
-      appointmentId: appointment.id,
-      title: `Appointment — ${appointment.type}`,
-      description: `WhatsApp AI booked appointment ${appointment.id} at ${appointment.startsAt.toISOString()}`,
-    }).catch(() => undefined);
 
     return {
       ok: true,
@@ -389,6 +476,25 @@ export async function rescheduleAppointmentFromSlot(input: {
     },
   }).catch(() => undefined);
 
+  await ensureCareTaskForAppointment({
+    clinicId: input.tenant.clinicId,
+    coupleId: updated.coupleId,
+    appointmentId: updated.id,
+    title: `AI rescheduled appointment — ${updated.type}`,
+    description: `WhatsApp AI rescheduled appointment ${updated.id} to ${updated.startsAt.toISOString()}`,
+    startsAt: updated.startsAt,
+    doctorName: updated.doctorName,
+    appointmentType: updated.type,
+    mode: "reschedule",
+  }).catch(() => undefined);
+
+  await notifyStaffAiAppointmentAction({
+    clinicId: input.tenant.clinicId,
+    conversationId: input.conversationId,
+    title: "AI rescheduled appointment",
+    body: `${updated.type} · ${existing.startsAt.toISOString()} → ${updated.startsAt.toISOString()}`,
+  }).catch(() => undefined);
+
   await dispatchApptTrigger({
     tenant: input.tenant,
     triggerType: "APPOINTMENT_RESCHEDULED",
@@ -456,15 +562,6 @@ export async function cancelAppointmentForWhatsApp(input: {
     metadata: { source: "WHATSAPP_AI", conversationId: input.conversationId },
   }).catch(() => undefined);
 
-  await dispatchApptTrigger({
-    tenant: input.tenant,
-    triggerType: "APPOINTMENT_CANCELLED",
-    appointmentId: updated.id,
-    coupleId: updated.coupleId,
-    doctorName: updated.doctorName,
-    startsAt: updated.startsAt,
-  });
-
   if (updated.coupleId) {
     await prisma.careTask.updateMany({
       where: {
@@ -477,6 +574,22 @@ export async function cancelAppointmentForWhatsApp(input: {
       data: { status: "CANCELLED" },
     }).catch(() => undefined);
   }
+
+  await notifyStaffAiAppointmentAction({
+    clinicId: input.tenant.clinicId,
+    conversationId: input.conversationId,
+    title: "AI cancelled appointment",
+    body: `${updated.type} · ${updated.startsAt.toISOString()}`,
+  }).catch(() => undefined);
+
+  await dispatchApptTrigger({
+    tenant: input.tenant,
+    triggerType: "APPOINTMENT_CANCELLED",
+    appointmentId: updated.id,
+    coupleId: updated.coupleId,
+    doctorName: updated.doctorName,
+    startsAt: updated.startsAt,
+  });
 
   return { ok: true, appointmentId: updated.id, alreadyCancelled: false };
 }

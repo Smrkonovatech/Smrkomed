@@ -57,8 +57,8 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "REQUEST_DOCTOR",
-    re: /\b(want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)\b|\bconnect\s+me\s+(to|with)\s+(a\s+)?doctor\b/i,
-    tools: ["getDoctorProfile"],
+    re: /\b(want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)\b|\bconnect\s+me\s+(to|with)\s+(a\s+)?doctor\b|\bi\s+want\s+to\s+see\s+dr\.?\s+\w+/i,
+    tools: ["requestHuman"],
     confidence: "high",
   },
   {
