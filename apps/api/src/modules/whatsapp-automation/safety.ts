@@ -34,7 +34,7 @@ export async function getClinicCommSettings(clinicId: string): Promise<ClinicCom
     minDelayMinutes: row?.minDelayMinutes ?? 30,
     requireConsentGranted: row?.requireConsentGranted ?? false,
     urgentBypassHours: row?.urgentBypassHours ?? true,
-    aiAutoReplyEnabled: row?.aiAutoReplyEnabled ?? false,
+    aiAutoReplyEnabled: row?.aiAutoReplyEnabled ?? true,
   };
 }
 

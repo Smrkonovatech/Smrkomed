@@ -9,29 +9,40 @@ import { packTitles } from "./modules/whatsapp-ai/seed-kb-titles";
 test("Hi-style greeting does not force handoff", () => {
   const s = detectHandoffSignals("Hi");
   assert.equal(s.handoff, false);
+  assert.equal(s.pauseAi, false);
 });
 
-test("human request triggers handoff", () => {
+test("Hi doctor greeting does not pause AI (common clinic opener)", () => {
+  const s = detectHandoffSignals("Hi doctor");
+  assert.equal(s.handoff, false);
+  assert.equal(s.pauseAi, false);
+});
+
+test("human request triggers hard handoff", () => {
   const s = detectHandoffSignals("Please let me speak to a doctor");
   assert.equal(s.handoff, true);
+  assert.equal(s.pauseAi, true);
   assert.equal(s.reason, "PATIENT_REQUESTED_HUMAN");
 });
 
-test("clinical question triggers safe escalation signal", () => {
+test("clinical question soft-escalates without freezing AI", () => {
   const s = detectHandoffSignals("What dosage should I take of my medicine?");
   assert.equal(s.handoff, true);
-  assert.ok(s.reason === "CLINICAL_UNCERTAINTY" || s.reason === "EMERGENCY_LANGUAGE");
+  assert.equal(s.pauseAi, false);
+  assert.equal(s.reason, "CLINICAL_UNCERTAINTY");
 });
 
-test("emergency language triggers handoff", () => {
+test("emergency language triggers hard handoff", () => {
   const s = detectHandoffSignals("This is an emergency and I have severe pain");
   assert.equal(s.handoff, true);
+  assert.equal(s.pauseAi, true);
   assert.equal(s.reason, "EMERGENCY_LANGUAGE");
 });
 
-test("complaint language triggers handoff", () => {
+test("complaint language triggers hard handoff", () => {
   const s = detectHandoffSignals("I want to file a complaint about negligence");
   assert.equal(s.handoff, true);
+  assert.equal(s.pauseAi, true);
   assert.equal(s.reason, "COMPLAINT");
 });
 

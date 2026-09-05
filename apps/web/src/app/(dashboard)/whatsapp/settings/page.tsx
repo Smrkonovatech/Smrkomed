@@ -164,8 +164,9 @@ export default function WhatsAppSettingsPage() {
                 onChange={(e) => setSettings({ ...settings, aiAutoReplyEnabled: e.target.checked })}
               />
               <span>
-                Enable Smrko AI auto-reply on inbound WhatsApp (opt-in). AI never diagnoses or
-                prescribes; clinical questions escalate to staff. Off by default for every clinic.
+                Enable Smrko AI auto-reply on inbound WhatsApp. When on, Smrko AI replies as soon as
+                a patient messages — conversations keep going unless the patient asks for a human or
+                an emergency is detected. AI never diagnoses or prescribes.
               </span>
             </label>
 

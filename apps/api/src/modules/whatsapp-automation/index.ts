@@ -912,6 +912,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       where: { clinicId: tenant.clinicId },
       create: {
         clinicId: tenant.clinicId,
+        aiAutoReplyEnabled: body.aiAutoReplyEnabled ?? true,
         ...(body.workingHours === undefined
           ? {}
           : { workingHours: body.workingHours as Prisma.InputJsonValue }),
@@ -922,7 +923,6 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           ? {}
           : { requireConsentGranted: body.requireConsentGranted }),
         ...(body.urgentBypassHours === undefined ? {} : { urgentBypassHours: body.urgentBypassHours }),
-        ...(body.aiAutoReplyEnabled === undefined ? {} : { aiAutoReplyEnabled: body.aiAutoReplyEnabled }),
       },
       update: {
         ...(body.workingHours === undefined

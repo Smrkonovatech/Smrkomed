@@ -11,7 +11,7 @@ import { loadWhatsAppAiContext } from "./context";
 import { generateWhatsAppAiReply } from "./generate";
 import { escalateToHuman, recordAiInteraction, resumeWhatsAppAi } from "./handoff";
 import { retrieveKnowledgeArticles } from "./knowledge";
-import { detectHandoffSignals } from "./safety";
+import { detectHandoffSignals, CLINICAL_ESCALATION_MESSAGE } from "./safety";
 
 export type AiPipelineMode = "draft" | "send";
 
@@ -32,7 +32,8 @@ async function clinicAiEnabled(clinicId: string): Promise<boolean> {
     where: { clinicId },
     select: { aiAutoReplyEnabled: true },
   });
-  return Boolean(row?.aiAutoReplyEnabled);
+  // Default ON when clinic has not saved settings yet — auto-reply should start immediately.
+  return row ? row.aiAutoReplyEnabled : true;
 }
 
 export async function runWhatsAppAiPipeline(input: {
@@ -73,22 +74,37 @@ export async function runWhatsAppAiPipeline(input: {
   }
 
   if (conversation.aiPausedAt || conversation.status === "HUMAN_HANDOFF") {
-    const interaction = await recordAiInteraction({
-      clinicId: input.tenant.clinicId,
-      conversationId: conversation.id,
-      patientId: conversation.patientId,
-      trigger: input.trigger,
-      safeToAutoReply: false,
-      status: "SKIPPED",
-      classification: "AI_PAUSED",
-      handoffReason: conversation.handoffReason,
-      rawSummary: "AI paused — human control",
-    });
-    return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };
+    // Recover conversations frozen by older soft escalations (e.g. "Hi doctor" / clinical)
+    // so the patient does not stay silent until staff clicks Resume AI.
+    const softPrior =
+      conversation.handoffReason === "CLINICAL_UNCERTAINTY" ||
+      conversation.handoffReason === "EMPTY_MESSAGE";
+    if (softPrior && input.trigger === "inbound" && !input.force) {
+      await resumeWhatsAppAi(input.tenant, conversation.id);
+      const refreshed = await prisma.conversation.findFirst({
+        where: { id: input.conversationId, clinicId: input.tenant.clinicId },
+      });
+      if (refreshed) {
+        Object.assign(conversation, refreshed);
+      }
+    } else {
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        trigger: input.trigger,
+        safeToAutoReply: false,
+        status: "SKIPPED",
+        classification: "AI_PAUSED",
+        handoffReason: conversation.handoffReason,
+        rawSummary: "AI paused — human control",
+      });
+      return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };
+    }
   }
 
   const signals = detectHandoffSignals(input.patientMessage);
-  if (signals.handoff) {
+  if (signals.handoff && signals.pauseAi) {
     const escalated = await escalateToHuman({
       tenant: input.tenant,
       conversationId: conversation.id,
@@ -152,6 +168,83 @@ export async function runWhatsAppAiPipeline(input: {
       interactionId: interaction.id,
       careTaskId: escalated.careTaskId,
     } as AiPipelineResult & { careTaskId?: string };
+  }
+
+  // Soft clinical escalation: safe reply + staff task, AI stays on for the conversation.
+  if (signals.handoff && !signals.pauseAi) {
+    await prisma.careTask
+      .create({
+        data: {
+          clinicId: input.tenant.clinicId,
+          coupleId: conversation.coupleId,
+          title: "WhatsApp AI — clinical review needed",
+          description: `Soft escalation (${signals.reason}): patient asked something clinical. AI is still active.`,
+          category: "WHATSAPP_HANDOFF",
+          status: "WAITING",
+          priority: "HIGH",
+        },
+      })
+      .catch(() => undefined);
+
+    if (input.simulation || input.mode === "draft") {
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        trigger: input.trigger,
+        safeToAutoReply: true,
+        status: "DRAFT",
+        classification: signals.reason,
+        rawSummary: CLINICAL_ESCALATION_MESSAGE,
+      });
+      return {
+        draft: true,
+        text: CLINICAL_ESCALATION_MESSAGE,
+        interactionId: interaction.id,
+      };
+    }
+
+    try {
+      const sent = await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: conversation.id,
+        body: CLINICAL_ESCALATION_MESSAGE,
+      });
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        messageId: sent.id,
+        trigger: input.trigger,
+        safeToAutoReply: true,
+        status: "SENT",
+        classification: signals.reason,
+        rawSummary: CLINICAL_ESCALATION_MESSAGE,
+      });
+      return {
+        messageId: sent.id,
+        text: CLINICAL_ESCALATION_MESSAGE,
+        interactionId: interaction.id,
+      };
+    } catch (err) {
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        trigger: input.trigger,
+        safeToAutoReply: true,
+        status: "ERROR",
+        classification: signals.reason,
+        rawSummary:
+          err instanceof Error
+            ? `Soft clinical reply failed: ${err.message.slice(0, 400)}`
+            : "Soft clinical reply failed",
+      });
+      return {
+        skipped: true,
+        reason: err instanceof Error ? err.message.slice(0, 400) : "Soft clinical reply failed",
+        interactionId: interaction.id,
+      };
+    }
   }
 
   const ctx = await loadWhatsAppAiContext(input.tenant, {
@@ -294,5 +387,5 @@ export async function isClinicAiAutoReplyEnabled(clinicId: string): Promise<bool
     where: { clinicId },
     select: { aiAutoReplyEnabled: true },
   });
-  return Boolean(row?.aiAutoReplyEnabled);
+  return row ? row.aiAutoReplyEnabled : true;
 }

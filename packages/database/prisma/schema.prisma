@@ -2545,7 +2545,7 @@ model WhatsAppClinicSettings {
   /// When true, ESCALATE / urgent path may bypass working-hours wait
   urgentBypassHours      Boolean  @default(true)
   /// When true, inbound WhatsApp may invoke Smrko AI auto-reply (opt-in per clinic)
-  aiAutoReplyEnabled     Boolean  @default(false)
+  aiAutoReplyEnabled     Boolean  @default(true)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 
