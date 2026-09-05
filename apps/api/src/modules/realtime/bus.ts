@@ -113,4 +113,16 @@ class InMemoryRealtimeBus implements RealtimePublisher, RealtimeSubscriber {
   }
 }
 
+/**
+ * Process-local SSE event bus (Phase 6).
+ *
+ * CONSTRAINT: subscribers and history live in this Node process only.
+ * - Multiple API replicas → SSE clients only receive events from the instance
+ *   that handled the write (webhook/send). Events are not cross-published.
+ * - Process restart clears the 200-event replay buffer; clients may miss events
+ *   until they reconnect and reconcile via REST.
+ * - No Redis/pub-sub is wired. Keep a single always-on API instance for
+ *   production WhatsApp inbox realtime, or accept eventual REST refresh.
+ * Do not change the SSE HTTP contract without a coordinated client update.
+ */
 export const realtimeBus = new InMemoryRealtimeBus();

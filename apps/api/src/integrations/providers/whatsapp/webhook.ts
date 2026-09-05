@@ -13,6 +13,7 @@ import { ensureDirectWhatsAppConnection } from "./service";
 import { realtimeBus } from "../../../modules/realtime/bus";
 import { triggerBackgroundMediaDownload } from "../../../modules/media/service";
 import { sanitizeFilename } from "../../../modules/media/storage";
+import { scheduleInboundWhatsAppAutomation } from "../../../modules/whatsapp-automation/inbound-dispatch";
 import type { WhatsAppMediaType, WhatsAppMediaStatus } from "@smrkomed/database";
 
 const PAYLOAD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -506,22 +507,59 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       });
     }
   }
-  const staff = await prisma.clinicMembership.findFirst({
-    where: { clinicId, status: "ACTIVE" },
-    select: { userId: true },
-  });
-  if (staff) {
-    await prisma.notification.create({
-      data: {
-        clinicId,
-        userId: staff.userId,
-        title: conversation.unmatched ? "Unmatched WhatsApp contact" : "New WhatsApp message",
-        body: "A WhatsApp message was received.",
-        status: "UNREAD",
-      },
-    }).catch(() => undefined);
+  // Phase 4: automation AFTER persist — async so webhook returns promptly.
+  // Only for newly created messages (duplicate providerMessageId → createdMessage null).
+  // Notifications must also skip duplicates so staff are not spammed.
+  if (createdMessage) {
+    const staff = await prisma.clinicMembership.findFirst({
+      where: { clinicId, status: "ACTIVE" },
+      select: { userId: true },
+    });
+    if (staff) {
+      await prisma.notification.create({
+        data: {
+          clinicId,
+          userId: staff.userId,
+          title: conversation.unmatched ? "Unmatched WhatsApp contact" : "New WhatsApp message",
+          body: "A WhatsApp message was received.",
+          status: "UNREAD",
+        },
+      }).catch(() => undefined);
+    }
+    scheduleInboundWhatsAppAutomation({
+      clinicId,
+      conversationId: conversation.id,
+      patientId: patient?.id ?? conversation.patientId,
+      contactPhone: conversation.contactPhone ?? from,
+      unmatched: conversation.unmatched,
+      messageId: createdMessage.id,
+      providerMessageId: event.externalEventId,
+      messageType: createdMessage.messageType,
+      messageText: createdMessage.content,
+      mediaType: mediaRecord?.type ?? null,
+      mediaMimeType: mediaRecord?.mimeType ?? null,
+      mediaCaption: mediaRecord?.caption ?? null,
+      timestampIso: createdMessage.createdAt.toISOString(),
+    });
   }
+
   return "PROCESSED" as const;
+}
+
+const MESSAGE_STATUS_RANK: Record<string, number> = {
+  QUEUED: 0,
+  SENT: 1,
+  DELIVERED: 2,
+  READ: 3,
+  FAILED: 100,
+};
+
+function shouldApplyMessageStatus(current: string, next: string): boolean {
+  if (next === "FAILED") return true;
+  if (current === "FAILED") return false;
+  const curRank = MESSAGE_STATUS_RANK[current] ?? -1;
+  const nextRank = MESSAGE_STATUS_RANK[next] ?? -1;
+  return nextRank >= curRank;
 }
 
 async function processStatus(event: NormalizedWebhookEvent, clinicId: string) {
@@ -532,25 +570,37 @@ async function processStatus(event: NormalizedWebhookEvent, clinicId: string) {
 
   const existing = await prisma.message.findFirst({
     where: { providerMessageId },
-    select: { id: true, conversationId: true, conversation: { select: { clinicId: true } } },
+    select: {
+      id: true,
+      status: true,
+      conversationId: true,
+      conversation: { select: { clinicId: true } },
+    },
   });
 
+  if (!existing) {
+    // Unknown outbound id — acknowledge without creating orphans.
+    return "IGNORED" as const;
+  }
+
+  if (!shouldApplyMessageStatus(existing.status, mapped)) {
+    return "PROCESSED" as const;
+  }
+
   await prisma.message.updateMany({
-    where: { providerMessageId },
+    where: { id: existing.id, providerMessageId },
     data: { status: mapped },
   });
 
-  if (existing) {
-    const targetClinicId = existing.conversation?.clinicId ?? clinicId;
-    realtimeBus.publish({
-      type: "MESSAGE_STATUS_UPDATED",
-      clinicId: targetClinicId,
-      conversationId: existing.conversationId,
-      messageId: existing.id,
-      providerMessageId,
-      status: mapped,
-    });
-  }
+  const targetClinicId = existing.conversation?.clinicId ?? clinicId;
+  realtimeBus.publish({
+    type: "MESSAGE_STATUS_UPDATED",
+    clinicId: targetClinicId,
+    conversationId: existing.conversationId,
+    messageId: existing.id,
+    providerMessageId,
+    status: mapped,
+  });
   return "PROCESSED" as const;
 }
 
@@ -589,8 +639,9 @@ export async function receiveWhatsAppWebhook(headers: Headers, rawBody: string) 
       processed.push({ id: stored.id, duplicate: true });
       continue;
     }
+    // Atomic claim: only one concurrent delivery may process (status RECEIVED → PROCESSING).
     const claimed = await prisma.integrationEvent.updateMany({
-      where: { id: stored.id, processedAt: null },
+      where: { id: stored.id, processedAt: null, status: "RECEIVED" },
       data: { status: "PROCESSING" },
     });
     if (claimed.count === 0) {

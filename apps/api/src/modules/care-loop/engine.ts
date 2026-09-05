@@ -8,6 +8,7 @@ import {
 import { audit } from "../../lib/audit";
 import { HttpError, notFound } from "../../lib/errors";
 import { requireClinicOwned } from "../../lib/resources";
+import { dispatchCareLoopTrigger } from "../whatsapp-automation/inbound-dispatch";
 
 export type AssignTreatmentPlanInput = {
   coupleId: string;
@@ -433,6 +434,22 @@ export async function evaluateStageProgress(tenant: TenantContext, carePlanId: s
     nextStageIndex,
   });
 
+  void dispatchCareLoopTrigger({
+    tenant,
+    triggerType: "CARE_LOOP_STAGE_CHANGED",
+    triggerEventId: `care_loop_stage_${plan.id}_${plan.currentStageIndex}_to_${nextStageIndex}`,
+    coupleId: plan.coupleId,
+    patientId: plan.couple?.primaryPatientId ?? null,
+    vars: {
+      care_plan_id: plan.id,
+      couple_id: plan.coupleId,
+      from_stage: currentStep.name,
+      to_stage: nextStep?.name ?? "COMPLETED",
+      stage_index: String(nextStageIndex),
+      journey_stage: nextStep?.name ?? "COMPLETED",
+    },
+  }).catch(() => undefined);
+
   return {
     advanced: true,
     completedStage: currentStep.name,
@@ -476,6 +493,20 @@ export async function completeCareTask(
     title: task.title,
     source: evidence?.source ?? "MANUAL",
   });
+
+  void dispatchCareLoopTrigger({
+    tenant,
+    triggerType: "CARE_TASK_COMPLETED",
+    triggerEventId: `care_task_completed_${task.id}`,
+    coupleId: task.coupleId,
+    vars: {
+      care_task_id: task.id,
+      care_task_title: task.title,
+      care_task_status: "COMPLETED",
+      care_plan_id: task.carePlanId ?? "",
+      couple_id: task.coupleId ?? "",
+    },
+  }).catch(() => undefined);
 
   // Evaluate stage progress if this task belongs to an active Care Plan
   let stageAdvancement = null;
@@ -752,6 +783,38 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
     dueDate: dueDate.toISOString(),
   });
 
+  const patientId = couple.primaryPatientId;
+  void dispatchCareLoopTrigger({
+    tenant,
+    triggerType: "CARE_TASK_CREATED",
+    triggerEventId: `care_task_created_${task.id}`,
+    coupleId: couple.id,
+    patientId,
+    vars: {
+      care_task_id: task.id,
+      care_task_title: task.title,
+      care_task_status: task.status,
+      care_plan_id: task.carePlanId ?? "",
+      couple_id: couple.id,
+    },
+  }).catch(() => undefined);
+
+  if (input.assignedUserId) {
+    void dispatchCareLoopTrigger({
+      tenant,
+      triggerType: "CARE_TASK_ASSIGNED",
+      triggerEventId: `care_task_assigned_${task.id}_${input.assignedUserId}`,
+      coupleId: couple.id,
+      patientId,
+      vars: {
+        care_task_id: task.id,
+        care_task_title: task.title,
+        assignee_id: input.assignedUserId,
+        couple_id: couple.id,
+      },
+    }).catch(() => undefined);
+  }
+
   return task;
 }
 
@@ -807,6 +870,21 @@ export async function modifyDoctorTask(
     title: task.title,
     status: patch.status ?? task.status,
   });
+
+  if (patch.assignedUserId) {
+    void dispatchCareLoopTrigger({
+      tenant,
+      triggerType: "CARE_TASK_ASSIGNED",
+      triggerEventId: `care_task_assigned_${taskId}_${patch.assignedUserId}_${Date.now()}`,
+      coupleId: task.coupleId,
+      vars: {
+        care_task_id: taskId,
+        care_task_title: task.title,
+        assignee_id: patch.assignedUserId,
+        couple_id: task.coupleId ?? "",
+      },
+    }).catch(() => undefined);
+  }
 
   // Evaluate stage progression if skipped or status changed
   if (patch.status === "SKIPPED" && task.carePlanId) {

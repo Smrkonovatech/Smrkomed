@@ -156,9 +156,29 @@ export default function WhatsAppKnowledgeBasePage() {
         title="Knowledge Base"
         subtitle="Published clinic knowledge only is available to Smrko AI and automation. Drafts stay internal."
         actions={
-          <Button size="sm" onClick={openCreate}>
-            Create article
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                void apiPost<{ created: number; skipped: number; label: string }>(
+                  "/api/v1/whatsapp-automation/knowledge/seed-demo",
+                )
+                  .then((r) => {
+                    toast.success(`Seeded ${r.created} DEMO articles (${r.skipped} existed)`);
+                    return load();
+                  })
+                  .catch((err) =>
+                    toast.error(err instanceof ApiError ? err.message : "Seed failed"),
+                  );
+              }}
+            >
+              Seed DEMO packs
+            </Button>
+            <Button size="sm" onClick={openCreate}>
+              Create article
+            </Button>
+          </div>
         }
       />
 

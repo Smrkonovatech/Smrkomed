@@ -95,3 +95,48 @@ export function apiPatch<T>(path: string, body: unknown = {}) {
 export function apiDelete<T>(path: string) {
   return request<T>(path, { method: "DELETE" });
 }
+
+/** Multipart upload with optional progress (XHR). Does not set JSON Content-Type. */
+export function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  opts?: { onProgress?: (pct: number) => void },
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${apiBaseUrl()}${path}`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (ev) => {
+      if (!ev.lengthComputable || !opts?.onProgress) return;
+      opts.onProgress(Math.round((ev.loaded / ev.total) * 100));
+    };
+    xhr.onload = () => {
+      let body: Envelope<T> | null = null;
+      try {
+        body = xhr.responseText ? (JSON.parse(xhr.responseText) as Envelope<T>) : null;
+      } catch {
+        reject(new ApiError(xhr.status, "HTTP_ERROR", "The clinic API returned an unexpected response."));
+        return;
+      }
+      if (!body || !("success" in body) || body.success !== true) {
+        const error =
+          body && "error" in body
+            ? body.error
+            : { code: "HTTP_ERROR", message: "Upload failed" };
+        reject(new ApiError(xhr.status || 500, error.code, error.message));
+        return;
+      }
+      resolve(body.data);
+    };
+    xhr.onerror = () => {
+      reject(
+        new ApiError(
+          0,
+          "NETWORK",
+          "Unable to reach the clinic API. Confirm the API is running and API_URL points at it.",
+        ),
+      );
+    };
+    xhr.send(formData);
+  });
+}

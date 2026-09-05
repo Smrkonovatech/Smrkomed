@@ -5,6 +5,8 @@ export type ExecutionContext = {
   vars?: Record<string, string>;
   simulation?: boolean;
   waitNextNodeId?: string | null;
+  /** reply | delay — WAIT_FOR_REPLY sets "reply" */
+  waitKind?: "reply" | "delay" | null;
   /** Tags applied by ADD_TAG / REMOVE_TAG within this execution (no Patient.tags column). */
   tags?: string[];
   retryCount?: number;

@@ -64,6 +64,11 @@ export const testFlowSchema = z.object({
   conversationId: z.string().optional(),
   vars: z.record(z.string(), z.string()).optional(),
   simulateBranch: z.enum(["yes", "no"]).optional(),
+  /** TEST-only simulated domain event context (never sends WhatsApp). */
+  simulateEvent: z
+    .enum(["none", "incoming_whatsapp", "appointment", "care_loop"])
+    .optional()
+    .default("none"),
 });
 
 export const manualTriggerSchema = z.object({
@@ -158,6 +163,7 @@ export const updateCommSettingsSchema = z.object({
   minDelayMinutes: z.number().int().min(0).max(1440).optional(),
   requireConsentGranted: z.boolean().optional(),
   urgentBypassHours: z.boolean().optional(),
+  aiAutoReplyEnabled: z.boolean().optional(),
 });
 
 export const broadcastPreviewSchema = z.object({
@@ -287,5 +293,22 @@ export const sessionTextSchema = z.object({
 
 export const typingSchema = z.object({
   typing: z.boolean(),
+});
+
+export const inboxSendTemplateSchema = z.object({
+  templateId: z.string().min(1).max(64),
+  overrides: z.record(z.string(), z.string().max(256)).optional(),
+  parameters: z.array(z.string().max(256)).max(10).optional(),
+  confirm: z.literal(true),
+});
+
+export const inboxSendDocumentSchema = z.object({
+  documentId: z.string().min(1).max(64),
+  caption: z.string().max(1024).optional(),
+});
+
+export const messageIdParam = z.object({
+  id: z.string().min(1),
+  messageId: z.string().min(1),
 });
 

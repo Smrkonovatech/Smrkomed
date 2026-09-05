@@ -5,6 +5,7 @@ export type ValidationIssue = { code: string; message: string; nodeId?: string }
 const ALLOWED_TYPES = new Set([
   "TRIGGER",
   "WAIT",
+  "WAIT_FOR_REPLY",
   "CONDITION",
   "SEND_TEMPLATE",
   "SEND_TEXT",
@@ -17,6 +18,7 @@ const ALLOWED_TYPES = new Set([
   "REMOVE_TAG",
   "END",
   "AI_DRAFT",
+  "SEND_MEDIA",
   "MEDICATION_LOOKUP",
   "PATIENT_LOOKUP",
   "APPOINTMENT_LOOKUP",
@@ -102,14 +104,39 @@ export function validateFlowDefinition(definition: FlowDefinition, _opts?: { req
       });
     }
     if (n.type === "SEND_TEMPLATE") {
-      const name = String(n.config["templateName"] ?? "");
-      if (!name) {
+      const templateId = String(n.config["templateId"] ?? "").trim();
+      const name = String(n.config["templateName"] ?? "").trim();
+      if (!templateId && !name) {
         issues.push({
           code: "TEMPLATE",
-          message: `Reminder node "${n.label}" requires a WhatsApp template name.`,
+          message: `Send Template node "${n.label}" requires an approved template selection.`,
           nodeId: n.id,
         });
       }
+    }
+    if (n.type === "SEND_TEXT") {
+      const body = String(n.config["body"] ?? n.config["text"] ?? "").trim();
+      if (!body) {
+        issues.push({
+          code: "SEND_TEXT",
+          message: `Send Text node "${n.label}" needs a message body (session window required at send time).`,
+          nodeId: n.id,
+        });
+      }
+    }
+    if (n.type === "SEND_MEDIA") {
+      const documentId = String(n.config["documentId"] ?? "").trim();
+      const storageKey = String(n.config["storageKey"] ?? "").trim();
+      if (!documentId && !storageKey) {
+        issues.push({
+          code: "SEND_MEDIA",
+          message: `Send Media node "${n.label}" needs a patient documentId (or storageKey) from existing media.`,
+          nodeId: n.id,
+        });
+      }
+    }
+    if (n.type === "AI_DRAFT") {
+      // Phase 5 — interface only; no activation block beyond connectivity
     }
     if (n.type === "WAIT") {
       const mode = String(n.config["mode"] ?? "duration");

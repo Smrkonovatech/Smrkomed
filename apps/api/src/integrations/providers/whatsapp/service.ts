@@ -15,6 +15,7 @@ import {
 } from "./graph";
 import { maskPhone, normalizeWhatsAppPhone } from "./phone";
 import { countBodyParameters, mapMetaTemplateStatus } from "./templates";
+import { parseWhatsAppTemplateComponents } from "./template-variables";
 
 export interface MetaConnectionCheckResult {
   connected: boolean;
@@ -46,67 +47,18 @@ export interface ExtractedComponents {
 }
 
 /**
- * Extracts structured components (header, body, footer, buttons, variables)
- * from Meta's raw components array.
+ * Extracts structured components via the canonical template-variables parser.
  */
 export function extractMetaComponents(rawComponents: unknown): ExtractedComponents {
-  if (!Array.isArray(rawComponents)) {
-    return {
-      header: null,
-      body: null,
-      footer: null,
-      buttons: null,
-      variables: null,
-      parameterCount: 0,
-    };
-  }
-
-  let header: string | null = null;
-  let body: string | null = null;
-  let footer: string | null = null;
-  let buttons: unknown[] | null = null;
-  const variables: string[] = [];
-  let parameterCount = 0;
-
-  for (const comp of rawComponents) {
-    if (!comp || typeof comp !== "object") continue;
-    const item = comp as {
-      type?: string;
-      text?: string;
-      format?: string;
-      buttons?: unknown[];
-      example?: { body_text?: string[][] };
-    };
-    const type = (item.type ?? "").toUpperCase();
-
-    if (type === "HEADER") {
-      header = typeof item.text === "string" ? item.text : null;
-    } else if (type === "BODY") {
-      body = typeof item.text === "string" ? item.text : null;
-      if (body) {
-        const matches = body.match(/\{\{(\d+|\w+)\}\}/g) ?? [];
-        for (const m of matches) {
-          const varName = m.slice(2, -2).trim();
-          if (!variables.includes(varName)) {
-            variables.push(varName);
-          }
-        }
-        parameterCount = Math.max(parameterCount, matches.length);
-      }
-    } else if (type === "FOOTER") {
-      footer = typeof item.text === "string" ? item.text : null;
-    } else if (type === "BUTTONS" && Array.isArray(item.buttons)) {
-      buttons = item.buttons;
-    }
-  }
-
+  const parsed = parseWhatsAppTemplateComponents(rawComponents);
   return {
-    header,
-    body,
-    footer,
-    buttons: buttons && buttons.length > 0 ? buttons : null,
-    variables: variables.length > 0 ? variables : null,
-    parameterCount,
+    header: parsed.header,
+    body: parsed.body,
+    footer: parsed.footer,
+    buttons: parsed.buttons,
+    variables: parsed.variables.length > 0 ? parsed.variables.map((v) => v.token) : null,
+    // DB parameterCount remains body-oriented for legacy senders; full slots live in components JSON
+    parameterCount: parsed.bodyParameterCount || parsed.parameterCount,
   };
 }
 

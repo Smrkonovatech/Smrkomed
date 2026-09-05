@@ -37,9 +37,87 @@ function extractSafeMetaErrorMessage(err: GraphJson, fallbackStatus: number): st
   return `Meta WhatsApp API error [${type} code ${code}${subcodeStr}]: ${safeMsg}`;
 }
 
+/** Permanent Meta Graph codes — do not retry indefinitely. */
+const META_PERMANENT_CODES = new Set([
+  10, // Permission denied
+  100, // Invalid parameter
+  200, // Permissions error
+  190, // OAuth / token
+  131026, // Undeliverable / invalid recipient
+  131047, // Outside allowed window / re-engagement
+  131051, // Unsupported message type
+  132000, // Template param count mismatch
+  132001, // Template does not exist
+  132005, // Template text too long
+  132007, // Template format mismatch
+  132012, // Template param format
+  132015, // Template paused
+  132016, // Template disabled
+  133010, // Account locked / restricted
+]);
+
+const META_RATE_LIMIT_CODES = new Set([4, 80007, 130429]);
+
+/**
+ * Maps Meta Graph error codes to IntegrationError classification.
+ * Transient (rate limit / 5xx) → retryable. Permanent validation/auth → not retryable.
+ */
+export function mapMetaGraphError(input: {
+  httpStatus: number;
+  code: number;
+  subcode?: number;
+  safeMessage: string;
+}): IntegrationError {
+  const { httpStatus, code, safeMessage } = input;
+
+  if (code === 190) {
+    return new IntegrationError("AUTHORIZATION_EXPIRED", safeMessage, 401);
+  }
+  if (META_RATE_LIMIT_CODES.has(code) || httpStatus === 429) {
+    return new IntegrationError("PROVIDER_RATE_LIMITED", safeMessage, 429, true);
+  }
+  if (code === 131026 || code === 131047) {
+    return new IntegrationError("INVALID_RECIPIENT", safeMessage, 422);
+  }
+  if (
+    code === 132000 ||
+    code === 132001 ||
+    code === 132005 ||
+    code === 132007 ||
+    code === 132012 ||
+    code === 132015 ||
+    code === 132016 ||
+    code === 131051
+  ) {
+    return new IntegrationError("INVALID_TEMPLATE", safeMessage, 422);
+  }
+  if (code === 10 || code === 200 || code === 133010) {
+    return new IntegrationError("AUTHORIZATION_FAILED", safeMessage, 403);
+  }
+  if (META_PERMANENT_CODES.has(code) || (httpStatus >= 400 && httpStatus < 500 && httpStatus !== 429)) {
+    // Generic Meta #100 = invalid parameter (OAuth code, message payload, etc.) — permanent, not a template-specific code.
+    if (code === 100) {
+      return new IntegrationError("AUTHORIZATION_FAILED", safeMessage, 400);
+    }
+    return new IntegrationError("MESSAGE_SEND_FAILED", safeMessage, httpStatus === 404 ? 404 : 422);
+  }
+  // 5xx / unknown server-side → transient
+  return new IntegrationError("PROVIDER_UNAVAILABLE", safeMessage, 500, true);
+}
+
 export async function graphRequest(path: string, init: RequestInit = {}) {
   const url = path.startsWith("http") ? path : `${graphBaseUrl()}${path.startsWith("/") ? path : `/${path}`}`;
-  const response = await graphFetch(url, init);
+  let response: Response;
+  try {
+    response = await graphFetch(url, init);
+  } catch {
+    throw new IntegrationError(
+      "CONNECTION_FAILED",
+      "Temporary network error talking to Meta WhatsApp API.",
+      500,
+      true,
+    );
+  }
   const text = await response.text();
   let json: GraphJson = {};
   try {
@@ -58,13 +136,12 @@ export async function graphRequest(path: string, init: RequestInit = {}) {
       `[Meta Graph API Error] Path: ${path.split("?")[0]} | Status: ${response.status} | Code: ${code} | Subcode: ${subcode ?? "none"} | Type: ${errType ?? "none"} | Error: ${safeMsg}`,
     );
 
-    if (code === 190) {
-      throw new IntegrationError("AUTHORIZATION_EXPIRED", safeMsg, 401);
-    }
-    if (code === 4 || code === 80007) {
-      throw new IntegrationError("PROVIDER_RATE_LIMITED", safeMsg, 429, true);
-    }
-    throw new IntegrationError("PROVIDER_UNAVAILABLE", safeMsg, 500, true);
+    throw mapMetaGraphError({
+      httpStatus: response.status,
+      code,
+      ...(subcode !== undefined ? { subcode } : {}),
+      safeMessage: safeMsg,
+    });
   }
   return json;
 }
@@ -127,26 +204,61 @@ export async function listMessageTemplates(wabaId: string, accessToken: string) 
   );
 }
 
+export type TemplateSendComponentParameters = {
+  header?: string[];
+  body?: string[];
+  buttons?: Array<{ index: number; parameters: string[]; subType?: string }>;
+};
+
 export async function sendTemplateMessage(input: {
   phoneNumberId: string;
   accessToken: string;
   to: string;
   name: string;
   language: string;
-  parameters: string[];
+  /** Legacy body-only positional parameters */
+  parameters?: string[];
+  /** Structured header / body / button parameters */
+  componentParameters?: TemplateSendComponentParameters;
 }) {
   const template: GraphJson = {
     name: input.name,
     language: { code: input.language },
   };
-  if (input.parameters.length > 0) {
-    template["components"] = [
-      {
-        type: "body",
-        parameters: input.parameters.map((text) => ({ type: "text", text })),
-      },
-    ];
+
+  const components: GraphJson[] = [];
+  const header = input.componentParameters?.header ?? [];
+  const body =
+    input.componentParameters?.body ??
+    (input.parameters && input.parameters.length > 0 ? input.parameters : []);
+  const buttons = input.componentParameters?.buttons ?? [];
+
+  if (header.length > 0) {
+    components.push({
+      type: "header",
+      parameters: header.map((text) => ({ type: "text", text: text.slice(0, 60) })),
+    });
   }
+  if (body.length > 0) {
+    components.push({
+      type: "body",
+      parameters: body.map((text) => ({ type: "text", text: text.slice(0, 1024) })),
+    });
+  }
+  for (const btn of buttons) {
+    if (!btn.parameters.length) continue;
+    components.push({
+      type: "button",
+      sub_type: (btn.subType ?? "url").toLowerCase(),
+      index: String(btn.index),
+      parameters: btn.parameters.map((text) => ({ type: "text", text: text.slice(0, 200) })),
+    });
+  }
+
+  if (components.length > 0) {
+    template["components"] = components;
+  }
+
   return graphRequest(`/${input.phoneNumberId}/messages`, {
     method: "POST",
     headers: {
@@ -238,3 +350,77 @@ export async function downloadWhatsAppMediaBinary(
     mimeType: contentType,
   };
 }
+
+/**
+ * Upload binary media to Meta Cloud API for later send.
+ * Returns Meta media ID — never returned to browsers as a secret context.
+ */
+export async function uploadWhatsAppMedia(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  buffer: Buffer;
+  mimeType: string;
+  filename: string;
+}): Promise<{ id: string }> {
+  const form = new FormData();
+  form.set("messaging_product", "whatsapp");
+  form.set("type", input.mimeType.split(";")[0]?.trim() || input.mimeType);
+  const bytes = new Uint8Array(input.buffer);
+  const blob = new Blob([bytes], { type: input.mimeType });
+  form.set("file", blob, input.filename || "file");
+
+  const json = await graphRequest(`/${input.phoneNumberId}/media`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      // Let fetch set multipart boundary — do not set Content-Type manually
+    },
+    body: form,
+  });
+
+  const id = typeof json["id"] === "string" ? json["id"] : "";
+  if (!id) {
+    throw new IntegrationError("PROVIDER_UNAVAILABLE", "Meta did not return a media ID for the upload.", 500);
+  }
+  return { id };
+}
+
+export async function sendMediaMessage(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  to: string;
+  type: "image" | "video" | "document" | "audio";
+  mediaId: string;
+  caption?: string;
+  filename?: string;
+  /** WhatsApp voice note flag (audio only) */
+  voice?: boolean;
+}) {
+  const mediaPayload: GraphJson = { id: input.mediaId };
+  if (input.caption && (input.type === "image" || input.type === "video" || input.type === "document")) {
+    mediaPayload["caption"] = input.caption.slice(0, 1024);
+  }
+  if (input.type === "document" && input.filename) {
+    mediaPayload["filename"] = input.filename.slice(0, 240);
+  }
+  if (input.type === "audio" && input.voice) {
+    // Meta accepts voice notes as audio with voice:true on some API versions via type audio
+  }
+
+  const body: GraphJson = {
+    messaging_product: "whatsapp",
+    to: input.to,
+    type: input.type,
+    [input.type]: mediaPayload,
+  };
+
+  return graphRequest(`/${input.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+}
+

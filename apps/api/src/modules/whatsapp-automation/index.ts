@@ -38,10 +38,14 @@ import {
   updateFlowSchema,
   updateKbSchema,
   updatePreferencesSchema,
+  inboxSendTemplateSchema,
+  inboxSendDocumentSchema,
+  messageIdParam,
 } from "./schemas";
 import { realtimeBus } from "../realtime/bus";
 import { getClinicCommSettings } from "./safety";
 import { parseDefinition, validateFlowDefinition } from "./validate";
+import { validateSendTemplateNodes } from "./template-node-config";
 import {
   assertClinicStaff,
   buildCommunicationTimeline,
@@ -57,7 +61,16 @@ import {
   processCampaignBatch,
 } from "./campaigns";
 import { sendWhatsAppSessionText } from "../../integrations/providers/whatsapp/messaging";
-import { mediaStorageProvider, getExtensionForMime } from "../media/storage";
+import {
+  retryWhatsAppSessionMedia,
+  sendPatientDocumentOverWhatsApp,
+  sendWhatsAppSessionMedia,
+} from "../../integrations/providers/whatsapp/outbound-media";
+import { testSendWhatsAppTemplate } from "../../integrations/providers/whatsapp/template-ops";
+import { mediaStorageProvider, getExtensionForMime, sanitizeFilename } from "../media/storage";
+import { validateOutboundMediaFile, type OutboundMediaKind } from "../media/outbound-validation";
+import { IntegrationError } from "../../integrations/core/errors";
+import { requireAnyPermission } from "../../lib/authz";
 
 function serializeKb(row: {
   id: string;
@@ -179,17 +192,23 @@ function serializeExecution(row: {
     nextRetryAt: ctx.nextRetryAt ?? null,
     lastError: ctx.lastError ?? row.error,
     tags: ctx.tags ?? [],
-    steps: (row.steps ?? []).map((s) => ({
-      id: s.id,
-      nodeId: s.nodeId,
-      nodeType: s.nodeType,
-      status: s.status,
-      input: s.input,
-      output: s.output,
-      error: s.error,
-      startedAt: s.startedAt?.toISOString() ?? null,
-      completedAt: s.completedAt?.toISOString() ?? null,
-    })),
+    steps: (row.steps ?? []).map((s) => {
+      const started = s.startedAt?.getTime() ?? null;
+      const completed = s.completedAt?.getTime() ?? null;
+      return {
+        id: s.id,
+        nodeId: s.nodeId,
+        nodeType: s.nodeType,
+        status: s.status,
+        input: s.input,
+        output: s.output,
+        error: s.error,
+        startedAt: s.startedAt?.toISOString() ?? null,
+        completedAt: s.completedAt?.toISOString() ?? null,
+        durationMs:
+          started != null && completed != null && completed >= started ? completed - started : null,
+      };
+    }),
   };
 }
 
@@ -432,8 +451,14 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       );
     }
     if (body.definition) {
-      const issues = validateFlowDefinition(parseDefinition(body.definition));
-      if (issues.length && body.status === "ACTIVE") {
+      const def = parseDefinition(body.definition);
+      const issues = [
+        ...validateFlowDefinition(def),
+        ...(body.status === "ACTIVE" || existing.status === "ACTIVE"
+          ? await validateSendTemplateNodes(tenant.clinicId, def)
+          : []),
+      ];
+      if (issues.length && (body.status === "ACTIVE" || existing.status === "ACTIVE")) {
         throw new HttpError(422, "INVALID_FLOW", issues.map((i) => i.message).join(" "));
       }
     }
@@ -488,14 +513,21 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       throw new HttpError(422, "LIBRARY_FLOW", "Duplicate the library flow before activating.");
     }
     const issues = validateFlowDefinition(parseDefinition(existing.definition));
-    if (issues.length) {
-      throw new HttpError(422, "INVALID_FLOW", issues.map((i) => i.message).join(" "));
+    const templateIssues = await validateSendTemplateNodes(
+      tenant.clinicId,
+      parseDefinition(existing.definition),
+    );
+    const allIssues = [...issues, ...templateIssues];
+    if (allIssues.length) {
+      throw new HttpError(422, "INVALID_FLOW", allIssues.map((i) => i.message).join(" "));
     }
     const account = await prisma.whatsAppAccount.findFirst({
       where: { clinicId: tenant.clinicId, isActive: true },
     });
     const def = parseDefinition(existing.definition);
-    const needsWa = def.nodes.some((n) => n.type === "SEND_TEMPLATE" || n.type === "SEND_TEXT");
+    const needsWa = def.nodes.some(
+      (n) => n.type === "SEND_TEMPLATE" || n.type === "SEND_TEXT" || n.type === "SEND_MEDIA",
+    );
     if (needsWa && !account) {
       throw new HttpError(
         409,
@@ -503,20 +535,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         "Connect WhatsApp to activate live messaging flows.",
       );
     }
-    for (const node of def.nodes.filter((n) => n.type === "SEND_TEMPLATE")) {
-      const name = String(node.config["templateName"] ?? "");
-      if (!name) continue;
-      const tpl = await prisma.whatsAppTemplate.findFirst({
-        where: { clinicId: tenant.clinicId, name, status: "APPROVED" },
-      });
-      if (!tpl) {
-        throw new HttpError(
-          422,
-          "TEMPLATE_NOT_APPROVED",
-          `Cannot activate: template "${name}" is not configured or not approved by Meta.`,
-        );
-      }
-    }
+    // Template APPROVED + variable mapping already enforced by validateSendTemplateNodes
     const row = await prisma.whatsAppFlow.update({
       where: { id },
       data: { status: "ACTIVE" },
@@ -562,7 +581,12 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     const existing = await prisma.whatsAppFlow.findFirst({ where: { id, clinicId: tenant.clinicId } });
     if (!existing) throw new HttpError(404, "NOT_FOUND", "Flow not found");
-    return ok(c, { issues: validateFlowDefinition(parseDefinition(existing.definition)) });
+    const def = parseDefinition(existing.definition);
+    const issues = [
+      ...validateFlowDefinition(def),
+      ...(await validateSendTemplateNodes(tenant.clinicId, def)),
+    ];
+    return ok(c, { issues });
   })
 
   .post("/flows/:id/test", validate("param", idParam), validate("json", testFlowSchema), async (c) => {
@@ -572,29 +596,62 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     const existing = await prisma.whatsAppFlow.findFirst({ where: { id, clinicId: tenant.clinicId } });
     if (!existing) throw new HttpError(404, "NOT_FOUND", "Flow not found");
 
-    // Patch condition simulateBranch into definition context via vars only — engine reads config.
-    // Temporarily mutate a copy in DB is dangerous; instead inject via execution context.
+    const simEvent = body.simulateEvent ?? "none";
+    const eventVars: Record<string, string> =
+      simEvent === "incoming_whatsapp"
+        ? {
+            message_text: "TEST inbound reply",
+            message_content: "TEST inbound reply",
+            message_type: "text",
+            patient_replied: "true",
+            inbound_at: new Date().toISOString(),
+            clinic_id: tenant.clinicId,
+            clinic_name: tenant.clinicName,
+          }
+        : simEvent === "appointment"
+          ? {
+              appointment_id: "test_appt",
+              appointment_date: new Date().toISOString().slice(0, 10),
+              appointment_time: "10:30",
+              appointment_status: "CONFIRMED",
+              doctor_name: "Test Doctor",
+              clinic_name: tenant.clinicName,
+            }
+          : simEvent === "care_loop"
+            ? {
+                care_task_id: "test_task",
+                care_task_title: "TEST Care Task",
+                care_task_status: "WAITING",
+                journey_stage: "Stimulation",
+                care_plan_id: "test_plan",
+                couple_id: body.coupleId ?? "",
+              }
+            : {};
+
     const { execution } = await startFlowExecution({
       tenant,
       flowId: id,
-      triggerEventId: `test_${Date.now()}`,
+      triggerEventId: `test_${simEvent}_${Date.now()}`,
       ...(body.patientId ? { patientId: body.patientId } : {}),
       ...(body.coupleId ? { coupleId: body.coupleId } : {}),
       ...(body.conversationId ? { conversationId: body.conversationId } : {}),
-      ...(body.vars ? { vars: body.vars } : {}),
+      vars: { ...eventVars, ...(body.vars ?? {}) },
       simulation: true,
     });
 
-    // If simulateBranch requested, re-run steps already used config — document limitation.
     const withSteps = await prisma.whatsAppFlowExecution.findFirst({
       where: { id: execution.id, clinicId: tenant.clinicId },
       include: { flow: { select: { name: true } }, steps: { orderBy: { createdAt: "asc" } } },
     });
-    await audit(tenant, "whatsapp.flow.test", "WhatsAppFlow", id, { executionId: execution.id });
+    await audit(tenant, "whatsapp.flow.test", "WhatsAppFlow", id, {
+      executionId: execution.id,
+      simulateEvent: simEvent,
+    });
     return ok(c, {
       mode: "SIMULATION",
       label: "TEST MODE — NO MESSAGE WILL BE SENT",
-      note: "No WhatsApp messages were sent. WAIT nodes were skipped instantly in simulation.",
+      simulateEvent: simEvent,
+      note: `TEST simulation (${simEvent}). No WhatsApp messages were sent. WAIT / WAIT_FOR_REPLY skipped instantly.`,
       execution: serializeExecution(withSteps!),
     });
   })
@@ -865,6 +922,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           ? {}
           : { requireConsentGranted: body.requireConsentGranted }),
         ...(body.urgentBypassHours === undefined ? {} : { urgentBypassHours: body.urgentBypassHours }),
+        ...(body.aiAutoReplyEnabled === undefined ? {} : { aiAutoReplyEnabled: body.aiAutoReplyEnabled }),
       },
       update: {
         ...(body.workingHours === undefined
@@ -877,6 +935,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           ? {}
           : { requireConsentGranted: body.requireConsentGranted }),
         ...(body.urgentBypassHours === undefined ? {} : { urgentBypassHours: body.urgentBypassHours }),
+        ...(body.aiAutoReplyEnabled === undefined ? {} : { aiAutoReplyEnabled: body.aiAutoReplyEnabled }),
       },
     });
     await audit(tenant, "whatsapp.settings.communication", "WhatsAppClinicSettings", row.id);
@@ -1142,6 +1201,199 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     return ok(c, result, 201);
   })
 
+  .get("/inbox/:id/patient-documents", validate("param", idParam), async (c) => {
+    const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_SEND, PERMISSIONS.PATIENTS_READ]);
+    const { id } = c.req.valid("param");
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+    });
+    if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+
+    const where: Prisma.DocumentWhereInput = { clinicId: tenant.clinicId };
+    if (conversation.patientId || conversation.coupleId) {
+      where.OR = [
+        ...(conversation.patientId ? [{ patientId: conversation.patientId }] : []),
+        ...(conversation.coupleId ? [{ coupleId: conversation.coupleId }] : []),
+      ];
+    } else {
+      return ok(c, { items: [], note: "No linked patient — upload a file instead." });
+    }
+
+    const docs = await prisma.document.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+      include: { category: { select: { name: true } } },
+    });
+
+    const items = await Promise.all(
+      docs.map(async (d) => {
+        let sendable = false;
+        if (d.storageKey) {
+          try {
+            sendable = await mediaStorageProvider.exists(d.storageKey);
+          } catch {
+            sendable = false;
+          }
+        }
+        return {
+          id: d.id,
+          name: d.name,
+          mimeType: d.mimeType,
+          sizeBytes: d.sizeBytes,
+          status: d.status,
+          category: d.category?.name ?? null,
+          sendable,
+          note: sendable
+            ? null
+            : "Metadata only — file not stored. Use Upload Document to send a file.",
+          updatedAt: d.updatedAt.toISOString(),
+        };
+      }),
+    );
+
+    return ok(c, { items });
+  })
+
+  .post("/inbox/:id/media", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+    const { id } = c.req.valid("param");
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+      select: { id: true },
+    });
+    if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+
+    const body = await c.req.parseBody({ all: true });
+    const file = body["file"];
+    if (!(file instanceof File)) {
+      throw new HttpError(422, "INVALID_FILE", "A file upload is required.");
+    }
+
+    const captionRaw = body["caption"];
+    const caption = typeof captionRaw === "string" ? captionRaw : undefined;
+    const kindRaw = body["kind"];
+    const kindHint =
+      typeof kindRaw === "string" && ["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(kindRaw)
+        ? (kindRaw as OutboundMediaKind)
+        : undefined;
+    const isVoice = body["isVoice"] === "true" || body["isVoice"] === "1";
+    const durationRaw = body["durationSeconds"];
+    const durationSeconds =
+      typeof durationRaw === "string" && durationRaw !== "" ? Number(durationRaw) : undefined;
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const mimeType = file.type || "application/octet-stream";
+    const filename = sanitizeFilename(file.name) || `upload${getExtensionForMime(mimeType)}`;
+
+    const validated = validateOutboundMediaFile({
+      mimeType,
+      sizeBytes: buffer.length,
+      filename,
+      ...(kindHint ? { kind: kindHint } : {}),
+      ...(isVoice ? { isVoice: true } : {}),
+    });
+    if (!validated.ok) {
+      throw new HttpError(422, "INVALID_FILE", validated.reason);
+    }
+
+    try {
+      const result = await sendWhatsAppSessionMedia(tenant, {
+        conversationId: id,
+        buffer,
+        mimeType: validated.mimeType,
+        filename,
+        ...(caption !== undefined ? { caption } : {}),
+        kind: validated.kind,
+        ...(isVoice ? { isVoice: true } : {}),
+        ...(durationSeconds !== undefined && Number.isFinite(durationSeconds)
+          ? { durationSeconds }
+          : {}),
+      });
+      return ok(c, result, 201);
+    } catch (err) {
+      if (err instanceof IntegrationError) {
+        throw new HttpError(err.httpStatus, err.code, err.message);
+      }
+      throw err;
+    }
+  })
+
+  .post(
+    "/inbox/:id/send-document",
+    validate("param", idParam),
+    validate("json", inboxSendDocumentSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      try {
+        const result = await sendPatientDocumentOverWhatsApp(tenant, {
+          conversationId: id,
+          documentId: body.documentId,
+          ...(body.caption !== undefined ? { caption: body.caption } : {}),
+        });
+        return ok(c, result, 201);
+      } catch (err) {
+        if (err instanceof IntegrationError) {
+          throw new HttpError(err.httpStatus, err.code, err.message);
+        }
+        throw err;
+      }
+    },
+  )
+
+  .post(
+    "/inbox/:id/send-template",
+    validate("param", idParam),
+    validate("json", inboxSendTemplateSchema),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+      const { id } = c.req.valid("param");
+      const body = c.req.valid("json");
+      const conversation = await prisma.conversation.findFirst({
+        where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+      });
+      if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+      try {
+        const result = await testSendWhatsAppTemplate(tenant, {
+          templateId: body.templateId,
+          conversationId: id,
+          ...(conversation.patientId ? { patientId: conversation.patientId } : {}),
+          ...(body.overrides ? { overrides: body.overrides } : {}),
+          ...(body.parameters ? { parameters: body.parameters } : {}),
+        });
+        return ok(c, result, 201);
+      } catch (err) {
+        if (err instanceof IntegrationError) {
+          throw new HttpError(err.httpStatus, err.code, err.message);
+        }
+        throw err;
+      }
+    },
+  )
+
+  .post(
+    "/inbox/:id/messages/:messageId/retry",
+    validate("param", messageIdParam),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+      const { id, messageId } = c.req.valid("param");
+      try {
+        const result = await retryWhatsAppSessionMedia(tenant, {
+          conversationId: id,
+          messageId,
+        });
+        return ok(c, result, 201);
+      } catch (err) {
+        if (err instanceof IntegrationError) {
+          throw new HttpError(err.httpStatus, err.code, err.message);
+        }
+        throw err;
+      }
+    },
+  )
+
   .post("/inbox/:id/follow-up", validate("param", idParam), validate("json", followUpFromInboxSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
     const { id } = c.req.valid("param");
@@ -1202,6 +1454,73 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       status: updated.status,
       note: "Automation pause cleared. New triggers may run; cancelled executions are not restarted.",
     });
+  })
+
+  .post("/inbox/:id/ai/reply", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const { id } = c.req.valid("param");
+    const body = (await c.req.json().catch(() => ({}))) as {
+      message?: string;
+      mode?: "draft" | "send";
+      promptHint?: string;
+    };
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+    });
+    if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+    const lastInbound = await prisma.message.findFirst({
+      where: { conversationId: id, direction: "INBOUND" },
+      orderBy: { createdAt: "desc" },
+      select: { content: true },
+    });
+    const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
+    const result = await runWhatsAppAiPipeline({
+      tenant,
+      conversationId: id,
+      patientMessage: body.message?.trim() || lastInbound?.content || "Hello",
+      trigger: "staff",
+      mode: body.mode === "send" ? "send" : "draft",
+      force: true,
+      ...(body.promptHint ? { promptHint: body.promptHint } : {}),
+    });
+    await audit(tenant, "whatsapp.ai.staff_reply", "Conversation", id, {
+      mode: body.mode ?? "draft",
+    });
+    return ok(c, result);
+  })
+
+  .post("/inbox/:id/ai/resume", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const { id } = c.req.valid("param");
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+    });
+    if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+    const { resumeWhatsAppAi } = await import("../whatsapp-ai/handoff");
+    await resumeWhatsAppAi(tenant, id);
+    await audit(tenant, "whatsapp.ai.resume", "Conversation", id, {});
+    return ok(c, { id, aiPausedAt: null, note: "AI resumed by staff — explicit action required" });
+  })
+
+  .post("/inbox/:id/ai/pause", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const { id } = c.req.valid("param");
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+    });
+    if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+    const { pauseWhatsAppAi } = await import("../whatsapp-ai/handoff");
+    await pauseWhatsAppAi(tenant, id, "STAFF_PAUSED_AI");
+    await audit(tenant, "whatsapp.ai.pause", "Conversation", id, {});
+    return ok(c, { id, aiPaused: true });
+  })
+
+  .post("/knowledge/seed-demo", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SETTINGS);
+    const { seedDemoKnowledgePacks } = await import("../whatsapp-ai/seed-kb");
+    const result = await seedDemoKnowledgePacks(tenant.clinicId, tenant.userId);
+    await audit(tenant, "whatsapp.knowledge.seed_demo", "WhatsAppKnowledgeArticle", tenant.clinicId, result);
+    return ok(c, result, 201);
   })
 
   .post("/inbox/:id/pause-automation", validate("param", idParam), async (c) => {
@@ -1609,6 +1928,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           handoffAt: new Date(),
           handoffReason: body.reason,
           automationPausedAt: body.pauseAutomation ? new Date() : conversation.automationPausedAt,
+          aiPausedAt: new Date(),
           assignedStaffId: assigneeId,
         },
       });

@@ -75,7 +75,20 @@ async function resolveField(field: string, scope: EvalScope): Promise<unknown> {
   const key = parts.slice(1).join(".") || domain;
 
   if (domain === "communication" || field === "patient_replied" || field === "no_response") {
-    if (!scope.conversationId) return field === "no_response" || key === "no_response" ? true : false;
+    if (key === "message_text" || key === "message_content" || key === "last_inbound_text") {
+      return scope.vars["message_text"] ?? scope.vars["message_content"] ?? "";
+    }
+    if (key === "message_type") return scope.vars["message_type"] ?? null;
+    if (field === "patient_replied" || key === "patient_replied") {
+      if (scope.vars["patient_replied"] === "true") return true;
+    }
+    if (field === "no_response" || key === "no_response") {
+      if (scope.vars["patient_replied"] === "true") return false;
+    }
+    if (!scope.conversationId) {
+      if (field === "patient_replied" || key === "patient_replied") return false;
+      return field === "no_response" || key === "no_response" ? true : false;
+    }
     const since = new Date(Date.now() - 7 * 86_400_000);
     const inbound = await prisma.message.count({
       where: {
@@ -93,6 +106,47 @@ async function resolveField(field: string, scope: EvalScope): Promise<unknown> {
     if (key === "conversation_status" || key === "status") return conversation?.status ?? null;
     if (key === "last_message_at") return conversation?.updatedAt?.toISOString() ?? null;
     return inbound > 0;
+  }
+
+  if (domain === "message") {
+    if (key === "content" || key === "text" || key === "body") {
+      return scope.vars["message_text"] ?? scope.vars["message_content"] ?? "";
+    }
+    if (key === "type") return scope.vars["message_type"] ?? null;
+    if (key === "has_media") return Boolean(scope.vars["media_type"]);
+    return scope.vars[`message_${key}`] ?? scope.vars[key] ?? null;
+  }
+
+  if (domain === "journey" || domain === "care_loop") {
+    if (key === "stage" || key === "stage_name" || key === "current_stage") {
+      if (scope.vars["journey_stage"] || scope.vars["to_stage"] || scope.vars["treatment_stage"]) {
+        return scope.vars["journey_stage"] ?? scope.vars["to_stage"] ?? scope.vars["treatment_stage"] ?? null;
+      }
+      if (!scope.coupleId) return null;
+      const plan = await prisma.carePlan.findFirst({
+        where: { clinicId: scope.clinicId, coupleId: scope.coupleId },
+        orderBy: { updatedAt: "desc" },
+      });
+      return plan?.currentStageName ?? (plan ? String(plan.currentStageIndex) : null);
+    }
+    if (key === "status") {
+      if (!scope.coupleId) return scope.vars["care_plan_status"] ?? null;
+      const plan = await prisma.carePlan.findFirst({
+        where: { clinicId: scope.clinicId, coupleId: scope.coupleId },
+        orderBy: { updatedAt: "desc" },
+        select: { status: true },
+      });
+      return plan?.status ?? null;
+    }
+    if (key === "name" && scope.coupleId) {
+      const plan = await prisma.carePlan.findFirst({
+        where: { clinicId: scope.clinicId, coupleId: scope.coupleId },
+        orderBy: { updatedAt: "desc" },
+        select: { name: true },
+      });
+      return plan?.name ?? null;
+    }
+    return scope.vars[key] ?? null;
   }
 
   if (domain === "patient" || domain === "tags") {

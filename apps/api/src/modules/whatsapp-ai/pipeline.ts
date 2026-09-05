@@ -1,0 +1,298 @@
+/**
+ * Phase 5 WhatsApp AI pipeline — uses existing messaging + KB + AIInteraction.
+ * Clinic must opt-in via WhatsAppClinicSettings.aiAutoReplyEnabled.
+ */
+
+import type { TenantContext } from "@smrkomed/database";
+import { prisma } from "@smrkomed/database";
+
+import { sendWhatsAppAiSessionText } from "../../integrations/providers/whatsapp/messaging";
+import { loadWhatsAppAiContext } from "./context";
+import { generateWhatsAppAiReply } from "./generate";
+import { escalateToHuman, recordAiInteraction, resumeWhatsAppAi } from "./handoff";
+import { retrieveKnowledgeArticles } from "./knowledge";
+import { detectHandoffSignals } from "./safety";
+
+export type AiPipelineMode = "draft" | "send";
+
+export type AiPipelineResult = {
+  skipped?: boolean;
+  reason?: string;
+  handoff?: boolean;
+  handoffReason?: string;
+  draft?: boolean;
+  messageId?: string;
+  interactionId?: string;
+  text?: string;
+  knowledgeIds?: string[];
+};
+
+async function clinicAiEnabled(clinicId: string): Promise<boolean> {
+  const row = await prisma.whatsAppClinicSettings.findUnique({
+    where: { clinicId },
+    select: { aiAutoReplyEnabled: true },
+  });
+  return Boolean(row?.aiAutoReplyEnabled);
+}
+
+export async function runWhatsAppAiPipeline(input: {
+  tenant: TenantContext;
+  conversationId: string;
+  patientMessage: string;
+  trigger: "inbound" | "automation" | "staff";
+  mode: AiPipelineMode;
+  /** Staff / automation may bypass clinic auto-reply flag */
+  force?: boolean;
+  promptHint?: string;
+  specialtyHint?: string | null;
+  /** When false, skip Meta send even in send mode (simulation) */
+  simulation?: boolean;
+}): Promise<AiPipelineResult> {
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: input.conversationId, clinicId: input.tenant.clinicId },
+  });
+  if (!conversation) {
+    return { skipped: true, reason: "Conversation not found" };
+  }
+
+  if (!input.force && input.trigger === "inbound") {
+    const enabled = await clinicAiEnabled(input.tenant.clinicId);
+    if (!enabled) {
+      const interaction = await recordAiInteraction({
+        clinicId: input.tenant.clinicId,
+        conversationId: conversation.id,
+        patientId: conversation.patientId,
+        trigger: input.trigger,
+        safeToAutoReply: false,
+        status: "SKIPPED",
+        classification: "AI_DISABLED",
+        rawSummary: "Clinic AI auto-reply is disabled",
+      });
+      return { skipped: true, reason: "Clinic AI auto-reply disabled", interactionId: interaction.id };
+    }
+  }
+
+  if (conversation.aiPausedAt || conversation.status === "HUMAN_HANDOFF") {
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      trigger: input.trigger,
+      safeToAutoReply: false,
+      status: "SKIPPED",
+      classification: "AI_PAUSED",
+      handoffReason: conversation.handoffReason,
+      rawSummary: "AI paused — human control",
+    });
+    return { skipped: true, reason: "AI paused under human control", interactionId: interaction.id };
+  }
+
+  const signals = detectHandoffSignals(input.patientMessage);
+  if (signals.handoff) {
+    const escalated = await escalateToHuman({
+      tenant: input.tenant,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      coupleId: conversation.coupleId,
+      reason: signals.reason ?? "HANDOFF",
+    });
+
+    let messageId: string | undefined;
+    let notifyFailed = false;
+    if (!input.simulation && input.mode === "send") {
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: escalated.patientMessage,
+        });
+        messageId = sent.id;
+      } catch (err) {
+        notifyFailed = true;
+        await recordAiInteraction({
+          clinicId: input.tenant.clinicId,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          careTaskId: escalated.careTaskId,
+          trigger: input.trigger,
+          intent: "handoff",
+          classification: signals.reason,
+          safeToAutoReply: false,
+          status: "ERROR",
+          handoffReason: signals.reason,
+          rawSummary:
+            err instanceof Error
+              ? `Handoff recorded; patient notify failed: ${err.message.slice(0, 300)}`
+              : "Handoff recorded; patient notify failed",
+        }).catch(() => undefined);
+      }
+    }
+
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      careTaskId: escalated.careTaskId,
+      messageId: messageId ?? null,
+      trigger: input.trigger,
+      intent: "handoff",
+      classification: signals.reason,
+      safeToAutoReply: false,
+      status: "HANDOFF",
+      handoffReason: signals.reason,
+      rawSummary: notifyFailed
+        ? `${escalated.patientMessage} (notify send failed — see prior ERROR interaction)`
+        : escalated.patientMessage,
+    });
+
+    return {
+      handoff: true,
+      handoffReason: signals.reason ?? "HANDOFF",
+      text: escalated.patientMessage,
+      messageId,
+      interactionId: interaction.id,
+      careTaskId: escalated.careTaskId,
+    } as AiPipelineResult & { careTaskId?: string };
+  }
+
+  const ctx = await loadWhatsAppAiContext(input.tenant, {
+    conversationId: conversation.id,
+    patientId: conversation.patientId,
+    coupleId: conversation.coupleId,
+  });
+
+  const knowledge = await retrieveKnowledgeArticles({
+    clinicId: input.tenant.clinicId,
+    query: input.patientMessage,
+    limit: 5,
+    specialtyHint: input.specialtyHint ?? null,
+  });
+
+  const generated = await generateWhatsAppAiReply({
+    patientMessage: input.patientMessage,
+    ctx,
+    knowledge,
+    ...(input.promptHint ? { promptHint: input.promptHint } : {}),
+  });
+
+  // Low knowledge match → soft handoff for unknown questions when confidence low
+  const bestScore = knowledge[0]?.score ?? 0;
+  if (bestScore === 0 && input.trigger === "inbound" && !generated.usedLlm) {
+    // Still reply with fallback, but flag for staff attention without full pause unless clinical
+  }
+
+  const knowledgeSources = knowledge.map((k) => ({
+    id: k.id,
+    title: k.title,
+    specialty: k.specialty,
+    category: k.category,
+    score: k.score,
+  }));
+
+  if (generated.blocked) {
+    const escalated = await escalateToHuman({
+      tenant: input.tenant,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      coupleId: conversation.coupleId,
+      reason: "UNSAFE_AI_OUTPUT",
+    });
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      careTaskId: escalated.careTaskId,
+      trigger: input.trigger,
+      model: generated.model,
+      safeToAutoReply: false,
+      status: "BLOCKED",
+      handoffReason: "UNSAFE_AI_OUTPUT",
+      knowledgeSources,
+      rawSummary: generated.text,
+    });
+    return {
+      handoff: true,
+      handoffReason: "UNSAFE_AI_OUTPUT",
+      text: generated.text,
+      interactionId: interaction.id,
+    };
+  }
+
+  if (input.simulation || input.mode === "draft") {
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      trigger: input.trigger,
+      model: generated.model,
+      safeToAutoReply: false,
+      status: "DRAFT",
+      knowledgeSources,
+      rawSummary: generated.text,
+      classification: "draft",
+    });
+    return {
+      draft: true,
+      text: generated.text,
+      interactionId: interaction.id,
+      knowledgeIds: knowledge.map((k) => k.id),
+    };
+  }
+
+  try {
+    const sent = await sendWhatsAppAiSessionText(input.tenant, {
+      conversationId: conversation.id,
+      body: generated.text,
+    });
+
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      messageId: sent.id,
+      trigger: input.trigger,
+      model: generated.model,
+      safeToAutoReply: true,
+      status: "SENT",
+      knowledgeSources,
+      rawSummary: generated.text,
+    });
+
+    return {
+      messageId: sent.id,
+      text: generated.text,
+      interactionId: interaction.id,
+      knowledgeIds: knowledge.map((k) => k.id),
+    };
+  } catch (err) {
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      trigger: input.trigger,
+      model: generated.model,
+      safeToAutoReply: true,
+      status: "ERROR",
+      knowledgeSources,
+      rawSummary:
+        err instanceof Error
+          ? `AI reply generate ok; send failed: ${err.message.slice(0, 400)}`
+          : "AI reply send failed",
+    });
+    return {
+      skipped: true,
+      reason: err instanceof Error ? err.message.slice(0, 400) : "AI send failed",
+      interactionId: interaction.id,
+      text: generated.text,
+      knowledgeIds: knowledge.map((k) => k.id),
+    };
+  }
+}
+
+export { resumeWhatsAppAi };
+export async function isClinicAiAutoReplyEnabled(clinicId: string): Promise<boolean> {
+  const row = await prisma.whatsAppClinicSettings.findUnique({
+    where: { clinicId },
+    select: { aiAutoReplyEnabled: true },
+  });
+  return Boolean(row?.aiAutoReplyEnabled);
+}

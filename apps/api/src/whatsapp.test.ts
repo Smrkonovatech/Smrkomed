@@ -28,6 +28,7 @@ type Fixture = {
 
 let fixture: Fixture;
 const envBackup: Record<string, string | undefined> = {};
+let outboundMessageSeq = 0;
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -160,6 +161,22 @@ before(async () => {
             category: "UTILITY",
             components: [{ type: "BODY", text: "Hello {{1}}, your appointment is on {{2}}." }],
           },
+          {
+            id: "tpl-1b",
+            name: "appointment_reminder_rich",
+            language: "en",
+            status: "APPROVED",
+            category: "UTILITY",
+            components: [
+              { type: "HEADER", format: "TEXT", text: "Reminder for {{1}}" },
+              { type: "BODY", text: "Hello {{1}}, your appointment is on {{2}}." },
+              { type: "FOOTER", text: "SmrkoMed Clinic" },
+              {
+                type: "BUTTONS",
+                buttons: [{ type: "URL", text: "Open", url: "https://example.com/p/{{1}}" }],
+              },
+            ],
+          },
           { id: "tpl-2", name: "lead_follow_up", language: "en", status: "PENDING", category: "UTILITY" },
           { id: "tpl-3", name: "rejected_note", language: "en", status: "REJECTED", category: "UTILITY", rejected_reason: "policy" },
         ],
@@ -173,7 +190,8 @@ before(async () => {
     if (url.includes("/messages")) {
       const body = typeof init?.body === "string" ? (JSON.parse(init.body) as { to?: string }) : {};
       if (body.to === "000") return jsonResponse({ error: { message: "invalid", code: 131026 } }, 400);
-      return jsonResponse({ messages: [{ id: "wamid.out-1" }] });
+      outboundMessageSeq += 1;
+      return jsonResponse({ messages: [{ id: `wamid.out-${outboundMessageSeq}` }] });
     }
     if (url.includes("phone_a")) {
       return jsonResponse({
@@ -367,7 +385,7 @@ test("oauth state is bound to clinic and expires", async () => {
       phoneNumberId: "phone_a",
     }),
   });
-  assert.equal(fail.status, 500);
+  assert.equal(fail.status, 400);
 });
 
 test("duplicate active phone numbers cannot be connected to another clinic", async () => {
@@ -410,9 +428,11 @@ test("templates sync and only approved templates can be sent", async () => {
     }),
   });
   assert.equal(sendApproved.status, 201);
-  const sent = (await json(sendApproved))["data"] as { status: string; providerMessageId: string };
+  const sentBody = await json(sendApproved);
+  const sent = sentBody["data"] as { status: string; providerMessageId: string };
   assert.equal(sent.status, "SENT");
-  assert.equal(sent.providerMessageId, "wamid.out-1");
+  assert.ok(sent.providerMessageId?.startsWith("wamid.out-"));
+  assert.equal(secretKeysPresent(sentBody), false);
 
   const sendPending = await app.request("/api/v1/integrations/whatsapp/messages/template", {
     method: "POST",
@@ -441,6 +461,134 @@ test("templates sync and only approved templates can be sent", async () => {
     body: JSON.stringify({ patientId: fixture.patientBId, templateId: approved?.id, parameters: ["A", "B"] }),
   });
   assert.equal(cross.status, 409);
+});
+
+test("phase1 approved list, resolve, test-send, and tenant isolation", async () => {
+  await connectClinicA();
+  const sync = await app.request("/api/v1/integrations/whatsapp/sync", {
+    method: "POST",
+    headers: cookie(fixture.tokenA),
+  });
+  assert.equal(sync.status, 200);
+
+  const approvedList = await app.request("/api/v1/integrations/whatsapp/templates/approved", {
+    headers: cookie(fixture.tokenA),
+  });
+  assert.equal(approvedList.status, 200);
+  const approvedBody = await json(approvedList);
+  const approvedRows = approvedBody["data"] as Array<{
+    id: string;
+    name: string;
+    status: string;
+    sendable: boolean;
+    parsed: { variables: Array<{ component: string; token: string }> };
+  }>;
+  assert.ok(approvedRows.every((row) => row.status === "APPROVED" && row.sendable));
+  assert.equal(approvedRows.some((row) => row.name === "lead_follow_up"), false);
+  const rich = approvedRows.find((row) => row.name === "appointment_reminder_rich");
+  assert.ok(rich);
+  assert.ok(rich?.parsed.variables.some((v) => v.component === "HEADER"));
+  assert.ok(rich?.parsed.variables.some((v) => v.component === "BODY"));
+  assert.ok(rich?.parsed.variables.some((v) => v.component === "BUTTON"));
+  assert.equal(secretKeysPresent(approvedBody), false);
+
+  const detailed = await app.request("/api/v1/integrations/whatsapp/templates?detailed=1", {
+    headers: cookie(fixture.tokenA),
+  });
+  assert.equal(detailed.status, 200);
+  const detailedRows = (await json(detailed))["data"] as Array<{ id: string; name: string; status: string }>;
+  const rejected = detailedRows.find((row) => row.name === "rejected_note");
+  assert.ok(rejected);
+
+  const resolve = await app.request(`/api/v1/integrations/whatsapp/templates/${rich!.id}/resolve`, {
+    method: "POST",
+    headers: { ...cookie(fixture.tokenA), "content-type": "application/json" },
+    body: JSON.stringify({
+      patientId: fixture.patientAId,
+      overrides: {
+        "header.1": "Priya",
+        "body.1": "Priya",
+        "body.2": "tomorrow 9am",
+        "button.1": "booking",
+      },
+    }),
+  });
+  assert.equal(resolve.status, 200);
+  const resolveBody = await json(resolve);
+  const resolved = resolveBody["data"] as {
+    valid: boolean;
+    missing: string[];
+    preview: { previewKind: string; sourceOfTruth: string };
+  };
+  assert.equal(resolved.preview.sourceOfTruth, "META");
+  assert.equal(secretKeysPresent(resolveBody), false);
+
+  const testSendRejected = await app.request("/api/v1/integrations/whatsapp/templates/test-send", {
+    method: "POST",
+    headers: { ...cookie(fixture.tokenA), "content-type": "application/json" },
+    body: JSON.stringify({
+      templateId: rejected?.id,
+      patientId: fixture.patientAId,
+      confirm: true,
+      overrides: { "1": "x" },
+    }),
+  });
+  assert.equal(testSendRejected.status, 422);
+
+  const missingVars = await app.request("/api/v1/integrations/whatsapp/templates/test-send", {
+    method: "POST",
+    headers: { ...cookie(fixture.tokenA), "content-type": "application/json" },
+    body: JSON.stringify({
+      templateId: rich!.id,
+      patientId: fixture.patientAId,
+      confirm: true,
+      overrides: {},
+    }),
+  });
+  assert.equal(missingVars.status, 422);
+
+  const testSend = await app.request("/api/v1/integrations/whatsapp/templates/test-send", {
+    method: "POST",
+    headers: { ...cookie(fixture.tokenA), "content-type": "application/json" },
+    body: JSON.stringify({
+      templateId: rich!.id,
+      patientId: fixture.patientAId,
+      confirm: true,
+      overrides: {
+        "header.1": "Priya",
+        "body.1": "Priya",
+        "body.2": "tomorrow 9am",
+        "button.1": "booking",
+      },
+    }),
+  });
+  assert.equal(testSend.status, 201);
+  const testBody = await json(testSend);
+  const testPayload = testBody["data"] as {
+    ok: boolean;
+    providerMessageId: string | null;
+    messageId: string;
+  };
+  assert.equal(testPayload.ok, true);
+  assert.ok(testPayload.providerMessageId?.startsWith("wamid.out-"));
+  assert.equal(secretKeysPresent(testBody), false);
+
+  const crossTenant = await app.request(`/api/v1/integrations/whatsapp/templates/${rich!.id}`, {
+    headers: cookie(fixture.tokenB),
+  });
+  assert.equal(crossTenant.status, 404);
+
+  const crossTest = await app.request("/api/v1/integrations/whatsapp/templates/test-send", {
+    method: "POST",
+    headers: { ...cookie(fixture.tokenB), "content-type": "application/json" },
+    body: JSON.stringify({
+      templateId: rich!.id,
+      patientId: fixture.patientBId,
+      confirm: true,
+      overrides: { "header.1": "x", "body.1": "x", "body.2": "y", "1": "z" },
+    }),
+  });
+  assert.ok(crossTest.status === 404 || crossTest.status === 409 || crossTest.status === 422);
 });
 
 test("webhooks verify, isolate tenants, update status, and ignore duplicates", async () => {

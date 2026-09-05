@@ -32,6 +32,7 @@ export function VoiceMessagePlayer({
   const [duration, setDuration] = useState(durationSeconds ?? 0);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [hasPlaybackError, setHasPlaybackError] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
 
   // Sync durationSeconds if provided by server
   useEffect(() => {
@@ -215,20 +216,37 @@ export function VoiceMessagePlayer({
             <span className={cn(isOutbound ? "text-primary-foreground/90" : "text-muted-foreground")}>
               {formatDuration(isPlaying ? currentTime : duration || 0)}
             </span>
-            <span
-              className={cn(
-                "flex items-center gap-1 font-sans text-[10px] font-medium tracking-tight uppercase",
-                isOutbound ? "text-primary-foreground/80" : "text-muted-foreground",
-              )}
-            >
-              <Mic className="h-2.5 w-2.5" />
-              {isVoice ? "Voice message" : "Audio"}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={cn(
+                  "rounded px-1 text-[10px] font-semibold",
+                  isOutbound ? "bg-white/20 text-primary-foreground" : "bg-muted text-foreground",
+                )}
+                onClick={() => {
+                  const next = playbackRate === 1 ? 1.5 : playbackRate === 1.5 ? 2 : 1;
+                  setPlaybackRate(next);
+                  if (audioRef.current) audioRef.current.playbackRate = next;
+                }}
+                aria-label="Change playback speed"
+              >
+                {playbackRate}x
+              </button>
+              <span
+                className={cn(
+                  "flex items-center gap-1 font-sans text-[10px] font-medium tracking-tight uppercase",
+                  isOutbound ? "text-primary-foreground/80" : "text-muted-foreground",
+                )}
+              >
+                <Mic className="h-2.5 w-2.5" />
+                {isVoice ? "Voice message" : "Audio"}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Hidden HTML5 Native Audio */}
+      {/* Hidden HTML5 Native Audio — no autoplay */}
       {url && (
         <audio
           ref={audioRef}

@@ -671,6 +671,21 @@ test("WhatsApp Media Security: Authenticated media proxy and strict Clinic Isola
   });
   assert.equal(rangeRes.status, 206);
   assert.ok(rangeRes.headers.get("content-range")?.startsWith("bytes 0-10/"));
+
+  // 5. Invalid media ID
+  const missingRes = await app.request(`/api/v1/whatsapp-automation/inbox/media/does-not-exist-id`, {
+    headers: cookie(fixture.tokenA),
+  });
+  assert.ok(missingRes.status === 404 || missingRes.status === 400);
+
+  // 6. Invalid Range → 416
+  const badRange = await app.request(`/api/v1/whatsapp-automation/inbox/media/${readyMedia.id}`, {
+    headers: {
+      ...cookie(fixture.tokenA),
+      Range: "bytes=999999-9999999",
+    },
+  });
+  assert.equal(badRange.status, 416);
 });
 
 test("WhatsApp Media: Inbox detail API includes media serialized without secrets", async () => {

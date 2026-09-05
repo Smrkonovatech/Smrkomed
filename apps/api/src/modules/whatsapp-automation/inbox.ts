@@ -272,6 +272,7 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
     handoffAt: conversation.handoffAt?.toISOString() ?? null,
     handoffReason: conversation.handoffReason,
     automationPausedAt: conversation.automationPausedAt?.toISOString() ?? null,
+    aiPausedAt: conversation.aiPausedAt?.toISOString() ?? null,
     assignedStaff: conversation.assignedStaff,
     patient: conversation.patient,
     couple: conversation.couple,
@@ -288,7 +289,7 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
         m.senderType === "SYSTEM"
           ? "AUTOMATION"
           : m.senderType === "AI"
-            ? "AI DRAFT"
+            ? "✦ Smrko AI"
             : m.senderType === "STAFF"
               ? "STAFF"
               : "PATIENT",
@@ -506,13 +507,22 @@ export async function buildCommunicationTimeline(tenant: TenantContext, patientI
   for (const m of messages) {
     events.push({
       at: m.createdAt.toISOString(),
-      kind: m.direction === "INBOUND" ? "patient_reply" : m.senderType === "SYSTEM" ? "automation_message" : "staff_message",
+      kind:
+        m.direction === "INBOUND"
+          ? "patient_reply"
+          : m.senderType === "SYSTEM"
+            ? "automation_message"
+            : m.senderType === "AI"
+              ? "ai_message"
+              : "staff_message",
       title:
         m.direction === "INBOUND"
           ? "Patient replied"
           : m.senderType === "SYSTEM"
             ? "Automation message"
-            : "Staff message",
+            : m.senderType === "AI"
+              ? "✦ Smrko AI"
+              : "Staff message",
       detail: m.content.slice(0, 200),
       meta: { messageId: m.id, senderType: m.senderType, status: m.status },
     });

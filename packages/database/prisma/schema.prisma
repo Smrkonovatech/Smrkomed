@@ -1000,6 +1000,8 @@ model Conversation {
   handoffReason    String?
   /// When set, automation triggers for this patient conversation should stay paused
   automationPausedAt DateTime?
+  /// When set, Smrko AI auto-replies are paused until staff explicitly resumes AI
+  aiPausedAt       DateTime?
   lastStaffReadAt  DateTime?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
@@ -1042,22 +1044,33 @@ model Message {
 }
 
 model AIInteraction {
-  id             String   @id @default(cuid())
-  conversationId String?
-  messageId      String?
-  careTaskId     String?
-  intent         String?
-  classification String?
-  model          String?
-  safeToAutoReply Boolean @default(false)
-  rawSummary     String?
-  createdAt      DateTime @default(now())
+  id               String   @id @default(cuid())
+  clinicId         String?
+  conversationId   String?
+  messageId        String?
+  careTaskId       String?
+  patientId        String?
+  /// inbound | automation | staff
+  trigger          String?
+  intent           String?
+  classification   String?
+  model            String?
+  safeToAutoReply  Boolean  @default(false)
+  /// DRAFT | SENT | HANDOFF | BLOCKED | ERROR | SKIPPED
+  status           String?
+  handoffReason    String?
+  /// Safe metadata: [{ id, title, specialty, category }] — never secrets
+  knowledgeSources Json?
+  rawSummary       String?
+  createdAt        DateTime @default(now())
 
   conversation Conversation? @relation(fields: [conversationId], references: [id])
   message      Message?      @relation(fields: [messageId], references: [id])
   careTask     CareTask?     @relation(fields: [careTaskId], references: [id])
 
   @@index([careTaskId])
+  @@index([clinicId, createdAt])
+  @@index([conversationId])
 }
 
 model WhatsAppMedia {
@@ -2531,6 +2544,8 @@ model WhatsAppClinicSettings {
   requireConsentGranted  Boolean  @default(false)
   /// When true, ESCALATE / urgent path may bypass working-hours wait
   urgentBypassHours      Boolean  @default(true)
+  /// When true, inbound WhatsApp may invoke Smrko AI auto-reply (opt-in per clinic)
+  aiAutoReplyEnabled     Boolean  @default(false)
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
 

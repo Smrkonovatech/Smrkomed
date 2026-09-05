@@ -45,9 +45,13 @@ const NODE_COLORS: Record<string, string> = {
   TRIGGER: "border-teal-600 bg-teal-50",
   CONDITION: "border-amber-600 bg-amber-50",
   WAIT: "border-sky-600 bg-sky-50",
+  WAIT_FOR_REPLY: "border-sky-700 bg-sky-50/80",
   SEND_TEMPLATE: "border-emerald-700 bg-emerald-50",
+  SEND_TEXT: "border-emerald-600 bg-emerald-50/70",
+  SEND_MEDIA: "border-teal-700 bg-teal-50",
   CREATE_TASK: "border-violet-600 bg-violet-50",
   ASSIGN_TASK: "border-violet-600 bg-violet-50",
+  ASSIGN_STAFF: "border-violet-500 bg-violet-50/80",
   ESCALATE: "border-rose-600 bg-rose-50",
   NOTIFY_STAFF: "border-orange-600 bg-orange-50",
   ADD_TAG: "border-slate-500 bg-slate-50",
@@ -74,8 +78,16 @@ function FlowCardNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
       <p className="text-sm font-medium leading-tight">{d.label}</p>
       {d.type === "SEND_TEMPLATE" ? (
         <p className="mt-1 truncate text-[11px] text-muted-foreground">
-          {String(d.config["templateName"] || "template not set")}
+          {String(d.config["templateName"] || d.config["templateId"] || "Select approved template")}
         </p>
+      ) : null}
+      {d.type === "SEND_TEXT" ? (
+        <p className="mt-1 truncate text-[11px] text-muted-foreground">
+          {String(d.config["body"] || d.config["text"] || "Session text")}
+        </p>
+      ) : null}
+      {d.type === "AI_DRAFT" ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">Phase 5 · human review</p>
       ) : null}
       <Handle type="source" position={Position.Bottom} className="!bg-primary" />
       {d.type === "CONDITION" ? (
@@ -262,17 +274,42 @@ export function WhatsAppFlowCanvas({
 export const FLOW_PALETTE = [
   { type: "WAIT", label: "Wait", defaults: { mode: "duration", amount: 1, unit: "hours" } },
   {
+    type: "WAIT_FOR_REPLY",
+    label: "Wait for reply",
+    defaults: { timeoutHours: 0 },
+  },
+  {
     type: "CONDITION",
     label: "Condition",
     defaults: { field: "communication.patient_replied", operator: "truthy" },
   },
-  { type: "SEND_TEMPLATE", label: "Send template", defaults: { templateName: "", variableKeys: [] as string[] } },
+  {
+    type: "SEND_TEMPLATE",
+    label: "Send template",
+    defaults: { templateId: "", templateName: "", templateLanguage: "", variableMappings: {} },
+  },
+  {
+    type: "SEND_TEXT",
+    label: "Send text",
+    defaults: { body: "" },
+  },
+  {
+    type: "SEND_MEDIA",
+    label: "Send media",
+    defaults: { documentId: "", caption: "" },
+  },
   { type: "CREATE_TASK", label: "Create Care Task", defaults: { title: "Follow-up", priority: "NORMAL" } },
   { type: "ASSIGN_TASK", label: "Assign task", defaults: { title: "Assigned follow-up", priority: "NORMAL" } },
+  { type: "ASSIGN_STAFF", label: "Assign staff", defaults: { assigneeId: "", title: "Staff assignment" } },
   { type: "NOTIFY_STAFF", label: "Notify staff", defaults: { title: "Staff attention", body: "" } },
   { type: "ESCALATE", label: "Escalate", defaults: { reason: "Needs human" } },
   { type: "ADD_TAG", label: "Add tag", defaults: { tag: "" } },
   { type: "REMOVE_TAG", label: "Remove tag", defaults: { tag: "" } },
+  {
+    type: "AI_DRAFT",
+    label: "AI draft / reply",
+    defaults: { promptHint: "", tone: "clinical_empathetic", mode: "draft", autoSend: false },
+  },
   { type: "MEDICATION_LOOKUP", label: "Medication lookup", defaults: {} },
   { type: "PATIENT_LOOKUP", label: "Patient lookup", defaults: {} },
   { type: "APPOINTMENT_LOOKUP", label: "Appointment lookup", defaults: {} },

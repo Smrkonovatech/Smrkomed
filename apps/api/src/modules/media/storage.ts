@@ -159,5 +159,8 @@ export class LocalFilesystemMediaStorageProvider implements MediaStorageProvider
   }
 }
 
-// Global default storage instance
+// Global default storage instance.
+// Phase 6: LocalFilesystemMediaStorageProvider only. On Railway without a
+// persistent volume / object store, files under MEDIA_STORAGE_DIR are ephemeral
+// and are lost on redeploy — production blocker for durable media.
 export const mediaStorageProvider: MediaStorageProvider = new LocalFilesystemMediaStorageProvider();

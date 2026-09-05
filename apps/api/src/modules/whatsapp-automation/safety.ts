@@ -12,6 +12,7 @@ export type ClinicCommSettings = {
   minDelayMinutes: number;
   requireConsentGranted: boolean;
   urgentBypassHours: boolean;
+  aiAutoReplyEnabled: boolean;
 };
 
 const DEFAULT_HOURS: WorkingHoursMap = {
@@ -33,6 +34,7 @@ export async function getClinicCommSettings(clinicId: string): Promise<ClinicCom
     minDelayMinutes: row?.minDelayMinutes ?? 30,
     requireConsentGranted: row?.requireConsentGranted ?? false,
     urgentBypassHours: row?.urgentBypassHours ?? true,
+    aiAutoReplyEnabled: row?.aiAutoReplyEnabled ?? false,
   };
 }
 

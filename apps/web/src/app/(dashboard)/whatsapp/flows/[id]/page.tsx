@@ -13,6 +13,7 @@ import {
   addPaletteNode,
   type FlowDefinition,
 } from "@/components/whatsapp/flow-canvas";
+import { SendTemplateNodePanel } from "@/components/whatsapp/send-template-node-panel";
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,7 +48,13 @@ type ExecutionRow = {
   retryCount?: number;
   lastAttemptAt?: string | null;
   startedAt: string;
-  steps: Array<{ nodeId: string; nodeType: string; status: string; error: string | null }>;
+  steps: Array<{
+    nodeId: string;
+    nodeType: string;
+    status: string;
+    error: string | null;
+    output?: Record<string, unknown> | null;
+  }>;
 };
 
 export default function WhatsAppFlowBuilderPage() {
@@ -66,6 +73,9 @@ export default function WhatsAppFlowBuilderPage() {
   const [patients, setPatients] = useState<PatientOption[]>([]);
   const [testPatientId, setTestPatientId] = useState("");
   const [executions, setExecutions] = useState<ExecutionRow[]>([]);
+  const [testEvent, setTestEvent] = useState<
+    "none" | "incoming_whatsapp" | "appointment" | "care_loop"
+  >("none");
   const [configOpen, setConfigOpen] = useState(true);
 
   const load = useCallback(async () => {
@@ -207,11 +217,34 @@ export default function WhatsAppFlowBuilderPage() {
         execution: ExecutionRow;
       }>(`/api/v1/whatsapp-automation/flows/${id}/test`, {
         ...(testPatientId ? { patientId: testPatientId } : {}),
-        vars: { patient_name: "Test Patient", clinic_name: "Clinic" },
+        vars: {
+          patient_name: "Test Patient",
+          clinic_name: "Clinic",
+          "patient.firstName": "Priya",
+          "appointment.date": "2 Sep 2026",
+          "appointment.time": "10:30 AM",
+        },
         simulateBranch: "no",
+        simulateEvent: testEvent,
       });
+      const tplSteps = result.execution.steps.filter((s) => s.nodeType === "SEND_TEMPLATE");
+      const tplSummary = tplSteps
+        .map((s) => {
+          const out = s.output ?? {};
+          const bits = [
+            out["templateName"] ? `template=${String(out["templateName"])}` : null,
+            out["valid"] === false ? "INVALID mapping" : out["valid"] === true ? "vars OK" : null,
+            out["error"] ? String(out["error"]) : null,
+            out["reason"] ? String(out["reason"]) : null,
+            s.error,
+          ].filter(Boolean);
+          return bits.join(" · ") || s.status;
+        })
+        .join("; ");
       setTestResult(
-        `${result.label ?? result.mode}: ${result.execution.status} — ${result.execution.steps.length} steps. ${result.note}`,
+        `${result.label ?? result.mode}: ${result.execution.status} — ${result.execution.steps.length} steps. ${result.note}${
+          tplSummary ? ` | SEND_TEMPLATE: ${tplSummary}` : ""
+        }`,
       );
       toast.success("TEST MODE — no WhatsApp message sent");
       await load();
@@ -306,6 +339,21 @@ export default function WhatsAppFlowBuilderPage() {
                 {p.firstName} {p.lastName}
               </option>
             ))}
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Simulate event</Label>
+          <select
+            className="flex h-9 min-w-[180px] rounded-md border bg-background px-2 text-sm"
+            value={testEvent}
+            onChange={(e) =>
+              setTestEvent(e.target.value as "none" | "incoming_whatsapp" | "appointment" | "care_loop")
+            }
+          >
+            <option value="none">None</option>
+            <option value="incoming_whatsapp">Incoming WhatsApp</option>
+            <option value="appointment">Appointment</option>
+            <option value="care_loop">Care Loop</option>
           </select>
         </div>
         <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
@@ -413,18 +461,116 @@ export default function WhatsAppFlowBuilderPage() {
                 />
               </div>
               {selected.type === "SEND_TEMPLATE" ? (
+                <SendTemplateNodePanel
+                  config={selected.config}
+                  readOnly={readOnly}
+                  onChange={(next) => updateSelected({ config: next })}
+                />
+              ) : null}
+              {selected.type === "SEND_TEXT" ? (
                 <div className="space-y-2">
-                  <Label>Meta template name</Label>
+                  <Label>Message body</Label>
+                  <Textarea
+                    value={String(selected.config["body"] ?? selected.config["text"] ?? "")}
+                    disabled={readOnly}
+                    rows={4}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, body: e.target.value } })
+                    }
+                    placeholder="Requires an open WhatsApp session (conversation)."
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Uses the existing session text send. Outside the 24h window, use Send template.
+                  </p>
+                </div>
+              ) : null}
+              {selected.type === "SEND_MEDIA" ? (
+                <div className="space-y-2">
+                  <Label>Patient document ID</Label>
                   <Input
-                    value={String(selected.config["templateName"] ?? "")}
+                    value={String(selected.config["documentId"] ?? "")}
                     disabled={readOnly}
                     onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, templateName: e.target.value } })
+                      updateSelected({ config: { ...selected.config, documentId: e.target.value } })
+                    }
+                    placeholder="Document id from patient chart"
+                  />
+                  <Label>Caption (optional)</Label>
+                  <Input
+                    value={String(selected.config["caption"] ?? "")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, caption: e.target.value } })
                     }
                   />
                   <p className="text-[11px] text-muted-foreground">
-                    Must be APPROVED by Meta for this clinic before activate/send.
+                    Uses existing outbound media + patient document storage. Needs conversationId at
+                    runtime.
                   </p>
+                </div>
+              ) : null}
+              {selected.type === "AI_DRAFT" ? (
+                <div className="space-y-2">
+                  <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
+                    Uses clinic Knowledge Base + safety rules. Default is draft (no WhatsApp send).
+                    Set mode to Send only when the flow should explicitly send.
+                  </p>
+                  <Label>Mode</Label>
+                  <select
+                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={String(selected.config["mode"] ?? "draft")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, mode: e.target.value } })
+                    }
+                  >
+                    <option value="draft">Draft only (review)</option>
+                    <option value="send">Send via WhatsApp</option>
+                  </select>
+                  <Label>Prompt hint</Label>
+                  <Textarea
+                    value={String(selected.config["promptHint"] ?? "")}
+                    disabled={readOnly}
+                    rows={3}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, promptHint: e.target.value } })
+                    }
+                    placeholder="Optional instruction for Smrko AI"
+                  />
+                  <Label>Tone</Label>
+                  <select
+                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                    value={String(selected.config["tone"] ?? "clinical_empathetic")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, tone: e.target.value } })
+                    }
+                  >
+                    <option value="clinical_empathetic">Clinical · empathetic</option>
+                    <option value="concise">Concise</option>
+                    <option value="formal">Formal</option>
+                  </select>
+                </div>
+              ) : null}
+              {selected.type === "ASSIGN_STAFF" ? (
+                <div className="space-y-2">
+                  <Label>Staff user ID</Label>
+                  <Input
+                    value={String(selected.config["assigneeId"] ?? "")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, assigneeId: e.target.value } })
+                    }
+                    placeholder="User id"
+                  />
+                  <Label>Task title</Label>
+                  <Input
+                    value={String(selected.config["title"] ?? "Staff assignment")}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      updateSelected({ config: { ...selected.config, title: e.target.value } })
+                    }
+                  />
                 </div>
               ) : null}
               {selected.type === "WAIT" ? (
@@ -439,10 +585,29 @@ export default function WhatsAppFlowBuilderPage() {
                     }
                   >
                     <option value="duration">Duration</option>
+                    <option value="wait_for_reply">Wait for patient reply</option>
                     <option value="before_appointment">Before appointment</option>
                     <option value="until_datetime">Until date/time</option>
                     <option value="at_time">Until clock time</option>
                   </select>
+                  {String(selected.config["mode"]) === "wait_for_reply" ? (
+                    <div className="space-y-1">
+                      <Label>Timeout hours (0 = until reply only)</Label>
+                      <Input
+                        type="number"
+                        disabled={readOnly}
+                        value={Number(selected.config["timeoutHours"] ?? 0)}
+                        onChange={(e) =>
+                          updateSelected({
+                            config: { ...selected.config, timeoutHours: Number(e.target.value) },
+                          })
+                        }
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Persists WAITING on conversationId. Resumes when patient sends WhatsApp.
+                      </p>
+                    </div>
+                  ) : null}
                   {String(selected.config["mode"] ?? "duration") === "duration" ? (
                     <div className="grid grid-cols-2 gap-2">
                       <Input
@@ -525,6 +690,25 @@ export default function WhatsAppFlowBuilderPage() {
                   </p>
                 </div>
               ) : null}
+              {selected.type === "WAIT_FOR_REPLY" ? (
+                <div className="space-y-2">
+                  <Label>Timeout hours (0 = until reply only)</Label>
+                  <Input
+                    type="number"
+                    disabled={readOnly}
+                    value={Number(selected.config["timeoutHours"] ?? 0)}
+                    onChange={(e) =>
+                      updateSelected({
+                        config: { ...selected.config, timeoutHours: Number(e.target.value) },
+                      })
+                    }
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Durable wait — stored on the execution (flowId, executionId, nodeId, conversationId,
+                    clinicId). Resumes on inbound WhatsApp.
+                  </p>
+                </div>
+              ) : null}
               {selected.type === "CONDITION" ? (
                 <div className="space-y-2">
                   <Label>Field</Label>
@@ -542,6 +726,9 @@ export default function WhatsAppFlowBuilderPage() {
                       "communication.patient_replied",
                       "communication.no_response",
                       "communication.conversation_status",
+                      "communication.message_text",
+                      "message.content",
+                      "message.type",
                       "patient.status",
                       "patient.stage",
                       "patient.inactive_days",
@@ -555,6 +742,9 @@ export default function WhatsAppFlowBuilderPage() {
                       "care_task.overdue",
                       "care_task.assigned",
                       "treatment.stage",
+                      "treatment.status",
+                      "journey.stage",
+                      "care_loop.status",
                       "care_plan.status",
                       "medication.assigned",
                       "payment.pending",

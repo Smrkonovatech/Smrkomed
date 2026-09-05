@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
 import { MediaBubble } from "@/components/whatsapp/media-bubble";
+import { ChatComposer } from "@/components/whatsapp/chat-composer";
 import {
   useRealtimeInbox,
   type RealtimeConversationUpdatedPayload,
@@ -54,6 +54,7 @@ type Detail = {
   priority: string;
   handoffReason: string | null;
   automationPausedAt: string | null;
+  aiPausedAt?: string | null;
   assignedStaff: { id: string; name: string } | null;
   patient: { id: string; firstName: string; lastName: string; phone: string | null } | null;
   clinicName: string;
@@ -138,7 +139,6 @@ export default function WhatsAppInboxPage() {
   const [detail, setDetail] = useState<Detail | null>(null);
   const [context, setContext] = useState<Context | null>(null);
   const [staff, setStaff] = useState<Staff[]>([]);
-  const [reply, setReply] = useState("");
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -446,21 +446,15 @@ export default function WhatsAppInboxPage() {
     onReconnected,
   });
 
-  async function sendReply() {
-    if (!activeId || !reply.trim()) return;
-    const bodyText = reply.trim();
-    setReply("");
+  async function retryMedia(messageId: string) {
+    if (!activeId) return;
     try {
-      await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/reply`, { body: bodyText });
-      toast.success("Message sent (staff)");
+      await apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/messages/${messageId}/retry`, {});
+      toast.success("Retry sent");
+      const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
+      setDetail(d);
     } catch (err) {
-      // restore reply text on failure
-      setReply(bodyText);
-      toast.error(
-        err instanceof ApiError
-          ? err.message
-          : "Send failed. Session window may be closed — use an approved template.",
-      );
+      toast.error(err instanceof ApiError ? err.message : "Retry failed");
     }
   }
 
@@ -664,6 +658,7 @@ export default function WhatsAppInboxPage() {
                       <div className="mt-1 flex flex-wrap gap-1">
                         <StatusBadge label={detail.status} tone={labelTone(detail.status)} />
                         {detail.automationPausedAt ? <StatusBadge label="Automation paused" tone="warning" /> : null}
+                        {detail.aiPausedAt ? <StatusBadge label="AI paused" tone="warning" /> : null}
                         {detail.automation ? (
                           <StatusBadge label={`${detail.automation.flowName}: ${detail.automation.status}`} tone="info" />
                         ) : (
@@ -693,7 +688,37 @@ export default function WhatsAppInboxPage() {
                         >
                           Resume automation
                         </Button>
+                      ) : null}
+                      {detail.aiPausedAt || detail.status === "HUMAN_HANDOFF" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/resume`, {}).then(() => {
+                              toast.success("AI resumed (explicit)");
+                              return apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`).then(setDetail);
+                            })
+                          }
+                        >
+                          Resume AI
+                        </Button>
                       ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`, {
+                              mode: "draft",
+                            }).then(() => {
+                              toast.success("AI draft ready");
+                              return apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`).then(setDetail);
+                            })
+                          }
+                        >
+                          Ask Smrko AI
+                        </Button>
+                      )}
+                      {!detail.automationPausedAt ? (
                         <Button
                           size="sm"
                           variant="outline"
@@ -705,7 +730,7 @@ export default function WhatsAppInboxPage() {
                         >
                           Pause automation
                         </Button>
-                      )}
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -770,8 +795,18 @@ export default function WhatsAppInboxPage() {
                       )}
                       <p className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
                         <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        <span>
+                        <span className="flex items-center gap-2">
                           {m.direction === "INBOUND" ? "Received via WhatsApp" : renderDeliveryStatus(m.status)}
+                          {m.direction === "OUTBOUND" &&
+                          (m.status === "FAILED" || m.media?.status === "FAILED") ? (
+                            <button
+                              type="button"
+                              className="font-semibold text-rose-700 underline"
+                              onClick={() => void retryMedia(m.id)}
+                            >
+                              Retry
+                            </button>
+                          ) : null}
                         </span>
                       </p>
                     </div>
@@ -797,37 +832,21 @@ export default function WhatsAppInboxPage() {
                   </div>
                 )}
 
-                <footer className="space-y-2 border-t p-3 bg-card/60">
-                  <p className="text-[10px] text-muted-foreground">
-                    Replying as Clinic Staff. Outside 24h Meta session window, use an approved template.
-                  </p>
-                  <Textarea
-                    rows={2}
-                    placeholder="Write a staff reply…"
-                    value={reply}
-                    onChange={(e) => {
-                      setReply(e.target.value);
-                      if (activeId) notifyTyping(activeId);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                        e.preventDefault();
-                        void sendReply();
-                      }
+                {activeId ? (
+                  <ChatComposer
+                    conversationId={activeId}
+                    {...(detail.patient?.id ? { patientId: detail.patient.id } : {})}
+                    onTyping={() => notifyTyping(activeId)}
+                    onSent={() => {
+                      void (async () => {
+                        const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
+                        setDetail(d);
+                        scrollToBottom(true);
+                        await loadList();
+                      })();
                     }}
                   />
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => void sendReply()} disabled={!reply.trim()}>
-                      Send as staff
-                    </Button>
-                    <Button asChild size="sm" variant="outline">
-                      <Link href="/whatsapp/templates">Send template</Link>
-                    </Button>
-                    <Button asChild size="sm" variant="ghost">
-                      <Link href="/whatsapp">Ask Smrko AI</Link>
-                    </Button>
-                  </div>
-                </footer>
+                ) : null}
               </>
             )}
           </section>

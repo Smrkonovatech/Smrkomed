@@ -3,9 +3,10 @@ import { prisma, writeAuditLog, type TenantContext } from "@smrkomed/database";
 import { IntegrationError } from "../../core/errors";
 import { credentialService } from "../../credentials/service";
 import { createMemoryRateLimiter } from "../../../middleware/rate-limit";
-import { sendTemplateMessage, sendTextMessage } from "./graph";
+import { sendTemplateMessage, sendTextMessage, type TemplateSendComponentParameters } from "./graph";
 import { normalizeWhatsAppPhone } from "./phone";
 import { isSendableTemplateStatus } from "./templates";
+import { parseWhatsAppTemplateComponents } from "./template-variables";
 import { realtimeBus } from "../../../modules/realtime/bus";
 
 const perUser = createMemoryRateLimiter(10, 60_000);
@@ -26,9 +27,19 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
   leadId?: string;
   templateId: string;
   parameters: string[];
+  /** Optional structured component params (header / body / buttons) */
+  componentParameters?: TemplateSendComponentParameters;
 }) {
   assertRateLimit(ctx.userId, ctx.clinicId);
   if (input.parameters.some((value) => value.length > 256) || input.parameters.length > 10) {
+    throw new IntegrationError("INVALID_TEMPLATE", "Template parameters are invalid.", 422);
+  }
+  const allStructured = [
+    ...(input.componentParameters?.header ?? []),
+    ...(input.componentParameters?.body ?? []),
+    ...(input.componentParameters?.buttons?.flatMap((b) => b.parameters) ?? []),
+  ];
+  if (allStructured.some((value) => value.length > 1024)) {
     throw new IntegrationError("INVALID_TEMPLATE", "Template parameters are invalid.", 422);
   }
 
@@ -55,8 +66,19 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
   if (!isSendableTemplateStatus(template.status)) {
     throw new IntegrationError("TEMPLATE_NOT_APPROVED", "Only Meta-approved templates can be sent.", 422);
   }
-  if (template.parameterCount > 0 && input.parameters.length < template.parameterCount) {
+
+  const parsed = parseWhatsAppTemplateComponents(template.components);
+  const bodyNeeded = parsed.bodyParameterCount || template.parameterCount;
+  const bodyProvided =
+    (input.componentParameters?.body?.length ?? 0) > 0
+      ? (input.componentParameters?.body?.length ?? 0)
+      : input.parameters.length;
+  if (bodyNeeded > 0 && bodyProvided < bodyNeeded) {
     throw new IntegrationError("INVALID_TEMPLATE", "This template is missing required parameters.", 422);
+  }
+  const headerNeeded = parsed.variables.filter((v) => v.component === "HEADER").length;
+  if (headerNeeded > 0 && (input.componentParameters?.header?.length ?? 0) < headerNeeded) {
+    throw new IntegrationError("INVALID_TEMPLATE", "This template is missing required header parameters.", 422);
   }
 
   const conversation = await resolveConversation(ctx, input, integration.id);
@@ -97,13 +119,29 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
   });
 
   try {
+    const bodyParams =
+      input.componentParameters?.body ??
+      input.parameters.slice(0, bodyNeeded || input.parameters.length);
     const result = await sendTemplateMessage({
       phoneNumberId: account.phoneNumberId,
       accessToken: token,
       to: recipient,
       name: template.name,
       language: template.language,
-      parameters: input.parameters.slice(0, template.parameterCount || input.parameters.length),
+      parameters: bodyParams,
+      ...(input.componentParameters
+        ? {
+            componentParameters: {
+              ...(input.componentParameters.header?.length
+                ? { header: input.componentParameters.header }
+                : {}),
+              body: bodyParams,
+              ...(input.componentParameters.buttons?.length
+                ? { buttons: input.componentParameters.buttons }
+                : {}),
+            },
+          }
+        : {}),
     });
     const messages = result["messages"];
     const providerMessageId =
@@ -186,8 +224,31 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
       action: "whatsapp.message.send.failure",
       entityType: "Conversation",
       entityId: conversation.id,
-      metadata: { template: template.name },
+      metadata: {
+        template: template.name,
+        error:
+          error instanceof IntegrationError
+            ? error.code
+            : "MESSAGE_SEND_FAILED",
+      },
     });
+    // Persist FAILED message for inbox visibility (no credentials).
+    const failReason =
+      error instanceof IntegrationError
+        ? error.message.slice(0, 400)
+        : "WhatsApp could not send this template.";
+    await prisma.message
+      .create({
+        data: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType: "STAFF",
+          content: `Template: ${template.name} — failed: ${failReason}`,
+          messageType: "template",
+          status: "FAILED",
+        },
+      })
+      .catch(() => undefined);
     if (error instanceof IntegrationError && error.code === "AUTHORIZATION_EXPIRED") {
       await prisma.integration.update({
         where: { id: integration.id },
@@ -206,13 +267,15 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
  */
 export async function sendWhatsAppSessionText(
   ctx: TenantContext,
-  input: { conversationId: string; body: string },
+  input: { conversationId: string; body: string; senderType?: "STAFF" | "AI" },
 ) {
   assertRateLimit(ctx.userId, ctx.clinicId);
   const body = input.body.trim();
   if (!body || body.length > 4096) {
     throw new IntegrationError("INVALID_TEMPLATE", "Message body is required (max 4096 chars).", 422);
   }
+  const senderType = input.senderType ?? "STAFF";
+  const label = senderType === "AI" ? "✦ Smrko AI" : "STAFF";
 
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
@@ -264,10 +327,10 @@ export async function sendWhatsAppSessionText(
     actorId: ctx.userId,
     organizationId: ctx.organizationId,
     clinicId: ctx.clinicId,
-    action: "whatsapp.message.send.session.attempt",
+    action: senderType === "AI" ? "whatsapp.message.send.ai.attempt" : "whatsapp.message.send.session.attempt",
     entityType: "Conversation",
     entityId: conversation.id,
-    metadata: { kind: "session_text" },
+    metadata: { kind: senderType === "AI" ? "ai_session_text" : "session_text" },
   });
 
   try {
@@ -286,7 +349,7 @@ export async function sendWhatsAppSessionText(
       data: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
-        senderType: "STAFF",
+        senderType,
         content: body,
         messageType: "text",
         providerMessageId: providerMessageId || null,
@@ -298,7 +361,7 @@ export async function sendWhatsAppSessionText(
       data: {
         status: conversation.status === "CLOSED" ? "OPEN" : "WAITING_PATIENT",
         updatedAt: new Date(),
-        lastStaffReadAt: new Date(),
+        ...(senderType === "STAFF" ? { lastStaffReadAt: new Date() } : {}),
       },
     });
     realtimeBus.publish({
@@ -308,12 +371,12 @@ export async function sendWhatsAppSessionText(
       message: {
         id: stored.id,
         direction: "OUTBOUND",
-        senderType: "STAFF",
+        senderType,
         content: stored.content,
         messageType: "text",
         createdAt: stored.createdAt.toISOString(),
         status: stored.status,
-        label: "STAFF",
+        label,
       },
       conversation: {
         id: conversation.id,
@@ -335,7 +398,7 @@ export async function sendWhatsAppSessionText(
           preview: stored.content.slice(0, 100),
           createdAt: stored.createdAt.toISOString(),
           direction: "OUTBOUND",
-          senderType: "STAFF",
+          senderType,
           status: stored.status,
         },
       },
@@ -344,7 +407,7 @@ export async function sendWhatsAppSessionText(
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
       clinicId: ctx.clinicId,
-      action: "whatsapp.message.send.session.success",
+      action: senderType === "AI" ? "whatsapp.message.send.ai.success" : "whatsapp.message.send.session.success",
       entityType: "Message",
       entityId: stored.id,
       metadata: {},
@@ -355,11 +418,29 @@ export async function sendWhatsAppSessionText(
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
       clinicId: ctx.clinicId,
-      action: "whatsapp.message.send.session.failure",
+      action: senderType === "AI" ? "whatsapp.message.send.ai.failure" : "whatsapp.message.send.session.failure",
       entityType: "Conversation",
       entityId: conversation.id,
-      metadata: {},
+      metadata: {
+        error: error instanceof IntegrationError ? error.code : "MESSAGE_SEND_FAILED",
+      },
     });
+    const failReason =
+      error instanceof IntegrationError
+        ? error.message.slice(0, 400)
+        : "WhatsApp could not send this message.";
+    await prisma.message
+      .create({
+        data: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType,
+          content: `${body.slice(0, 200)}${body.length > 200 ? "…" : ""} — failed: ${failReason}`,
+          messageType: "text",
+          status: "FAILED",
+        },
+      })
+      .catch(() => undefined);
     throw error instanceof IntegrationError
       ? error
       : new IntegrationError(
@@ -368,6 +449,14 @@ export async function sendWhatsAppSessionText(
           500,
         );
   }
+}
+
+/** Patient-facing Smrko AI WhatsApp send — always senderType AI + visible label. */
+export async function sendWhatsAppAiSessionText(
+  ctx: TenantContext,
+  input: { conversationId: string; body: string },
+) {
+  return sendWhatsAppSessionText(ctx, { ...input, senderType: "AI" });
 }
 
 async function resolveConversation(

@@ -184,8 +184,8 @@ export function SidebarContentBody({
       const operationsIndex = next.findIndex((group) => group.label === "Operations");
       next.splice(operationsIndex + 1, 0, pharmacyGroup);
     }
-    // Patients-read staff can use Automation Center inbox/templates; settings stays permission-gated in API.
-    const showWhatsApp = role && roleHasPermission(role, PERMISSIONS.PATIENTS_READ);
+    // Gate on WhatsApp view — not PATIENTS_READ (counselors/marketing must not see nav then 403).
+    const showWhatsApp = role && roleHasPermission(role, PERMISSIONS.WHATSAPP_VIEW);
     if (showWhatsApp) {
       const insertAfter = next.findIndex((group) => group.label === "Pharmacy");
       const at = insertAfter >= 0 ? insertAfter + 1 : next.findIndex((group) => group.label === "Operations") + 1;

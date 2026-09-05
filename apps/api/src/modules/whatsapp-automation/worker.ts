@@ -395,9 +395,13 @@ export async function processAutomationTick(opts?: { clinicId?: string }) {
 }
 
 /**
- * Smallest production-safe scheduler for Railway long-running API:
- * setInterval when WHATSAPP_AUTOMATION_WORKER=1 (or production default on).
- * Vercel can also hit POST /internal/tick with X-WhatsApp-Worker-Secret.
+ * In-process scheduler for Railway long-running API.
+ *
+ * CURRENT CONSTRAINT (Phase 6): run with a single API replica when
+ * WHATSAPP_AUTOMATION_WORKER is enabled. Multi-replica ticks are softened by
+ * execution locks + idempotency keys, but there is no Redis leader election.
+ * Prefer either replicas=1 OR disable in-process worker and use one cron
+ * hitting POST /internal/tick with WHATSAPP_WORKER_SECRET.
  */
 export function startWhatsAppAutomationWorker() {
   if (timer) return;

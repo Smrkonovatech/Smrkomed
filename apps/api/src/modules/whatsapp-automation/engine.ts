@@ -1,13 +1,23 @@
 import { randomUUID } from "node:crypto";
 
-import type { Prisma, TenantContext } from "@smrkomed/database";
+import { Prisma } from "@prisma/client";
+import type { TenantContext } from "@smrkomed/database";
 import { prisma } from "@smrkomed/database";
 
 import { audit } from "../../lib/audit";
 import { HttpError } from "../../lib/errors";
 import { IntegrationError } from "../../integrations/core/errors";
 import { classifyRetry } from "../../integrations/core/retry";
-import { sendWhatsAppTemplate } from "../../integrations/providers/whatsapp/messaging";
+import {
+  sendWhatsAppSessionText,
+  sendWhatsAppTemplate,
+} from "../../integrations/providers/whatsapp/messaging";
+import { sendPatientDocumentOverWhatsApp } from "../../integrations/providers/whatsapp/outbound-media";
+import {
+  buildOrderedParameters,
+  parseWhatsAppTemplateComponents,
+} from "../../integrations/providers/whatsapp/template-variables";
+import { resolveTemplateVariables } from "../../integrations/providers/whatsapp/variable-resolver";
 import { evaluateCondition } from "./conditions";
 import {
   DEFAULT_MAX_RETRIES,
@@ -24,12 +34,44 @@ import {
   assertAutomationConsent,
   checkFrequencyLimits,
   getClinicCommSettings,
-  missingRequiredVars,
   nextWorkingWindowStart,
 } from "./safety";
+import {
+  applyVariableMappings,
+  effectiveVariableMappings,
+  parseSendTemplateConfig,
+} from "./template-node-config";
 
 export { buildIdempotencyKey };
 type CtxVars = Record<string, string>;
+
+type SendResultShape = { id?: string; providerMessageId?: string | null; status?: string };
+
+/** If a prior COMPLETED step for this node already sent to Meta, reuse output (outbound idempotency). */
+async function findPriorSuccessfulSend(
+  executionId: string,
+  nodeId: string,
+): Promise<{ output: Record<string, unknown>; nextNodeId: string | null } | null> {
+  const prior = await prisma.whatsAppFlowExecutionStep.findMany({
+    where: { executionId, nodeId, status: "COMPLETED" },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+  });
+  for (const step of prior) {
+    const output =
+      step.output && typeof step.output === "object" && !Array.isArray(step.output)
+        ? (step.output as Record<string, unknown>)
+        : null;
+    if (!output) continue;
+    const sendResult = output["sendResult"] as SendResultShape | undefined;
+    if (sendResult?.providerMessageId || sendResult?.id) {
+      const nextNodeId =
+        typeof output["idempotentNextNodeId"] === "string" ? output["idempotentNextNodeId"] : null;
+      return { output: { ...output, idempotentReplay: true }, nextNodeId };
+    }
+  }
+  return null;
+}
 
 function waitUntilFromConfig(config: Record<string, unknown>, vars: CtxVars): Date {
   const mode = String(config["mode"] ?? "duration");
@@ -61,14 +103,26 @@ function waitUntilFromConfig(config: Record<string, unknown>, vars: CtxVars): Da
   return new Date(Date.now() + Math.max(0, amount) * mult);
 }
 
-function resolveTemplateParams(keys: string[], vars: CtxVars) {
-  return keys.map((k) => vars[k] ?? vars[k.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? "");
-}
-
-async function loadApprovedTemplate(clinicId: string, templateName: string) {
-  return prisma.whatsAppTemplate.findFirst({
-    where: { clinicId, name: templateName, status: "APPROVED" },
-  });
+async function loadApprovedTemplateByConfig(
+  clinicId: string,
+  cfg: ReturnType<typeof parseSendTemplateConfig>,
+) {
+  if (cfg.templateId) {
+    return prisma.whatsAppTemplate.findFirst({
+      where: { id: cfg.templateId, clinicId, status: "APPROVED" },
+    });
+  }
+  if (cfg.templateName) {
+    return prisma.whatsAppTemplate.findFirst({
+      where: {
+        clinicId,
+        name: cfg.templateName,
+        status: "APPROVED",
+        ...(cfg.templateLanguage ? { language: cfg.templateLanguage } : {}),
+      },
+    });
+  }
+  return null;
 }
 
 async function tryAcquireLock(executionId: string, clinicId: string): Promise<string | null> {
@@ -246,6 +300,58 @@ export async function runExecution(
         break;
       }
 
+      // Outbound send nodes: skip Meta if a prior COMPLETED step already produced a provider id.
+      if (
+        !simulation &&
+        (node.type === "SEND_TEMPLATE" || node.type === "SEND_TEXT" || node.type === "SEND_MEDIA")
+      ) {
+        const priorSend = await findPriorSuccessfulSend(execution.id, node.id);
+        if (priorSend) {
+          const nextId =
+            priorSend.nextNodeId ??
+            nextNodes(definition, node.id)[0]?.id ??
+            null;
+          await prisma.whatsAppFlowExecutionStep.create({
+            data: {
+              executionId: execution.id,
+              nodeId: node.id,
+              nodeType: node.type,
+              status: "COMPLETED",
+              startedAt: new Date(),
+              completedAt: new Date(),
+              input: node.config as Prisma.InputJsonValue,
+              output: {
+                ...priorSend.output,
+                idempotentReplay: true,
+                note: "Skipped Meta send — prior step already delivered (outbound idempotency).",
+              } as Prisma.InputJsonValue,
+            },
+          });
+          currentId = nextId;
+          ctx = { ...ctx, vars, tags, simulation };
+          await prisma.whatsAppFlowExecution.update({
+            where: { id: execution.id },
+            data: {
+              currentNodeId: currentId,
+              context: mergeExecutionContext(ctx, {}),
+            },
+          });
+          if (!currentId) {
+            await prisma.whatsAppFlowExecution.update({
+              where: { id: execution.id },
+              data: {
+                status: "COMPLETED",
+                completedAt: new Date(),
+                context: mergeExecutionContext(ctx, { vars, tags, simulation }),
+              },
+            });
+            await bumpFlowCounts(execution.flowId, true);
+            return prisma.whatsAppFlowExecution.findUniqueOrThrow({ where: { id: execution.id } });
+          }
+          continue;
+        }
+      }
+
       // Skip re-running WAIT when worker advanced past it already (current is next)
       const step = await prisma.whatsAppFlowExecutionStep.create({
         data: {
@@ -288,20 +394,21 @@ export async function runExecution(
           },
         });
 
-        if (result.waitUntil) {
+        if (result.waitUntil || result.waitForReply) {
           ctx = {
             ...ctx,
             vars,
             tags,
             simulation,
             waitNextNodeId: result.nextNodeId ?? null,
+            waitKind: result.waitForReply ? "reply" : (ctx.waitKind ?? "delay"),
           };
           await prisma.whatsAppFlowExecution.update({
             where: { id: execution.id },
             data: {
               status: "WAITING",
               currentNodeId: node.id,
-              resumeAt: result.waitUntil,
+              resumeAt: result.waitUntil ?? null,
               context: mergeExecutionContext(ctx, {
                 lockedAt: null,
                 lockToken: null,
@@ -382,7 +489,8 @@ async function executeNode(
 ): Promise<{
   output: Record<string, unknown>;
   nextNodeId?: string | null;
-  waitUntil?: Date;
+  waitUntil?: Date | null;
+  waitForReply?: boolean;
   done?: boolean;
   escalated?: boolean;
   tags?: string[];
@@ -393,6 +501,43 @@ async function executeNode(
       return { output: { ok: true }, nextNodeId: next?.id ?? null };
     }
     case "WAIT": {
+      const mode = String(node.config["mode"] ?? "duration");
+      if (mode === "wait_for_reply") {
+        const next = nextNodes(definition, node.id)[0];
+        const timeoutHours = Number(node.config["timeoutHours"] ?? 0);
+        if (simulation) {
+          return {
+            output: {
+              simulation: true,
+              waitKind: "reply",
+              note: "TEST MODE — wait-for-reply skipped; continuing as if patient replied",
+            },
+            nextNodeId: next?.id ?? null,
+          };
+        }
+        if (!execution.conversationId) {
+          return {
+            output: {
+              skipped: true,
+              reason: "WAIT_FOR_REPLY requires conversationId on the execution.",
+            },
+            nextNodeId: next?.id ?? null,
+          };
+        }
+        const waitUntil =
+          timeoutHours > 0 ? new Date(Date.now() + timeoutHours * 3_600_000) : null;
+        return {
+          output: {
+            waitKind: "reply",
+            conversationId: execution.conversationId,
+            timeoutHours: timeoutHours || null,
+            resumeAt: waitUntil?.toISOString() ?? null,
+          },
+          nextNodeId: next?.id ?? null,
+          waitForReply: true,
+          ...(waitUntil ? { waitUntil } : {}),
+        };
+      }
       const until = waitUntilFromConfig(node.config, vars);
       const next = nextNodes(definition, node.id)[0];
       if (simulation) {
@@ -401,14 +546,51 @@ async function executeNode(
           nextNodeId: next?.id ?? null,
         };
       }
-      // If resume already past (misconfigured past date), continue immediately
       if (until.getTime() <= Date.now()) {
         return { output: { waitSkipped: true, reason: "resumeAt already due" }, nextNodeId: next?.id ?? null };
       }
       return {
-        output: { waitUntil: until.toISOString(), mode: node.config["mode"] ?? "duration" },
+        output: { waitUntil: until.toISOString(), mode: node.config["mode"] ?? "duration", waitKind: "delay" },
         nextNodeId: next?.id ?? null,
         waitUntil: until,
+      };
+    }
+    case "WAIT_FOR_REPLY": {
+      const next = nextNodes(definition, node.id)[0];
+      const timeoutHours = Number(node.config["timeoutHours"] ?? 0);
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            waitKind: "reply",
+            note: "TEST MODE — wait-for-reply skipped; continuing as if patient replied",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      if (!execution.conversationId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "WAIT_FOR_REPLY requires conversationId on the execution.",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      const waitUntil =
+        timeoutHours > 0 ? new Date(Date.now() + timeoutHours * 3_600_000) : null;
+      return {
+        output: {
+          waitKind: "reply",
+          conversationId: execution.conversationId,
+          flowId: undefined,
+          executionHint: "Persisted WAITING until inbound WhatsApp on conversationId",
+          timeoutHours: timeoutHours || null,
+          resumeAt: waitUntil?.toISOString() ?? null,
+        },
+        nextNodeId: next?.id ?? null,
+        waitForReply: true,
+        ...(waitUntil ? { waitUntil } : {}),
       };
     }
     case "CONDITION": {
@@ -430,15 +612,130 @@ async function executeNode(
       };
     }
     case "SEND_TEMPLATE": {
-      const templateName = String(node.config["templateName"] ?? "");
-      const keys = Array.isArray(node.config["variableKeys"])
-        ? (node.config["variableKeys"] as string[])
-        : [];
-      const params = resolveTemplateParams(keys, vars);
+      const cfg = parseSendTemplateConfig(node.config);
       const next = nextNodes(definition, node.id)[0];
+
+      const templateRow = cfg.templateId
+        ? await prisma.whatsAppTemplate.findFirst({
+            where: { id: cfg.templateId, clinicId: tenant.clinicId },
+          })
+        : cfg.templateName
+          ? await prisma.whatsAppTemplate.findFirst({
+              where: {
+                clinicId: tenant.clinicId,
+                name: cfg.templateName,
+                ...(cfg.templateLanguage ? { language: cfg.templateLanguage } : {}),
+              },
+            })
+          : null;
+
+      if (!templateRow) {
+        if (simulation) {
+          return {
+            output: {
+              simulation: true,
+              error: "TEMPLATE_NOT_FOUND",
+              templateId: cfg.templateId ?? null,
+              templateName: cfg.templateName ?? null,
+              note: "TEST MODE — NO MESSAGE WILL BE SENT",
+              reason: "Template was not found for this clinic (tenant isolation).",
+            },
+            nextNodeId: next?.id ?? null,
+          };
+        }
+        throw new HttpError(
+          422,
+          "TEMPLATE_NOT_FOUND",
+          `Send Template node "${node.label}" references a template that was not found for this clinic.`,
+        );
+      }
+
+      if (templateRow.status !== "APPROVED") {
+        if (simulation) {
+          return {
+            output: {
+              simulation: true,
+              error: "TEMPLATE_NOT_APPROVED",
+              templateId: templateRow.id,
+              templateName: templateRow.name,
+              status: templateRow.status,
+              note: "TEST MODE — NO MESSAGE WILL BE SENT",
+              reason: `Template "${templateRow.name}" is ${templateRow.status}, not APPROVED.`,
+            },
+            nextNodeId: next?.id ?? null,
+          };
+        }
+        throw new HttpError(
+          422,
+          "TEMPLATE_NOT_APPROVED",
+          `Template "${templateRow.name}" is not APPROVED by Meta for this clinic.`,
+        );
+      }
+
+      const parsed = parseWhatsAppTemplateComponents(templateRow.components);
+      const mappings = effectiveVariableMappings(cfg, parsed.variables);
+      const appointmentId = vars["appointment_id"] || vars["appointmentId"] || undefined;
+      const careTaskId = vars["care_task_id"] || vars["careTaskId"] || undefined;
+      const treatmentId = vars["treatment_id"] || vars["treatmentId"] || undefined;
+
+      const resolved = await resolveTemplateVariables(tenant, {
+        patientId: execution.patientId,
+        coupleId: execution.coupleId,
+        ...(appointmentId ? { appointmentId } : {}),
+        ...(careTaskId ? { careTaskId } : {}),
+        ...(treatmentId ? { treatmentId } : {}),
+        previousNodeOutput: vars,
+      });
+
+      const applied = applyVariableMappings(
+        parsed.variables,
+        mappings,
+        resolved.values,
+        vars,
+      );
+
+      const headerParams = buildOrderedParameters(parsed.variables, "HEADER", applied.values);
+      const bodyParams = buildOrderedParameters(parsed.variables, "BODY", applied.values);
+      const buttonGroups = new Map<number, string[]>();
+      for (const slot of parsed.variables.filter((s) => s.component === "BUTTON")) {
+        const idx = slot.buttonIndex ?? 0;
+        if (!buttonGroups.has(idx)) {
+          buttonGroups.set(idx, buildOrderedParameters(parsed.variables, "BUTTON", applied.values, idx));
+        }
+      }
+      const componentParameters = {
+        header: headerParams,
+        body: bodyParams,
+        buttons: [...buttonGroups.entries()].map(([index, parameters]) => ({
+          index,
+          parameters,
+          subType:
+            parsed.variables.find((s) => s.buttonIndex === index)?.buttonType ?? "url",
+        })),
+      };
+
       if (simulation) {
         return {
-          output: { simulation: true, templateName, params, note: "TEST MODE — NO MESSAGE WILL BE SENT" },
+          output: {
+            simulation: true,
+            templateId: templateRow.id,
+            templateName: templateRow.name,
+            templateLanguage: templateRow.language,
+            status: templateRow.status,
+            variableMappings: mappings,
+            mappedSources: applied.mapped,
+            resolvedPreview: Object.fromEntries(
+              parsed.variables.map((s) => [s.key, applied.values[s.key] ?? ""]),
+            ),
+            missingVariables: applied.missing,
+            valid: applied.missing.length === 0,
+            note: "TEST MODE — NO MESSAGE WILL BE SENT. Sample preview values are never used for live sends.",
+            ...(applied.missing.length
+              ? {
+                  reason: `Missing required variable mapping/value: ${applied.missing.join(", ")}`,
+                }
+              : {}),
+          },
           nextNodeId: next?.id ?? null,
         };
       }
@@ -481,12 +778,12 @@ async function executeNode(
         return { output: { skipped: true, reason: freq.reason }, nextNodeId: next?.id ?? null };
       }
 
-      const missing = missingRequiredVars(keys, vars);
-      if (missing.length) {
+      if (applied.missing.length) {
         return {
           output: {
             skipped: true,
-            reason: `Required variable unavailable: ${missing.join(", ")}`,
+            reason: `Required variable unavailable: ${applied.missing.join(", ")}`,
+            templateId: templateRow.id,
           },
           nextNodeId: next?.id ?? null,
         };
@@ -505,12 +802,15 @@ async function executeNode(
         };
       }
 
-      const template = await loadApprovedTemplate(tenant.clinicId, templateName);
+      const template = await loadApprovedTemplateByConfig(tenant.clinicId, {
+        ...cfg,
+        templateId: templateRow.id,
+      });
       if (!template) {
         throw new HttpError(
           422,
           "TEMPLATE_NOT_APPROVED",
-          `Reminder node requires an approved WhatsApp template. "${templateName}" is not approved by Meta for this clinic.`,
+          `Template "${templateRow.name}" is not approved by Meta for this clinic.`,
         );
       }
       if (!execution.patientId && !execution.conversationId) {
@@ -518,22 +818,120 @@ async function executeNode(
       }
       const sendResult = await sendWhatsAppTemplate(tenant, {
         templateId: template.id,
-        parameters: params,
+        parameters: bodyParams,
+        componentParameters,
         ...(execution.conversationId ? { conversationId: execution.conversationId } : {}),
         ...(execution.patientId ? { patientId: execution.patientId } : {}),
       });
       return {
-        output: { templateId: template.id, sendResult },
+        output: {
+          templateId: template.id,
+          templateName: template.name,
+          sendResult,
+          mappingsApplied: applied.mapped,
+          idempotentNextNodeId: next?.id ?? null,
+        },
         nextNodeId: next?.id ?? null,
       };
     }
     case "SEND_TEXT": {
+      const body = String(node.config["body"] ?? node.config["text"] ?? "").trim();
+      const next = nextNodes(definition, node.id)[0];
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            body,
+            note: "TEST MODE — NO MESSAGE WILL BE SENT",
+            requires: "Open WhatsApp customer-care session (conversationId)",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      if (!body) {
+        return {
+          output: { skipped: true, reason: "Send Text node has empty body." },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      if (!execution.conversationId) {
+        return {
+          output: {
+            skipped: true,
+            reason:
+              "SEND_TEXT requires an open conversation (24h session window). Use SEND_TEMPLATE outside the session window.",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      const settings = await getClinicCommSettings(tenant.clinicId);
+      const consent = await assertAutomationConsent({
+        clinicId: tenant.clinicId,
+        patientId: execution.patientId,
+        requireGranted: settings.requireConsentGranted,
+      });
+      if (!consent.ok) {
+        return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
+      }
+      const sendResult = await sendWhatsAppSessionText(tenant, {
+        conversationId: execution.conversationId,
+        body,
+      });
       return {
         output: {
-          skipped: true,
-          reason: "Free-text WhatsApp send is not enabled. Use an approved SEND_TEMPLATE node.",
+          sendResult,
+          channel: "session_text",
+          idempotentNextNodeId: next?.id ?? null,
         },
-        nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "SEND_MEDIA": {
+      const documentId = String(node.config["documentId"] ?? "").trim();
+      const caption = String(node.config["caption"] ?? "").trim();
+      const next = nextNodes(definition, node.id)[0];
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            documentId: documentId || null,
+            caption: caption || null,
+            note: "TEST MODE — NO MESSAGE WILL BE SENT",
+            requires: "conversationId + patient document with storageKey",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      if (!documentId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "SEND_MEDIA needs documentId from clinic patient documents.",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      if (!execution.conversationId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "SEND_MEDIA requires an open conversation (session window).",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+      const sendResult = await sendPatientDocumentOverWhatsApp(tenant, {
+        conversationId: execution.conversationId,
+        documentId,
+        ...(caption ? { caption } : {}),
+      });
+      return {
+        output: {
+          sendResult,
+          documentId,
+          idempotentNextNodeId: next?.id ?? null,
+        },
+        nextNodeId: next?.id ?? null,
       };
     }
     case "CREATE_TASK":
@@ -628,11 +1026,58 @@ async function executeNode(
       };
     }
     case "AI_DRAFT": {
+      const promptHint = String(node.config["promptHint"] ?? node.config["instruction"] ?? "").trim();
+      const tone = String(node.config["tone"] ?? "clinical_empathetic");
+      const modeRaw = String(node.config["mode"] ?? "draft").toLowerCase();
+      const mode = modeRaw === "send" ? "send" : "draft";
+      const next = nextNodes(definition, node.id)[0];
+      const patientMessage =
+        vars["message_text"] ||
+        vars["message_content"] ||
+        String(node.config["userPrompt"] ?? "Hello");
+
+      if (!execution.conversationId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "AI_DRAFT requires conversationId",
+            mode,
+            promptHint: promptHint || null,
+            tone,
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
+      const result = await runWhatsAppAiPipeline({
+        tenant,
+        conversationId: execution.conversationId,
+        patientMessage,
+        trigger: "automation",
+        mode,
+        force: true,
+        ...(promptHint ? { promptHint } : {}),
+        simulation,
+      });
+
       return {
         output: {
-          note: "AI draft is available via Smrko AI chat — not auto-sent. Human must review.",
+          phase: 5,
+          mode,
+          tone,
+          promptHint: promptHint || null,
+          requiresHumanReview: mode === "draft",
+          autoSend: mode === "send" && !simulation,
+          ...result,
+          note: simulation
+            ? "TEST MODE — AI draft only; no WhatsApp send"
+            : mode === "draft"
+              ? "Draft generated — not sent unless mode=send"
+              : "AI send attempted per flow configuration",
         },
-        nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        nextNodeId: next?.id ?? null,
+        ...(result.handoff ? { escalated: true } : {}),
       };
     }
     case "MEDICATION_LOOKUP": {
@@ -715,8 +1160,42 @@ async function executeNode(
       };
     }
     case "ASSIGN_STAFF": {
+      const assigneeId = typeof node.config["assigneeId"] === "string" ? node.config["assigneeId"] : "";
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            assigneeId: assigneeId || null,
+            note: "ASSIGN_STAFF creates a Care Task assignment when assigneeId is set.",
+          },
+          nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        };
+      }
+      if (!assigneeId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "ASSIGN_STAFF needs assigneeId (staff user). Prefer ASSIGN_TASK for titled work.",
+          },
+          nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        };
+      }
+      const systemActor = tenant.userId === "system-worker" || !tenant.userId;
+      const task = await prisma.careTask.create({
+        data: {
+          clinicId: tenant.clinicId,
+          coupleId: execution.coupleId,
+          title: String(node.config["title"] ?? "Staff assignment"),
+          description: String(node.config["description"] ?? "Assigned by WhatsApp automation"),
+          category: "WHATSAPP_AUTOMATION",
+          status: "WAITING",
+          priority: "NORMAL",
+          ...(systemActor ? {} : { createdById: tenant.userId }),
+          assignments: { create: { userId: assigneeId } },
+        },
+      });
       return {
-        output: { skipped: true, reason: "Use ASSIGN_TASK with assigneeId, or Inbox handoff." },
+        output: { careTaskId: task.id, assigneeId },
         nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
       };
     }
@@ -766,27 +1245,49 @@ export async function startFlowExecution(input: {
   const definition = parseDefinition(flow.definition) as FlowDefinition;
   const triggerNode = definition.nodes.find((n) => n.type === "TRIGGER");
 
-  const execution = await prisma.whatsAppFlowExecution.create({
-    data: {
-      clinicId: input.tenant.clinicId,
+  let execution;
+  try {
+    execution = await prisma.whatsAppFlowExecution.create({
+      data: {
+        clinicId: input.tenant.clinicId,
+        flowId: flow.id,
+        status: "PENDING",
+        triggerType: flow.triggerType,
+        triggerEventId: input.triggerEventId,
+        idempotencyKey,
+        patientId: input.patientId ?? null,
+        coupleId: input.coupleId ?? null,
+        conversationId: input.conversationId ?? null,
+        currentNodeId: triggerNode?.id ?? null,
+        context: {
+          vars: input.vars ?? {},
+          simulation: Boolean(input.simulation),
+          retryCount: 0,
+          maxRetries: DEFAULT_MAX_RETRIES,
+          tags: [],
+        } as Prisma.InputJsonValue,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002" &&
+      !input.simulation
+    ) {
+      const raced = await prisma.whatsAppFlowExecution.findUnique({
+        where: { clinicId_idempotencyKey: { clinicId: input.tenant.clinicId, idempotencyKey } },
+      });
+      if (raced) return { execution: raced, duplicate: true as const };
+    }
+    throw error;
+  }
+
+  if (!input.simulation) {
+    await audit(input.tenant, "whatsapp.execution.start", "WhatsAppFlowExecution", execution.id, {
       flowId: flow.id,
-      status: "PENDING",
-      triggerType: flow.triggerType,
       triggerEventId: input.triggerEventId,
-      idempotencyKey,
-      patientId: input.patientId ?? null,
-      coupleId: input.coupleId ?? null,
-      conversationId: input.conversationId ?? null,
-      currentNodeId: triggerNode?.id ?? null,
-      context: {
-        vars: input.vars ?? {},
-        simulation: Boolean(input.simulation),
-        retryCount: 0,
-        maxRetries: DEFAULT_MAX_RETRIES,
-        tags: [],
-      } as Prisma.InputJsonValue,
-    },
-  });
+    }).catch(() => undefined);
+  }
 
   const ran = await runExecution(input.tenant, execution.id, {
     simulation: Boolean(input.simulation),

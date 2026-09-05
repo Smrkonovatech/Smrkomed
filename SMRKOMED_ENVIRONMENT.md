@@ -99,6 +99,7 @@ Typical required:
 - Port / `API_PORT`
 - WhatsApp automation worker (Stage 2+): `WHATSAPP_AUTOMATION_WORKER=1` for in-process ticks, and/or `WHATSAPP_WORKER_SECRET` for cron `POST /api/v1/whatsapp-automation/internal/tick`
 - Optional: `WHATSAPP_AUTOMATION_WORKER_INTERVAL_MS` (default `60000`)
+- **Phase 6:** keep API **replicas = 1** while SSE + in-process worker are process-local; mount a volume at `MEDIA_STORAGE_DIR` or media is lost on redeploy (`SMRKOMED_WHATSAPP_PHASE6_PRODUCTION.md`).
 
 Webhook URLs must be publicly reachable:
 

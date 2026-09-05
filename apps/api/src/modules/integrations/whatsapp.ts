@@ -15,7 +15,17 @@ import {
   startWhatsAppConnect,
   testWhatsAppConnection,
 } from "../../integrations/providers/whatsapp/onboarding";
-import { listWhatsAppTemplates, syncWhatsAppTemplates } from "../../integrations/providers/whatsapp/sync";
+import {
+  getTemplateVariableCatalog,
+  getWhatsAppTemplateDetail,
+  listApprovedWhatsAppTemplates,
+  listWhatsAppTemplates,
+  listWhatsAppTemplatesDetailed,
+  previewWhatsAppTemplate,
+  resolveAndValidateTemplate,
+  syncWhatsAppTemplates,
+  testSendWhatsAppTemplate,
+} from "../../integrations/providers/whatsapp/sync";
 import { integrationService } from "../../integrations/services/integration-service";
 import { requireAnyPermission } from "../../lib/authz";
 import { ok } from "../../lib/http";
@@ -41,6 +51,32 @@ const sendSchema = z.object({
   parameters: z.array(z.string().max(256)).max(10).default([]),
 });
 
+const templateIdParam = z.object({ id: z.string().min(1).max(64) });
+
+const resolveSchema = z.object({
+  patientId: z.string().min(1).max(64).optional(),
+  coupleId: z.string().min(1).max(64).optional(),
+  appointmentId: z.string().min(1).max(64).optional(),
+  careTaskId: z.string().min(1).max(64).optional(),
+  treatmentId: z.string().min(1).max(64).optional(),
+  overrides: z.record(z.string(), z.string().max(256)).optional(),
+  parameters: z.array(z.string().max(256)).max(10).optional(),
+  sample: z.boolean().optional(),
+});
+
+const testSendSchema = z.object({
+  templateId: z.string().min(1).max(64),
+  patientId: z.string().min(1).max(64).optional(),
+  conversationId: z.string().min(1).max(64).optional(),
+  appointmentId: z.string().min(1).max(64).optional(),
+  careTaskId: z.string().min(1).max(64).optional(),
+  treatmentId: z.string().min(1).max(64).optional(),
+  coupleId: z.string().min(1).max(64).optional(),
+  overrides: z.record(z.string(), z.string().max(256)).optional(),
+  parameters: z.array(z.string().max(256)).max(10).optional(),
+  confirm: z.literal(true),
+});
+
 const conversationParam = z.object({ id: z.string().min(1) });
 
 /** Clinic staff who can view WhatsApp connection status / inbox analytics. */
@@ -58,6 +94,12 @@ const WHATSAPP_VIEW_PERMS = [
 const WHATSAPP_CONNECT_PERMS = [
   PERMISSIONS.WHATSAPP_SETTINGS,
   PERMISSIONS.SETTINGS_MANAGE,
+] as const;
+
+const WHATSAPP_TEMPLATE_PERMS = [
+  PERMISSIONS.WHATSAPP_TEMPLATES,
+  PERMISSIONS.WHATSAPP_VIEW,
+  PERMISSIONS.PATIENTS_READ,
 ] as const;
 
 export const whatsappClinicRoutes = new Hono<AppEnv>()
@@ -119,13 +161,86 @@ export const whatsappClinicRoutes = new Hono<AppEnv>()
     return ok(c, await syncWhatsAppTemplates(tenant));
   })
   .get("/templates", async (c) => {
-    const tenant = requireAnyPermission(c, [
-      PERMISSIONS.WHATSAPP_TEMPLATES,
-      PERMISSIONS.WHATSAPP_VIEW,
-      PERMISSIONS.PATIENTS_READ,
-    ]);
+    const tenant = requireAnyPermission(c, WHATSAPP_TEMPLATE_PERMS);
+    const detailed = c.req.query("detailed") === "1" || c.req.query("detailed") === "true";
+    if (detailed) {
+      return ok(c, await listWhatsAppTemplatesDetailed(tenant));
+    }
     return ok(c, await listWhatsAppTemplates(tenant));
   })
+  .get("/templates/approved", async (c) => {
+    const tenant = requireAnyPermission(c, WHATSAPP_TEMPLATE_PERMS);
+    return ok(c, await listApprovedWhatsAppTemplates(tenant));
+  })
+  .get("/templates/variable-catalog", async (c) => {
+    requireAnyPermission(c, WHATSAPP_TEMPLATE_PERMS);
+    return ok(c, getTemplateVariableCatalog());
+  })
+  .post("/templates/test-send", validate("json", testSendSchema), async (c) => {
+    const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_SEND, PERMISSIONS.PATIENTS_WRITE]);
+    const body = c.req.valid("json");
+    return ok(
+      c,
+      await testSendWhatsAppTemplate(tenant, {
+        templateId: body.templateId,
+        ...(body.patientId ? { patientId: body.patientId } : {}),
+        ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body.appointmentId ? { appointmentId: body.appointmentId } : {}),
+        ...(body.careTaskId ? { careTaskId: body.careTaskId } : {}),
+        ...(body.treatmentId ? { treatmentId: body.treatmentId } : {}),
+        ...(body.coupleId ? { coupleId: body.coupleId } : {}),
+        ...(body.overrides ? { overrides: body.overrides } : {}),
+        ...(body.parameters ? { parameters: body.parameters } : {}),
+      }),
+      201,
+    );
+  })
+  .get("/templates/:id", validate("param", templateIdParam), async (c) => {
+    const tenant = requireAnyPermission(c, WHATSAPP_TEMPLATE_PERMS);
+    return ok(c, await getWhatsAppTemplateDetail(tenant, c.req.valid("param").id));
+  })
+  .post(
+    "/templates/:id/resolve",
+    validate("param", templateIdParam),
+    validate("json", resolveSchema),
+    async (c) => {
+      const tenant = requireAnyPermission(c, WHATSAPP_TEMPLATE_PERMS);
+      const body = c.req.valid("json");
+      const prepared = await resolveAndValidateTemplate(tenant, {
+        templateId: c.req.valid("param").id,
+        resolve: {
+          ...(body.patientId ? { patientId: body.patientId } : {}),
+          ...(body.coupleId ? { coupleId: body.coupleId } : {}),
+          ...(body.appointmentId ? { appointmentId: body.appointmentId } : {}),
+          ...(body.careTaskId ? { careTaskId: body.careTaskId } : {}),
+          ...(body.treatmentId ? { treatmentId: body.treatmentId } : {}),
+          ...(body.overrides ? { overrides: body.overrides } : {}),
+        },
+        ...(body.parameters ? { parameters: body.parameters } : {}),
+      });
+      const useSample = body.sample === true;
+      const preview = previewWhatsAppTemplate(prepared.template, prepared.values, {
+        sample: useSample,
+      });
+      return ok(c, {
+        valid: prepared.valid,
+        missing: prepared.missing,
+        values: prepared.values,
+        sources: prepared.sources,
+        componentParameters: prepared.componentParameters,
+        template: {
+          id: prepared.template.id,
+          name: prepared.template.name,
+          language: prepared.template.language,
+          status: prepared.template.status,
+          sendable: prepared.template.sendable,
+          sourceOfTruth: prepared.template.sourceOfTruth,
+          parsed: prepared.template.parsed,
+        },
+        preview,
+      });
+    },
+  )
   .post("/messages/template", validate("json", sendSchema), async (c) => {
     const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_SEND, PERMISSIONS.PATIENTS_WRITE]);
     const body = c.req.valid("json");

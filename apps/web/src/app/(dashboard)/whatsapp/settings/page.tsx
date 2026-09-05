@@ -20,6 +20,7 @@ type CommSettings = {
   minDelayMinutes: number;
   requireConsentGranted: boolean;
   urgentBypassHours: boolean;
+  aiAutoReplyEnabled: boolean;
 };
 
 const DAYS: Array<{ key: keyof WorkingHours; label: string }> = [
@@ -153,6 +154,19 @@ export default function WhatsAppSettingsPage() {
                 onChange={(e) => setSettings({ ...settings, urgentBypassHours: e.target.checked })}
               />
               <span>Allow urgent / escalation paths to bypass working-hours wait.</span>
+            </label>
+
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={settings.aiAutoReplyEnabled}
+                onChange={(e) => setSettings({ ...settings, aiAutoReplyEnabled: e.target.checked })}
+              />
+              <span>
+                Enable Smrko AI auto-reply on inbound WhatsApp (opt-in). AI never diagnoses or
+                prescribes; clinical questions escalate to staff. Off by default for every clinic.
+              </span>
             </label>
 
             <div className="space-y-2">
