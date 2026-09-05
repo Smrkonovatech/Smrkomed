@@ -15,10 +15,11 @@ import { useEffect, useState } from "react";
 
 import { EmptyState, KpiCard, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
-import { ApiError, apiGet } from "@/lib/api/client";
+import { ApiError, apiGet, apiPatch } from "@/lib/api/client";
 
 type Overview = {
   connection: { connected: boolean; displayName: string | null; phone: string | null };
+  aiAutoReplyEnabled?: boolean;
   today: {
     messagesSent: number;
     messagesDelivered?: number;
@@ -123,6 +124,31 @@ export default function WhatsAppOverviewPage() {
         ) : (
           <StatusBadge label="Not connected — connect WhatsApp to activate live messaging" tone="warning" />
         )}
+        <StatusBadge
+          label={overview.aiAutoReplyEnabled === false ? "Smrko AI auto-reply OFF" : "Smrko AI auto-reply ON"}
+          tone={overview.aiAutoReplyEnabled === false ? "warning" : "success"}
+        />
+        <Button
+          size="sm"
+          variant={overview.aiAutoReplyEnabled === false ? "default" : "outline"}
+          onClick={() =>
+            void apiPatch<{ aiAutoReplyEnabled: boolean }>(
+              "/api/v1/whatsapp-automation/settings/ai-auto-reply",
+              { enabled: overview.aiAutoReplyEnabled === false },
+            )
+              .then((res) => {
+                setOverview({ ...overview, aiAutoReplyEnabled: res.aiAutoReplyEnabled });
+              })
+              .catch((err) => {
+                setError(err instanceof ApiError ? err.message : "Could not update AI auto-reply");
+              })
+          }
+        >
+          {overview.aiAutoReplyEnabled === false ? "Turn AI auto-reply ON" : "Turn AI auto-reply OFF"}
+        </Button>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/whatsapp/settings">WhatsApp Settings</Link>
+        </Button>
         <span className="text-muted-foreground">
           Templates: {overview.templates.approved} approved
           {overview.templates.pending ? ` · ${overview.templates.pending} pending Meta` : ""}

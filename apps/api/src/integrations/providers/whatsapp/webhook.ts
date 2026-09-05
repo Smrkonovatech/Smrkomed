@@ -13,7 +13,7 @@ import { ensureDirectWhatsAppConnection } from "./service";
 import { realtimeBus } from "../../../modules/realtime/bus";
 import { triggerBackgroundMediaDownload } from "../../../modules/media/service";
 import { sanitizeFilename } from "../../../modules/media/storage";
-import { scheduleInboundWhatsAppAutomation } from "../../../modules/whatsapp-automation/inbound-dispatch";
+import { scheduleInboundWhatsAppAutomation, runInboundWhatsAppAi } from "../../../modules/whatsapp-automation/inbound-dispatch";
 import type { WhatsAppMediaType, WhatsAppMediaStatus } from "@smrkomed/database";
 
 const PAYLOAD_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -526,7 +526,7 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
         },
       }).catch(() => undefined);
     }
-    scheduleInboundWhatsAppAutomation({
+    const inboundJob = {
       clinicId,
       conversationId: conversation.id,
       patientId: patient?.id ?? conversation.patientId,
@@ -540,7 +540,21 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       mediaMimeType: mediaRecord?.mimeType ?? null,
       mediaCaption: mediaRecord?.caption ?? null,
       timestampIso: createdMessage.createdAt.toISOString(),
-    });
+    };
+
+    // CRITICAL: await AI inside the webhook so the reply cannot be dropped after HTTP 200.
+    // Meta allows ~15–20s; greeting + Meta send typically finishes well under that.
+    try {
+      await runInboundWhatsAppAi(inboundJob);
+    } catch (err) {
+      console.error(
+        "[WhatsApp AI] webhook-awaited AI failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
+
+    // Automation / wait-resume continues in background (AI already done).
+    scheduleInboundWhatsAppAutomation({ ...inboundJob, skipAi: true });
   }
 
   return "PROCESSED" as const;

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { WhatsAppConnectionPanel } from "@/components/whatsapp/connection-panel";
-import { EmptyState, LoadingRows, PageHeader } from "@/components/ui-kit";
+import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,6 +37,7 @@ export default function WhatsAppSettingsPage() {
   const [settings, setSettings] = useState<CommSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingAi, setSavingAi] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -55,6 +56,23 @@ export default function WhatsAppSettingsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function toggleAiAutoReply(enabled: boolean) {
+    if (!settings) return;
+    setSavingAi(true);
+    try {
+      const next = await apiPatch<{ aiAutoReplyEnabled: boolean }>(
+        "/api/v1/whatsapp-automation/settings/ai-auto-reply",
+        { enabled },
+      );
+      setSettings({ ...settings, aiAutoReplyEnabled: next.aiAutoReplyEnabled });
+      toast.success(next.aiAutoReplyEnabled ? "Smrko AI auto-reply is ON" : "Smrko AI auto-reply is OFF");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Could not update AI auto-reply");
+    } finally {
+      setSavingAi(false);
+    }
+  }
 
   async function save() {
     if (!settings) return;
@@ -92,6 +110,42 @@ export default function WhatsAppSettingsPage() {
         subtitle="Clinic connection uses Meta Embedded Signup. Tokens stay server-side. Communication safety controls apply to automation sends."
       />
       <WhatsAppConnectionPanel />
+
+      <section className="rounded-xl border-2 border-violet-200 bg-violet-50/60 p-5 space-y-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-violet-950">Smrko AI auto-reply</h2>
+            <p className="mt-1 text-sm text-violet-900/80">
+              When ON, Smrko AI replies as soon as a patient messages on WhatsApp (greetings, FAQs from
+              your knowledge base). It never diagnoses or prescribes. Turn OFF only if you want staff-only replies.
+            </p>
+          </div>
+          {settings ? (
+            <StatusBadge
+              label={settings.aiAutoReplyEnabled ? "AI ON" : "AI OFF"}
+              tone={settings.aiAutoReplyEnabled ? "success" : "warning"}
+            />
+          ) : null}
+        </div>
+        {loading ? <LoadingRows rows={1} /> : null}
+        {settings && !loading ? (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              disabled={savingAi || settings.aiAutoReplyEnabled}
+              onClick={() => void toggleAiAutoReply(true)}
+            >
+              {savingAi ? "Saving…" : "Turn AI auto-reply ON"}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={savingAi || !settings.aiAutoReplyEnabled}
+              onClick={() => void toggleAiAutoReply(false)}
+            >
+              Turn OFF
+            </Button>
+          </div>
+        ) : null}
+      </section>
 
       <section className="surface-card space-y-4 p-4">
         <div>
@@ -154,20 +208,6 @@ export default function WhatsAppSettingsPage() {
                 onChange={(e) => setSettings({ ...settings, urgentBypassHours: e.target.checked })}
               />
               <span>Allow urgent / escalation paths to bypass working-hours wait.</span>
-            </label>
-
-            <label className="flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={settings.aiAutoReplyEnabled}
-                onChange={(e) => setSettings({ ...settings, aiAutoReplyEnabled: e.target.checked })}
-              />
-              <span>
-                Enable Smrko AI auto-reply on inbound WhatsApp. When on, Smrko AI replies as soon as
-                a patient messages — conversations keep going unless the patient asks for a human or
-                an emergency is detected. AI never diagnoses or prescribes.
-              </span>
             </label>
 
             <div className="space-y-2">

@@ -335,7 +335,8 @@ export function ChatComposer({ conversationId, patientId, disabled, onTyping, on
   return (
     <footer className="space-y-2 border-t bg-card/60 p-3">
       <p className="text-[10px] text-muted-foreground">
-        Clinic staff composer · Outside Meta&apos;s 24h window, use an approved template.
+        Clinic staff composer · Patient messages open Meta&apos;s 24h session window for free-form
+        replies. If a send fails outside that window, use an approved template.
         {patientId ? null : " Unlinked contact — templates & patient documents may be limited."}
       </p>
 

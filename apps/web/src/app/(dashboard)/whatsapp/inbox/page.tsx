@@ -695,29 +695,52 @@ export default function WhatsAppInboxPage() {
                           variant="outline"
                           onClick={() =>
                             void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/resume`, {}).then(() => {
-                              toast.success("AI resumed (explicit)");
+                              toast.success("AI resumed");
                               return apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`).then(setDetail);
                             })
                           }
                         >
                           Resume AI
                         </Button>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() =>
-                            void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`, {
-                              mode: "draft",
-                            }).then(() => {
-                              toast.success("AI draft ready");
-                              return apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`).then(setDetail);
+                      ) : null}
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`, {
+                            mode: "send",
+                          })
+                            .then(async (res) => {
+                              const r = res as { skipped?: boolean; reason?: string; messageId?: string };
+                              if (r.skipped) {
+                                toast.error(r.reason || "AI did not send a reply");
+                              } else {
+                                toast.success("Smrko AI reply sent to WhatsApp");
+                              }
+                              const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
+                              setDetail(d);
+                              scrollToBottom(true);
                             })
-                          }
-                        >
-                          Ask Smrko AI
-                        </Button>
-                      )}
+                            .catch((err) =>
+                              toast.error(err instanceof ApiError ? err.message : "AI reply failed"),
+                            )
+                        }
+                      >
+                        Send AI reply now
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          void apiPost(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`, {
+                            mode: "draft",
+                          }).then(() => {
+                            toast.success("AI draft ready");
+                            return apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`).then(setDetail);
+                          })
+                        }
+                      >
+                        Ask Smrko AI
+                      </Button>
                       {!detail.automationPausedAt ? (
                         <Button
                           size="sm"

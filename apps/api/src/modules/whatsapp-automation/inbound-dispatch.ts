@@ -177,28 +177,30 @@ export async function resumeWaitForReplyExecutions(input: {
   return resumed;
 }
 
-/** Ensure clinic AI auto-reply is on (production default). Opt out with WHATSAPP_AI_AUTO_REPLY=0. */
-async function ensureInboundAiEnabled(clinicId: string): Promise<boolean> {
+/** Ensure settings row exists; respect clinic opt-out. Kill switch: WHATSAPP_AI_AUTO_REPLY=0. */
+export async function ensureInboundAiEnabled(clinicId: string): Promise<boolean> {
   if (process.env["WHATSAPP_AI_AUTO_REPLY"] === "0") {
     console.log("[WhatsApp AI] disabled by WHATSAPP_AI_AUTO_REPLY=0");
     return false;
   }
   try {
-    await prisma.whatsAppClinicSettings.upsert({
+    const row = await prisma.whatsAppClinicSettings.upsert({
       where: { clinicId },
       create: { clinicId, aiAutoReplyEnabled: true },
-      update: { aiAutoReplyEnabled: true },
+      update: {},
     });
+    return row.aiAutoReplyEnabled;
   } catch (err) {
     console.error(
-      "[WhatsApp AI] failed to ensure aiAutoReplyEnabled:",
+      "[WhatsApp AI] failed to load aiAutoReplyEnabled:",
       err instanceof Error ? err.message : err,
     );
+    // Fail open so patients still get a reply when settings table has issues
+    return true;
   }
-  return true;
 }
 
-export async function handleInboundWhatsAppAutomation(input: {
+type InboundPayload = {
   clinicId: string;
   conversationId: string;
   patientId?: string | null;
@@ -212,7 +214,56 @@ export async function handleInboundWhatsAppAutomation(input: {
   mediaMimeType?: string | null;
   mediaCaption?: string | null;
   timestampIso: string;
-}) {
+  /** When true, AI already ran in the webhook — only run flows. */
+  skipAi?: boolean;
+};
+
+/** Run Smrko AI auto-reply for one inbound message (awaited from webhook). */
+export async function runInboundWhatsAppAi(input: InboundPayload) {
+  const tenant = await clinicTenant(input.clinicId);
+  if (!tenant) {
+    console.error("[WhatsApp AI] clinic tenant missing", { clinicId: input.clinicId });
+    return { skipped: true as const, reason: "clinic_not_found" };
+  }
+
+  const aiAllowed = await ensureInboundAiEnabled(input.clinicId);
+  if (!aiAllowed) {
+    return { skipped: true as const, reason: "AI disabled by env" };
+  }
+
+  try {
+    const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
+    const ai = await runWhatsAppAiPipeline({
+      tenant,
+      conversationId: input.conversationId,
+      patientMessage: input.messageText || `(${input.messageType} message)`,
+      trigger: "inbound",
+      mode: "send",
+      force: true,
+    });
+    console.log("[WhatsApp AI] inbound result", {
+      conversationId: input.conversationId,
+      messageId: input.messageId,
+      skipped: Boolean(ai.skipped),
+      reason: ai.reason ?? null,
+      handoff: Boolean(ai.handoff),
+      sentMessageId: ai.messageId ?? null,
+      textPreview: String(ai.text ?? "").slice(0, 80),
+    });
+    return ai;
+  } catch (err) {
+    console.error(
+      "[WhatsApp AI] inbound pipeline failed:",
+      err instanceof Error ? err.message : err,
+    );
+    return {
+      skipped: true as const,
+      reason: err instanceof Error ? err.message : "AI pipeline failed",
+    };
+  }
+}
+
+export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
   console.log("[WhatsApp inbound] processing", {
     clinicId: input.clinicId,
     conversationId: input.conversationId,
@@ -244,36 +295,10 @@ export async function handleInboundWhatsAppAutomation(input: {
     timestampIso: input.timestampIso,
   });
 
-  // AI FIRST — patient expects an instant reply; automation must not delay or block it.
-  let ai: unknown = null;
-  const aiAllowed = await ensureInboundAiEnabled(input.clinicId);
-  if (aiAllowed) {
-    try {
-      const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
-      ai = await runWhatsAppAiPipeline({
-        tenant,
-        conversationId: input.conversationId,
-        patientMessage: input.messageText || `(${input.messageType} message)`,
-        trigger: "inbound",
-        mode: "send",
-        force: true, // settings already ensured on; skip duplicate disable gate
-      });
-      console.log("[WhatsApp AI] inbound result", {
-        conversationId: input.conversationId,
-        messageId: input.messageId,
-        skipped: Boolean((ai as { skipped?: boolean })?.skipped),
-        reason: (ai as { reason?: string })?.reason ?? null,
-        handoff: Boolean((ai as { handoff?: boolean })?.handoff),
-        sentMessageId: (ai as { messageId?: string })?.messageId ?? null,
-        textPreview: String((ai as { text?: string })?.text ?? "").slice(0, 80),
-      });
-    } catch (err) {
-      console.error(
-        "[WhatsApp AI] inbound pipeline failed:",
-        err instanceof Error ? err.message : err,
-      );
-    }
-  }
+  // AI may already have been awaited in the webhook; skipAi avoids double-send.
+  const ai = input.skipAi
+    ? { skipped: true as const, reason: "already_ran_in_webhook" }
+    : await runInboundWhatsAppAi(input);
 
   const resumed = await resumeWaitForReplyExecutions({
     tenant,
@@ -306,16 +331,17 @@ export async function handleInboundWhatsAppAutomation(input: {
   return { resumed, dispatched, ai };
 }
 
-/** Fire-and-forget from webhook after successful NEW message create. */
+/** Fire-and-forget automation after AI (webhook awaits AI separately). */
 export function scheduleInboundWhatsAppAutomation(
-  input: Parameters<typeof handleInboundWhatsAppAutomation>[0],
+  input: InboundPayload & { skipAi?: boolean },
 ) {
-  console.log("[WhatsApp inbound] scheduled AI+automation", {
+  console.log("[WhatsApp inbound] scheduled automation", {
     conversationId: input.conversationId,
     messageId: input.messageId,
+    skipAi: Boolean(input.skipAi),
   });
   scheduleBackground(async () => {
-    await handleInboundWhatsAppAutomation(input);
+    await handleInboundWhatsAppAutomation({ ...input, skipAi: true });
   });
 }
 

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Prisma } from "@smrkomed/database";
 import { PERMISSIONS, prisma } from "@smrkomed/database";
 
@@ -236,6 +237,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       consentRevoked,
       skippedStepsToday,
       kbPublished,
+      settingsRow,
     ] = await Promise.all([
       prisma.message.count({
         where: {
@@ -322,6 +324,10 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         },
       }),
       prisma.whatsAppKnowledgeArticle.count({ where: { clinicId, status: "PUBLISHED" } }),
+      prisma.whatsAppClinicSettings.findUnique({
+        where: { clinicId },
+        select: { aiAutoReplyEnabled: true },
+      }),
     ]);
 
     const templateStatus = Object.fromEntries(templates.map((t) => [t.status, t._count]));
@@ -337,6 +343,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         displayName: account?.displayName ?? null,
         phone: account?.displayPhoneNumber ?? null,
       },
+      aiAutoReplyEnabled: settingsRow?.aiAutoReplyEnabled ?? true,
       today: {
         messagesSent: sentToday,
         messagesDelivered: deliveredToday,
@@ -905,6 +912,24 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     return ok(c, settings);
   })
 
+  /** Toggle AI auto-reply — available to anyone who can send WhatsApp (not SETTINGS-only). */
+  .patch("/settings/ai-auto-reply", validate("json", z.object({ enabled: z.boolean() })), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+    const body = c.req.valid("json");
+    if (process.env["WHATSAPP_AI_AUTO_REPLY"] === "0" && body.enabled) {
+      throw new HttpError(403, "AI_DISABLED_BY_ENV", "AI auto-reply is disabled on this server.");
+    }
+    const row = await prisma.whatsAppClinicSettings.upsert({
+      where: { clinicId: tenant.clinicId },
+      create: { clinicId: tenant.clinicId, aiAutoReplyEnabled: body.enabled },
+      update: { aiAutoReplyEnabled: body.enabled },
+    });
+    await audit(tenant, "whatsapp.settings.ai_auto_reply", "WhatsAppClinicSettings", row.id, {
+      enabled: body.enabled,
+    });
+    return ok(c, { aiAutoReplyEnabled: row.aiAutoReplyEnabled });
+  })
+
   .patch("/settings/communication", validate("json", updateCommSettingsSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SETTINGS);
     const body = c.req.valid("json");
@@ -1457,7 +1482,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
   })
 
   .post("/inbox/:id/ai/reply", validate("param", idParam), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
     const { id } = c.req.valid("param");
     const body = (await c.req.json().catch(() => ({}))) as {
       message?: string;
@@ -1474,6 +1499,11 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       select: { content: true },
     });
     const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
+    const { resumeWhatsAppAi } = await import("../whatsapp-ai/handoff");
+    // Staff-triggered send: clear pause so AI can reply now.
+    if (body.mode === "send") {
+      await resumeWhatsAppAi(tenant, id).catch(() => undefined);
+    }
     const result = await runWhatsAppAiPipeline({
       tenant,
       conversationId: id,
@@ -1490,7 +1520,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
   })
 
   .post("/inbox/:id/ai/resume", validate("param", idParam), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
     const { id } = c.req.valid("param");
     const conversation = await prisma.conversation.findFirst({
       where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
@@ -1503,7 +1533,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
   })
 
   .post("/inbox/:id/ai/pause", validate("param", idParam), async (c) => {
-    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
     const { id } = c.req.valid("param");
     const conversation = await prisma.conversation.findFirst({
       where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
