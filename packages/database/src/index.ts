@@ -26,7 +26,12 @@ export {
   rejectForeignTenant,
 } from "./access";
 export { normalizeEmail, phoneSuffix, phonesLikelyMatch, digitsOnly } from "./phone";
-export { writeAuditLog, writeTenantAuditLog } from "./audit";
+export {
+  writeAuditLog,
+  writeTenantAuditLog,
+  resolveAuditActorId,
+  isSystemTenantUserId,
+} from "./audit";
 export { DEMO_PASSWORD, ensureDefaultRoles, ensureDemoWorkspace, isDemoLogin } from "./demo-workspace";
 export { seedClinicPharmacyData } from "./seed-pharmacy";
 export { seedClinicInsuranceData } from "./seed-insurance";

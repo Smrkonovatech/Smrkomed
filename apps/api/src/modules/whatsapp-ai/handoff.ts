@@ -1,5 +1,5 @@
 import type { Prisma, TenantContext } from "@smrkomed/database";
-import { prisma } from "@smrkomed/database";
+import { prisma, isSystemTenantUserId } from "@smrkomed/database";
 
 import { realtimeBus } from "../realtime/bus";
 import { HUMAN_HANDOFF_MESSAGE } from "./safety";
@@ -57,7 +57,7 @@ export async function escalateToHuman(input: {
       category: "WHATSAPP_HANDOFF",
       status: "WAITING",
       priority: "HIGH",
-      ...(input.tenant.userId && input.tenant.userId !== "system-webhook"
+      ...(!isSystemTenantUserId(input.tenant.userId)
         ? { createdById: input.tenant.userId }
         : {}),
     },

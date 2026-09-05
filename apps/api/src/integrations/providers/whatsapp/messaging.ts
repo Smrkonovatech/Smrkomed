@@ -21,6 +21,22 @@ function assertRateLimit(userId: string, clinicId: string) {
   }
 }
 
+/** Audit must never block patient WhatsApp delivery (FK / DB issues). */
+async function safeWhatsAppAudit(
+  input: Parameters<typeof writeAuditLog>[0],
+): Promise<void> {
+  try {
+    await writeAuditLog(input);
+  } catch (err) {
+    console.error("[WhatsApp] audit log failed (send continues)", {
+      action: input.action,
+      entityType: input.entityType ?? null,
+      entityId: input.entityId ?? null,
+      error: err instanceof Error ? err.message.slice(0, 200) : err,
+    });
+  }
+}
+
 export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
   conversationId?: string;
   patientId?: string;
@@ -108,7 +124,7 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
     throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
   }
 
-  await writeAuditLog({
+  await safeWhatsAppAudit({
     actorId: ctx.userId,
     organizationId: ctx.organizationId,
     clinicId: ctx.clinicId,
@@ -206,7 +222,7 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
         },
       },
     });
-    await writeAuditLog({
+    await safeWhatsAppAudit({
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
       clinicId: ctx.clinicId,
@@ -217,7 +233,7 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
     });
     return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
   } catch (error) {
-    await writeAuditLog({
+    await safeWhatsAppAudit({
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
       clinicId: ctx.clinicId,
@@ -330,14 +346,17 @@ export async function sendWhatsAppSessionText(
     throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
   }
 
-  await writeAuditLog({
+  await safeWhatsAppAudit({
     actorId: ctx.userId,
     organizationId: ctx.organizationId,
     clinicId: ctx.clinicId,
     action: senderType === "AI" ? "whatsapp.message.send.ai.attempt" : "whatsapp.message.send.session.attempt",
     entityType: "Conversation",
     entityId: conversation.id,
-    metadata: { kind: senderType === "AI" ? "ai_session_text" : "session_text" },
+    metadata: {
+      kind: senderType === "AI" ? "ai_session_text" : "session_text",
+      source: senderType === "AI" ? "WHATSAPP_AI" : "WHATSAPP_STAFF",
+    },
   });
 
   try {
@@ -410,18 +429,20 @@ export async function sendWhatsAppSessionText(
         },
       },
     });
-    await writeAuditLog({
+    await safeWhatsAppAudit({
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
       clinicId: ctx.clinicId,
       action: senderType === "AI" ? "whatsapp.message.send.ai.success" : "whatsapp.message.send.session.success",
       entityType: "Message",
       entityId: stored.id,
-      metadata: {},
+      metadata: {
+        source: senderType === "AI" ? "WHATSAPP_AI" : "WHATSAPP_STAFF",
+      },
     });
     return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
   } catch (error) {
-    await writeAuditLog({
+    await safeWhatsAppAudit({
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
       clinicId: ctx.clinicId,
@@ -430,6 +451,7 @@ export async function sendWhatsAppSessionText(
       entityId: conversation.id,
       metadata: {
         error: error instanceof IntegrationError ? error.code : "MESSAGE_SEND_FAILED",
+        source: senderType === "AI" ? "WHATSAPP_AI" : "WHATSAPP_STAFF",
       },
     });
     const failReason =
