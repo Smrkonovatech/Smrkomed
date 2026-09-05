@@ -4,17 +4,17 @@ import Link from "next/link";
 import { Btn } from "./primitives";
 
 const links = [
-  { label: "Platform", href: "#platform" },
-  { label: "Care Loop", href: "#care-loop" },
-  { label: "Features", href: "#features" },
-  { label: "Future of Healthcare", href: "#future" },
+  { label: "Platform", href: "/#platform" },
+  { label: "Care Loop", href: "/#care-loop" },
+  { label: "Features", href: "/#features" },
+  { label: "Future of Healthcare", href: "/#future" },
 ] as const;
 
 export function Nav() {
   return (
     <header className="sticky top-0 z-50 border-b border-border/60 bg-background/80 backdrop-blur-xl">
       <nav className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between px-6">
-        <a href="#top" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3">
           <img
             src="/branding/smrkomed-logo.png"
             alt="SMRKOMED"
@@ -26,7 +26,7 @@ export function Nav() {
             <span className="block text-[17px] font-semibold tracking-[0.14em] text-foreground">SMRKOMED</span>
             <span className="block text-[11px] text-muted-foreground">Powered by Smrkonova</span>
           </span>
-        </a>
+        </Link>
 
         <ul className="hidden items-center gap-8 lg:flex">
           {links.map((l) => (
@@ -51,7 +51,7 @@ export function Nav() {
 
         <div className="flex items-center gap-3">
           <a
-            href="#demo"
+            href="/#demo"
             className="hidden text-[14px] text-muted-foreground transition-colors hover:text-primary sm:block"
           >
             See Demo

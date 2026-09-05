@@ -60,17 +60,17 @@ export function FinalCta() {
 }
 
 const navLinks = [
-  { label: "Platform", href: "#platform" },
-  { label: "Care Loop", href: "#care-loop" },
-  { label: "Features", href: "#features" },
-  { label: "FAQ", href: "#faq" },
-  { label: "Future of Healthcare", href: "#future" },
+  { label: "Platform", href: "/#platform" },
+  { label: "Care Loop", href: "/#care-loop" },
+  { label: "Features", href: "/#features" },
+  { label: "FAQ", href: "/#faq" },
+  { label: "Future of Healthcare", href: "/#future" },
 ] as const;
 
 export function Footer() {
   return (
     <footer id="footer" className="border-t border-border bg-lavender-soft px-6 py-16">
-      <div className="mx-auto grid w-full max-w-6xl gap-12 md:grid-cols-[1.4fr_1fr_1fr]">
+      <div className="mx-auto grid w-full max-w-6xl grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
         <div>
           <div className="flex items-center gap-3">
             <img
@@ -85,7 +85,7 @@ export function Footer() {
           </div>
           <p className="mt-4 max-w-[28ch] text-[14px] text-muted-foreground">Healthcare management software for modern clinics and hospitals.</p>
           <a
-            href="https://smrkonova.com/"
+            href="https://www.smrkonova.com/"
             target="_blank"
             rel="noopener noreferrer"
             className="mt-4 inline-block text-[14px] text-muted-foreground transition-colors hover:text-primary"
@@ -113,10 +113,34 @@ export function Footer() {
         </div>
 
         <div>
+          <h3 className="text-[13px] font-semibold tracking-[0.14em] text-foreground uppercase">Privacy & Legal</h3>
+          <ul className="mt-4 space-y-2.5">
+            <li>
+              <Link href="/privacy-policy" className="text-[14px] text-muted-foreground transition-colors hover:text-primary">
+                Privacy Policy
+              </Link>
+            </li>
+            <li>
+              <Link href="/data-deletion" className="text-[14px] text-muted-foreground transition-colors hover:text-primary">
+                Data Deletion Request
+              </Link>
+            </li>
+          </ul>
+        </div>
+
+        <div>
           <h3 className="text-[13px] font-semibold tracking-[0.14em] text-foreground uppercase">Company</h3>
           <p className="mt-4 text-[14px] leading-relaxed text-muted-foreground">
             SMRKONOVA SOFTECH SOLUTIONS LLP
           </p>
+          <a
+            href="https://www.smrkonova.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-3 inline-block text-[13px] text-muted-foreground transition-colors hover:text-primary"
+          >
+            smrkonova.com ↗
+          </a>
         </div>
       </div>
       <div className="mx-auto mt-14 w-full max-w-6xl border-t border-border pt-6 text-[13px] text-muted-foreground">

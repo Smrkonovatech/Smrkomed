@@ -11,7 +11,13 @@ export default auth((req) => {
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/register");
   const isOnboarding = pathname.startsWith("/onboarding");
   const isMarketingHome = pathname === "/";
-  const isPublicPage = isMarketingHome || pathname.startsWith("/book/");
+  const isPublicPage =
+    isMarketingHome ||
+    pathname.startsWith("/book/") ||
+    pathname.startsWith("/privacy-policy") ||
+    pathname.startsWith("/data-deletion") ||
+    pathname === "/sitemap.xml" ||
+    pathname === "/robots.txt";
   const isPublicApi =
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/v1") ||
