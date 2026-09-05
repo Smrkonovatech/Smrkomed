@@ -80,17 +80,22 @@ export async function runWhatsAppAiPipeline(input: {
     // force=true used to skip this and permanently block auto-reply after Take over.
     let keepPaused = false;
     if (input.trigger === "inbound") {
+      // Only stay in human mode if staff is actively chatting (last 5 min).
+      // Longer windows blocked patient "hi" after Take over even with Auto AI ON.
       const recentStaff = await prisma.message.findFirst({
         where: {
           conversationId: conversation.id,
           direction: "OUTBOUND",
           senderType: "STAFF",
-          createdAt: { gte: new Date(Date.now() - 30 * 60_000) },
+          createdAt: { gte: new Date(Date.now() - 5 * 60_000) },
         },
         select: { id: true },
       });
       if (recentStaff) {
         keepPaused = true;
+        console.log("[WhatsApp AI] skip — staff active in last 5m", {
+          conversationId: conversation.id,
+        });
       } else {
         await resumeWhatsAppAi(input.tenant, conversation.id);
         const refreshed = await prisma.conversation.findFirst({
