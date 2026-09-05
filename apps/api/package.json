@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
-    "build": "tsc --noEmit",
+    "build": "npm run db:generate -w @smrkomed/database && npm run db:migrate:deploy -w @smrkomed/database && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "tsx --import ./src/test-preload.ts --test --test-concurrency=1 src/api.test.ts src/admin.test.ts src/integrations.test.ts src/whatsapp.test.ts src/whatsapp-media.test.ts src/whatsapp-automation.test.ts src/crm.test.ts src/couples-create.test.ts src/pharmacy.test.ts src/insurance.test.ts src/payments.test.ts src/digital-health.test.ts src/patient-360.test.ts src/realtime.test.ts"
