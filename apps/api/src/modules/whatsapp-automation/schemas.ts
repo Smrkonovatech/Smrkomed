@@ -64,17 +64,18 @@ export const flowNodeSchema = z
         x: z.number(),
         y: z.number(),
       })
+      .nullable()
       .optional(),
-    positionX: z.number().optional(),
-    positionY: z.number().optional(),
+    positionX: z.number().nullable().optional(),
+    positionY: z.number().nullable().optional(),
   })
   .passthrough();
 
 export const flowEdgeSchema = z
   .object({
     id: z.string().min(1),
-    source: z.string().min(1),
-    target: z.string().min(1),
+    source: z.preprocess((v) => (v === null || v === undefined ? "" : String(v)), z.string().default("")),
+    target: z.preprocess((v) => (v === null || v === undefined ? "" : String(v)), z.string().default("")),
     branch: z.preprocess(
       (v) => (v === null || v === undefined ? undefined : String(v)),
       z.string().max(120).optional(),
@@ -109,7 +110,19 @@ export const createFlowSchema = z
       z.string().max(1000).optional(),
     ),
     triggerType: z.string().min(1).max(64),
-    definition: flowDefinitionSchema.optional(),
+    definition: z.preprocess(
+      (v) => {
+        if (typeof v === "string") {
+          try {
+            return JSON.parse(v);
+          } catch {
+            return v;
+          }
+        }
+        return v;
+      },
+      flowDefinitionSchema.nullable().optional(),
+    ),
   })
   .passthrough();
 
@@ -121,8 +134,23 @@ export const updateFlowSchema = z
       z.string().max(1000).nullable().optional(),
     ),
     triggerType: z.preprocess(emptyStringToUndefined, z.string().min(1).max(64).optional()),
-    definition: flowDefinitionSchema.optional(),
-    status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+    definition: z.preprocess(
+      (v) => {
+        if (typeof v === "string") {
+          try {
+            return JSON.parse(v);
+          } catch {
+            return v;
+          }
+        }
+        return v;
+      },
+      flowDefinitionSchema.nullable().optional(),
+    ),
+    status: z.preprocess(
+      (v) => (typeof v === "string" ? v.toUpperCase().trim() : v),
+      z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+    ),
   })
   .passthrough();
 
