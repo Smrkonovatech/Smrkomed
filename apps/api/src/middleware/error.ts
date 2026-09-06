@@ -6,7 +6,7 @@ import { CreateCoupleFailedError, HttpError } from "../lib/errors";
 import { fail } from "../lib/http";
 import { isIntegrationError } from "../integrations/core/errors";
 
-const HTTP_STATUSES = new Set([400, 401, 403, 404, 409, 422, 429, 500, 501]);
+const HTTP_STATUSES = new Set([400, 401, 403, 404, 409, 422, 429, 500, 501, 502]);
 
 function prismaFields(error: unknown) {
   if (typeof error !== "object" || error === null) {

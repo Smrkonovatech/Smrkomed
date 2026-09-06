@@ -8,7 +8,14 @@ export type RealtimeEventType =
   | "TYPING_STOPPED"
   | "CONNECTION_STATUS"
   | "AI_HANDOFF"
-  | "CARE_LOOP_ESCALATION";
+  | "CARE_LOOP_ESCALATION"
+  | "FLOW_EXECUTION_STARTED"
+  | "FLOW_NODE_STARTED"
+  | "FLOW_NODE_COMPLETED"
+  | "FLOW_NODE_WAITING"
+  | "FLOW_NODE_FAILED"
+  | "FLOW_EXECUTION_COMPLETED";
+
 
 export type BaseRealtimeEvent = {
   eventId: string;
@@ -128,6 +135,22 @@ export type CareLoopEscalationEvent = BaseRealtimeEvent & {
   reason: string;
 };
 
+export type FlowExecutionEvent = BaseRealtimeEvent & {
+  type:
+    | "FLOW_EXECUTION_STARTED"
+    | "FLOW_NODE_STARTED"
+    | "FLOW_NODE_COMPLETED"
+    | "FLOW_NODE_WAITING"
+    | "FLOW_NODE_FAILED"
+    | "FLOW_EXECUTION_COMPLETED";
+  flowId: string;
+  executionId: string;
+  nodeId?: string | null;
+  nodeType?: string | null;
+  status: string;
+  error?: string | null;
+};
+
 export type RealtimeEvent =
   | MessageCreatedEvent
   | MessageStatusUpdatedEvent
@@ -137,7 +160,9 @@ export type RealtimeEvent =
   | TypingEvent
   | ConnectionStatusEvent
   | AiHandoffEvent
-  | CareLoopEscalationEvent;
+  | CareLoopEscalationEvent
+  | FlowExecutionEvent;
+
 
 export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
 

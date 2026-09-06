@@ -76,7 +76,14 @@ export function mapMetaGraphError(input: {
   if (META_RATE_LIMIT_CODES.has(code) || httpStatus === 429) {
     return new IntegrationError("PROVIDER_RATE_LIMITED", safeMessage, 429, true);
   }
-  if (code === 131026 || code === 131047) {
+  if (code === 131047) {
+    return new IntegrationError(
+      "SESSION_WINDOW_EXPIRED",
+      "WhatsApp requires an approved template for this message because the customer-service window has expired.",
+      422,
+    );
+  }
+  if (code === 131026) {
     return new IntegrationError("INVALID_RECIPIENT", safeMessage, 422);
   }
   if (

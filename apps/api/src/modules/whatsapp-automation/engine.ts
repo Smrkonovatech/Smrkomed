@@ -8,6 +8,8 @@ import { audit } from "../../lib/audit";
 import { HttpError } from "../../lib/errors";
 import { IntegrationError } from "../../integrations/core/errors";
 import { classifyRetry } from "../../integrations/core/retry";
+import { realtimeBus } from "../realtime/bus";
+
 import {
   sendWhatsAppSessionText,
   sendWhatsAppTemplate,
@@ -307,6 +309,15 @@ export async function runExecution(
       data: { status: "RUNNING", error: null },
     });
 
+    realtimeBus.publish({
+      type: "FLOW_EXECUTION_STARTED",
+      clinicId: tenant.clinicId,
+      flowId: execution.flowId,
+      executionId: execution.id,
+      status: "RUNNING",
+    });
+
+
     let steps = 0;
     while (currentId && steps < maxSteps) {
       steps += 1;
@@ -380,6 +391,16 @@ export async function runExecution(
         },
       });
 
+      realtimeBus.publish({
+        type: "FLOW_NODE_STARTED",
+        clinicId: tenant.clinicId,
+        flowId: execution.flowId,
+        executionId: execution.id,
+        nodeId: node.id,
+        nodeType: node.type,
+        status: "RUNNING",
+      });
+
       try {
         const result = await executeNode(
           tenant,
@@ -410,6 +431,16 @@ export async function runExecution(
           },
         });
 
+        realtimeBus.publish({
+          type: "FLOW_NODE_COMPLETED",
+          clinicId: tenant.clinicId,
+          flowId: execution.flowId,
+          executionId: execution.id,
+          nodeId: node.id,
+          nodeType: node.type,
+          status: "COMPLETED",
+        });
+
         if (result.waitUntil || result.waitForReply) {
           ctx = {
             ...ctx,
@@ -431,6 +462,15 @@ export async function runExecution(
                 lockExpiresAt: null,
               }),
             },
+          });
+          realtimeBus.publish({
+            type: "FLOW_NODE_WAITING",
+            clinicId: tenant.clinicId,
+            flowId: execution.flowId,
+            executionId: execution.id,
+            nodeId: node.id,
+            nodeType: node.type,
+            status: "WAITING",
           });
           return prisma.whatsAppFlowExecution.findUniqueOrThrow({ where: { id: execution.id } });
         }
@@ -460,6 +500,13 @@ export async function runExecution(
             },
           });
           await bumpFlowCounts(execution.flowId, true);
+          realtimeBus.publish({
+            type: "FLOW_EXECUTION_COMPLETED",
+            clinicId: tenant.clinicId,
+            flowId: execution.flowId,
+            executionId: execution.id,
+            status: "COMPLETED",
+          });
           return prisma.whatsAppFlowExecution.findUniqueOrThrow({ where: { id: execution.id } });
         }
 
@@ -478,11 +525,22 @@ export async function runExecution(
           where: { id: step.id },
           data: { status: "FAILED", completedAt: new Date(), error: message },
         });
+        realtimeBus.publish({
+          type: "FLOW_NODE_FAILED",
+          clinicId: tenant.clinicId,
+          flowId: execution.flowId,
+          executionId: execution.id,
+          nodeId: node.id,
+          nodeType: node.type,
+          status: "FAILED",
+          error: message,
+        });
         const retryable = isRetryableError(err);
         await scheduleRetryOrFail(execution.id, tenant.clinicId, message, retryable);
         if (!retryable) await bumpFlowCounts(execution.flowId, false);
         throw err;
       }
+
     }
 
     return prisma.whatsAppFlowExecution.findUniqueOrThrow({ where: { id: execution.id } });

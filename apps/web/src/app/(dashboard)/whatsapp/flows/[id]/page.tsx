@@ -1297,27 +1297,38 @@ export default function WhatsAppFlowBuilderPage() {
                         </div>
 
                         <div className="space-y-1.5 text-xs max-h-[220px] overflow-y-auto pr-1">
-                          {activeConsoleExecution.steps.map((s, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-start gap-2 rounded-md border p-1.5 bg-background text-[11px]"
-                            >
-                              {s.status === "COMPLETED" ? (
-                                <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                              ) : s.status === "WAITING" ? (
-                                <Clock className="size-3.5 text-sky-600 shrink-0 mt-0.5" />
-                              ) : (
-                                <XCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
-                              )}
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold text-foreground">{s.nodeType}</span>
-                                  <span className="text-[10px] text-muted-foreground uppercase">{s.status}</span>
+                          {activeConsoleExecution.steps.map((s, idx) => {
+                            const outputObj = s.output && typeof s.output === "object" ? (s.output as Record<string, unknown>) : null;
+                            const sendResult = outputObj?.["sendResult"] as { providerMessageId?: string; id?: string } | undefined;
+                            const metaWamid = sendResult?.providerMessageId || (sendResult?.id && String(sendResult.id).startsWith("wamid") ? sendResult.id : null);
+                            return (
+                              <div
+                                key={idx}
+                                className="flex items-start gap-2 rounded-md border p-1.5 bg-background text-[11px]"
+                              >
+                                {s.status === "COMPLETED" ? (
+                                  <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                                ) : s.status === "WAITING" ? (
+                                  <Clock className="size-3.5 text-sky-600 shrink-0 mt-0.5" />
+                                ) : (
+                                  <XCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
+                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-foreground">{s.nodeType}</span>
+                                    <span className="text-[10px] text-muted-foreground uppercase">{s.status}</span>
+                                  </div>
+                                  {metaWamid && (
+                                    <p className="text-[10px] text-emerald-700 dark:text-emerald-400 font-mono mt-0.5">
+                                      ✓ Accepted by Meta ({metaWamid.slice(0, 18)}…)
+                                    </p>
+                                  )}
+                                  {s.error && <p className="text-[10px] text-destructive mt-0.5">{s.error}</p>}
                                 </div>
-                                {s.error && <p className="text-[10px] text-destructive mt-0.5">{s.error}</p>}
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
+
 
                           {activeConsoleExecution.status === "WAITING" && (
                             <div className="flex items-center gap-2 rounded-md border border-sky-300/40 bg-sky-50/60 p-2 text-[11px] text-sky-900 dark:bg-sky-950/30 dark:text-sky-200">

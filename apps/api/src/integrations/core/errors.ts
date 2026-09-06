@@ -26,11 +26,12 @@ export const INTEGRATION_ERROR_CODES = [
   "PROVIDER_UNAVAILABLE",
   "MESSAGE_SEND_FAILED",
   "CONNECTION_CONFLICT",
+  "SESSION_WINDOW_EXPIRED",
 ] as const;
 
 export type IntegrationErrorCode = (typeof INTEGRATION_ERROR_CODES)[number];
 
-export type IntegrationHttpStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 501;
+export type IntegrationHttpStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 501 | 502;
 
 export class IntegrationError extends Error {
   readonly code: IntegrationErrorCode;

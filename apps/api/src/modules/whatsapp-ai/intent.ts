@@ -64,7 +64,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "APPOINTMENT_BOOKING",
-    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(an?\s+)?(appointment|doctor)|need\s+(an?\s+)?(appointment|doctor)|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?|doctors?)|available\s+(slots?|appointments?|timings?|doctors?)|any\s+(open\s+)?slots?|^appointments?$|book\s+for\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
+    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(an?\s+)?(appointment|doctor)|need\s+(an?\s+)?(appointment|doctor)|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?|doctors?)|available\s+(slots?|appointments?|timings?|doctors?)|any\s+(open\s+)?slots?|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
     tools: ["getAvailableAppointmentSlots", "getAppointments"],
     confidence: "high",
   },
@@ -168,10 +168,11 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "GREETING",
-    re: /^(hi+|h+i+e*|hello|heyy*|yo|namaste|namaskar|good\s*(morning|afternoon|evening)|hola)\s*[!.]*$/i,
+    re: /^(hi+|h+i+e*|hello+|he+y+|hre+y+|yo|namaste|namaskar|good\s*(morning|afternoon|evening)|hola)\s*[!.]*$/i,
     tools: ["getPatientContext"],
     confidence: "high",
   },
+
 ];
 
 export function classifyPatientIntent(message: string): IntentResult {

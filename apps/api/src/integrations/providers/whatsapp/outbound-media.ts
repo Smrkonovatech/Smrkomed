@@ -30,6 +30,8 @@ function assertRateLimit(userId: string, clinicId: string) {
   }
 }
 
+import { resolveWhatsAppSenderCredentials } from "./service";
+
 async function loadActiveConnection(ctx: TenantContext) {
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
@@ -40,16 +42,10 @@ async function loadActiveConnection(ctx: TenantContext) {
   const account = await prisma.whatsAppAccount.findFirst({
     where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
   });
-  if (!account) {
-    throw new IntegrationError("PHONE_NOT_REGISTERED", "No active WhatsApp phone number is connected.", 409);
-  }
-  const credentials = credentialService.decrypt(integration.encryptedCredentials);
-  const token = credentials.accessToken ?? credentials.systemUserToken;
-  if (!token) {
-    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
-  }
-  return { integration, account, token };
+  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  return { integration, account, token: senderCreds.token, phoneNumberId: senderCreds.phoneNumberId };
 }
+
 
 async function assertConsent(ctx: TenantContext, patientId: string | null) {
   if (!patientId) return;
@@ -166,7 +162,7 @@ export async function sendWhatsAppSessionMedia(
   const caption = input.caption?.trim() ? input.caption.trim().slice(0, 1024) : null;
   const isVoice = Boolean(input.isVoice && validated.kind === "AUDIO");
 
-  const { account, token } = await loadActiveConnection(ctx);
+  const { account, token, phoneNumberId } = await loadActiveConnection(ctx);
   const conversation = await resolveConversationForMedia(ctx, input.conversationId);
   const recipient = conversation.contactPhone;
   if (!recipient) {
@@ -257,7 +253,7 @@ export async function sendWhatsAppSessionMedia(
   try {
     // 3. Upload to Meta
     const uploaded = await uploadWhatsAppMedia({
-      phoneNumberId: account.phoneNumberId,
+      phoneNumberId: phoneNumberId || account?.phoneNumberId || "",
       accessToken: token,
       buffer: input.buffer,
       mimeType: validated.mimeType,
@@ -276,7 +272,7 @@ export async function sendWhatsAppSessionMedia(
 
     // 4. Send WhatsApp message
     const result = await sendMediaMessage({
-      phoneNumberId: account.phoneNumberId,
+      phoneNumberId: phoneNumberId || account?.phoneNumberId || "",
       accessToken: token,
       to: recipient,
       type: messageType,

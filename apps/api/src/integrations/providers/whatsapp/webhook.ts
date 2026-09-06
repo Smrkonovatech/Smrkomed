@@ -652,6 +652,10 @@ async function processStatus(event: NormalizedWebhookEvent, clinicId: string) {
       id: true,
       status: true,
       conversationId: true,
+      content: true,
+      createdAt: true,
+      direction: true,
+      senderType: true,
       conversation: { select: { clinicId: true } },
     },
   });
@@ -678,6 +682,22 @@ async function processStatus(event: NormalizedWebhookEvent, clinicId: string) {
     messageId: existing.id,
     providerMessageId,
     status: mapped,
+  });
+
+  realtimeBus.publish({
+    type: "CONVERSATION_UPDATED",
+    clinicId: targetClinicId,
+    conversationId: existing.conversationId,
+    patch: {
+      lastMessage: {
+        id: existing.id,
+        preview: existing.content?.slice(0, 100) || "",
+        createdAt: existing.createdAt.toISOString(),
+        direction: existing.direction,
+        senderType: existing.senderType,
+        status: mapped,
+      },
+    },
   });
   return "PROCESSED" as const;
 }

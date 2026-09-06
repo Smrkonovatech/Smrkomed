@@ -207,6 +207,73 @@ export async function resolveWhatsAppAccessToken(ctx: TenantContext): Promise<st
   return "";
 }
 
+export type WhatsAppSenderCredentials = {
+  token: string;
+  phoneNumberId: string;
+  tokenSource: "server_env" | "database";
+};
+
+/**
+ * Resolves verified sender credentials (token and phone number ID) for outbound WhatsApp messaging.
+ * Server environment token strictly overrides database placeholders ("pending_manual_token").
+ * Logs safe structured auth state without ever exposing secrets.
+ */
+export async function resolveWhatsAppSenderCredentials(ctx: TenantContext): Promise<WhatsAppSenderCredentials> {
+  const cfg = metaConfig();
+  const directConfigured = isDirectMetaConfigured();
+  let token = "";
+  let tokenSource: "server_env" | "database" = "server_env";
+
+  if (cfg.directAccessToken) {
+    token = cfg.directAccessToken;
+    tokenSource = "server_env";
+  } else {
+    const integration = await prisma.integration.findUnique({
+      where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
+    });
+    if (integration?.encryptedCredentials) {
+      try {
+        const creds = credentialService.decrypt(integration.encryptedCredentials);
+        const dbToken = creds.accessToken ?? creds.systemUserToken;
+        if (
+          dbToken &&
+          dbToken !== "pending_manual_token" &&
+          dbToken !== "demo_token_not_valid_for_graph" &&
+          !dbToken.includes("|")
+        ) {
+          token = dbToken;
+          tokenSource = "database";
+        }
+      } catch {
+        // Fall through
+      }
+    }
+  }
+
+  console.log(
+    `[WhatsApp Auth]\ndirectMetaConfigured=${directConfigured}\naccessTokenConfigured=${Boolean(token)}\ntokenSource=${tokenSource}`,
+  );
+
+  if (!token) {
+    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  }
+
+  let phoneNumberId = cfg.directPhoneNumberId;
+  if (!phoneNumberId) {
+    const account = await prisma.whatsAppAccount.findFirst({
+      where: { clinicId: ctx.clinicId, isActive: true },
+    });
+    phoneNumberId = account?.phoneNumberId ?? "";
+  }
+
+  if (!phoneNumberId) {
+    throw new IntegrationError("PHONE_NOT_REGISTERED", "No active WhatsApp phone number is connected.", 409);
+  }
+
+  return { token, phoneNumberId, tokenSource };
+}
+
+
 /**
  * Performs a comprehensive Meta connection check against Meta Graph API.
  * Validates access token, WABA access, Phone Number access, ownership, and registration status.

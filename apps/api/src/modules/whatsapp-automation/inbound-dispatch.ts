@@ -368,7 +368,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     intentResult.intent === "APPOINTMENT_RESCHEDULE" ||
     intentResult.intent === "APPOINTMENT_CANCEL";
 
-  // 3. Dispatch INCOMING_WHATSAPP trigger
+  // 3. Dispatch INCOMING_WHATSAPP trigger (filters appointment flows based on isApptIntent)
   const dispatched = await dispatchWhatsAppTrigger({
     tenant,
     triggerType: "INCOMING_WHATSAPP",
@@ -381,6 +381,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
       detected_intent: intentResult.intent,
       is_appointment_intent: isApptIntent ? "true" : "false",
     },
+    isAppointmentIntent: isApptIntent,
   }).catch((err) => {
     console.error(
       "[WhatsApp automation] INCOMING_WHATSAPP dispatch failed:",
@@ -389,8 +390,16 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     return { matched: 0, results: [] };
   });
 
-  // 4. If an ACTIVE flow matched and started, or if appointment intent is matched by active automation, skip general AI
+  // 4. Check if an active automation flow started
   const activeFlowStarted = (dispatched.results ?? []).some((r) => r.executionId && !r.error);
+
+  console.log("[WhatsApp inbound] routing decision", {
+    intent: intentResult.intent,
+    isApptIntent,
+    activeFlowStarted,
+    routingTo: activeFlowStarted ? "appointment_flow" : "generic_ai",
+  });
+
   if (activeFlowStarted || (isApptIntent && (dispatched.matched ?? 0) > 0)) {
     console.log("[WhatsApp inbound] automation flow active/started for appointment intent, bypassing generic AI", {
       isApptIntent,
@@ -399,6 +408,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     });
     return { resumed, dispatched, ai: { skipped: true as const, reason: "flow_active_or_appointment_intent" } };
   }
+
 
   // 5. Fallback to general AI auto-reply only when no automation is active
   const ai = input.skipAi

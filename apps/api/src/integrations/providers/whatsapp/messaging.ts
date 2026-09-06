@@ -16,6 +16,7 @@ import { normalizeWhatsAppPhone } from "./phone";
 import { isSendableTemplateStatus } from "./templates";
 import { parseWhatsAppTemplateComponents } from "./template-variables";
 import { realtimeBus } from "../../../modules/realtime/bus";
+import { resolveWhatsAppSenderCredentials } from "./service";
 
 const perUser = createMemoryRateLimiter(10, 60_000);
 const perClinic = createMemoryRateLimiter(30, 60_000);
@@ -126,11 +127,18 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
     }
   }
 
-  const credentials = credentialService.decrypt(integration.encryptedCredentials);
-  const token = credentials.accessToken ?? credentials.systemUserToken;
-  if (!token) {
-    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  const normalizedRecipient = normalizeWhatsAppPhone(recipient);
+  if (!normalizedRecipient || normalizedRecipient.length < 10) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No valid WhatsApp number is associated with this conversation.", 422);
   }
+
+  console.log("[WhatsApp Outbound] attempting", {
+    clinicId: ctx.clinicId,
+    conversationId: conversation.id,
+    recipientLast4: normalizedRecipient.slice(-4),
+    messageType: "template",
+  });
 
   await safeWhatsAppAudit({
     actorId: ctx.userId,
@@ -147,9 +155,9 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
       input.componentParameters?.body ??
       input.parameters.slice(0, bodyNeeded || input.parameters.length);
     const result = await sendTemplateMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken: token,
-      to: recipient,
+      phoneNumberId: senderCreds.phoneNumberId,
+      accessToken: senderCreds.token,
+      to: normalizedRecipient,
       name: template.name,
       language: template.language,
       parameters: bodyParams,
@@ -172,6 +180,14 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
       Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
         ? String((messages[0] as { id?: string }).id ?? "")
         : "";
+    if (!providerMessageId) {
+      throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
+    }
+    console.log("[WhatsApp Outbound] Meta response", {
+      success: true,
+      metaMessageId: providerMessageId,
+      httpStatus: 200,
+    });
     const stored = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -179,7 +195,7 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
         senderType: "STAFF",
         content: `Template: ${template.name}`,
         messageType: "template",
-        providerMessageId: providerMessageId || null,
+        providerMessageId,
         status: "SENT",
       },
     });
@@ -241,6 +257,12 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
     });
     return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
   } catch (error) {
+    console.error("[WhatsApp Outbound] Meta error", {
+      httpStatus: error instanceof IntegrationError ? error.httpStatus : 500,
+      errorCode: error instanceof IntegrationError ? error.code : "MESSAGE_SEND_FAILED",
+      errorType: "MetaError",
+      safeMessage: error instanceof Error ? error.message : String(error),
+    });
     await safeWhatsAppAudit({
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
@@ -348,11 +370,18 @@ export async function sendWhatsAppSessionText(
     }
   }
 
-  const credentials = credentialService.decrypt(integration.encryptedCredentials);
-  const token = credentials.accessToken ?? credentials.systemUserToken;
-  if (!token) {
-    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  const normalizedRecipient = normalizeWhatsAppPhone(recipient);
+  if (!normalizedRecipient || normalizedRecipient.length < 10) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No valid WhatsApp number is associated with this conversation.", 422);
   }
+
+  console.log("[WhatsApp Outbound] attempting", {
+    clinicId: ctx.clinicId,
+    conversationId: conversation.id,
+    recipientLast4: normalizedRecipient.slice(-4),
+    messageType: "text",
+  });
 
   await safeWhatsAppAudit({
     actorId: ctx.userId,
@@ -369,9 +398,9 @@ export async function sendWhatsAppSessionText(
 
   try {
     const result = await sendTextMessage({
-      phoneNumberId: account.phoneNumberId,
-      accessToken: token,
-      to: recipient,
+      phoneNumberId: senderCreds.phoneNumberId,
+      accessToken: senderCreds.token,
+      to: normalizedRecipient,
       body,
     });
     const messages = result["messages"];
@@ -379,6 +408,14 @@ export async function sendWhatsAppSessionText(
       Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
         ? String((messages[0] as { id?: string }).id ?? "")
         : "";
+    if (!providerMessageId) {
+      throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
+    }
+    console.log("[WhatsApp Outbound] Meta response", {
+      success: true,
+      metaMessageId: providerMessageId,
+      httpStatus: 200,
+    });
     const stored = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -386,7 +423,7 @@ export async function sendWhatsAppSessionText(
         senderType,
         content: body,
         messageType: "text",
-        providerMessageId: providerMessageId || null,
+        providerMessageId,
         status: "SENT",
       },
     });
@@ -450,6 +487,12 @@ export async function sendWhatsAppSessionText(
     });
     return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
   } catch (error) {
+    console.error("[WhatsApp Outbound] Meta error", {
+      httpStatus: error instanceof IntegrationError ? error.httpStatus : 500,
+      errorCode: error instanceof IntegrationError ? error.code : "MESSAGE_SEND_FAILED",
+      errorType: "MetaError",
+      safeMessage: error instanceof Error ? error.message : String(error),
+    });
     await safeWhatsAppAudit({
       actorId: ctx.userId,
       organizationId: ctx.organizationId,
@@ -620,60 +663,110 @@ export async function sendWhatsAppInteractiveButtons(
     }
   }
 
-  const credentials = credentialService.decrypt(integration.encryptedCredentials);
-  const token = credentials.accessToken ?? credentials.systemUserToken;
-  if (!token) {
-    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  const normalizedRecipient = normalizeWhatsAppPhone(recipient);
+  if (!normalizedRecipient || normalizedRecipient.length < 10) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No valid WhatsApp number is associated with this conversation.", 422);
   }
 
-  const senderType = input.senderType ?? "AI";
-  const result = await sendInteractiveButtons({
-    phoneNumberId: account.phoneNumberId,
-    accessToken: token,
-    to: recipient,
-    body,
-    buttons: input.buttons,
-    ...(input.header ? { header: input.header } : {}),
-    ...(input.footer ? { footer: input.footer } : {}),
-  });
-
-  const providerMessageId = (result["messages"] as Array<{ id: string }> | undefined)?.[0]?.id ?? null;
-  const buttonLabels = input.buttons.map((b) => `[${b.title}]`).join(" ");
-  const stored = await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      direction: "OUTBOUND",
-      senderType,
-      content: `${body}\n\n${buttonLabels}`,
-      messageType: "interactive",
-      providerMessageId: providerMessageId ?? null,
-      status: "SENT",
-    },
-  });
-
-  realtimeBus.publish({
-    type: "MESSAGE_CREATED",
+  console.log("[WhatsApp Outbound] attempting", {
     clinicId: ctx.clinicId,
     conversationId: conversation.id,
-    message: {
-      id: stored.id,
-      direction: "OUTBOUND",
-      senderType: stored.senderType,
-      content: stored.content,
-      messageType: "interactive",
-      createdAt: stored.createdAt.toISOString(),
-      status: stored.status,
-      label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
-    },
-    conversation: {
-      id: conversation.id,
-      status: conversation.status,
-      unreadCount: 0,
-      updatedAt: new Date().toISOString(),
-    },
+    recipientLast4: normalizedRecipient.slice(-4),
+    messageType: "interactive_buttons",
   });
 
-  return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+  const senderType = input.senderType ?? "AI";
+  const buttonLabels = input.buttons.map((b) => `[${b.title}]`).join(" ");
+
+  try {
+    const result = await sendInteractiveButtons({
+      phoneNumberId: senderCreds.phoneNumberId,
+      accessToken: senderCreds.token,
+      to: normalizedRecipient,
+      body,
+      buttons: input.buttons,
+      ...(input.header ? { header: input.header } : {}),
+      ...(input.footer ? { footer: input.footer } : {}),
+    });
+
+    const messages = result["messages"];
+    const providerMessageId =
+      Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
+        ? String((messages[0] as { id?: string }).id ?? "")
+        : "";
+    if (!providerMessageId) {
+      throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
+    }
+
+    console.log("[WhatsApp Outbound] Meta response", {
+      success: true,
+      metaMessageId: providerMessageId,
+      httpStatus: 200,
+    });
+
+    const stored = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: `${body}\n\n${buttonLabels}`,
+        messageType: "interactive",
+        providerMessageId,
+        status: "SENT",
+      },
+    });
+
+    realtimeBus.publish({
+      type: "MESSAGE_CREATED",
+      clinicId: ctx.clinicId,
+      conversationId: conversation.id,
+      message: {
+        id: stored.id,
+        direction: "OUTBOUND",
+        senderType: stored.senderType,
+        content: stored.content,
+        messageType: "interactive",
+        createdAt: stored.createdAt.toISOString(),
+        status: stored.status,
+        label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
+      },
+      conversation: {
+        id: conversation.id,
+        status: conversation.status,
+        unreadCount: 0,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+  } catch (error) {
+    console.error("[WhatsApp Outbound] Meta error", {
+      httpStatus: error instanceof IntegrationError ? error.httpStatus : 500,
+      errorCode: error instanceof IntegrationError ? error.code : "MESSAGE_SEND_FAILED",
+      errorType: "MetaError",
+      safeMessage: error instanceof Error ? error.message : String(error),
+    });
+    const failReason =
+      error instanceof IntegrationError
+        ? error.message.slice(0, 400)
+        : "WhatsApp could not send interactive buttons.";
+    await prisma.message
+      .create({
+        data: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType,
+          content: `${body.slice(0, 200)} — failed: ${failReason}`,
+          messageType: "interactive",
+          status: "FAILED",
+        },
+      })
+      .catch(() => undefined);
+    throw error instanceof IntegrationError
+      ? error
+      : new IntegrationError("MESSAGE_SEND_FAILED", failReason, 500);
+  }
 }
 
 export async function sendWhatsAppInteractiveList(
@@ -730,64 +823,113 @@ export async function sendWhatsAppInteractiveList(
     }
   }
 
-  const credentials = credentialService.decrypt(integration.encryptedCredentials);
-  const token = credentials.accessToken ?? credentials.systemUserToken;
-  if (!token) {
-    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  const normalizedRecipient = normalizeWhatsAppPhone(recipient);
+  if (!normalizedRecipient || normalizedRecipient.length < 10) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No valid WhatsApp number is associated with this conversation.", 422);
   }
 
-  const senderType = input.senderType ?? "AI";
-  const result = await sendInteractiveList({
-    phoneNumberId: account.phoneNumberId,
-    accessToken: token,
-    to: recipient,
-    body,
-    buttonLabel: input.buttonLabel,
-    sections: input.sections,
-    ...(input.headerText ? { headerText: input.headerText } : {}),
-    ...(input.footerText ? { footerText: input.footerText } : {}),
+  console.log("[WhatsApp Outbound] attempting", {
+    clinicId: ctx.clinicId,
+    conversationId: conversation.id,
+    recipientLast4: normalizedRecipient.slice(-4),
+    messageType: "interactive_list",
   });
 
-  const providerMessageId = (result["messages"] as Array<{ id: string }> | undefined)?.[0]?.id ?? null;
+  const senderType = input.senderType ?? "AI";
   const listSummary = input.sections
     .flatMap((s) => s.rows.map((r) => `• ${r.title}${r.description ? ` (${r.description})` : ""}`))
     .join("\n");
 
-  const stored = await prisma.message.create({
-    data: {
+  try {
+    const result = await sendInteractiveList({
+      phoneNumberId: senderCreds.phoneNumberId,
+      accessToken: senderCreds.token,
+      to: normalizedRecipient,
+      body,
+      buttonLabel: input.buttonLabel,
+      sections: input.sections,
+      ...(input.headerText ? { headerText: input.headerText } : {}),
+      ...(input.footerText ? { footerText: input.footerText } : {}),
+    });
+
+    const messages = result["messages"];
+    const providerMessageId =
+      Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
+        ? String((messages[0] as { id?: string }).id ?? "")
+        : "";
+    if (!providerMessageId) {
+      throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
+    }
+
+    console.log("[WhatsApp Outbound] Meta response", {
+      success: true,
+      metaMessageId: providerMessageId,
+      httpStatus: 200,
+    });
+
+    const stored = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: `${body}\n\n${listSummary}`,
+        messageType: "interactive",
+        providerMessageId,
+        status: "SENT",
+      },
+    });
+
+    realtimeBus.publish({
+      type: "MESSAGE_CREATED",
+      clinicId: ctx.clinicId,
       conversationId: conversation.id,
-      direction: "OUTBOUND",
-      senderType,
-      content: `${body}\n\n${listSummary}`,
-      messageType: "interactive",
-      providerMessageId: providerMessageId ?? null,
-      status: "SENT",
-    },
-  });
+      message: {
+        id: stored.id,
+        direction: "OUTBOUND",
+        senderType: stored.senderType,
+        content: stored.content,
+        messageType: "interactive",
+        createdAt: stored.createdAt.toISOString(),
+        status: stored.status,
+        label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
+      },
+      conversation: {
+        id: conversation.id,
+        status: conversation.status,
+        unreadCount: 0,
+        updatedAt: new Date().toISOString(),
+      },
+    });
 
-  realtimeBus.publish({
-    type: "MESSAGE_CREATED",
-    clinicId: ctx.clinicId,
-    conversationId: conversation.id,
-    message: {
-      id: stored.id,
-      direction: "OUTBOUND",
-      senderType: stored.senderType,
-      content: stored.content,
-      messageType: "interactive",
-      createdAt: stored.createdAt.toISOString(),
-      status: stored.status,
-      label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
-    },
-    conversation: {
-      id: conversation.id,
-      status: conversation.status,
-      unreadCount: 0,
-      updatedAt: new Date().toISOString(),
-    },
-  });
-
-  return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+    return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+  } catch (error) {
+    console.error("[WhatsApp Outbound] Meta error", {
+      httpStatus: error instanceof IntegrationError ? error.httpStatus : 500,
+      errorCode: error instanceof IntegrationError ? error.code : "MESSAGE_SEND_FAILED",
+      errorType: "MetaError",
+      safeMessage: error instanceof Error ? error.message : String(error),
+    });
+    const failReason =
+      error instanceof IntegrationError
+        ? error.message.slice(0, 400)
+        : "WhatsApp could not send interactive list.";
+    await prisma.message
+      .create({
+        data: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType,
+          content: `${body.slice(0, 200)} — failed: ${failReason}`,
+          messageType: "interactive",
+          status: "FAILED",
+        },
+      })
+      .catch(() => undefined);
+    throw error instanceof IntegrationError
+      ? error
+      : new IntegrationError("MESSAGE_SEND_FAILED", failReason, 500);
+  }
 }
 
 export const WhatsAppMessagingService = {
