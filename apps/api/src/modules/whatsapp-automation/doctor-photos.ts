@@ -87,9 +87,16 @@ export function getDoctorAssetsDir(): string {
  * Get public API base URL for WhatsApp Meta Cloud API image webhooks.
  */
 export function getApiBaseUrl(): string {
-  if (process.env["PUBLIC_API_URL"]) return process.env["PUBLIC_API_URL"].replace(/\/$/, "");
-  if (process.env["API_BASE_URL"]) return process.env["API_BASE_URL"].replace(/\/$/, "");
-  if (process.env["RAILWAY_STATIC_URL"]) return `https://${process.env["RAILWAY_STATIC_URL"].replace(/\/$/, "")}`;
+  const envUrl = process.env["PUBLIC_API_URL"] || process.env["API_BASE_URL"] || process.env["API_URL"];
+  if (envUrl && !envUrl.includes("localhost")) return envUrl.replace(/\/$/, "");
+  if (process.env["RAILWAY_STATIC_URL"]) {
+    const host = process.env["RAILWAY_STATIC_URL"].replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return `https://${host}`;
+  }
+  if (process.env["RAILWAY_PUBLIC_DOMAIN"]) {
+    const host = process.env["RAILWAY_PUBLIC_DOMAIN"].replace(/^https?:\/\//, "").replace(/\/$/, "");
+    return `https://${host}`;
+  }
   return "https://smrkomed-api-production.up.railway.app";
 }
 
@@ -104,8 +111,11 @@ export function getDoctorPhotoUrl(doctorId: string, baseUrl?: string): string {
 /**
  * Return image buffer for a doctor photo.
  */
-export async function getDoctorPhotoBuffer(doctorId: string): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
-  const asset = resolveDoctorPhotoAsset(doctorId);
+export async function getDoctorPhotoBuffer(
+  doctorId: string,
+  doctorName?: string | null,
+): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
+  const asset = resolveDoctorPhotoAsset(doctorId, doctorName);
   const assetsDir = getDoctorAssetsDir();
   const filePath = path.join(assetsDir, asset.filename);
   if (!fs.existsSync(filePath)) return null;
@@ -127,6 +137,7 @@ const MEDIA_CACHE_TTL_MS = 25 * 24 * 60 * 60_000; // 25 days (Meta media IDs exp
 export async function getOrUploadDoctorMetaMediaId(
   tenant: { clinicId: string; organizationId: string; userId: string },
   doctorId: string,
+  doctorName?: string | null,
 ): Promise<string | null> {
   const cacheKey = `${tenant.clinicId}_${doctorId}`;
   const cached = doctorMetaMediaCache.get(cacheKey);
@@ -134,7 +145,7 @@ export async function getOrUploadDoctorMetaMediaId(
     return cached.mediaId;
   }
 
-  const asset = await getDoctorPhotoBuffer(doctorId);
+  const asset = await getDoctorPhotoBuffer(doctorId, doctorName);
   if (!asset) return null;
 
   try {

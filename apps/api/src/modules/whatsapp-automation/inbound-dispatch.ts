@@ -212,24 +212,16 @@ export async function resumeWaitForReplyExecutions(input: {
     const flow = await prisma.whatsAppFlow.findFirst({
       where: { id: row.flowId, clinicId: input.tenant.clinicId },
     });
-    const isLiveTest =
-      ctx.vars?.["is_live_test"] === "true" ||
-      Boolean(row.triggerEventId?.startsWith("live_test_"));
-    // Normal production executions require ACTIVE flow; explicit LIVE_WHATSAPP tests can test and resume saved DRAFT flows
-    if (!flow || (flow.status !== "ACTIVE" && !isLiveTest)) {
-      resumed.push({ executionId: row.id, skipped: "flow_not_active" });
+    // In-flight executions that are WAITING should always be allowed to proceed unless deleted
+    if (!flow) {
+      resumed.push({ executionId: row.id, skipped: "flow_not_found" });
       continue;
     }
 
     const def = parseDefinition(flow.definition);
     const waitId = row.currentNodeId;
-    const replyAction = input.inboundVars?.["message_text"]?.trim();
-    const branchCandidates = (waitId && replyAction) ? nextNodes(def, waitId, replyAction) : [];
-    const nextId =
-      (branchCandidates[0]?.id) ??
-      ctx.waitNextNodeId ??
-      (waitId ? nextNodes(def, waitId)[0]?.id : null) ??
-      row.currentNodeId;
+    const rawReply = (input.inboundVars?.["message_text"] ?? "").trim();
+    let replyAction = rawReply;
 
     const mergedVars: Record<string, string> = {
       ...(ctx.vars ?? {}),
@@ -237,19 +229,62 @@ export async function resumeWaitForReplyExecutions(input: {
       patient_replied: "true",
     };
 
-    if (waitId === "n_ask_name" && replyAction && !replyAction.startsWith("appt_")) {
-      mergedVars["patient_name"] = replyAction;
-      mergedVars["patient.name"] = replyAction;
+    // Deterministic state-aware reply normalization
+    if (waitId === "n_confirm") {
+      if (/^(appt_confirm|action_confirm_appointment|confirm|yes|yes\s+confirm|sure|ok|proceed|book|yep)$/i.test(rawReply)) {
+        replyAction = "appt_confirm";
+        mergedVars["appointmentConfirmed"] = "true";
+      } else if (/^(appt_change_time|change\s+time|different\s+time|change\s+date|reschedule)$/i.test(rawReply)) {
+        replyAction = "appt_change_time";
+      } else if (/^(appt_cancel|action_cancel_confirm|cancel|no|don't\s+book)$/i.test(rawReply)) {
+        replyAction = "appt_cancel";
+      }
+    } else if (waitId === "n_show_dates") {
+      if (rawReply.startsWith("appt_date_")) {
+        const datePart = rawReply.slice("appt_date_".length);
+        mergedVars["selectedDate"] = datePart;
+        mergedVars["appointment.date"] = datePart;
+        replyAction = rawReply;
+      }
+    } else if (waitId === "n_show_slots") {
+      if (rawReply.startsWith("appt_slot_")) {
+        const slotPart = rawReply.slice("appt_slot_".length);
+        mergedVars["selectedSlotId"] = slotPart;
+        mergedVars["slotId"] = slotPart;
+        replyAction = rawReply;
+      }
+    } else if (waitId === "n_show_doctors" || waitId === "n_show_details") {
+      if (rawReply.startsWith("appt_doctor_slots_")) {
+        const docId = rawReply.slice("appt_doctor_slots_".length);
+        mergedVars["selectedDoctorId"] = docId;
+        mergedVars["doctor.id"] = docId;
+        replyAction = "btn_see_slots";
+      } else if (rawReply.startsWith("appt_doctor_")) {
+        const docId = rawReply.slice("appt_doctor_".length);
+        mergedVars["selectedDoctorId"] = docId;
+        mergedVars["doctor.id"] = docId;
+        replyAction = rawReply;
+      }
+    } else if (waitId === "n_ask_name" && rawReply && !rawReply.startsWith("appt_")) {
+      mergedVars["patient_name"] = rawReply;
+      mergedVars["patient.name"] = rawReply;
+    } else if (waitId === "n_ask_couple" && rawReply && !rawReply.startsWith("appt_")) {
+      mergedVars["partner_name"] = rawReply;
     }
-    if (waitId === "n_ask_partner" && replyAction && !replyAction.startsWith("appt_")) {
-      mergedVars["partner_name"] = replyAction;
-    }
+
+    const branchCandidates = (waitId && replyAction) ? nextNodes(def, waitId, replyAction) : [];
+    const nextId =
+      (branchCandidates[0]?.id) ??
+      ctx.waitNextNodeId ??
+      (waitId ? nextNodes(def, waitId)[0]?.id : null) ??
+      row.currentNodeId;
 
     console.log("[APPOINTMENT_EXECUTION_RESUME]", {
       clinicId: input.tenant.clinicId,
       executionId: row.id,
       currentNodeId: waitId,
       nextNodeId: nextId,
+      rawReply,
       replyAction: replyAction ?? null,
       doctorId: mergedVars["doctor.id"] || mergedVars["selectedDoctorId"] || null,
       selectedDate: mergedVars["selectedDate"] || null,
@@ -273,7 +308,6 @@ export async function resumeWaitForReplyExecutions(input: {
         }),
       },
     });
-
 
     try {
       const ran = await runExecution(input.tenant, row.id);
@@ -482,11 +516,23 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
   // 4. Check if an active automation flow started
   const activeFlowStarted = (dispatched.results ?? []).some((r) => r.executionId && !r.error);
 
-  console.log("[WhatsApp inbound] routing decision", {
-    intent: intentResult.intent,
-    isApptIntent,
-    activeFlowStarted,
-    routingTo: activeFlowStarted ? "appointment_flow" : "generic_ai",
+  const routingDecision = activeFlowStarted
+    ? "APPOINTMENT_FLOW"
+    : intentResult.intent === "APPOINTMENT_CANCEL"
+      ? "CANCELLATION_FLOW"
+      : intentResult.intent === "APPOINTMENT_RESCHEDULE"
+        ? "RESCHEDULE_FLOW"
+        : intentResult.intent === "APPOINTMENT_BOOKING"
+          ? "APPOINTMENT_FLOW"
+          : "GENERIC_AI";
+
+  console.log("[WHATSAPP ROUTING]", {
+    messageId: input.messageId,
+    conversationId: input.conversationId,
+    patientId: input.patientId ?? null,
+    detectedIntent: intentResult.intent,
+    executionState: "IDLE",
+    routingDecision,
   });
 
   if (activeFlowStarted || (isApptIntent && (dispatched.matched ?? 0) > 0)) {
@@ -497,7 +543,6 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     });
     return { resumed, dispatched, ai: { skipped: true as const, reason: "flow_active_or_appointment_intent" } };
   }
-
 
   // 5. Fallback to general AI auto-reply only when no automation is active
   const ai = input.skipAi

@@ -542,16 +542,32 @@ export async function executePatientTool(
     case "cancelAppointment": {
       const appointmentId = str("appointmentId");
       if (!appointmentId) {
-        // Load next appointment and ask confirm
+        let targetCoupleId = coupleId;
+        if (!targetCoupleId && auth.patientId) {
+          const c = await prisma.couple.findFirst({
+            where: {
+              clinicId,
+              OR: [{ primaryPatientId: auth.patientId }, { partnerPatientId: auth.patientId }],
+            },
+            select: { id: true },
+          });
+          if (c) targetCoupleId = c.id;
+        }
+
+        if (!targetCoupleId) {
+          return { tool, ok: true, data: { cancelled: false, reason: "NO_UPCOMING_APPOINTMENT" } };
+        }
+
+        // Load upcoming appointments for this patient/couple
         const appts = await prisma.appointment.findMany({
           where: {
             clinicId,
+            coupleId: targetCoupleId,
             status: { in: ["CONFIRMED", "WAITING"] },
             startsAt: { gte: new Date() },
-            ...(coupleId ? { coupleId } : {}),
           },
           orderBy: { startsAt: "asc" },
-          take: 1,
+          take: 5,
         });
         if (!appts[0]) {
           return { tool, ok: true, data: { cancelled: false, reason: "NO_UPCOMING_APPOINTMENT" } };
@@ -577,6 +593,7 @@ export async function executePatientTool(
             startsAt: appt.startsAt.toISOString(),
             doctorName: appt.doctorName,
             type: appt.type,
+            multipleUpcoming: appts.length > 1,
             instruction: 'Ask: "Would you like to cancel your appointment on [date]? Reply Yes to cancel or No to keep it."',
           },
         };

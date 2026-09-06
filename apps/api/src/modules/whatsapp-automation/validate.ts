@@ -39,6 +39,13 @@ const ALLOWED_TYPES = new Set([
 ]);
 
 export function parseDefinition(raw: unknown): FlowDefinition {
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      return { nodes: [], edges: [] };
+    }
+  }
   if (!raw || typeof raw !== "object") {
     return { nodes: [], edges: [] };
   }

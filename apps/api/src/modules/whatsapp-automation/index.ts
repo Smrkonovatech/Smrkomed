@@ -1254,7 +1254,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
   .get("/inbox/media/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_VIEW);
     const mediaId = c.req.valid("param").id;
-    const media = await prisma.whatsAppMedia.findUnique({
+    let media = await prisma.whatsAppMedia.findUnique({
       where: { id: mediaId },
     });
     if (!media) {
@@ -1263,12 +1263,22 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     if (media.clinicId !== tenant.clinicId) {
       throw new HttpError(403, "FORBIDDEN", "Access to media for foreign clinic denied");
     }
-    if (media.status !== "READY" || !media.storageKey) {
-      throw new HttpError(404, "NOT_FOUND", "Media content is not ready or failed to download");
+    let isReady = media.status === "READY" && Boolean(media.storageKey) && (await mediaStorageProvider.exists(media.storageKey!));
+    if (!isReady && media.providerMediaId) {
+      try {
+        const { downloadAndStoreWhatsAppMedia } = await import("../media/service");
+        await downloadAndStoreWhatsAppMedia(tenant.clinicId, media.id);
+        const refreshed = await prisma.whatsAppMedia.findUnique({ where: { id: mediaId } });
+        if (refreshed?.storageKey && (await mediaStorageProvider.exists(refreshed.storageKey))) {
+          media = refreshed;
+          isReady = true;
+        }
+      } catch {
+        // Fall through to 404 below
+      }
     }
-    const exists = await mediaStorageProvider.exists(media.storageKey);
-    if (!exists) {
-      throw new HttpError(404, "NOT_FOUND", "Media binary not found in storage");
+    if (!isReady || !media.storageKey) {
+      throw new HttpError(404, "NOT_FOUND", "Media content is not ready or failed to download");
     }
     const buffer = await mediaStorageProvider.getBuffer(media.storageKey);
     const filename = media.filename || `media_${media.id}${getExtensionForMime(media.mimeType || "")}`;

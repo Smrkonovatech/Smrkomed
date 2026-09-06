@@ -12,6 +12,11 @@ export const PATIENT_INTENTS = [
   "APPOINTMENT_RESCHEDULE",
   "APPOINTMENT_CANCEL",
   "APPOINTMENT_CONFIRM",
+  "APPOINTMENT_CONFIRMATION",
+  "APPOINTMENT_SLOTS",
+  "APPOINTMENT_DOCTOR_SELECTION",
+  "APPOINTMENT_DATE_SELECTION",
+  "APPOINTMENT_SLOT_SELECTION",
   "APPOINTMENT_STATUS",
   "REPORT_REQUEST",
   "REPORT_UPLOAD",
@@ -42,6 +47,12 @@ export type IntentResult = {
   suggestedTools: string[];
 };
 
+export type IntentClassificationContext = {
+  waitingExecution?: boolean;
+  waitingNodeId?: string;
+  activeIntent?: PatientIntent | null;
+};
+
 const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confidence: IntentResult["confidence"] }> = [
   {
     intent: "URGENT_CONCERN",
@@ -63,28 +74,39 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
     confidence: "high",
   },
   {
-    intent: "APPOINTMENT_BOOKING",
-    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(an?\s+)?(appointment|doctor)|need\s+(an?\s+)?(appointment|doctor)|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?|doctors?)|available\s+(slots?|appointments?|timings?|doctors?)|any\s+(open\s+)?slots?|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
-    tools: ["getAvailableAppointmentSlots", "getAppointments"],
-    confidence: "high",
-  },
-  {
-    intent: "APPOINTMENT_RESCHEDULE",
-    re: /\b(reschedule|change\s+(my\s+)?(appointment|appt)|can't\s+come|cannot\s+come|move\s+(my\s+)?appointment|reschedule\s+to)\b/i,
-    tools: ["getAppointments", "getAvailableAppointmentSlots"],
-    confidence: "high",
-  },
-  {
+    // Transactional: Cancel appointment — comprehensive deterministic match
     intent: "APPOINTMENT_CANCEL",
-    re: /\b(cancel)\s+(my\s+)?(appointment|appt|visit|booking)\b/i,
+    re: /\b(cancel\s+(my\s+)?(appointment|appt|visit|booking)|cancel\s+(it|tomorrow('s)?|today('s)?|next\s+\w+|for\s+\w+|with\s+dr\.?\s*\w+)|i\s+want\s+to\s+cancel|want\s+to\s+cancel|please\s+cancel(\s+my)?(\s+appointment|\s+appt)?|^cancel(\s+appointment|\s+appt|\s+booking)?$)\b/i,
     tools: ["cancelAppointment"],
     confidence: "high",
   },
   {
-    intent: "APPOINTMENT_CONFIRM",
-    re: /\b(confirm)\s+(my\s+)?(appointment|appt)\b/i,
+    // Transactional: Reschedule appointment
+    intent: "APPOINTMENT_RESCHEDULE",
+    re: /\b(reschedule(\s+my)?(\s+appointment|\s+appt|\s+visit|\s+booking)?|change(\s+my)?\s+(appointment|appt|time|slot|date)|move(\s+my)?\s+(appointment|appt)|postpone(\s+my)?\s+(appointment|appt)|can('?t|not)\s+come|reschedule\s+to)\b/i,
+    tools: ["getAppointments", "getAvailableAppointmentSlots"],
+    confidence: "high",
+  },
+  {
+    // Transactional: Available slots query
+    intent: "APPOINTMENT_SLOTS",
+    re: /\b((show|list|see|get|check|what|view)\s+(me\s+)?(available\s+|open\s+)?(slots?|timings?|times?)|what\s+times\s+are\s+available|show\s+available\s+slots|show\s+me\s+slots|open\s+slots|any\s+(open\s+|free\s+)?slots?|available\s+times?)\b/i,
+    tools: ["getAvailableAppointmentSlots"],
+    confidence: "high",
+  },
+  {
+    // Transactional: Appointment booking
+    intent: "APPOINTMENT_BOOKING",
+    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(to\s+book|an?\s+(appointment|doctor))|need\s+(to\s+book|an?\s+(appointment|doctor))|need\s+a\s+appointment|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
+    tools: ["getAvailableAppointmentSlots", "getAppointments"],
+    confidence: "high",
+  },
+  {
+    // Explicit confirmation text when not waiting for confirmation
+    intent: "APPOINTMENT_CONFIRMATION",
+    re: /\b(confirm\s+(my\s+)?(appointment|appt|booking)|yes\s+confirm\s+appointment)\b/i,
     tools: ["getAppointments", "confirmAppointment"],
-    confidence: "medium",
+    confidence: "high",
   },
   {
     intent: "APPOINTMENT_STATUS",
@@ -144,7 +166,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "CLINIC_INFORMATION",
-    re: /\b(where\s+(are\s+you|is\s+the\s+clinic)|location|address|open(ing)?\s+hours|timing|how\s+do\s+i\s+contact|phone\s+number|services)\b/i,
+    re: /\b(where\s+(are\s+you|is\s+(the|your)\s+clinic)|clinic\s+(location|address)|location|address|open(ing)?\s+hours|timing|how\s+do\s+i\s+contact|phone\s+number|services)\b/i,
     tools: ["getClinicProfile"],
     confidence: "high",
   },
@@ -172,14 +194,54 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
     tools: ["getPatientContext"],
     confidence: "high",
   },
-
 ];
 
-export function classifyPatientIntent(message: string): IntentResult {
-  const text = message.trim();
+/**
+ * Authoritative deterministic intent classification.
+ * Always resolves high-confidence transactional intents before general reasoning.
+ */
+export function classifyPatientIntent(
+  message: string,
+  context?: IntentClassificationContext,
+): IntentResult {
+  const text = (message || "").trim();
   if (!text) {
     return { intent: "UNKNOWN", confidence: "low", suggestedTools: [] };
   }
+
+  // 1. WhatsApp interactive button/list IDs have absolute priority
+  if (text === "appt_confirm" || text === "action_confirm_appointment") {
+    return { intent: "APPOINTMENT_CONFIRMATION", confidence: "high", suggestedTools: ["confirmAppointment"] };
+  }
+  if (text === "appt_cancel" || text === "action_cancel_confirm") {
+    return { intent: "APPOINTMENT_CANCEL", confidence: "high", suggestedTools: ["cancelAppointment"] };
+  }
+  if (text === "appt_change_time") {
+    return { intent: "APPOINTMENT_RESCHEDULE", confidence: "high", suggestedTools: ["getAvailableAppointmentSlots"] };
+  }
+  if (text.startsWith("appt_doctor_slots_") || text === "btn_see_slots") {
+    return { intent: "APPOINTMENT_SLOTS", confidence: "high", suggestedTools: ["getAvailableAppointmentSlots"] };
+  }
+  if (text.startsWith("appt_doctor_") || text === "appt_doctors_list") {
+    return { intent: "APPOINTMENT_DOCTOR_SELECTION", confidence: "high", suggestedTools: [] };
+  }
+  if (text.startsWith("appt_date_")) {
+    return { intent: "APPOINTMENT_DATE_SELECTION", confidence: "high", suggestedTools: ["getAvailableAppointmentSlots"] };
+  }
+  if (text.startsWith("appt_slot_")) {
+    return { intent: "APPOINTMENT_SLOT_SELECTION", confidence: "high", suggestedTools: [] };
+  }
+
+  // 2. State-aware confirmation: "confirm", "yes", "yes confirm"
+  // ONLY classified as APPOINTMENT_CONFIRMATION if execution or context is currently waiting for confirmation!
+  const isAffirmativeConfirmation = /^(confirm|yes\s+confirm|yes|sure|ok|proceed|yep|confirm\s+please)$/i.test(text);
+  if (isAffirmativeConfirmation) {
+    if (context?.waitingNodeId === "n_confirm" || context?.activeIntent === "APPOINTMENT_CONFIRMATION") {
+      return { intent: "APPOINTMENT_CONFIRMATION", confidence: "high", suggestedTools: ["confirmAppointment"] };
+    }
+  }
+
+  // 3. Match deterministic high-priority rules
   for (const rule of RULES) {
     if (rule.re.test(text)) {
       return {
@@ -189,9 +251,27 @@ export function classifyPatientIntent(message: string): IntentResult {
       };
     }
   }
+
+  // 4. Default fallback
   return {
     intent: "GENERAL_INFORMATION",
     confidence: "low",
     suggestedTools: ["getClinicProfile"],
   };
+}
+
+/** Check whether an intent is transactional/appointment-related. */
+export function isAppointmentRelatedIntent(intent: PatientIntent): boolean {
+  return (
+    intent === "APPOINTMENT_BOOKING" ||
+    intent === "APPOINTMENT_RESCHEDULE" ||
+    intent === "APPOINTMENT_CANCEL" ||
+    intent === "APPOINTMENT_CONFIRM" ||
+    intent === "APPOINTMENT_CONFIRMATION" ||
+    intent === "APPOINTMENT_SLOTS" ||
+    intent === "APPOINTMENT_DOCTOR_SELECTION" ||
+    intent === "APPOINTMENT_DATE_SELECTION" ||
+    intent === "APPOINTMENT_SLOT_SELECTION" ||
+    intent === "APPOINTMENT_STATUS"
+  );
 }

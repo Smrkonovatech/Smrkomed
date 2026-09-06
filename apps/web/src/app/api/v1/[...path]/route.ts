@@ -26,6 +26,8 @@ async function proxy(req: NextRequest, path: string[]) {
   if (lastEventId) headers.set("last-event-id", lastEventId);
   const accept = req.headers.get("accept");
   if (accept) headers.set("accept", accept);
+  const range = req.headers.get("range");
+  if (range) headers.set("range", range);
 
   const method = req.method.toUpperCase();
   const hasBody = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
@@ -59,6 +61,14 @@ async function proxy(req: NextRequest, path: string[]) {
     if (connection) out.set("connection", connection);
     const xAccelBuffering = upstream.headers.get("x-accel-buffering");
     if (xAccelBuffering) out.set("x-accel-buffering", xAccelBuffering);
+    const contentLength = upstream.headers.get("content-length");
+    if (contentLength) out.set("content-length", contentLength);
+    const contentRange = upstream.headers.get("content-range");
+    if (contentRange) out.set("content-range", contentRange);
+    const acceptRanges = upstream.headers.get("accept-ranges");
+    if (acceptRanges) out.set("accept-ranges", acceptRanges);
+    const contentDisposition = upstream.headers.get("content-disposition");
+    if (contentDisposition) out.set("content-disposition", contentDisposition);
     out.set("x-smrko-upstream-host", upstreamHost);
     out.set("x-smrko-upstream-status", String(upstream.status));
     return new NextResponse(upstream.body, { status: upstream.status, headers: out });

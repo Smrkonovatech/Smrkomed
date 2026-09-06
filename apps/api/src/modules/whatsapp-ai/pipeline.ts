@@ -465,7 +465,9 @@ export async function runWhatsAppAiPipeline(input: {
     pipelineStage: "tools",
   });
 
-  const slotTool = toolResults.find((t) => t.tool === "getAvailableAppointmentSlots");
+  const slotTool = isSlotListingIntent || toolResults.some((t) => t.tool === "getAvailableAppointmentSlots")
+    ? toolResults.find((t) => t.tool === "getAvailableAppointmentSlots")
+    : undefined;
   const slotData = (slotTool?.ok ? slotTool.data : null) as
     | {
         type?: string;
@@ -477,19 +479,21 @@ export async function runWhatsAppAiPipeline(input: {
     | null;
 
   const slotCount = Array.isArray(slotData?.slots) ? slotData!.slots!.length : 0;
-  console.log("[WhatsApp AI] appointment_slots outcome", {
-    clinicId: input.tenant.clinicId,
-    conversationId: conversation.id,
-    messageId: input.inboundMessageId ?? null,
-    preferredDate,
-    toolOk: slotTool?.ok ?? false,
-    slotCount,
-    available: slotData?.available ?? null,
-    handoffRecommended: slotTool?.handoffRecommended ?? false,
-    handoffReason: slotTool?.handoffReason ?? null,
-    reason: slotData?.reason ?? null,
-    pipelineStage: "slot_outcome",
-  });
+  if (slotTool || isSlotListingIntent) {
+    console.log("[WhatsApp AI] appointment_slots outcome", {
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      messageId: input.inboundMessageId ?? null,
+      preferredDate,
+      toolOk: slotTool?.ok ?? false,
+      slotCount,
+      available: slotData?.available ?? null,
+      handoffRecommended: slotTool?.handoffRecommended ?? false,
+      handoffReason: slotTool?.handoffReason ?? null,
+      reason: slotData?.reason ?? null,
+      pipelineStage: "slot_outcome",
+    });
+  }
 
   // BOOKING / RESCHEDULE: never fall through to KB/LLM for slot listing.
   if (isSlotListingIntent && !input.simulation && input.mode === "send") {
@@ -680,50 +684,104 @@ export async function runWhatsAppAiPipeline(input: {
     }
   }
 
-  const cancelTool = toolResults.find((t) => t.tool === "cancelAppointment" && t.ok);
+  const cancelTool = toolResults.find((t) => t.tool === "cancelAppointment");
   const cancelData = cancelTool?.data as
-    | { needsConfirmation?: boolean; startsAt?: string; doctorName?: string | null; type?: string }
+    | { needsConfirmation?: boolean; startsAt?: string; doctorName?: string | null; type?: string; cancelled?: boolean; reason?: string }
     | undefined;
-  if (
-    cancelData?.needsConfirmation &&
-    cancelData.startsAt &&
-    !input.simulation &&
-    input.mode === "send"
-  ) {
-    const when = new Date(cancelData.startsAt).toLocaleString("en-IN", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-    const text = `✦ Smrko AI\n\nWould you like to cancel your appointment on ${when}${cancelData.doctorName ? ` with ${cancelData.doctorName}` : ""}?\n\nReply Yes to cancel, or No to keep it.`;
-    try {
-      const sent = await sendWhatsAppAiSessionText(input.tenant, {
-        conversationId: conversation.id,
-        body: text,
+
+  // Intent is APPOINTMENT_CANCEL: must resolve deterministically, NEVER fall through to generic LLM
+  if (intentResult.intent === "APPOINTMENT_CANCEL" && !input.simulation && input.mode === "send") {
+    if (cancelData?.needsConfirmation && cancelData.startsAt) {
+      const when = new Date(cancelData.startsAt).toLocaleString("en-IN", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
       });
-      const interaction = await recordAiInteraction({
-        clinicId: input.tenant.clinicId,
+      const text = `✦ Smrko AI\n\nWould you like to cancel your appointment on ${when}${cancelData.doctorName ? ` with ${cancelData.doctorName}` : ""}?\n\nReply Yes to cancel, or No to keep it.`;
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: text,
+        });
+        const interaction = await recordAiInteraction({
+          clinicId: input.tenant.clinicId,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          messageId: sent.id,
+          trigger: input.trigger,
+          intent: "APPOINTMENT_CANCEL",
+          model: "appointment-cancel-confirm",
+          classification: "CANCEL_CONFIRM",
+          safeToAutoReply: true,
+          status: "SENT",
+          rawSummary: "Asked cancellation confirmation",
+        });
+        return {
+          messageId: sent.id,
+          text,
+          interactionId: interaction.id,
+        };
+      } catch {
+        /* fall through */
+      }
+    }
+
+    if (cancelData?.cancelled === false && cancelData?.reason === "NO_UPCOMING_APPOINTMENT") {
+      const text = `✦ Smrko AI\n\nYou don't have any upcoming appointments scheduled at ${input.tenant.clinicName}. Please let me know if you would like to book one!`;
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: text,
+        });
+        const interaction = await recordAiInteraction({
+          clinicId: input.tenant.clinicId,
+          conversationId: conversation.id,
+          patientId: conversation.patientId,
+          messageId: sent.id,
+          trigger: input.trigger,
+          intent: "APPOINTMENT_CANCEL",
+          model: "appointment-cancel-none",
+          classification: "NO_UPCOMING_APPOINTMENT",
+          safeToAutoReply: true,
+          status: "SENT",
+          rawSummary: "No upcoming appointment found to cancel",
+        });
+        return {
+          messageId: sent.id,
+          text,
+          interactionId: interaction.id,
+        };
+      } catch {
+        /* fall through */
+      }
+    }
+
+    if (cancelTool && !cancelTool.ok) {
+      const text = `✦ Smrko AI\n\nI couldn't locate or cancel that appointment. I've notified our care team to assist you.`;
+      await escalateToHuman({
+        tenant: input.tenant,
         conversationId: conversation.id,
         patientId: conversation.patientId,
-        messageId: sent.id,
-        trigger: input.trigger,
-        intent: "APPOINTMENT_CANCEL",
-        model: "appointment-cancel-confirm",
-        classification: "CANCEL_CONFIRM",
-        safeToAutoReply: true,
-        status: "SENT",
-        rawSummary: "Asked cancellation confirmation",
-      });
-      return {
-        messageId: sent.id,
-        text,
-        interactionId: interaction.id,
-      };
-    } catch {
-      /* fall through */
+        coupleId: conversation.coupleId,
+        reason: "APPOINTMENT_CANCEL_FAILED",
+      }).catch(() => undefined);
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: text,
+        });
+        return {
+          messageId: sent.id,
+          text,
+          handoff: true,
+          handoffReason: "APPOINTMENT_CANCEL_FAILED",
+        };
+      } catch {
+        /* fall through */
+      }
     }
   }
 
@@ -792,19 +850,24 @@ export async function runWhatsAppAiPipeline(input: {
     coupleId: conversation.coupleId,
   });
 
-  const knowledge = await retrieveKnowledgeArticles({
-    clinicId: input.tenant.clinicId,
-    query: input.patientMessage,
-    limit: 5,
-    specialtyHint: input.specialtyHint ?? inferSpecialtyHint(input.patientMessage),
-  });
-  console.log("[WhatsApp AI] knowledge retrieved", {
-    conversationId: conversation.id,
-    messageId: input.inboundMessageId ?? null,
-    hits: knowledge.length,
-    topScore: knowledge[0]?.score ?? 0,
-    topTitle: knowledge[0]?.title?.slice(0, 80) ?? null,
-  });
+  const rawKnowledge = isAppointmentIntent
+    ? []
+    : await retrieveKnowledgeArticles({
+        clinicId: input.tenant.clinicId,
+        query: input.patientMessage,
+        limit: 5,
+        specialtyHint: input.specialtyHint ?? inferSpecialtyHint(input.patientMessage),
+      });
+  const knowledge = rawKnowledge.filter((k) => (k.score ?? 0) > 0);
+  if (!isAppointmentIntent) {
+    console.log("[WhatsApp AI] knowledge retrieved", {
+      conversationId: conversation.id,
+      messageId: input.inboundMessageId ?? null,
+      hits: knowledge.length,
+      topScore: knowledge[0]?.score ?? 0,
+      topTitle: knowledge[0]?.title?.slice(0, 80) ?? null,
+    });
+  }
 
   const toolFacts = formatToolResultsForPrompt(toolResults);
   console.log("[WhatsApp AI] generating response", {

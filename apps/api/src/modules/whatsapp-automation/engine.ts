@@ -1564,7 +1564,7 @@ async function executeNode(
       let metaMediaId: string | null = null;
       if (docDoctorId) {
         const { getOrUploadDoctorMetaMediaId } = await import("./doctor-photos");
-        metaMediaId = await getOrUploadDoctorMetaMediaId(tenant, docDoctorId);
+        metaMediaId = await getOrUploadDoctorMetaMediaId(tenant, docDoctorId, docName);
       }
       const headerObj = metaMediaId
         ? { type: "image" as const, id: metaMediaId }
@@ -1807,6 +1807,14 @@ async function executeNode(
       const idemKey = `appt_flow_${execution.id}_${selectedSlotId}`;
       const effectivePatientId = execution.patientId || vars["patient.id"] || vars["patientId"] || null;
       const effectiveCoupleId = execution.coupleId || vars["couple.id"] || vars["coupleId"] || null;
+
+      console.log("[APPOINTMENT_CONFIRM]", {
+        executionId: execution.id,
+        patientId: effectivePatientId,
+        doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
+        slotId: selectedSlotId,
+      });
+
       const booked = await bookAppointmentFromSlot({
         tenant,
         conversationId: execution.conversationId,
@@ -1831,6 +1839,12 @@ async function executeNode(
       vars["appointment_date"] = booked.startsAt.slice(0, 10);
       vars["appointment_time"] = booked.startsAt.slice(11, 16);
       if (booked.doctorName) vars["doctor.name"] = booked.doctorName;
+
+      console.log("[APPOINTMENT_CREATED]", {
+        appointmentId: booked.appointmentId,
+        patientId: effectivePatientId,
+        doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
+      });
 
       return {
         output: {
@@ -2189,6 +2203,14 @@ async function executeNode(
           patch: { status: "OPEN", updatedAt: new Date().toISOString() },
         });
       }
+
+      await prisma.whatsAppFlowExecution.update({
+        where: { id: execution.id },
+        data: {
+          patientId: patient.id,
+          coupleId,
+        },
+      }).catch(() => undefined);
 
       const next = nextNodes(definition, node.id)[0];
       return {
