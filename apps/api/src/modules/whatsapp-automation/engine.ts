@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 import type { TenantContext } from "@smrkomed/database";
-import { prisma, writeTenantAuditLog } from "@smrkomed/database";
+import { prisma, writeTenantAuditLog, isSystemTenantUserId } from "@smrkomed/database";
 
 import { normalizeWhatsAppPhone, phonesMatch } from "../../integrations/providers/whatsapp/phone";
 
@@ -919,7 +919,8 @@ async function executeNode(
       };
     }
     case "SEND_TEXT": {
-      const body = String(node.config["body"] ?? node.config["text"] ?? "").trim();
+      const rawBody = String(node.config["body"] ?? node.config["text"] ?? "").trim();
+      const body = interpolateVariables(rawBody, vars).trim();
       const next = nextNodes(definition, node.id)[0];
       if (simulation) {
         return {
@@ -957,9 +958,20 @@ async function executeNode(
       if (!consent.ok) {
         return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
       }
+      console.log("[APPOINTMENT_CONFIRMATION_SENDING]", {
+        executionId: execution.id,
+        conversationId: execution.conversationId,
+        bodyPreview: body.slice(0, 100),
+      });
       const sendResult = await sendWhatsAppSessionText(tenant, {
         conversationId: execution.conversationId,
         body,
+      });
+      console.log("[APPOINTMENT_CONFIRMATION_SENT]", {
+        executionId: execution.id,
+        conversationId: execution.conversationId,
+        messageId: sendResult?.id,
+        providerMessageId: sendResult?.providerMessageId,
       });
       return {
         output: {
@@ -1021,7 +1033,10 @@ async function executeNode(
     case "CREATE_CARE_TASK":
     case "CREATE_TASK":
     case "ASSIGN_TASK": {
-      const title = String(node.config["title"] ?? "WhatsApp automation follow-up");
+      const rawTitle = String(node.config["title"] ?? "WhatsApp automation follow-up");
+      const title = interpolateVariables(rawTitle, vars);
+      const rawDesc = String(node.config["description"] ?? "Created by WhatsApp automation flow");
+      const description = interpolateVariables(rawDesc, vars);
       const priority = (String(node.config["priority"] ?? "NORMAL") as "LOW" | "NORMAL" | "HIGH") || "NORMAL";
       const assigneeId = typeof node.config["assigneeId"] === "string" ? node.config["assigneeId"] : null;
       if (simulation) {
@@ -1030,27 +1045,38 @@ async function executeNode(
           nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
         };
       }
-      const systemActor = tenant.userId === "system-worker" || !tenant.userId;
-      const task = await prisma.careTask.create({
-        data: {
-          clinicId: tenant.clinicId,
-          coupleId: execution.coupleId,
-          title,
-          description: String(node.config["description"] ?? "Created by WhatsApp automation flow"),
-          category: "WHATSAPP_AUTOMATION",
-          status: "WAITING",
-          priority,
-          ...(systemActor ? {} : { createdById: tenant.userId }),
-          ...(assigneeId ? { assignments: { create: { userId: assigneeId } } } : {}),
-        },
-      });
-      if (!systemActor) {
-        await audit(tenant, "whatsapp.flow.create_task", "CareTask", task.id, { executionId: execution.id });
+      const systemActor = !tenant.userId || isSystemTenantUserId(tenant.userId) || tenant.userId.startsWith("system-");
+      try {
+        const task = await prisma.careTask.create({
+          data: {
+            clinicId: tenant.clinicId,
+            coupleId: execution.coupleId,
+            title,
+            description,
+            category: "WHATSAPP_AUTOMATION",
+            status: "WAITING",
+            priority,
+            ...(systemActor ? {} : { createdById: tenant.userId }),
+            ...(assigneeId ? { assignments: { create: { userId: assigneeId } } } : {}),
+          },
+        });
+        if (!systemActor) {
+          await audit(tenant, "whatsapp.flow.create_task", "CareTask", task.id, { executionId: execution.id }).catch(() => undefined);
+        }
+        return {
+          output: { careTaskId: task.id },
+          nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        };
+      } catch (careTaskErr) {
+        console.error("[WhatsApp automation] Non-blocking care task creation error:", careTaskErr);
+        return {
+          output: {
+            careTaskSkipped: true,
+            reason: careTaskErr instanceof Error ? careTaskErr.message : String(careTaskErr),
+          },
+          nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        };
       }
-      return {
-        output: { careTaskId: task.id },
-        nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
-      };
     }
     case "ADD_TAG": {
       const tag = String(node.config["tag"] ?? "").trim();
@@ -1074,7 +1100,7 @@ async function executeNode(
     case "NOTIFY_STAFF": {
       const title = String(node.config["title"] ?? node.config["reason"] ?? "WhatsApp automation needs attention");
       const body = String(node.config["body"] ?? node.config["reason"] ?? "A patient conversation requires staff.");
-      const systemActor = tenant.userId === "system-worker" || !tenant.userId;
+      const systemActor = !tenant.userId || isSystemTenantUserId(tenant.userId) || tenant.userId.startsWith("system-");
       if (!simulation) {
         if (!systemActor) {
           await prisma.notification
@@ -1245,24 +1271,32 @@ async function executeNode(
           nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
         };
       }
-      const systemActor = tenant.userId === "system-worker" || !tenant.userId;
-      const task = await prisma.careTask.create({
-        data: {
-          clinicId: tenant.clinicId,
-          coupleId: execution.coupleId,
-          title: String(node.config["title"] ?? "Staff assignment"),
-          description: String(node.config["description"] ?? "Assigned by WhatsApp automation"),
-          category: "WHATSAPP_AUTOMATION",
-          status: "WAITING",
-          priority: "NORMAL",
-          ...(systemActor ? {} : { createdById: tenant.userId }),
-          assignments: { create: { userId: assigneeId } },
-        },
-      });
-      return {
-        output: { careTaskId: task.id, assigneeId },
-        nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
-      };
+      const systemActor = !tenant.userId || isSystemTenantUserId(tenant.userId) || tenant.userId.startsWith("system-");
+      try {
+        const task = await prisma.careTask.create({
+          data: {
+            clinicId: tenant.clinicId,
+            coupleId: execution.coupleId,
+            title: String(node.config["title"] ?? "Staff assignment"),
+            description: String(node.config["description"] ?? "Assigned by WhatsApp automation"),
+            category: "WHATSAPP_AUTOMATION",
+            status: "WAITING",
+            priority: "NORMAL",
+            ...(systemActor ? {} : { createdById: tenant.userId }),
+            assignments: { create: { userId: assigneeId } },
+          },
+        });
+        return {
+          output: { careTaskId: task.id, assigneeId },
+          nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        };
+      } catch (err) {
+        console.error("[WhatsApp automation] Non-blocking assign staff error:", err);
+        return {
+          output: { careTaskSkipped: true, reason: err instanceof Error ? err.message : String(err) },
+          nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
+        };
+      }
     }
     case "SEND_BUTTONS": {
       const rawBody = String(node.config["body"] ?? node.config["text"] ?? "").trim();
@@ -1836,14 +1870,26 @@ async function executeNode(
       }
 
       vars["appointment_id"] = booked.appointmentId;
+      vars["appointmentId"] = booked.appointmentId;
       vars["appointment_date"] = booked.startsAt.slice(0, 10);
       vars["appointment_time"] = booked.startsAt.slice(11, 16);
-      if (booked.doctorName) vars["doctor.name"] = booked.doctorName;
+      vars["appointment.date"] = booked.startsAt.slice(0, 10);
+      vars["appointment.time"] = booked.startsAt.slice(11, 16);
+      if (booked.doctorName) {
+        vars["doctor.name"] = booked.doctorName;
+        vars["doctor_name"] = booked.doctorName;
+      }
+      if (!vars["clinic.name"] && !vars["clinic_name"]) {
+        vars["clinic.name"] = tenant.clinicName || "our clinic";
+        vars["clinic_name"] = tenant.clinicName || "our clinic";
+      }
 
       console.log("[APPOINTMENT_CREATED]", {
         appointmentId: booked.appointmentId,
         patientId: effectivePatientId,
         doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
+        appointmentDate: vars["appointment.date"],
+        appointmentTime: vars["appointment.time"],
       });
 
       return {

@@ -355,4 +355,170 @@ test("15. Deterministic intent routing priority ensures no silent disagreements"
   assert.notEqual(bookWithDoc.intent, "GENERAL_INFORMATION");
 });
 
+test("16. Full appointment confirmation chain with system-webhook tenant executes n_book -> n_task -> n_confirm_send without FK violation", async () => {
+  const clinic = await prisma.clinic.findFirst();
+  if (!clinic) return;
+
+  process.env["WHATSAPP_ACCESS_TOKEN"] = "test_meta_token";
+  process.env["WHATSAPP_PHONE_NUMBER_ID"] = "10987654321";
+
+  const { setWhatsAppGraphFetchForTests } = await import("./integrations/providers/whatsapp/graph");
+  const testWamid = `wamid.CONFIRM_${Date.now()}`;
+  setWhatsAppGraphFetchForTests(async (url, init) => {
+    return new Response(
+      JSON.stringify({
+        messaging_product: "whatsapp",
+        contacts: [{ input: "919876543210", wa_id: "919876543210" }],
+        messages: [{ id: testWamid }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  });
+
+  const integration = await prisma.integration.upsert({
+    where: { clinicId_provider: { clinicId: clinic.id, provider: "WHATSAPP_CLOUD" } },
+    create: {
+      organizationId: clinic.organizationId,
+      clinicId: clinic.id,
+      provider: "WHATSAPP_CLOUD",
+      status: "ACTIVE",
+    },
+    update: { status: "ACTIVE" },
+  });
+
+  const existingAcc = await prisma.whatsAppAccount.findFirst({
+    where: { clinicId: clinic.id, integrationId: integration.id },
+  });
+  if (!existingAcc) {
+    await prisma.whatsAppAccount.create({
+      data: {
+        clinicId: clinic.id,
+        integrationId: integration.id,
+        phoneNumberId: "10987654321",
+        displayPhoneNumber: "919876543210",
+        isActive: true,
+      },
+    });
+  }
+
+  const tenant = {
+    userId: "system-webhook",
+    role: "CLINIC_ADMIN" as const,
+    clinicId: clinic.id,
+    organizationId: clinic.organizationId,
+    clinicName: clinic.name,
+    organizationName: "",
+  };
+
+  const phone = `+9198765${Date.now().toString().slice(-5)}`;
+  const conv = await prisma.conversation.create({
+    data: {
+      clinicId: clinic.id,
+      contactPhone: phone,
+      channel: "WHATSAPP",
+      status: "OPEN",
+    },
+  });
+
+  const flow = await prisma.whatsAppFlow.create({
+    data: {
+      clinicId: clinic.id,
+      name: "Test Flow Full Confirmation Chain",
+      status: "ACTIVE",
+      triggerType: "INCOMING_WHATSAPP",
+      definition: JSON.stringify({
+        nodes: [
+          { id: "n_confirm", type: "SEND_BUTTONS", label: "Confirm", config: { waitForReply: true } },
+          { id: "n_book", type: "BOOK_APPOINTMENT", label: "Book Appointment", config: {} },
+          { id: "n_task", type: "CREATE_TASK", label: "Create Task", config: { title: "Follow-up for {{doctor.name}} ({{appointment.date}})" } },
+          { id: "n_confirm_send", type: "SEND_TEXT", label: "Send Confirmation", config: { body: "Confirmed with Dr. {{doctor.name}} on {{appointment.date}} at {{appointment.time}} at {{clinic.name}}" } },
+          { id: "node_end", type: "END", label: "End", config: {} },
+        ],
+        edges: [
+          { id: "e1", source: "n_confirm", target: "n_book", branch: "appt_confirm" },
+          { id: "e2", source: "n_book", target: "n_task" },
+          { id: "e3", source: "n_task", target: "n_confirm_send" },
+          { id: "e4", source: "n_confirm_send", target: "node_end" },
+        ],
+      }),
+    },
+  });
+
+  const tomorrow = new Date(Date.now() + 86400000 * 2);
+  // Ensure time is within clinic working hours (e.g. 11:00 AM)
+  tomorrow.setHours(11, 0, 0, 0);
+  const testDoctor = `Dr. ConfirmTest ${Date.now().toString().slice(-4)}`;
+  const { encodeSlotId } = await import("./modules/appointments/availability");
+  const validSlotId = encodeSlotId({
+    startMs: tomorrow.getTime(),
+    durationMin: 30,
+    appointmentType: "CONSULTATION",
+    doctorName: testDoctor,
+  });
+
+  const execution = await prisma.whatsAppFlowExecution.create({
+    data: {
+      clinicId: clinic.id,
+      flowId: flow.id,
+      conversationId: conv.id,
+      status: "WAITING",
+      triggerType: "INCOMING_WHATSAPP",
+      idempotencyKey: `test_chain_${Date.now()}`,
+      currentNodeId: "n_confirm",
+      context: JSON.stringify({
+        waitKind: "reply",
+        vars: {
+          selectedSlotId: validSlotId,
+          "doctor.name": testDoctor,
+          selectedDate: tomorrow.toISOString().slice(0, 10),
+          "appointment.date": tomorrow.toISOString().slice(0, 10),
+          "appointment.time": "11:00 AM",
+        },
+      }),
+    },
+  });
+
+  const { resumeWaitForReplyExecutions } = await import("./modules/whatsapp-automation/inbound-dispatch");
+  const resumed = await resumeWaitForReplyExecutions({
+    tenant,
+    conversationId: conv.id,
+    inboundVars: { message_text: "appt_confirm" },
+  });
+
+  assert.ok(resumed.length > 0);
+  assert.equal(resumed[0]?.executionId, execution.id);
+  assert.equal(resumed[0]?.status, "COMPLETED");
+
+  const finalExec = await prisma.whatsAppFlowExecution.findUnique({ where: { id: execution.id } });
+  assert.equal(finalExec?.status, "COMPLETED");
+
+  const ctxObj = typeof finalExec?.context === "string" ? JSON.parse(finalExec.context) : (finalExec?.context as Record<string, any>);
+  const apptId = ctxObj?.vars?.["appointment_id"];
+  assert.ok(apptId, "appointment_id must be populated in flow execution vars");
+
+  const createdAppt = await prisma.appointment.findUnique({
+    where: { id: apptId },
+  });
+  assert.ok(createdAppt, "Appointment record must exist in DB");
+  assert.equal(createdAppt.status, "CONFIRMED");
+
+  const task = await prisma.careTask.findFirst({
+    where: { clinicId: clinic.id, category: "WHATSAPP_AUTOMATION" },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.ok(task, "CareTask must exist");
+  assert.equal(task.createdById, null, "createdById must be null for system-webhook tenant");
+
+  const confirmationMsg = await prisma.message.findFirst({
+    where: {
+      conversationId: conv.id,
+      direction: "OUTBOUND",
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.ok(confirmationMsg, "Outbound confirmation WhatsApp message must be delivered and stored");
+  assert.ok(confirmationMsg.content.includes(testDoctor));
+  assert.equal(confirmationMsg.providerMessageId, testWamid);
+});
+
 

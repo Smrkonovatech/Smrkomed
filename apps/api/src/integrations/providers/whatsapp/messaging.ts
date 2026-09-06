@@ -1,4 +1,4 @@
-import { prisma, writeAuditLog, type TenantContext } from "@smrkomed/database";
+import { prisma, writeAuditLog, isSystemTenantUserId, type TenantContext } from "@smrkomed/database";
 
 import { IntegrationError } from "../../core/errors";
 import { credentialService } from "../../credentials/service";
@@ -22,8 +22,10 @@ const perUser = createMemoryRateLimiter(10, 60_000);
 const perClinic = createMemoryRateLimiter(30, 60_000);
 
 function assertRateLimit(userId: string, clinicId: string) {
-  if (!perUser.consume(`wa-user:${userId}`).allowed) {
-    throw new IntegrationError("PROVIDER_RATE_LIMITED", "Too many WhatsApp send attempts.", 429);
+  if (userId && !isSystemTenantUserId(userId) && !userId.startsWith("system-")) {
+    if (!perUser.consume(`wa-user:${userId}`).allowed) {
+      throw new IntegrationError("PROVIDER_RATE_LIMITED", "Too many WhatsApp send attempts.", 429);
+    }
   }
   if (!perClinic.consume(`wa-clinic:${clinicId}`).allowed) {
     throw new IntegrationError("PROVIDER_RATE_LIMITED", "Clinic WhatsApp send limit reached.", 429);

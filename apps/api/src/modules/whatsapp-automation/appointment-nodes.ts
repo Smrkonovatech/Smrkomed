@@ -111,11 +111,11 @@ export function interpolateVariables(template: string, vars: Record<string, stri
     if (lowerSnake !== undefined) return lowerSnake;
 
     // Common abbreviations
-    if (key === "patient.firstName" || key === "patient.name") return vars["patient_name"] || vars["first_name"] || "there";
-    if (key === "clinic.name") return vars["clinic_name"] || "our clinic";
-    if (key === "doctor.name") return vars["doctor_name"] || "the doctor";
-    if (key === "appointment.date") return vars["appointment_date"] || vars["selected_date"] || "";
-    if (key === "appointment.time") return vars["appointment_time"] || vars["selected_time"] || "";
+    if (key === "patient.firstName" || key === "patient.name") return vars["patient_name"] || vars["patient.name"] || vars["first_name"] || "there";
+    if (key === "clinic.name") return vars["clinic.name"] || vars["clinic_name"] || "our clinic";
+    if (key === "doctor.name") return vars["doctor.name"] || vars["doctor_name"] || "the doctor";
+    if (key === "appointment.date") return vars["appointment.date"] || vars["appointment_date"] || vars["selected_date"] || "";
+    if (key === "appointment.time") return vars["appointment.time"] || vars["selected_time"] || vars["appointment_time"] || "";
 
     return "";
   });
