@@ -682,7 +682,10 @@ test("26. confirmation", () => {
 });
 
 test("27. appointment creation", async () => {
-  const futureMs = Date.now() + 86_400_000 * 3;
+  const future = new Date(Date.now() + 86_400_000 * 3);
+  future.setHours(10, 0, 0, 0);
+  if (future.getDay() === 0) future.setDate(future.getDate() + 1);
+  const futureMs = future.getTime();
   const slotId = encodeSlotId({
     startMs: futureMs,
     durationMin: 30,
@@ -711,7 +714,10 @@ test("27. appointment creation", async () => {
 });
 
 test("28. Care Task creation", async () => {
-  const futureMs = Date.now() + 86_400_000 * 4;
+  const future = new Date(Date.now() + 86_400_000 * 4);
+  future.setHours(10, 0, 0, 0);
+  if (future.getDay() === 0) future.setDate(future.getDate() + 1);
+  const futureMs = future.getTime();
   const slotId = encodeSlotId({
     startMs: futureMs,
     durationMin: 30,
@@ -752,7 +758,10 @@ test("28. Care Task creation", async () => {
 });
 
 test("29. duplicate confirmation is idempotent", async () => {
-  const futureMs = Date.now() + 86_400_000 * 5;
+  const future = new Date(Date.now() + 86_400_000 * 5);
+  future.setHours(10, 0, 0, 0);
+  if (future.getDay() === 0) future.setDate(future.getDate() + 1);
+  const futureMs = future.getTime();
   const slotId = encodeSlotId({
     startMs: futureMs,
     durationMin: 30,

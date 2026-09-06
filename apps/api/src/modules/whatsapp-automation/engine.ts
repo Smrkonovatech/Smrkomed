@@ -28,6 +28,7 @@ import {
   bookAppointmentFromSlot,
   classifyPatientIntent,
   escalateToHuman,
+  getDoctorPhotoUrl,
 } from "./appointment-nodes";
 import { sendPatientDocumentOverWhatsApp } from "../../integrations/providers/whatsapp/outbound-media";
 import {
@@ -1324,11 +1325,26 @@ async function executeNode(
         return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
       }
 
+      const docPhoto = vars["doctor.photoUrl"] || (vars["doctor.id"] ? getDoctorPhotoUrl(vars["doctor.id"]) : null);
+      const isImageHeader =
+        node.config["headerType"] === "image" ||
+        Boolean(header && (header.startsWith("http://") || header.startsWith("https://")));
+
+      let headerPayload: { type: "text"; text: string } | { type: "image"; link?: string; id?: string } | undefined = undefined;
+      if (isImageHeader) {
+        const link = (header && (header.startsWith("http://") || header.startsWith("https://"))) ? header : (docPhoto || undefined);
+        if (link) {
+          headerPayload = { type: "image", link };
+        }
+      } else if (header) {
+        headerPayload = { type: "text", text: header.slice(0, 60) };
+      }
+
       const sendResult = await sendWhatsAppInteractiveButtons(tenant, {
         conversationId: execution.conversationId,
         body: body || "Please choose an option:",
         buttons: buttons.length > 0 ? buttons : [{ id: "btn_ok", title: "OK" }],
-        ...(header ? { header: { type: "text" as const, text: header } } : {}),
+        ...(headerPayload ? { header: headerPayload } : {}),
         ...(footer ? { footer } : {}),
       });
 
@@ -1465,6 +1481,19 @@ async function executeNode(
         ...(title ? { headerText: title } : {}),
         ...(footer ? { footerText: footer } : {}),
       });
+
+      if (dataSource === "slots") {
+        console.log("[APPOINTMENT_SLOTS_SENT]", {
+          clinicId: tenant.clinicId,
+          executionId: execution.id,
+          nodeId: node.id,
+          conversationId: execution.conversationId,
+          selectedDate: vars["selectedDate"] || vars["appointment.date"] || null,
+          sectionsCount: sections.length,
+          totalRows: sections.reduce((acc, s) => acc + s.rows.length, 0),
+          wamid: (sendResult as any)?.providerMessageId || null,
+        });
+      }
 
       const shouldWait = Boolean(node.config["waitForReply"]);
       return {
@@ -1612,16 +1641,54 @@ async function executeNode(
       };
     }
     case "GET_AVAILABLE_SLOTS": {
-      const date = vars["selectedDate"] || null;
-      const res = await getAvailableAppointmentSlots({
+      const date = vars["selectedDate"] || vars["selected_date"] || vars["appointment.date"] || null;
+      console.log("[APPOINTMENT_SLOT_LOOKUP_STARTED]", {
         clinicId: tenant.clinicId,
+        executionId: execution.id,
+        nodeId: node.id,
+        doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
         doctorName: vars["doctor.name"] || null,
-        preferredDate: date,
-        days: 1,
+        selectedDate: date,
       });
+
+      let res;
+      try {
+        res = await getAvailableAppointmentSlots({
+          clinicId: tenant.clinicId,
+          doctorName: vars["doctor.name"] || null,
+          preferredDate: date,
+          days: 1,
+        });
+      } catch (err) {
+        console.error("[APPOINTMENT_SLOT_LOOKUP_ERROR]", {
+          clinicId: tenant.clinicId,
+          executionId: execution.id,
+          nodeId: node.id,
+          selectedDate: date,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        throw err;
+      }
+
+      console.log("[APPOINTMENT_SLOT_LOOKUP_RESULT]", {
+        clinicId: tenant.clinicId,
+        executionId: execution.id,
+        nodeId: node.id,
+        doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
+        selectedDate: date,
+        slotCount: res.slots.length,
+        timezone: res.timezone,
+        firstSlot: res.slots[0]?.startTime || null,
+        lastSlot: res.slots[res.slots.length - 1]?.startTime || null,
+      });
+
       const segmented = segmentSlots(res.slots);
       vars["_availableSlotsJson"] = JSON.stringify(res.slots);
       vars["availableSlotsCount"] = String(res.slots.length);
+      if (date) {
+        vars["selectedDate"] = date;
+        vars["appointment.date"] = date;
+      }
       const branch = res.slots.length === 0 ? "no_slots" : "default";
       const next = nextNodes(definition, node.id, branch)[0] ?? nextNodes(definition, node.id)[0];
       return {
@@ -1637,7 +1704,20 @@ async function executeNode(
       const doctorName = vars["doctor.name"] || vars["doctor_name"] || "Specialist";
       const specialty = vars["doctor.specialty"] || "";
       const date = vars["selectedDate"] || vars["appointment.date"] || "Upcoming";
-      const time = vars["selectedTime"] || vars["appointment.time"] || "Morning";
+      let time = vars["selectedTime"] || vars["appointment.time"] || "Morning";
+
+      if (vars["selectedSlotId"] && (!vars["selectedTime"] || vars["selectedTime"] === "Morning")) {
+        const decoded = decodeSlotId(vars["selectedSlotId"]);
+        if (decoded) {
+          const d = new Date(decoded.startMs);
+          const hours = d.getHours();
+          const minutes = String(d.getMinutes()).padStart(2, "0");
+          const ampm = hours >= 12 ? "PM" : "AM";
+          const h12 = hours % 12 || 12;
+          time = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
+        }
+      }
+
       const clinicRow = tenant.clinicId
         ? await prisma.clinic.findUnique({ where: { id: tenant.clinicId } })
         : null;

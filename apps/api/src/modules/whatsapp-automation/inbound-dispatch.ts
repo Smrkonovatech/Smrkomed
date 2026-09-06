@@ -11,6 +11,7 @@ import { runExecution } from "./engine";
 import { dispatchWhatsAppTrigger } from "./triggers";
 import { mergeExecutionContext, parseExecutionContext } from "./context";
 import { nextNodes, parseDefinition } from "./validate";
+import { decodeSlotId } from "../appointments/availability";
 
 /** Start work immediately (do not wait for setImmediate — more reliable on Railway). */
 function scheduleBackground(task: () => Promise<void>) {
@@ -58,21 +59,70 @@ export function buildIncomingWhatsAppVars(input: {
     inbound_at: input.timestampIso,
     ...(text.startsWith("appt_doctor_")
       ? {
-          selectedDoctorId: text.replace("appt_doctor_", ""),
-          selected_doctor_id: text.replace("appt_doctor_", ""),
+          selectedDoctorId: text.replace("appt_doctor_", "").trim(),
+          selected_doctor_id: text.replace("appt_doctor_", "").trim(),
         }
       : {}),
     ...(text.startsWith("appt_date_")
-      ? {
-          selectedDate: text.replace("appt_date_", ""),
-          selected_date: text.replace("appt_date_", ""),
-        }
+      ? (() => {
+          const rawDate = text.replace("appt_date_", "").trim();
+          let normalized = rawDate;
+          const match = rawDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+          if (match && match[1] && match[2] && match[3]) {
+            normalized = `${match[1]}-${match[2]}-${match[3]}`;
+          }
+          console.log("[APPOINTMENT_DATE_SELECTED]", {
+            clinicId: input.clinicId,
+            conversationId: input.conversationId,
+            rawDate,
+            normalizedDate: normalized,
+          });
+          console.log("[APPOINTMENT_DATE_NORMALIZED]", {
+            clinicId: input.clinicId,
+            rawDate,
+            normalizedDate: normalized,
+          });
+          return {
+            selectedDate: normalized,
+            selected_date: normalized,
+            "appointment.date": normalized,
+            appointment_date: normalized,
+          };
+        })()
       : {}),
     ...(text.startsWith("appt_slot_")
-      ? {
-          selectedSlotId: text.replace("appt_slot_", ""),
-          selected_slot_id: text.replace("appt_slot_", ""),
-        }
+      ? (() => {
+          const slotId = text.replace("appt_slot_", "").trim();
+          const decoded = decodeSlotId(slotId);
+          let timeLabel = "";
+          let dateStr = "";
+          if (decoded) {
+            const d = new Date(decoded.startMs);
+            const hours = d.getHours();
+            const minutes = String(d.getMinutes()).padStart(2, "0");
+            const ampm = hours >= 12 ? "PM" : "AM";
+            const h12 = hours % 12 || 12;
+            timeLabel = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
+            const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+            const month = d.toLocaleDateString("en-US", { month: "short" });
+            const day = d.getDate();
+            dateStr = `${weekday}, ${day} ${month}`;
+          }
+          return {
+            selectedSlotId: slotId,
+            selected_slot_id: slotId,
+            ...(timeLabel
+              ? {
+                  selectedTime: timeLabel,
+                  selected_time: timeLabel,
+                  "appointment.time": timeLabel,
+                  appointment_time: timeLabel,
+                }
+              : {}),
+            ...(dateStr ? { selectedDateLabel: dateStr, "appointment.dateLabel": dateStr } : {}),
+            ...(decoded?.doctorName ? { "doctor.name": decoded.doctorName } : {}),
+          };
+        })()
       : {}),
     ...(text === "appt_confirm" ? { appointmentConfirmed: "true" } : {}),
     ...(text === "appt_cancel" ? { appointmentCancelled: "true" } : {}),
@@ -160,14 +210,30 @@ export async function resumeWaitForReplyExecutions(input: {
 
     const def = parseDefinition(flow.definition);
     const waitId = row.currentNodeId;
+    const replyAction = input.inboundVars?.["message_text"]?.trim();
+    const branchCandidates = (waitId && replyAction) ? nextNodes(def, waitId, replyAction) : [];
     const nextId =
-      ctx.waitNextNodeId ?? (waitId ? nextNodes(def, waitId)[0]?.id : null) ?? row.currentNodeId;
+      (branchCandidates[0]?.id) ??
+      ctx.waitNextNodeId ??
+      (waitId ? nextNodes(def, waitId)[0]?.id : null) ??
+      row.currentNodeId;
 
-    const mergedVars = {
+    const mergedVars: Record<string, string> = {
       ...(ctx.vars ?? {}),
       ...(input.inboundVars ?? {}),
       patient_replied: "true",
     };
+
+    console.log("[APPOINTMENT_EXECUTION_RESUME]", {
+      clinicId: input.tenant.clinicId,
+      executionId: row.id,
+      currentNodeId: waitId,
+      nextNodeId: nextId,
+      replyAction: replyAction ?? null,
+      doctorId: mergedVars["doctor.id"] || mergedVars["selectedDoctorId"] || null,
+      selectedDate: mergedVars["selectedDate"] || null,
+      selectedSlotId: mergedVars["selectedSlotId"] || null,
+    });
 
     await prisma.whatsAppFlowExecution.update({
       where: { id: row.id },
@@ -186,6 +252,7 @@ export async function resumeWaitForReplyExecutions(input: {
         }),
       },
     });
+
 
     try {
       const ran = await runExecution(input.tenant, row.id);

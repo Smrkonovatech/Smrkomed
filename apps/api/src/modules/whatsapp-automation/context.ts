@@ -23,7 +23,16 @@ export const DEFAULT_MAX_RETRIES = 3;
 export const LOCK_TTL_MS = 120_000;
 
 export function parseExecutionContext(raw: unknown): ExecutionContext {
-  if (!raw || typeof raw !== "object") return {};
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return { ...(parsed as ExecutionContext) };
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw !== "object") return {};
   return { ...(raw as ExecutionContext) };
 }
 

@@ -94,15 +94,32 @@ export async function getAvailableAppointmentSlots(input: {
   const timezone = settings.timezone || "Asia/Kolkata";
   const durationMin = input.durationMin ?? 30;
   const limit = Math.min(input.limit ?? 12, 24);
-  const days = Math.min(input.days ?? (input.preferredDate ? 14 : 7), 21);
+
+  const prefStr = input.preferredDate ? input.preferredDate.slice(0, 10) : null;
+  const now = new Date();
+  let baseDate: Date;
+  let scanDays: number;
+
+  if (prefStr && /^\d{4}-\d{2}-\d{2}$/.test(prefStr)) {
+    const [y, m, d] = prefStr.split("-").map(Number);
+    baseDate = new Date(y!, m! - 1, d!, 0, 0, 0, 0);
+    scanDays = Math.min(input.days ?? 1, 21);
+  } else if (input.preferredDate) {
+    const parsed = new Date(input.preferredDate);
+    baseDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+    scanDays = Math.min(input.days ?? 1, 21);
+  } else {
+    baseDate = new Date();
+    scanDays = Math.min(input.days ?? 7, 21);
+  }
 
   const clinic = await prisma.clinic.findUnique({
     where: { id: input.clinicId },
     select: { name: true, address: true },
   });
 
-  const rangeStart = new Date();
-  const rangeEnd = new Date(Date.now() + days * 86_400_000);
+  const rangeStart = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0, 0);
+  const rangeEnd = new Date(baseDate.getTime() + (scanDays + 1) * 86_400_000);
 
   const existing = await prisma.appointment.findMany({
     where: {
@@ -119,19 +136,16 @@ export async function getAvailableAppointmentSlots(input: {
   const appointmentType = (input.appointmentType ?? "Consultation").trim() || "Consultation";
   const doctorName = input.doctorName?.trim() || null;
   const slots: AppointmentSlot[] = [];
-  const now = new Date();
 
-  for (let dayOffset = 0; dayOffset < days && slots.length < limit; dayOffset++) {
-    const day = new Date(now.getTime() + dayOffset * 86_400_000);
-    if (input.preferredDate) {
-      const pref = input.preferredDate.slice(0, 10);
+  for (let dayOffset = 0; dayOffset < scanDays && slots.length < limit; dayOffset++) {
+    const day = new Date(baseDate.getTime() + dayOffset * 86_400_000);
+    if (prefStr && scanDays > 1) {
       const dayIso = day.toISOString().slice(0, 10);
-      // Preferred date filter: allow same calendar day in local approx via ISO date match on constructed local
       const localY = day.getFullYear();
       const localM = String(day.getMonth() + 1).padStart(2, "0");
       const localD = String(day.getDate()).padStart(2, "0");
       const localIso = `${localY}-${localM}-${localD}`;
-      if (pref !== localIso && pref !== dayIso) continue;
+      if (prefStr !== localIso && prefStr !== dayIso) continue;
     }
 
     const key = DAY_KEYS[day.getDay()]!;

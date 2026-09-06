@@ -68,4 +68,25 @@ export const publicLeadRoutes = new Hono<AppEnv>()
   .post("/leads/adapters/:provider", async (c) => {
     getLeadSourceAdapter(c.req.param("provider"));
     throw new HttpError(501, "NOT_IMPLEMENTED", "This lead adapter is not implemented.");
+  })
+  .get("/doctors/:doctorId/photo", async (c) => {
+    const doctorId = c.req.param("doctorId");
+    const { resolveDoctorPhotoAsset, getDoctorAssetsDir } = await import("../whatsapp-automation/doctor-photos");
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const asset = resolveDoctorPhotoAsset(doctorId);
+    const assetsDir = getDoctorAssetsDir();
+    const filePath = path.join(assetsDir, asset.filename);
+
+    if (!fs.existsSync(filePath)) {
+      throw new HttpError(404, "RESOURCE_NOT_FOUND", "Doctor photo not found.");
+    }
+
+    const fileBuffer = await fs.promises.readFile(filePath);
+    return c.body(fileBuffer, 200, {
+      "Content-Type": asset.contentType,
+      "Cache-Control": "public, max-age=86400",
+    });
   });
+

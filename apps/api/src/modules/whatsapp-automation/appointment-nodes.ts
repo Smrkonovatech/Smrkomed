@@ -26,8 +26,10 @@ export type ClinicDoctor = {
   photoUrl?: string | null;
 };
 
-// High quality, medical-safe portrait demo images
-const DEMO_DOCTORS: ClinicDoctor[] = [
+import { getDoctorPhotoUrl, resolveDoctorPhotoAsset } from "./doctor-photos";
+
+// High quality, medical-safe portrait demo images strictly doctor-id mapped
+export const DEMO_DOCTORS: ClinicDoctor[] = [
   {
     id: "doc_ananya",
     name: "Dr. Ananya Rao",
@@ -35,7 +37,7 @@ const DEMO_DOCTORS: ClinicDoctor[] = [
     experience: "14+ years experience",
     bio: "MBBS, MD, Fellowship in Reproductive Medicine. Specialises in personalised IVF and FET protocols with compassionate care.",
     languages: ["English", "Hindi", "Kannada"],
-    photoUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=400",
+    photoUrl: getDoctorPhotoUrl("doc_ananya"),
   },
   {
     id: "doc_rahul",
@@ -44,7 +46,7 @@ const DEMO_DOCTORS: ClinicDoctor[] = [
     experience: "11+ years experience",
     bio: "MBBS, MS, Fellowship in Andrology. Focused on male fertility evaluation, ICSI, and reproductive health.",
     languages: ["English", "Hindi"],
-    photoUrl: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=400",
+    photoUrl: getDoctorPhotoUrl("doc_rahul"),
   },
   {
     id: "doc_priya",
@@ -53,7 +55,7 @@ const DEMO_DOCTORS: ClinicDoctor[] = [
     experience: "9+ years experience",
     bio: "MBBS, DNB (OBGYN). Expert in PCOS management, ovulation induction, and recurrent implantation failure.",
     languages: ["English", "Malayalam", "Tamil"],
-    photoUrl: "https://images.unsplash.com/photo-1594824813581-2a075677c3a0?auto=format&fit=crop&q=80&w=400",
+    photoUrl: getDoctorPhotoUrl("doc_priya"),
   },
 ];
 
@@ -74,15 +76,15 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
 
   if (memberships.length > 0) {
     return memberships.map((m, idx) => {
-      const demo = DEMO_DOCTORS[idx % DEMO_DOCTORS.length];
+      const demo = DEMO_DOCTORS[idx % DEMO_DOCTORS.length]!;
       return {
         id: m.userId,
         name: m.user.name.startsWith("Dr.") ? m.user.name : `Dr. ${m.user.name}`,
-        specialty: m.user.title || demo?.specialty || "Fertility Specialist",
-        experience: demo?.experience || "10+ years experience",
-        bio: demo?.bio || "Compassionate, personalised reproductive medicine.",
-        languages: demo?.languages || ["English", "Hindi"],
-        photoUrl: demo?.photoUrl || null,
+        specialty: m.user.title || demo.specialty || "Fertility Specialist",
+        experience: demo.experience || "10+ years experience",
+        bio: demo.bio || "Compassionate, personalised reproductive medicine.",
+        languages: demo.languages || ["English", "Hindi"],
+        photoUrl: getDoctorPhotoUrl(m.userId),
       };
     });
   }
@@ -177,9 +179,13 @@ export function segmentSlots(slots: AppointmentSlot[]): {
     }
   }
 
+  // Meta WhatsApp list allows up to 10 rows maximum across all sections
+  const morningTake = Math.min(morning.length, afternoon.length > 0 ? (afternoon.length < 5 ? 10 - afternoon.length : 5) : 10);
+  const afternoonTake = Math.min(afternoon.length, 10 - morningTake);
+
   return {
-    morning: morning.slice(0, 5),
-    afternoon: afternoon.slice(0, 5),
+    morning: morning.slice(0, morningTake),
+    afternoon: afternoon.slice(0, afternoonTake),
   };
 }
 
@@ -236,4 +242,7 @@ export {
   bookAppointmentFromSlot,
   classifyPatientIntent,
   escalateToHuman,
+  getDoctorPhotoUrl,
+  resolveDoctorPhotoAsset,
 };
+
