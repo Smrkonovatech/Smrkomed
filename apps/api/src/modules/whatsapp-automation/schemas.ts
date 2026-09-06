@@ -58,20 +58,34 @@ export const listFlowsQuery = z.object({
   q: z.string().max(120).optional(),
 });
 
+const emptyStringToUndefined = (val: unknown) =>
+  typeof val === "string" && val.trim() === "" ? undefined : val;
+
 export const testFlowSchema = z.object({
-  patientId: z.string().optional(),
-  coupleId: z.string().optional(),
-  conversationId: z.string().optional(),
-  vars: z.record(z.string(), z.string()).optional(),
+  patientId: z.preprocess(emptyStringToUndefined, z.string().optional()),
+  coupleId: z.preprocess(emptyStringToUndefined, z.string().optional()),
+  conversationId: z.preprocess(emptyStringToUndefined, z.string().optional()),
+  vars: z.record(z.string(), z.any()).optional(),
   simulateBranch: z.enum(["yes", "no"]).optional(),
-  /** TEST-only simulated domain event context. */
-  simulateEvent: z
-    .enum(["none", "incoming_whatsapp", "appointment", "care_loop"])
-    .optional()
-    .default("none"),
-  mode: z.enum(["SIMULATION", "LIVE_WHATSAPP"]).optional().default("SIMULATION"),
-  recipientPhone: z.string().max(32).optional(),
+  /** Simulated or live test trigger event (e.g. APPOINTMENT_REQUEST, INCOMING_WHATSAPP, CARE_LOOP, NONE) */
+  event: z.preprocess(emptyStringToUndefined, z.string().max(80).optional()),
+  simulateEvent: z.preprocess(emptyStringToUndefined, z.string().max(80).optional()),
+  mode: z.preprocess(
+    (val) => {
+      if (typeof val === "string") {
+        const upper = val.toUpperCase().trim();
+        if (upper === "SIMULATOR" || upper === "SIMULATION") return "SIMULATION";
+        if (upper === "LIVE" || upper === "LIVE_WHATSAPP") return "LIVE_WHATSAPP";
+      }
+      return val;
+    },
+    z.enum(["SIMULATION", "LIVE_WHATSAPP"]).optional().default("SIMULATION"),
+  ),
+  recipientPhone: z.preprocess(emptyStringToUndefined, z.string().max(40).optional()),
+  phoneNumber: z.preprocess(emptyStringToUndefined, z.string().max(40).optional()),
+  confirmed: z.boolean().optional(),
 });
+
 
 export const manualTriggerSchema = z.object({
   patientId: z.string().optional(),

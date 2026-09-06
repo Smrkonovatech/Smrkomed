@@ -62,6 +62,7 @@ import {
   processCampaignBatch,
 } from "./campaigns";
 import { sendWhatsAppSessionText } from "../../integrations/providers/whatsapp/messaging";
+import { normalizeWhatsAppPhone, maskPhone } from "../../integrations/providers/whatsapp/phone";
 import {
   retryWhatsAppSessionMedia,
   sendPatientDocumentOverWhatsApp,
@@ -640,7 +641,37 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
 
     const mode = body.mode ?? "SIMULATION";
 
+    // Resolve event cleanly
+    const rawEvent = (body.event || body.simulateEvent || "none").toLowerCase().trim();
+    let normalizedEvent: "none" | "incoming_whatsapp" | "appointment" | "care_loop" = "none";
+
+    if (["none", ""].includes(rawEvent)) {
+      normalizedEvent = "none";
+    } else if (["incoming_whatsapp", "incoming", "whatsapp", "inbound"].includes(rawEvent)) {
+      normalizedEvent = "incoming_whatsapp";
+    } else if (
+      ["appointment", "appointment_request", "appointment_booking", "booking"].includes(rawEvent)
+    ) {
+      normalizedEvent = "appointment";
+    } else if (["care_loop", "care_task", "care"].includes(rawEvent)) {
+      normalizedEvent = "care_loop";
+    } else {
+      throw new HttpError(
+        422,
+        "VALIDATION_ERROR",
+        `Invalid test request: event "${body.event || body.simulateEvent}" is invalid. Expected APPOINTMENT_REQUEST, INCOMING_WHATSAPP, CARE_LOOP, or NONE.`,
+      );
+    }
+
     if (mode === "LIVE_WHATSAPP") {
+      if (!body.confirmed) {
+        throw new HttpError(
+          422,
+          "CONFIRMATION_REQUIRED",
+          "Live test requires explicit safety confirmation (confirmed: true) before sending a real WhatsApp message.",
+        );
+      }
+
       const activeAccount = await prisma.whatsAppAccount.findFirst({
         where: { clinicId: tenant.clinicId, isActive: true },
       });
@@ -653,24 +684,35 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         );
       }
 
-      let recipientPhone = body.recipientPhone?.trim();
+      let rawPhone = (body.recipientPhone || body.phoneNumber)?.trim();
       let resolvedPatientId = body.patientId;
-      if (resolvedPatientId && !recipientPhone) {
+
+      if (resolvedPatientId) {
         const p = await prisma.patient.findFirst({
           where: { id: resolvedPatientId, clinicId: tenant.clinicId },
-          select: { phone: true, id: true },
+          select: { phone: true, id: true, firstName: true, lastName: true },
         });
-        if (p?.phone) {
-          recipientPhone = p.phone;
+        if (!p) {
+          throw new HttpError(404, "PATIENT_NOT_FOUND", "Selected test patient was not found for this clinic.");
+        }
+        if (!rawPhone && p.phone) {
+          rawPhone = p.phone;
+        } else if (!rawPhone && !p.phone) {
+          throw new HttpError(422, "PATIENT_PHONE_MISSING", "This patient does not have a WhatsApp number configured.");
         }
       }
 
-      if (!recipientPhone) {
+      if (!rawPhone) {
         throw new HttpError(
           422,
-          "MISSING_RECIPIENT_PHONE",
-          "A valid recipient phone number (or test patient with phone) is required for Live WhatsApp testing.",
+          "PATIENT_PHONE_MISSING",
+          "A valid WhatsApp number or test patient with a phone number is required for Live WhatsApp testing.",
         );
+      }
+
+      const normalizedPhone = normalizeWhatsAppPhone(rawPhone);
+      if (!normalizedPhone || normalizedPhone.length < 10) {
+        throw new HttpError(422, "INVALID_PHONE", "Enter a valid WhatsApp number (e.g. +91 86607 17328).");
       }
 
       let conversation = body.conversationId
@@ -686,6 +728,21 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
             patientId: resolvedPatientId,
             channel: "WHATSAPP",
           },
+          orderBy: { updatedAt: "desc" },
+        });
+      }
+
+      if (!conversation) {
+        conversation = await prisma.conversation.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            channel: "WHATSAPP",
+            OR: [
+              { contactPhone: normalizedPhone },
+              { contactPhone: `+${normalizedPhone}` },
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
         });
       }
 
@@ -694,11 +751,16 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           data: {
             clinicId: tenant.clinicId,
             ...(resolvedPatientId ? { patientId: resolvedPatientId } : {}),
-            contactPhone: recipientPhone,
-            unmatched: false,
+            contactPhone: normalizedPhone,
+            unmatched: !resolvedPatientId,
             channel: "WHATSAPP",
             status: "OPEN",
           },
+        });
+      } else if (resolvedPatientId && !conversation.patientId) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { patientId: resolvedPatientId, unmatched: false },
         });
       }
 
@@ -710,8 +772,8 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         ...(body.coupleId ? { coupleId: body.coupleId } : {}),
         conversationId: conversation.id,
         vars: {
-          recipient_phone: recipientPhone,
-          patient_phone: recipientPhone,
+          recipient_phone: normalizedPhone,
+          patient_phone: normalizedPhone,
           is_live_test: "true",
           clinic_id: tenant.clinicId,
           clinic_name: tenant.clinicName,
@@ -725,7 +787,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         include: { flow: { select: { name: true } }, steps: { orderBy: { createdAt: "asc" } } },
       });
 
-      const maskedPhone = recipientPhone.replace(/(\d{2,3})\d+(\d{4})/, "$1••••••$2");
+      const maskedPhone = maskPhone(normalizedPhone) ?? normalizedPhone.replace(/(\d{2,3})\d+(\d{4})/, "$1••••••$2");
       await audit(tenant, "whatsapp.flow.live_test", "WhatsAppFlow", id, {
         executionId: execution.id,
         recipientPhone: maskedPhone,
@@ -741,7 +803,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       });
     }
 
-    const simEvent = body.simulateEvent ?? "none";
+    const simEvent = normalizedEvent;
     const eventVars: Record<string, string> =
       simEvent === "incoming_whatsapp"
         ? {
@@ -800,6 +862,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       execution: serializeExecution(withSteps!),
     });
   })
+
 
   .post("/flows/:id/trigger", validate("param", idParam), validate("json", manualTriggerSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);

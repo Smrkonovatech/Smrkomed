@@ -340,8 +340,36 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
   const inbound = extractInboundMessage(rawBody, event.externalEventId);
   const patient = await matchPatient(clinicId, from);
   let conversation = patient
-    ? await prisma.conversation.findFirst({ where: { clinicId, channel: "WHATSAPP", patientId: patient.id } })
-    : await prisma.conversation.findFirst({ where: { clinicId, channel: "WHATSAPP", contactPhone: from, unmatched: true } });
+    ? await prisma.conversation.findFirst({
+        where: { clinicId, channel: "WHATSAPP", patientId: patient.id },
+        orderBy: { updatedAt: "desc" },
+      })
+    : await prisma.conversation.findFirst({
+        where: {
+          clinicId,
+          channel: "WHATSAPP",
+          OR: [{ contactPhone: from }, { contactPhone: `+${from}` }],
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+  if (!conversation && patient) {
+    conversation = await prisma.conversation.findFirst({
+      where: {
+        clinicId,
+        channel: "WHATSAPP",
+        OR: [{ contactPhone: from }, { contactPhone: `+${from}` }],
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (conversation && !conversation.patientId) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { patientId: patient.id, unmatched: false },
+      });
+    }
+  }
+
   if (!conversation) {
     conversation = await prisma.conversation.create({
       data: {

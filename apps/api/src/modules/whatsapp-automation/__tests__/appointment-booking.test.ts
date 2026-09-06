@@ -139,21 +139,46 @@ test("SEND_DOCTOR_CARD node type is valid in flow definition", () => {
   assert.equal(typeErrors.length, 0, "SEND_DOCTOR_CARD should be a valid node type");
 });
 
-test("testFlowSchema accepts both SIMULATION and LIVE_WHATSAPP modes", async () => {
+test("testFlowSchema accepts both SIMULATION and LIVE_WHATSAPP modes and aliases", async () => {
   const { testFlowSchema } = await import("../schemas");
 
+  // Mode 1: Simulator with alias
   const simResult = testFlowSchema.safeParse({
-    mode: "SIMULATION",
-    simulateEvent: "incoming_whatsapp",
+    mode: "SIMULATOR",
+    event: "APPOINTMENT_REQUEST",
+    patientId: "",
   });
-  assert.ok(simResult.success, "SIMULATION mode should parse successfully");
+  assert.ok(simResult.success, "SIMULATOR mode should parse successfully");
+  assert.equal(simResult.data.mode, "SIMULATION");
+  assert.equal(simResult.data.patientId, undefined);
+  assert.equal(simResult.data.event, "APPOINTMENT_REQUEST");
 
+  // Mode 2: Live WhatsApp with phoneNumber alias and confirmation
   const liveResult = testFlowSchema.safeParse({
     mode: "LIVE_WHATSAPP",
-    recipientPhone: "+918660717328",
+    phoneNumber: "+91 86607 17328",
+    confirmed: true,
+    patientId: "pat_test_123",
   });
   assert.ok(liveResult.success, "LIVE_WHATSAPP mode should parse successfully");
   assert.equal(liveResult.data.mode, "LIVE_WHATSAPP");
-  assert.equal(liveResult.data.recipientPhone, "+918660717328");
+  assert.equal(liveResult.data.phoneNumber, "+91 86607 17328");
+  assert.equal(liveResult.data.confirmed, true);
 });
+
+test("normalizeWhatsAppPhone normalizes various Indian phone formats consistently", async () => {
+  const { normalizeWhatsAppPhone, maskPhone } = await import(
+    "../../../integrations/providers/whatsapp/phone"
+  );
+
+  assert.equal(normalizeWhatsAppPhone("+91 8660717328"), "918660717328");
+  assert.equal(normalizeWhatsAppPhone("918660717328"), "918660717328");
+  assert.equal(normalizeWhatsAppPhone("8660717328"), "918660717328");
+  assert.equal(normalizeWhatsAppPhone("08660717328"), "918660717328");
+
+  // Masked phone format
+  const masked = maskPhone("918660717328");
+  assert.equal(masked, "+91••••••7328");
+});
+
 

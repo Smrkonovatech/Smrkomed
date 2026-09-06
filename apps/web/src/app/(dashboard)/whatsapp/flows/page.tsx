@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
 import { toast } from "sonner";
 import { Copy, Pause, Play, Plus, Archive, Trash2, CalendarCheck, Sparkles } from "lucide-react";
 

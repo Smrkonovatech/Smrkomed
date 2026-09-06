@@ -149,7 +149,11 @@ export async function resumeWaitForReplyExecutions(input: {
     const flow = await prisma.whatsAppFlow.findFirst({
       where: { id: row.flowId, clinicId: input.tenant.clinicId },
     });
-    if (!flow || flow.status !== "ACTIVE") {
+    const isLiveTest =
+      ctx.vars?.["is_live_test"] === "true" ||
+      Boolean(row.triggerEventId?.startsWith("live_test_"));
+    // Normal production executions require ACTIVE flow; explicit LIVE_WHATSAPP tests can test and resume saved DRAFT flows
+    if (!flow || (flow.status !== "ACTIVE" && !isLiveTest)) {
       resumed.push({ executionId: row.id, skipped: "flow_not_active" });
       continue;
     }

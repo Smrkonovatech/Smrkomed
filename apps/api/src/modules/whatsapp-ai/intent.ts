@@ -56,6 +56,13 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
     confidence: "high",
   },
   {
+    intent: "REQUEST_DOCTOR",
+    // Explicit named doctor requests trigger human handoff/doctor request
+    re: /\b(i\s+want\s+to\s+see|speak\s+to|talk\s+to|consult\s+with)\s+dr\.?\s+[a-zA-Z]+/i,
+    tools: ["requestHuman"],
+    confidence: "high",
+  },
+  {
     intent: "APPOINTMENT_BOOKING",
     re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(an?\s+)?(appointment|doctor)|need\s+(an?\s+)?(appointment|doctor)|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?|doctors?)|available\s+(slots?|appointments?|timings?|doctors?)|any\s+(open\s+)?slots?|^appointments?$|book\s+for\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
     tools: ["getAvailableAppointmentSlots", "getAppointments"],
@@ -88,10 +95,11 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   {
     intent: "REQUEST_DOCTOR",
     // After appointment rules so "need an appointment" is never treated as doctor handoff.
-    re: /\b(want|need|speak\s+to|talk\s+to|see)\s+(a\s+)?(doctor|dr\.?)\b|\bconnect\s+me\s+(to|with)\s+(a\s+)?doctor\b|\bi\s+want\s+to\s+see\s+dr\.?\s+\w+/i,
+    re: /\b(speak\s+to|talk\s+to)\s+(a\s+)?(doctor|dr\.?)\b|\bconnect\s+me\s+(to|with)\s+(a\s+)?doctor\b/i,
     tools: ["requestHuman"],
     confidence: "high",
   },
+
   {
     intent: "COMPLAINT",
     re: /\b(complaint|lawsuit|lawyer|refund|horrible|worst|negligence|malpractice|angry|furious)\b/i,

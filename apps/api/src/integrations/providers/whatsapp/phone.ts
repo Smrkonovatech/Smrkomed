@@ -16,5 +16,9 @@ export function maskPhone(value: string | null | undefined) {
   if (!value) return null;
   const digits = normalizeWhatsAppPhone(value);
   if (digits.length <= 4) return "••••";
+  if (digits.startsWith("91") && digits.length === 12) {
+    return `+91••••••${digits.slice(-4)}`;
+  }
   return `+${digits.slice(0, digits.length - 4).replace(/\d/g, "•")}${digits.slice(-4)}`;
 }
+

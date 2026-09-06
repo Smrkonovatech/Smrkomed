@@ -120,7 +120,11 @@ export default function WhatsAppFlowBuilderPage() {
   const [testMode, setTestMode] = useState<"SIMULATOR" | "LIVE_WHATSAPP">("SIMULATOR");
   const [testPatientId, setTestPatientId] = useState("");
   const [testPhoneNumber, setTestPhoneNumber] = useState("");
-  const [confirmLiveTestModalOpen, setConfirmLiveTestModalOpen] = useState(false);
+  const [usePatientPhone, setUsePatientPhone] = useState(true);
+  const [liveSafetyConfirmed, setLiveSafetyConfirmed] = useState(false);
+  const [simulateEvent, setSimulateEvent] = useState<
+    "appointment" | "incoming_whatsapp" | "care_loop" | "none"
+  >("appointment");
   const [testingLive, setTestingLive] = useState(false);
   const [testResult, setTestResult] = useState<{
     mode: string;
@@ -171,14 +175,37 @@ export default function WhatsAppFlowBuilderPage() {
       .then((list) => {
         if (Array.isArray(list)) {
           setPatients(list.slice(0, 60));
-          if (list.length > 0 && list[0]?.phone) {
-            setTestPhoneNumber(list[0].phone);
-            setTestPatientId(list[0].id);
+          const first = list[0];
+          if (first) {
+            setTestPatientId(first.id);
+            if (first.phone) {
+              setTestPhoneNumber(first.phone);
+            }
           }
+
         }
       })
       .catch(() => setPatients([]));
   }, []);
+
+  // Poll waiting live executions so patient replies resume the trace automatically
+  useEffect(() => {
+    if (!activeConsoleExecution || activeConsoleExecution.status !== "WAITING") return;
+    const interval = setInterval(() => {
+      void apiGet<ExecutionRow>(`/api/v1/whatsapp-automation/executions/${activeConsoleExecution.id}`)
+        .then((updated) => {
+          if (updated) {
+            setActiveConsoleExecution(updated);
+            setExecutions((prev) =>
+              prev.map((e) => (e.id === updated.id ? updated : e)),
+            );
+          }
+        })
+        .catch(() => undefined);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [activeConsoleExecution?.id, activeConsoleExecution?.status]);
+
 
   const selected = useMemo(
     () => definition.nodes.find((n) => n.id === selectedId) ?? null,
@@ -334,6 +361,27 @@ export default function WhatsAppFlowBuilderPage() {
     }
   }
 
+  const selectedPatient = useMemo(
+    () => patients.find((p) => p.id === testPatientId) ?? null,
+    [patients, testPatientId],
+  );
+
+  const phoneDigits = useMemo(() => testPhoneNumber.replace(/\D/g, ""), [testPhoneNumber]);
+  const isPhoneValid = useMemo(() => phoneDigits.length >= 10 && phoneDigits.length <= 15, [phoneDigits]);
+  const isPatientPhoneMissing = useMemo(
+    () => Boolean(testPatientId && selectedPatient && !selectedPatient.phone && usePatientPhone),
+    [testPatientId, selectedPatient, usePatientPhone],
+  );
+
+  const formattedMaskedPhone = useMemo(() => {
+    if (!testPhoneNumber) return null;
+    const digits = testPhoneNumber.replace(/\D/g, "");
+    if (digits.length < 10) return testPhoneNumber;
+    const last4 = digits.slice(-4);
+    const country = digits.length > 10 ? `+${digits.slice(0, digits.length - 10)} ` : "+91 ";
+    return `${country}••••••${last4}`;
+  }, [testPhoneNumber]);
+
   async function runSimulationTest() {
     setTestResult(null);
     try {
@@ -350,21 +398,29 @@ export default function WhatsAppFlowBuilderPage() {
         note: string;
         execution: ExecutionRow;
       }>(`/api/v1/whatsapp-automation/flows/${id}/test`, {
-        simulateEvent: "incoming_whatsapp",
         mode: "SIMULATION",
+        simulateEvent,
+        event: simulateEvent,
         ...(testPatientId ? { patientId: testPatientId } : {}),
       });
       setTestResult(result);
       setActiveConsoleExecution(result.execution);
       setExecutions((prev) => [result.execution, ...prev.slice(0, 7)]);
-      toast.success("Simulation test executed");
+      toast.success("Simulation test executed (no WhatsApp message sent)");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Simulation failed");
     }
   }
 
   async function runLiveWhatsAppTest() {
-    setConfirmLiveTestModalOpen(false);
+    if (!liveSafetyConfirmed) {
+      toast.error("Please confirm the safety disclaimer before starting a live test.");
+      return;
+    }
+    if (!testPhoneNumber.trim() || !isPhoneValid) {
+      toast.error("Enter a valid WhatsApp phone number.");
+      return;
+    }
     setTestingLive(true);
     setTestResult(null);
     try {
@@ -383,19 +439,23 @@ export default function WhatsAppFlowBuilderPage() {
         execution: ExecutionRow;
       }>(`/api/v1/whatsapp-automation/flows/${id}/test`, {
         mode: "LIVE_WHATSAPP",
-        recipientPhone: testPhoneNumber,
+        phoneNumber: testPhoneNumber.trim(),
+        recipientPhone: testPhoneNumber.trim(),
+        confirmed: true,
+        event: "APPOINTMENT_REQUEST",
         ...(testPatientId ? { patientId: testPatientId } : {}),
       });
       setTestResult(result);
       setActiveConsoleExecution(result.execution);
       setExecutions((prev) => [result.execution, ...prev.slice(0, 7)]);
-      toast.success(`Live test sent to ${result.recipientPhone || testPhoneNumber}`);
+      toast.success(`Live WhatsApp test sent to ${result.recipientPhone || testPhoneNumber}`);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Live test failed");
     } finally {
       setTestingLive(false);
     }
   }
+
 
   function handleInsertVariable(varName: string) {
     if (!selected || readOnly) return;
@@ -471,8 +531,38 @@ export default function WhatsAppFlowBuilderPage() {
         </div>
       </div>
 
+      {/* Test Mode Notification Banner (Section 17) */}
+      {testMode === "SIMULATOR" ? (
+        <div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2">
+            <span className="flex size-2 rounded-full bg-amber-500" />
+            <span className="font-semibold uppercase tracking-wider text-[11px]">SIMULATOR</span>
+            <span>—</span>
+            <span className="font-medium">TEST MODE — NO MESSAGE WILL BE SENT</span>
+          </div>
+          <span className="text-[11px] text-muted-foreground hidden sm:inline">In-browser simulation sandbox</span>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-900 dark:text-red-200">
+          <div className="flex items-center gap-2">
+            <span className="relative flex size-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex size-2 rounded-full bg-red-500" />
+            </span>
+            <span className="font-semibold uppercase tracking-wider text-[11px]">LIVE WHATSAPP</span>
+            <span>—</span>
+            <span className="font-bold">REAL MESSAGE WILL BE SENT</span>
+            {testPhoneNumber && isPhoneValid ? (
+              <span className="font-mono text-xs">to {formattedMaskedPhone}</span>
+            ) : null}
+          </div>
+          <span className="text-[11px] font-medium text-red-700 dark:text-red-300 hidden md:inline">Meta Cloud API Production Route</span>
+        </div>
+      )}
+
       {/* Main 3-Column Layout: Palette | Canvas | Inspector & Testing */}
       <div className="grid flex-1 grid-cols-12 gap-3 overflow-hidden">
+
         {/* Left Column: Categorized Palette (2.5 cols) */}
         <div className="col-span-12 md:col-span-3 lg:col-span-3 surface-card flex flex-col rounded-xl border p-2 overflow-hidden">
           <div className="flex items-center justify-between border-b pb-2 mb-2 px-1">
@@ -940,13 +1030,50 @@ export default function WhatsAppFlowBuilderPage() {
 
                 {testMode === "SIMULATOR" ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-muted-foreground">In-Browser Mockup</span>
-                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void runSimulationTest()}>
+                    <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground font-medium">Test patient (optional)</Label>
+                        <select
+                          className="flex h-7 w-full rounded-md border bg-background px-2 text-xs"
+                          value={testPatientId}
+                          onChange={(e) => setTestPatientId(e.target.value)}
+                        >
+                          <option value="">None (anonymous)</option>
+                          {patients.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.firstName} {p.lastName}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground font-medium">Simulate event</Label>
+                        <select
+                          className="flex h-7 w-full rounded-md border bg-background px-2 text-xs"
+                          value={simulateEvent}
+                          onChange={(e) =>
+                            setSimulateEvent(e.target.value as "appointment" | "incoming_whatsapp" | "care_loop" | "none")
+                          }
+                        >
+                          <option value="appointment">Appointment Request</option>
+                          <option value="incoming_whatsapp">Incoming WhatsApp</option>
+                          <option value="care_loop">Care Loop Task</option>
+                          <option value="none">None (Standard Trigger)</option>
+                        </select>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full h-7 text-xs mt-1"
+                        onClick={() => void runSimulationTest()}
+                      >
                         <FlaskConical className="mr-1 size-3" />
                         Run Simulation
                       </Button>
                     </div>
+
                     <WhatsAppPhoneSimulator
                       clinicName="ABC Fertility Centre"
                       onSimulateStep={(step) => {
@@ -957,27 +1084,34 @@ export default function WhatsAppFlowBuilderPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3 text-xs">
                       <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                        <Radio className="size-4 text-primary animate-pulse" />
-                        Live Meta WhatsApp Test
+                        <Radio className="size-4 text-red-500 animate-pulse" />
+                        Live WhatsApp Test
                       </div>
                       <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-                        Sends genuine WhatsApp interactive messages from your clinic WABA account to the target phone number.
+                        Executes this flow through the real automation engine and sends genuine interactive WhatsApp messages via Meta Cloud API.
                       </p>
                     </div>
 
                     <div className="space-y-3">
+                      {/* Test patient */}
                       <div className="space-y-1">
-                        <Label className="text-xs">Test Patient</Label>
+                        <Label className="text-xs font-medium">Test patient</Label>
                         <select
                           className="flex h-8 w-full rounded-md border bg-background px-2 text-xs"
                           value={testPatientId}
                           onChange={(e) => {
                             const pId = e.target.value;
                             setTestPatientId(pId);
-                            const found = patients.find((p) => p.id === pId);
-                            if (found?.phone) setTestPhoneNumber(found.phone);
+                            if (usePatientPhone) {
+                              const found = patients.find((p) => p.id === pId);
+                              if (found?.phone) {
+                                setTestPhoneNumber(found.phone);
+                              } else {
+                                setTestPhoneNumber("");
+                              }
+                            }
                           }}
                         >
                           <option value="">Select patient…</option>
@@ -989,41 +1123,169 @@ export default function WhatsAppFlowBuilderPage() {
                         </select>
                       </div>
 
+                      {/* Use patient's WhatsApp number checkbox */}
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="usePatientPhone"
+                          checked={usePatientPhone}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setUsePatientPhone(checked);
+                            if (checked && testPatientId) {
+                              const found = patients.find((p) => p.id === testPatientId);
+                              if (found?.phone) setTestPhoneNumber(found.phone);
+                            }
+                          }}
+                          className="size-3.5 rounded border-muted-foreground"
+                        />
+                        <Label htmlFor="usePatientPhone" className="text-xs cursor-pointer font-normal">
+                          Use patient&apos;s WhatsApp number
+                        </Label>
+                      </div>
+
+                      {/* WhatsApp number input */}
                       <div className="space-y-1">
-                        <Label className="text-xs">Recipient Phone Number</Label>
+                        <Label className="text-xs font-medium">WhatsApp number</Label>
                         <Input
                           value={testPhoneNumber}
                           onChange={(e) => setTestPhoneNumber(e.target.value)}
                           placeholder="+91 86607 17328"
                           className="h-8 text-xs font-mono"
                         />
-                        {testPhoneNumber && (
-                          <p className="text-[10px] text-muted-foreground">
-                            Masked preview: {testPhoneNumber.replace(/(\d{2,3})\d+(\d{4})/, "$1••••••$2")}
+                        {isPatientPhoneMissing && (
+                          <p className="text-[11px] font-medium text-destructive">
+                            This patient does not have a WhatsApp number.
+                          </p>
+                        )}
+                        {!isPatientPhoneMissing && testPhoneNumber && !isPhoneValid && (
+                          <p className="text-[11px] font-medium text-destructive">
+                            Enter a valid WhatsApp number.
+                          </p>
+                        )}
+                        {!isPatientPhoneMissing && testPhoneNumber && isPhoneValid && (
+                          <p className="text-[11px] text-muted-foreground">
+                            You are about to send a real WhatsApp message to:{" "}
+                            <span className="font-mono font-medium text-foreground">{formattedMaskedPhone}</span>
                           </p>
                         )}
                       </div>
 
-                      <div className="rounded-md border bg-amber-50/60 p-2.5 text-[11px] text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
-                        <div className="flex items-center gap-1 font-semibold">
-                          <AlertTriangle className="size-3.5" />
-                          Safety Confirmation Required
+                      {/* Flow and Trigger display */}
+                      <div className="rounded-lg border bg-muted/40 p-2.5 text-xs space-y-1">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground text-[11px]">Flow:</span>
+                          <span className="font-semibold text-[11px] truncate max-w-[170px]">
+                            {name || "Appointment Booking"}
+                          </span>
                         </div>
-                        Real interactive messages will be sent to this number. Do not send tests to external clinic patients.
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground text-[11px]">Trigger:</span>
+                          <span className="font-medium text-[11px] text-primary">
+                            Incoming WhatsApp / Appointment Request
+                          </span>
+                        </div>
                       </div>
 
+                      {/* Safety confirmation checkbox */}
+                      <div className="rounded-md border border-red-500/30 bg-red-50/60 p-2.5 dark:bg-red-950/20">
+                        <label className="flex items-start gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={liveSafetyConfirmed}
+                            onChange={(e) => setLiveSafetyConfirmed(e.target.checked)}
+                            className="size-4 mt-0.5 rounded border-red-400 text-red-600 focus:ring-red-500"
+                          />
+                          <span className="text-xs text-red-900 dark:text-red-200 leading-tight font-medium">
+                            I understand this will send a real WhatsApp message.
+                          </span>
+                        </label>
+                      </div>
+
+                      {/* Start Live Test button */}
                       <Button
-                        className="w-full"
+                        className="w-full bg-red-600 hover:bg-red-700 text-white shadow-sm font-semibold"
                         size="sm"
-                        disabled={testingLive || !testPhoneNumber.trim()}
-                        onClick={() => setConfirmLiveTestModalOpen(true)}
+                        disabled={
+                          testingLive ||
+                          !testPhoneNumber.trim() ||
+                          !isPhoneValid ||
+                          !liveSafetyConfirmed ||
+                          isPatientPhoneMissing
+                        }
+                        onClick={() => void runLiveWhatsAppTest()}
                       >
-                        <Send className="mr-1 size-3.5" />
-                        {testingLive ? "Dispatching Live Test…" : "Send Test WhatsApp Message"}
+                        <Radio className="mr-1.5 size-3.5 animate-pulse" />
+                        {testingLive ? "Dispatching Live WhatsApp…" : "Start Live Test"}
                       </Button>
                     </div>
+
+                    {/* Live Execution Trace inside panel */}
+                    {activeConsoleExecution && (
+                      <div className="rounded-xl border bg-muted/20 p-3 space-y-2 mt-3">
+                        <div className="flex items-center justify-between border-b pb-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="relative flex size-2">
+                              {activeConsoleExecution.status === "WAITING" && (
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                              )}
+                              <span
+                                className={cn(
+                                  "relative inline-flex size-2 rounded-full",
+                                  activeConsoleExecution.status === "COMPLETED"
+                                    ? "bg-emerald-500"
+                                    : activeConsoleExecution.status === "WAITING"
+                                      ? "bg-sky-500"
+                                      : "bg-destructive",
+                                )}
+                              />
+                            </span>
+                            <span className="font-semibold text-xs text-foreground">
+                              {activeConsoleExecution.status === "WAITING"
+                                ? "LIVE ● RUNNING"
+                                : `EXECUTION ${activeConsoleExecution.status}`}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-mono text-muted-foreground truncate max-w-[120px]">
+                            {activeConsoleExecution.id.slice(0, 10)}…
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs max-h-[220px] overflow-y-auto pr-1">
+                          {activeConsoleExecution.steps.map((s, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-start gap-2 rounded-md border p-1.5 bg-background text-[11px]"
+                            >
+                              {s.status === "COMPLETED" ? (
+                                <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                              ) : s.status === "WAITING" ? (
+                                <Clock className="size-3.5 text-sky-600 shrink-0 mt-0.5" />
+                              ) : (
+                                <XCircle className="size-3.5 text-destructive shrink-0 mt-0.5" />
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-foreground">{s.nodeType}</span>
+                                  <span className="text-[10px] text-muted-foreground uppercase">{s.status}</span>
+                                </div>
+                                {s.error && <p className="text-[10px] text-destructive mt-0.5">{s.error}</p>}
+                              </div>
+                            </div>
+                          ))}
+
+                          {activeConsoleExecution.status === "WAITING" && (
+                            <div className="flex items-center gap-2 rounded-md border border-sky-300/40 bg-sky-50/60 p-2 text-[11px] text-sky-900 dark:bg-sky-950/30 dark:text-sky-200">
+                              <Clock className="size-3.5 animate-spin text-sky-600 shrink-0" />
+                              <span className="font-medium">Waiting for patient reply...</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
+
               </div>
             )}
           </div>
@@ -1083,45 +1345,8 @@ export default function WhatsAppFlowBuilderPage() {
         </div>
       )}
 
-      {/* Confirmation Modal for Live WhatsApp Testing */}
-      {confirmLiveTestModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="surface-card w-full max-w-md space-y-4 rounded-xl border p-6 shadow-xl">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-primary font-semibold text-base">
-                <Radio className="size-5" />
-                Confirm Live WhatsApp Test
-              </div>
-              <p className="text-xs text-muted-foreground">
-                This will trigger the current flow and send actual WhatsApp messages via Meta Cloud API to:
-              </p>
-              <div className="rounded-lg border bg-muted/40 p-2 font-mono text-sm font-semibold text-foreground text-center">
-                {testPhoneNumber}
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Standard Meta messaging rates may apply. The recipient will be able to reply directly using interactive buttons.
-              </p>
-            </div>
-            <div className="flex justify-end gap-2 pt-2 border-t">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmLiveTestModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => void runLiveWhatsAppTest()}
-              >
-                Confirm & Send Message
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Flow Validation Issues Modal */}
+
       {validationModalOpen && validationIssues && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="surface-card w-full max-w-lg space-y-4 rounded-xl border p-6 shadow-xl max-h-[80vh] flex flex-col">
