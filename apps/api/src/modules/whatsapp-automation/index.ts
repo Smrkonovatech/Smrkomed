@@ -460,14 +460,14 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     }
     if (body.definition) {
       const def = parseDefinition(body.definition);
-      const issues = [
-        ...validateFlowDefinition(def),
-        ...(body.status === "ACTIVE" || existing.status === "ACTIVE"
-          ? await validateSendTemplateNodes(tenant.clinicId, def)
-          : []),
-      ];
-      if (issues.length && (body.status === "ACTIVE" || existing.status === "ACTIVE")) {
-        throw new HttpError(422, "INVALID_FLOW", issues.map((i) => i.message).join(" "));
+      if (body.status === "ACTIVE") {
+        const issues = [
+          ...validateFlowDefinition(def),
+          ...(await validateSendTemplateNodes(tenant.clinicId, def)),
+        ];
+        if (issues.length) {
+          throw new HttpError(422, "INVALID_FLOW", issues.map((i) => i.message).join("; "));
+        }
       }
     }
     const row = await prisma.whatsAppFlow.update({

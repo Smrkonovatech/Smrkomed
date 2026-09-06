@@ -302,15 +302,26 @@ export default function WhatsAppFlowBuilderPage() {
     if (readOnly) return;
     setSaving(true);
     try {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[FlowEditor:saveDraft] saving payload:", {
+          name,
+          description: description || null,
+          nodeCount: definition.nodes.length,
+          edgeCount: definition.edges.length,
+          nodeTypes: definition.nodes.map((n) => n.type),
+        });
+      }
       const next = await apiPatch<FlowDetail>(`/api/v1/whatsapp-automation/flows/${id}`, {
         name,
         description: description || null,
         definition,
-        status: flow?.status === "ACTIVE" ? "ACTIVE" : "DRAFT",
       });
       setFlow(next);
       toast.success("Draft saved successfully");
     } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[FlowEditor:saveDraft:ERROR]", err);
+      }
       toast.error(err instanceof ApiError ? err.message : "Save failed");
     } finally {
       setSaving(false);
@@ -386,10 +397,23 @@ export default function WhatsAppFlowBuilderPage() {
     setTestResult(null);
     try {
       if (!readOnly) {
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[FlowEditor:runSimulationTest] saving canvas before test:", {
+            name,
+            nodeCount: definition.nodes.length,
+          });
+        }
         await apiPatch(`/api/v1/whatsapp-automation/flows/${id}`, {
           definition,
           name,
           description: description || null,
+        });
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[FlowEditor:runSimulationTest] executing test payload:", {
+          mode: "SIMULATION",
+          simulateEvent,
+          patientId: testPatientId || undefined,
         });
       }
       const result = await apiPost<{
@@ -408,6 +432,9 @@ export default function WhatsAppFlowBuilderPage() {
       setExecutions((prev) => [result.execution, ...prev.slice(0, 7)]);
       toast.success("Simulation test executed (no WhatsApp message sent)");
     } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[FlowEditor:runSimulationTest:ERROR]", err);
+      }
       toast.error(err instanceof ApiError ? err.message : "Simulation failed");
     }
   }
@@ -425,10 +452,25 @@ export default function WhatsAppFlowBuilderPage() {
     setTestResult(null);
     try {
       if (!readOnly) {
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[FlowEditor:runLiveWhatsAppTest] saving canvas before live test:", {
+            name,
+            nodeCount: definition.nodes.length,
+          });
+        }
         await apiPatch(`/api/v1/whatsapp-automation/flows/${id}`, {
           definition,
           name,
           description: description || null,
+        });
+      }
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[FlowEditor:runLiveWhatsAppTest] executing live test payload:", {
+          mode: "LIVE_WHATSAPP",
+          recipientPhone: formattedMaskedPhone,
+          confirmed: true,
+          event: "APPOINTMENT_REQUEST",
+          patientId: testPatientId || undefined,
         });
       }
       const result = await apiPost<{
@@ -450,6 +492,9 @@ export default function WhatsAppFlowBuilderPage() {
       setExecutions((prev) => [result.execution, ...prev.slice(0, 7)]);
       toast.success(`Live WhatsApp test sent to ${result.recipientPhone || testPhoneNumber}`);
     } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[FlowEditor:runLiveWhatsAppTest:ERROR]", err);
+      }
       toast.error(err instanceof ApiError ? err.message : "Live test failed");
     } finally {
       setTestingLive(false);

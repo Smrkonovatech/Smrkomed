@@ -9,6 +9,7 @@ export type FlowNodeType =
   | "SEND_TEXT"
   | "SEND_MEDIA"
   | "CREATE_TASK"
+  | "CREATE_CARE_TASK"
   | "ASSIGN_TASK"
   | "ASSIGN_STAFF"
   | "ESCALATE"

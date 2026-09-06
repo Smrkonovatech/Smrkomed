@@ -950,6 +950,7 @@ async function executeNode(
         nextNodeId: next?.id ?? null,
       };
     }
+    case "CREATE_CARE_TASK":
     case "CREATE_TASK":
     case "ASSIGN_TASK": {
       const title = String(node.config["title"] ?? "WhatsApp automation follow-up");
@@ -1802,7 +1803,14 @@ export async function startFlowExecution(input: {
     where: { id: input.flowId, clinicId: input.tenant.clinicId },
   });
   if (!flow) throw new HttpError(404, "NOT_FOUND", "Flow not found");
-  if (!input.simulation && flow.status !== "ACTIVE") {
+  if (flow.status === "ARCHIVED") {
+    throw new HttpError(422, "FLOW_ARCHIVED", "Archived flows cannot be executed.");
+  }
+  const isLiveTest = Boolean(
+    input.vars?.["is_live_test"] === "true" ||
+    input.triggerEventId?.startsWith("live_test_")
+  );
+  if (!input.simulation && !isLiveTest && flow.status !== "ACTIVE") {
     throw new HttpError(422, "FLOW_NOT_ACTIVE", "Activate the flow before live execution.");
   }
 
@@ -1934,7 +1942,13 @@ export async function resumeDueExecutions(limit = 20, clinicId?: string) {
     }
     try {
       const flow = await prisma.whatsAppFlow.findUnique({ where: { id: row.flowId } });
-      if (!flow || flow.status !== "ACTIVE") {
+      const ctx = parseExecutionContext(row.context);
+      const isLiveTest = Boolean(
+        ctx.vars?.["is_live_test"] === "true" ||
+        row.triggerEventId?.startsWith("live_test_") ||
+        ctx.simulation
+      );
+      if (!flow || (flow.status !== "ACTIVE" && !isLiveTest)) {
         await prisma.whatsAppFlowExecution.update({
           where: { id: row.id },
           data: {
@@ -1948,7 +1962,6 @@ export async function resumeDueExecutions(limit = 20, clinicId?: string) {
         continue;
       }
       const def = parseDefinition(flow.definition);
-      const ctx = parseExecutionContext(row.context);
       const waitId = row.currentNodeId;
       const waitNode = waitId ? def.nodes.find((n) => n.id === waitId) : null;
       // Advance past WAIT (or retry mid-node if nextRetry)

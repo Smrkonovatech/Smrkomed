@@ -11,12 +11,20 @@ export function validate<T extends ZodType, Target extends keyof ValidationTarge
   return zValidator(target, schema, (result, c: Context) => {
     if (!result.success) {
       const flat = result.error.flatten();
-      const firstField = Object.entries(flat.fieldErrors)[0];
+      const fieldEntries = Object.entries(flat.fieldErrors);
+      const firstField = fieldEntries[0];
       const detailMsg = firstField
         ? `${firstField[0]}: ${firstField[1]?.join(", ")}`
         : flat.formErrors.join(", ");
       const message = detailMsg ? `Invalid request: ${detailMsg}` : "Invalid request";
-      return fail(c, 422, "VALIDATION_ERROR", message, flat);
+      const fieldMap = Object.fromEntries(
+        fieldEntries.map(([k, v]) => [k, v?.join(", ") ?? "Invalid"]),
+      );
+      return fail(c, 422, "VALIDATION_ERROR", message, {
+        fields: fieldMap,
+        fieldErrors: flat.fieldErrors,
+        formErrors: flat.formErrors,
+      });
     }
     return undefined;
   });

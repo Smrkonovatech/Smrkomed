@@ -10,6 +10,7 @@ const ALLOWED_TYPES = new Set([
   "SEND_TEMPLATE",
   "SEND_TEXT",
   "CREATE_TASK",
+  "CREATE_CARE_TASK",
   "ASSIGN_TASK",
   "ASSIGN_STAFF",
   "ESCALATE",
@@ -192,7 +193,7 @@ export function validateFlowDefinition(definition: FlowDefinition, _opts?: { req
         });
       }
     }
-    if (n.type === "CREATE_TASK" || n.type === "ASSIGN_TASK") {
+    if (n.type === "CREATE_TASK" || n.type === "CREATE_CARE_TASK" || n.type === "ASSIGN_TASK") {
       if (!String(n.config["title"] ?? "").trim()) {
         issues.push({
           code: "TASK",

@@ -2,64 +2,134 @@ import { z } from "zod";
 
 export const idParam = z.object({ id: z.string().min(1) });
 
-const flowNodeSchema = z.object({
-  id: z.string().min(1),
-  type: z.enum([
-    "TRIGGER",
-    "WAIT",
-    "CONDITION",
-    "SEND_TEMPLATE",
-    "SEND_TEXT",
-    "CREATE_TASK",
-    "ASSIGN_TASK",
-    "ASSIGN_STAFF",
-    "ESCALATE",
-    "NOTIFY_STAFF",
-    "ADD_TAG",
-    "REMOVE_TAG",
-    "END",
-    "AI_DRAFT",
-  ]),
-  label: z.string().min(1).max(120),
-  description: z.string().max(500).optional(),
-  config: z.record(z.string(), z.unknown()).default({}),
-  position: z.object({ x: z.number(), y: z.number() }).optional(),
-});
+const emptyStringToUndefined = (val: unknown) =>
+  typeof val === "string" && val.trim() === "" ? undefined : val;
 
-const flowEdgeSchema = z.object({
-  id: z.string().min(1),
-  source: z.string().min(1),
-  target: z.string().min(1),
-  branch: z.string().max(40).optional(),
-});
+export const FLOW_NODE_TYPES = [
+  "TRIGGER",
+  "WAIT",
+  "WAIT_FOR_REPLY",
+  "CONDITION",
+  "SEND_TEMPLATE",
+  "SEND_TEXT",
+  "SEND_MEDIA",
+  "SEND_BUTTONS",
+  "SEND_LIST",
+  "SEND_DOCTOR_CARD",
+  "BOOKING_SUMMARY",
+  "GET_DOCTORS",
+  "GET_DOCTOR_DETAILS",
+  "GET_AVAILABLE_DATES",
+  "GET_AVAILABLE_SLOTS",
+  "BOOK_APPOINTMENT",
+  "APPOINTMENT_LOOKUP",
+  "PATIENT_LOOKUP",
+  "MEDICATION_LOOKUP",
+  "DETECT_INTENT",
+  "EXTRACT_PREFERENCES",
+  "CREATE_TASK",
+  "CREATE_CARE_TASK",
+  "ASSIGN_TASK",
+  "ASSIGN_STAFF",
+  "NOTIFY_STAFF",
+  "ESCALATE",
+  "ADD_TAG",
+  "REMOVE_TAG",
+  "HUMAN_HANDOFF",
+  "END",
+  "AI_DRAFT",
+] as const;
 
-export const flowDefinitionSchema = z.object({
-  nodes: z.array(flowNodeSchema).max(80),
-  edges: z.array(flowEdgeSchema).max(120),
-});
+export const flowNodeSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.preprocess(
+      (v) => (typeof v === "string" ? v.trim().toUpperCase() : v),
+      z.string().min(1).max(64),
+    ),
+    label: z.preprocess(
+      (v) => (v === undefined || v === null ? "" : String(v)),
+      z.string().max(120).default(""),
+    ),
+    description: z.preprocess(
+      (v) => (v === null || v === undefined || v === "" ? undefined : String(v)),
+      z.string().max(500).optional(),
+    ),
+    config: z.preprocess(
+      (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {}),
+      z.record(z.string(), z.unknown()).default({}),
+    ),
+    position: z
+      .object({
+        x: z.number(),
+        y: z.number(),
+      })
+      .optional(),
+    positionX: z.number().optional(),
+    positionY: z.number().optional(),
+  })
+  .passthrough();
 
-export const createFlowSchema = z.object({
-  name: z.string().min(1).max(120),
-  description: z.string().max(1000).optional(),
-  triggerType: z.string().min(1).max(64),
-  definition: flowDefinitionSchema.optional(),
-});
+export const flowEdgeSchema = z
+  .object({
+    id: z.string().min(1),
+    source: z.string().min(1),
+    target: z.string().min(1),
+    branch: z.preprocess(
+      (v) => (v === null || v === undefined ? undefined : String(v)),
+      z.string().max(120).optional(),
+    ),
+    sourceHandle: z.preprocess(
+      (v) => (v === null || v === undefined ? undefined : String(v)),
+      z.string().max(120).optional(),
+    ),
+    targetHandle: z.preprocess(
+      (v) => (v === null || v === undefined ? undefined : String(v)),
+      z.string().max(120).optional(),
+    ),
+    label: z.preprocess(
+      (v) => (v === null || v === undefined ? undefined : String(v)),
+      z.string().max(120).optional(),
+    ),
+  })
+  .passthrough();
 
-export const updateFlowSchema = z.object({
-  name: z.string().min(1).max(120).optional(),
-  description: z.string().max(1000).nullable().optional(),
-  triggerType: z.string().min(1).max(64).optional(),
-  definition: flowDefinitionSchema.optional(),
-  status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
-});
+export const flowDefinitionSchema = z
+  .object({
+    nodes: z.array(flowNodeSchema).max(120).default([]),
+    edges: z.array(flowEdgeSchema).max(200).default([]),
+  })
+  .passthrough();
+
+export const createFlowSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    description: z.preprocess(
+      (v) => (v === null || v === undefined || v === "" ? undefined : String(v)),
+      z.string().max(1000).optional(),
+    ),
+    triggerType: z.string().min(1).max(64),
+    definition: flowDefinitionSchema.optional(),
+  })
+  .passthrough();
+
+export const updateFlowSchema = z
+  .object({
+    name: z.preprocess(emptyStringToUndefined, z.string().min(1).max(120).optional()),
+    description: z.preprocess(
+      (v) => (v === null || v === undefined || v === "" ? null : String(v)),
+      z.string().max(1000).nullable().optional(),
+    ),
+    triggerType: z.preprocess(emptyStringToUndefined, z.string().min(1).max(64).optional()),
+    definition: flowDefinitionSchema.optional(),
+    status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED"]).optional(),
+  })
+  .passthrough();
 
 export const listFlowsQuery = z.object({
   status: z.enum(["DRAFT", "ACTIVE", "PAUSED", "ARCHIVED", "LIBRARY"]).optional(),
   q: z.string().max(120).optional(),
 });
-
-const emptyStringToUndefined = (val: unknown) =>
-  typeof val === "string" && val.trim() === "" ? undefined : val;
 
 export const testFlowSchema = z.object({
   patientId: z.preprocess(emptyStringToUndefined, z.string().optional()),
