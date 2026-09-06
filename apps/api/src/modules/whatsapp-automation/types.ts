@@ -32,6 +32,7 @@ export type FlowNodeType =
   | "HUMAN_HANDOFF"
   | "MEDICATION_LOOKUP"
   | "PATIENT_LOOKUP"
+  | "CREATE_PATIENT"
   | "APPOINTMENT_LOOKUP";
 
 export type FlowNode = {

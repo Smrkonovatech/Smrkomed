@@ -238,6 +238,14 @@ export async function bookAppointmentFromSlot(input: {
   | { ok: true; appointmentId: string; alreadyExisted: boolean; startsAt: string; doctorName: string | null; type: string }
   | { ok: false; reason: string; handoffRecommended?: boolean }
 > {
+  console.log("[APPOINTMENT_CONFIRM_STARTED]", {
+    clinicId: input.tenant.clinicId,
+    conversationId: input.conversationId,
+    patientId: input.patientId ?? null,
+    coupleId: input.coupleId ?? null,
+    slotId: input.slotId,
+  });
+
   const decoded = decodeSlotId(input.slotId);
   if (!decoded) return { ok: false, reason: "INVALID_SLOT" };
 
@@ -251,6 +259,12 @@ export async function bookAppointmentFromSlot(input: {
       where: { id: existingIdem.appointmentId, clinicId: input.tenant.clinicId },
     });
     if (appt) {
+      console.log("[APPOINTMENT_CREATED]", {
+        clinicId: input.tenant.clinicId,
+        appointmentId: appt.id,
+        alreadyExisted: true,
+        startsAt: appt.startsAt.toISOString(),
+      });
       return {
         ok: true,
         appointmentId: appt.id,
@@ -271,10 +285,29 @@ export async function bookAppointmentFromSlot(input: {
       },
       select: { id: true, assignedDoctor: { select: { name: true } } },
     });
-    coupleId = couple?.id ?? null;
-  }
-  if (!coupleId) {
-    return { ok: false, reason: "PATIENT_NOT_LINKED_TO_COUPLE", handoffRecommended: true };
+    if (couple) {
+      coupleId = couple.id;
+    } else {
+      // Auto-create a lightweight couple record for fertility care integration
+      try {
+        const newCouple = await prisma.couple.create({
+          data: {
+            clinicId: input.tenant.clinicId,
+            slug: `c-${input.patientId.slice(-8)}-${Date.now().toString(36)}`,
+            primaryPatientId: input.patientId,
+          },
+          select: { id: true },
+        });
+        coupleId = newCouple.id;
+        console.log("[COUPLE_CREATED]", {
+          clinicId: input.tenant.clinicId,
+          coupleId: newCouple.id,
+          primaryPatientId: input.patientId,
+        });
+      } catch (coupleErr) {
+        console.warn("[whatsapp-booking] Non-blocking: could not create couple, proceeding with individual appointment", coupleErr);
+      }
+    }
   }
 
   const startTime = new Date(decoded.startMs);
@@ -288,14 +321,25 @@ export async function bookAppointmentFromSlot(input: {
     doctorName,
   });
   if (!valid.ok) {
+    console.log("[APPOINTMENT_CREATE_FAILED]", {
+      clinicId: input.tenant.clinicId,
+      reason: valid.reason,
+      slotId: input.slotId,
+    });
     return { ok: false, reason: valid.reason, handoffRecommended: valid.reason === "CLINIC_CLOSED" };
   }
+
+  console.log("[APPOINTMENT_SLOT_REVALIDATED]", {
+    clinicId: input.tenant.clinicId,
+    slotId: input.slotId,
+    valid: true,
+  });
 
   try {
     const appointment = await prisma.appointment.create({
       data: {
         clinicId: input.tenant.clinicId,
-        coupleId,
+        ...(coupleId ? { coupleId } : {}),
         type: decoded.appointmentType,
         startsAt: startTime,
         durationMin: decoded.durationMin,
@@ -314,6 +358,16 @@ export async function bookAppointmentFromSlot(input: {
       },
     });
 
+    console.log("[APPOINTMENT_CREATED]", {
+      clinicId: input.tenant.clinicId,
+      appointmentId: appointment.id,
+      alreadyExisted: false,
+      startsAt: appointment.startsAt.toISOString(),
+      doctorName: appointment.doctorName,
+      patientId: input.patientId ?? null,
+      coupleId,
+    });
+
     await writeTenantAuditLog(input.tenant, {
       action: "whatsapp.ai.appointment.book",
       entityType: "Appointment",
@@ -326,17 +380,19 @@ export async function bookAppointmentFromSlot(input: {
       },
     }).catch(() => undefined);
 
-    await ensureCareTaskForAppointment({
-      clinicId: input.tenant.clinicId,
-      coupleId,
-      appointmentId: appointment.id,
-      title: `AI booked appointment — ${appointment.type}`,
-      description: `WhatsApp AI booked appointment ${appointment.id} at ${appointment.startsAt.toISOString()}`,
-      startsAt: appointment.startsAt,
-      doctorName: appointment.doctorName,
-      appointmentType: appointment.type,
-      mode: "create",
-    }).catch(() => undefined);
+    if (coupleId) {
+      await ensureCareTaskForAppointment({
+        clinicId: input.tenant.clinicId,
+        coupleId,
+        appointmentId: appointment.id,
+        title: `AI booked appointment — ${appointment.type}`,
+        description: `WhatsApp AI booked appointment ${appointment.id} at ${appointment.startsAt.toISOString()}`,
+        startsAt: appointment.startsAt,
+        doctorName: appointment.doctorName,
+        appointmentType: appointment.type,
+        mode: "create",
+      }).catch(() => undefined);
+    }
 
     await notifyStaffAiAppointmentAction({
       clinicId: input.tenant.clinicId,
@@ -355,6 +411,12 @@ export async function bookAppointmentFromSlot(input: {
       startsAt: appointment.startsAt,
     });
 
+    console.log("[APPOINTMENT_CONFIRMATION_SENT]", {
+      clinicId: input.tenant.clinicId,
+      appointmentId: appointment.id,
+      conversationId: input.conversationId,
+    });
+
     return {
       ok: true,
       appointmentId: appointment.id,
@@ -364,6 +426,10 @@ export async function bookAppointmentFromSlot(input: {
       type: appointment.type,
     };
   } catch (err) {
+    console.error("[APPOINTMENT_CREATE_FAILED]", {
+      clinicId: input.tenant.clinicId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     // Unique idempotency race
     const again = await prisma.whatsAppBookingIdempotency.findUnique({
       where: {

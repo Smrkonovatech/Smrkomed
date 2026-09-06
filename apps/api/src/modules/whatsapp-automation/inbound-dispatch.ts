@@ -30,7 +30,8 @@ export function buildIncomingWhatsAppVars(input: {
   conversationId: string;
   patientId?: string | null;
   coupleId?: string | null;
-  leadId?: string | null;
+  leadId?: string | null | undefined;
+  contactPhone?: string | null | undefined;
   messageId: string;
   messageType: string;
   messageText: string;
@@ -48,6 +49,8 @@ export function buildIncomingWhatsAppVars(input: {
     patient_id: input.patientId ?? "",
     couple_id: input.coupleId ?? "",
     lead_id: input.leadId ?? "",
+    sender_phone: input.contactPhone ?? "",
+    contact_phone: input.contactPhone ?? "",
     message_id: input.messageId,
     message_type: input.messageType,
     message_text: text,
@@ -124,8 +127,18 @@ export function buildIncomingWhatsAppVars(input: {
           };
         })()
       : {}),
-    ...(text === "appt_confirm" ? { appointmentConfirmed: "true" } : {}),
+    ...(text === "appt_confirm"
+      ? (() => {
+          console.log("[APPOINTMENT_CONFIRM_STARTED]", {
+            clinicId: input.clinicId,
+            conversationId: input.conversationId,
+          });
+          return { appointmentConfirmed: "true" };
+        })()
+      : {}),
     ...(text === "appt_cancel" ? { appointmentCancelled: "true" } : {}),
+    ...(text === "appt_reg_myself" ? { booking_as_couple: "false" } : {}),
+    ...(text === "appt_reg_couple" ? { booking_as_couple: "true" } : {}),
   };
 }
 
@@ -223,6 +236,14 @@ export async function resumeWaitForReplyExecutions(input: {
       ...(input.inboundVars ?? {}),
       patient_replied: "true",
     };
+
+    if (waitId === "n_ask_name" && replyAction && !replyAction.startsWith("appt_")) {
+      mergedVars["patient_name"] = replyAction;
+      mergedVars["patient.name"] = replyAction;
+    }
+    if (waitId === "n_ask_partner" && replyAction && !replyAction.startsWith("appt_")) {
+      mergedVars["partner_name"] = replyAction;
+    }
 
     console.log("[APPOINTMENT_EXECUTION_RESUME]", {
       clinicId: input.tenant.clinicId,
@@ -394,6 +415,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     patientId: input.patientId ?? null,
     coupleId,
     leadId,
+    contactPhone: input.contactPhone,
     messageId: input.messageId,
     messageType: input.messageType,
     messageText: input.messageText,

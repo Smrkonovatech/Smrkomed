@@ -2,7 +2,16 @@ import { randomUUID } from "node:crypto";
 
 import { Prisma } from "@prisma/client";
 import type { TenantContext } from "@smrkomed/database";
-import { prisma } from "@smrkomed/database";
+import { prisma, writeTenantAuditLog } from "@smrkomed/database";
+
+import { normalizeWhatsAppPhone, phonesMatch } from "../../integrations/providers/whatsapp/phone";
+
+function splitName(name: string) {
+  const parts = name.trim().split(/\s+/);
+  const firstName = parts[0] || "Patient";
+  const lastName = parts.slice(1).join(" ") || "";
+  return { firstName, lastName };
+}
 
 import { audit } from "../../lib/audit";
 import { HttpError } from "../../lib/errors";
@@ -1193,26 +1202,6 @@ async function executeNode(
         nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
       };
     }
-    case "PATIENT_LOOKUP": {
-      const patientId = execution.patientId ?? String(node.config["patientId"] ?? vars["patient_id"] ?? "");
-      let enriched: Record<string, string> = {};
-      if (patientId) {
-        const patient = await prisma.patient.findFirst({
-          where: { id: patientId, clinicId: tenant.clinicId },
-        });
-        if (patient) {
-          enriched = {
-            patient_name: `${patient.firstName} ${patient.lastName}`.trim(),
-            patient_phone: patient.phone ?? "",
-          };
-          Object.assign(vars, enriched);
-        }
-      }
-      return {
-        output: { enriched: Object.keys(enriched).length > 0, ...enriched },
-        nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
-      };
-    }
     case "APPOINTMENT_LOOKUP": {
       const appointmentId = String(node.config["appointmentId"] ?? vars["appointment_id"] ?? "");
       let enriched: Record<string, string> = {};
@@ -1332,8 +1321,16 @@ async function executeNode(
 
       let headerPayload: { type: "text"; text: string } | { type: "image"; link?: string; id?: string } | undefined = undefined;
       if (isImageHeader) {
+        const docId = vars["doctor.id"] || vars["selectedDoctorId"] || "";
+        let metaMediaId: string | null = null;
+        if (docId) {
+          const { getOrUploadDoctorMetaMediaId } = await import("./doctor-photos");
+          metaMediaId = await getOrUploadDoctorMetaMediaId(tenant, docId);
+        }
         const link = (header && (header.startsWith("http://") || header.startsWith("https://"))) ? header : (docPhoto || undefined);
-        if (link) {
+        if (metaMediaId) {
+          headerPayload = { type: "image", id: metaMediaId };
+        } else if (link) {
           headerPayload = { type: "image", link };
         }
       } else if (header) {
@@ -1563,11 +1560,23 @@ async function executeNode(
         return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
       }
 
+      const docDoctorId = doc?.id || vars["doctor.id"] || vars["selectedDoctorId"] || "";
+      let metaMediaId: string | null = null;
+      if (docDoctorId) {
+        const { getOrUploadDoctorMetaMediaId } = await import("./doctor-photos");
+        metaMediaId = await getOrUploadDoctorMetaMediaId(tenant, docDoctorId);
+      }
+      const headerObj = metaMediaId
+        ? { type: "image" as const, id: metaMediaId }
+        : docPhoto
+          ? { type: "image" as const, link: docPhoto }
+          : { type: "text" as const, text: `Dr. ${docName}` };
+
       const sendResult = await sendWhatsAppInteractiveButtons(tenant, {
         conversationId: execution.conversationId,
         body: bodyText,
         buttons,
-        header: docPhoto ? { type: "image", link: docPhoto } : { type: "text", text: `Dr. ${docName}` },
+        header: headerObj,
         footer: tenant.clinicName,
       });
 
@@ -1796,20 +1805,22 @@ async function executeNode(
       }
 
       const idemKey = `appt_flow_${execution.id}_${selectedSlotId}`;
+      const effectivePatientId = execution.patientId || vars["patient.id"] || vars["patientId"] || null;
+      const effectiveCoupleId = execution.coupleId || vars["couple.id"] || vars["coupleId"] || null;
       const booked = await bookAppointmentFromSlot({
         tenant,
         conversationId: execution.conversationId,
-        patientId: execution.patientId,
-        coupleId: execution.coupleId,
+        patientId: effectivePatientId,
+        coupleId: effectiveCoupleId,
         slotId: selectedSlotId,
         idempotencyKey: idemKey,
       });
 
       if (!booked.ok) {
-        const fallbackNext =
-          nextNodes(definition, node.id, "slot_expired")[0] ??
-          nextNodes(definition, node.id, "no_slots")[0] ??
-          next;
+        const isSlotIssue = booked.reason.includes("SLOT") || booked.reason.includes("CLOSED");
+        const fallbackNext = isSlotIssue
+          ? (nextNodes(definition, node.id, "slot_expired")[0] ?? nextNodes(definition, node.id, "no_slots")[0] ?? next)
+          : (nextNodes(definition, node.id, "error")[0] ?? nextNodes(definition, node.id, "no_slots")[0] ?? next);
         return {
           output: { error: "BOOKING_FAILED", reason: booked.reason },
           nextNodeId: fallbackNext?.id ?? null,
@@ -1915,6 +1926,278 @@ async function executeNode(
         output: { escalated: true, careTaskId: taskId, reason },
         nextNodeId: next?.id ?? null,
         escalated: true,
+      };
+    }
+    case "PATIENT_LOOKUP": {
+      const rawPhone =
+        vars["sender_phone"] ||
+        vars["contact_phone"] ||
+        (execution.conversationId
+          ? (await prisma.conversation.findUnique({
+              where: { id: execution.conversationId },
+              select: { contactPhone: true, patientId: true },
+            }))?.contactPhone
+          : null) ||
+        "";
+
+      const phoneClean = (rawPhone || "").replace(/\D/g, "");
+      const suffix = phoneClean.slice(-10);
+      const phoneLast4 = suffix.slice(-4);
+
+      console.log("[PATIENT_LOOKUP]", {
+        clinicId: tenant.clinicId,
+        executionId: execution.id,
+        phoneLast4: phoneLast4 ? `***${phoneLast4}` : null,
+      });
+
+      let foundPatient: { id: string; firstName: string; lastName: string; phone?: string | null; whatsappNumber?: string | null } | null = null;
+
+      const existingPatientId = execution.patientId || vars["patient.id"] || vars["patientId"];
+      if (existingPatientId) {
+        foundPatient = await prisma.patient.findFirst({
+          where: { id: existingPatientId, clinicId: tenant.clinicId },
+          select: { id: true, firstName: true, lastName: true, phone: true, whatsappNumber: true },
+        });
+      }
+
+      if (!foundPatient && suffix.length >= 8) {
+        const candidates = await prisma.patient.findMany({
+          where: {
+            clinicId: tenant.clinicId,
+            OR: [
+              { whatsappNumber: { contains: suffix } },
+              { phone: { contains: suffix } },
+            ],
+          },
+          select: { id: true, firstName: true, lastName: true, phone: true, whatsappNumber: true },
+          take: 10,
+        });
+
+        foundPatient = candidates.find((p) => phonesMatch(p.whatsappNumber, rawPhone) || phonesMatch(p.phone, rawPhone)) ?? candidates[0] ?? null;
+      }
+
+      let branch = "new_patient";
+      if (foundPatient) {
+        branch = "existing_patient";
+        vars["patient.id"] = foundPatient.id;
+        vars["patientId"] = foundPatient.id;
+        vars["patient.name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+        vars["patient.firstName"] = foundPatient.firstName;
+        vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+        vars["patient_first_name"] = foundPatient.firstName;
+        vars["patient_exists"] = "true";
+        vars["is_new_patient"] = "false";
+
+        const couple = await prisma.couple.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            OR: [{ primaryPatientId: foundPatient.id }, { partnerPatientId: foundPatient.id }],
+          },
+          select: { id: true },
+        });
+        if (couple) {
+          vars["couple.id"] = couple.id;
+          vars["coupleId"] = couple.id;
+        }
+
+        if (execution.conversationId) {
+          await prisma.conversation.updateMany({
+            where: { id: execution.conversationId, clinicId: tenant.clinicId },
+            data: { patientId: foundPatient.id, unmatched: false },
+          });
+        }
+
+        console.log("[PATIENT_FOUND]", {
+          clinicId: tenant.clinicId,
+          executionId: execution.id,
+          patientId: foundPatient.id,
+          hasCouple: Boolean(couple),
+        });
+      } else {
+        branch = "new_patient";
+        vars["patient_exists"] = "false";
+        vars["is_new_patient"] = "true";
+
+        console.log("[PATIENT_NOT_FOUND]", {
+          clinicId: tenant.clinicId,
+          executionId: execution.id,
+          phoneLast4: phoneLast4 ? `***${phoneLast4}` : null,
+        });
+      }
+
+      const next = nextNodes(definition, node.id, branch)[0] ?? nextNodes(definition, node.id)[0];
+      return {
+        output: {
+          patientFound: Boolean(foundPatient),
+          patientId: foundPatient?.id ?? null,
+          branch,
+        },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "CREATE_PATIENT": {
+      const rawName =
+        vars["patient_name"] ||
+        vars["patient.name"] ||
+        vars["message_text"] ||
+        String(node.config["name"] ?? "Patient");
+
+      const rawPhone =
+        vars["sender_phone"] ||
+        vars["contact_phone"] ||
+        (execution.conversationId
+          ? (await prisma.conversation.findUnique({
+              where: { id: execution.conversationId },
+              select: { contactPhone: true },
+            }))?.contactPhone
+          : null) ||
+        "";
+
+      const normalizedPhone = normalizeWhatsAppPhone(rawPhone) || rawPhone;
+      const suffix = normalizedPhone.replace(/\D/g, "").slice(-10);
+
+      let existing: { id: string; firstName: string; lastName: string } | null = null;
+      if (suffix.length >= 8) {
+        existing = await prisma.patient.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            OR: [
+              { whatsappNumber: { contains: suffix } },
+              { phone: { contains: suffix } },
+            ],
+          },
+          select: { id: true, firstName: true, lastName: true },
+        });
+      }
+
+      let patient = existing;
+      if (!patient) {
+        const { firstName, lastName } = splitName(rawName);
+
+        patient = await prisma.patient.create({
+          data: {
+            clinicId: tenant.clinicId,
+            firstName: firstName || "WhatsApp",
+            lastName: lastName || "Patient",
+            phone: normalizedPhone || null,
+            whatsappNumber: normalizedPhone || null,
+            status: "ACTIVE",
+          },
+          select: { id: true, firstName: true, lastName: true },
+        });
+
+        console.log("[PATIENT_CREATED]", {
+          clinicId: tenant.clinicId,
+          executionId: execution.id,
+          patientId: patient.id,
+          isCouple: vars["booking_as_couple"] === "true",
+        });
+
+        await writeTenantAuditLog(tenant, {
+          action: "whatsapp.patient.create",
+          entityType: "Patient",
+          entityId: patient.id,
+          metadata: { source: "WHATSAPP", conversationId: execution.conversationId },
+        }).catch(() => undefined);
+
+        const staff = await prisma.clinicMembership.findFirst({
+          where: { clinicId: tenant.clinicId, status: "ACTIVE" },
+          select: { userId: true },
+        });
+        if (staff) {
+          await prisma.notification.create({
+            data: {
+              clinicId: tenant.clinicId,
+              userId: staff.userId,
+              title: "🆕 New WhatsApp Patient",
+              body: `${patient.firstName} ${patient.lastName} (${normalizedPhone}) registered via WhatsApp.`,
+              href: `/patients/${patient.id}`,
+              status: "UNREAD",
+            },
+          }).catch(() => undefined);
+        }
+      }
+
+      vars["patient.id"] = patient.id;
+      vars["patientId"] = patient.id;
+      vars["patient.name"] = `${patient.firstName} ${patient.lastName}`.trim();
+      vars["patient.firstName"] = patient.firstName;
+      vars["patient_name"] = `${patient.firstName} ${patient.lastName}`.trim();
+      vars["patient_first_name"] = patient.firstName;
+
+      let coupleId = vars["couple.id"] || vars["coupleId"] || null;
+      if (!coupleId) {
+        const existingCouple = await prisma.couple.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            OR: [{ primaryPatientId: patient.id }, { partnerPatientId: patient.id }],
+          },
+          select: { id: true },
+        });
+        if (existingCouple) {
+          coupleId = existingCouple.id;
+        } else {
+          let partnerId: string | null = null;
+          if (vars["partner_name"]) {
+            const partnerName = splitName(vars["partner_name"]);
+            const partner = await prisma.patient.create({
+              data: {
+                clinicId: tenant.clinicId,
+                firstName: partnerName.firstName || "Partner",
+                lastName: partnerName.lastName || "",
+                phone: vars["partner_phone"] || null,
+                status: "ACTIVE",
+              },
+            });
+            partnerId = partner.id;
+          }
+
+          const newCouple = await prisma.couple.create({
+            data: {
+              clinicId: tenant.clinicId,
+              slug: `c-${patient.id.slice(-8)}-${Date.now().toString(36)}`,
+              primaryPatientId: patient.id,
+              partnerPatientId: partnerId,
+            },
+            select: { id: true },
+          });
+          coupleId = newCouple.id;
+
+          console.log("[COUPLE_CREATED]", {
+            clinicId: tenant.clinicId,
+            coupleId: newCouple.id,
+            primaryPatientId: patient.id,
+            partnerPatientId: partnerId,
+          });
+        }
+      }
+
+      if (coupleId) {
+        vars["couple.id"] = coupleId;
+        vars["coupleId"] = coupleId;
+      }
+
+      if (execution.conversationId) {
+        await prisma.conversation.updateMany({
+          where: { id: execution.conversationId, clinicId: tenant.clinicId },
+          data: { patientId: patient.id, unmatched: false },
+        });
+        realtimeBus.publish({
+          type: "CONVERSATION_UPDATED",
+          clinicId: tenant.clinicId,
+          conversationId: execution.conversationId,
+          patch: { status: "OPEN", updatedAt: new Date().toISOString() },
+        });
+      }
+
+      const next = nextNodes(definition, node.id)[0];
+      return {
+        output: {
+          patientId: patient.id,
+          name: `${patient.firstName} ${patient.lastName}`.trim(),
+          coupleId,
+        },
+        nextNodeId: next?.id ?? null,
       };
     }
     case "END":

@@ -100,3 +100,85 @@ export function getDoctorPhotoUrl(doctorId: string, baseUrl?: string): string {
   const base = (baseUrl || getApiBaseUrl()).replace(/\/$/, "");
   return `${base}/api/v1/public/doctors/${encodeURIComponent(doctorId)}/photo`;
 }
+
+/**
+ * Return image buffer for a doctor photo.
+ */
+export async function getDoctorPhotoBuffer(doctorId: string): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
+  const asset = resolveDoctorPhotoAsset(doctorId);
+  const assetsDir = getDoctorAssetsDir();
+  const filePath = path.join(assetsDir, asset.filename);
+  if (!fs.existsSync(filePath)) return null;
+  const buffer = await fs.promises.readFile(filePath);
+  return { buffer, contentType: asset.contentType, filename: asset.filename };
+}
+
+interface CachedMetaMedia {
+  mediaId: string;
+  uploadedAt: number;
+}
+
+const doctorMetaMediaCache = new Map<string, CachedMetaMedia>();
+const MEDIA_CACHE_TTL_MS = 25 * 24 * 60 * 60_000; // 25 days (Meta media IDs expire after 30 days)
+
+/**
+ * Upload doctor photo to Meta Cloud API and cache media ID for instant, native rendering.
+ */
+export async function getOrUploadDoctorMetaMediaId(
+  tenant: { clinicId: string; organizationId: string; userId: string },
+  doctorId: string,
+): Promise<string | null> {
+  const cacheKey = `${tenant.clinicId}_${doctorId}`;
+  const cached = doctorMetaMediaCache.get(cacheKey);
+  if (cached && Date.now() - cached.uploadedAt < MEDIA_CACHE_TTL_MS) {
+    return cached.mediaId;
+  }
+
+  const asset = await getDoctorPhotoBuffer(doctorId);
+  if (!asset) return null;
+
+  try {
+    const { resolveWhatsAppSenderCredentials } = await import("../../integrations/providers/whatsapp/service");
+    const { uploadWhatsAppMedia } = await import("../../integrations/providers/whatsapp/graph");
+
+    const creds = await resolveWhatsAppSenderCredentials(tenant as any);
+    if (!creds?.phoneNumberId || !creds?.token) return null;
+
+    console.log("[DOCTOR_IMAGE_SEND_STARTED]", {
+      clinicId: tenant.clinicId,
+      doctorId,
+      filename: asset.filename,
+      uploadingToMeta: true,
+    });
+
+    const res = await uploadWhatsAppMedia({
+      phoneNumberId: creds.phoneNumberId,
+      accessToken: creds.token,
+      buffer: asset.buffer,
+      mimeType: asset.contentType,
+      filename: asset.filename,
+    });
+
+    if (res?.id) {
+      doctorMetaMediaCache.set(cacheKey, { mediaId: res.id, uploadedAt: Date.now() });
+      console.log("[DOCTOR_IMAGE_SEND_RESULT]", {
+        clinicId: tenant.clinicId,
+        doctorId,
+        metaMediaId: res.id,
+        success: true,
+      });
+      return res.id;
+    }
+  } catch (err) {
+    console.warn("[DOCTOR_IMAGE_SEND_RESULT]", {
+      clinicId: tenant.clinicId,
+      doctorId,
+      success: false,
+      error: err instanceof Error ? err.message : String(err),
+      note: "Falling back to public photo URL",
+    });
+  }
+
+  return null;
+}
+

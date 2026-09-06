@@ -86,6 +86,8 @@ export const publicLeadRoutes = new Hono<AppEnv>()
     const fileBuffer = await fs.promises.readFile(filePath);
     return c.body(fileBuffer, 200, {
       "Content-Type": asset.contentType,
+      "Content-Length": String(fileBuffer.length),
+      "Accept-Ranges": "bytes",
       "Cache-Control": "public, max-age=86400",
     });
   });

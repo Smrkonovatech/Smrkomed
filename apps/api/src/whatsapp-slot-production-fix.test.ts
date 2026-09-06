@@ -454,3 +454,229 @@ test("Test J — Meta outbound: valid wamid = SENT, Meta error = FAILED", async 
   }
 });
 
+// Test K — Existing Patient Identification
+test("Test K — Existing Patient Identification: WhatsApp number finds existing patient", async () => {
+  const existingPatient = await prisma.patient.create({
+    data: {
+      clinicId: testClinicId,
+      firstName: "Rohan",
+      lastName: "Kapoor",
+      phone: "+919888877771",
+      whatsappNumber: "+919888877771",
+      status: "ACTIVE",
+    },
+  });
+
+  const existingCouple = await prisma.couple.create({
+    data: {
+      clinicId: testClinicId,
+      slug: `c-rohan-${Date.now()}`,
+      primaryPatientId: existingPatient.id,
+    },
+  });
+
+  const conv = await prisma.conversation.create({
+    data: {
+      clinicId: testClinicId,
+      contactPhone: "+919888877771",
+      channel: "WHATSAPP",
+      status: "OPEN",
+    },
+  });
+
+  const { runExecution } = await import("./modules/whatsapp-automation/engine");
+  const testFlow = await prisma.whatsAppFlow.create({
+    data: {
+      clinicId: testClinicId,
+      name: "Test Patient Lookup Flow",
+      triggerType: "INCOMING_WHATSAPP",
+      status: "ACTIVE",
+      definition: {
+        nodes: [
+          { id: "node_trigger", type: "TRIGGER", label: "Start", config: { triggerType: "INCOMING_WHATSAPP" } },
+          { id: "n_lookup", type: "PATIENT_LOOKUP", label: "Lookup", config: {} },
+          { id: "n_existing", type: "END", label: "Existing", config: {} },
+          { id: "n_new", type: "END", label: "New", config: {} },
+        ],
+        edges: [
+          { id: "e1", source: "node_trigger", target: "n_lookup" },
+          { id: "e2", source: "n_lookup", target: "n_existing", branch: "existing_patient" },
+          { id: "e3", source: "n_lookup", target: "n_new", branch: "new_patient" },
+        ],
+      },
+    },
+  });
+
+  const exec = await prisma.whatsAppFlowExecution.create({
+    data: {
+      clinicId: testClinicId,
+      flowId: testFlow.id,
+      status: "PENDING",
+      triggerType: "INCOMING_WHATSAPP",
+      triggerEventId: `lookup_test_${Date.now()}`,
+      conversationId: conv.id,
+      currentNodeId: "n_lookup",
+      idempotencyKey: `lookup_exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      context: {
+        vars: { contact_phone: "+919888877771" },
+      },
+    },
+  });
+
+  const runResult = await runExecution(tenant, exec.id);
+  assert.equal(runResult.status, "COMPLETED");
+
+  const finalExec = await prisma.whatsAppFlowExecution.findUniqueOrThrow({ where: { id: exec.id } });
+  const ctx = JSON.parse(typeof finalExec.context === "string" ? finalExec.context : JSON.stringify(finalExec.context));
+  assert.equal(ctx.vars?.["patient_exists"], "true");
+  assert.equal(ctx.vars?.["patient.id"], existingPatient.id);
+  assert.equal(ctx.vars?.["couple.id"], existingCouple.id);
+});
+
+// Test L — New Patient Registration
+test("Test L — New Patient Registration: creates basic patient and couple record", async () => {
+  const newPhone = "+919876500001";
+  const conv = await prisma.conversation.create({
+    data: {
+      clinicId: testClinicId,
+      contactPhone: newPhone,
+      channel: "WHATSAPP",
+      status: "OPEN",
+    },
+  });
+
+  const { runExecution } = await import("./modules/whatsapp-automation/engine");
+  const testFlow = await prisma.whatsAppFlow.create({
+    data: {
+      clinicId: testClinicId,
+      name: "Test Create Patient Flow",
+      triggerType: "INCOMING_WHATSAPP",
+      status: "ACTIVE",
+      definition: {
+        nodes: [
+          { id: "node_trigger", type: "TRIGGER", label: "Start", config: { triggerType: "INCOMING_WHATSAPP" } },
+          { id: "n_create", type: "CREATE_PATIENT", label: "Create", config: {} },
+          { id: "node_end", type: "END", label: "End", config: {} },
+        ],
+        edges: [
+          { id: "e1", source: "node_trigger", target: "n_create" },
+          { id: "e2", source: "n_create", target: "node_end" },
+        ],
+      },
+    },
+  });
+
+  const exec = await prisma.whatsAppFlowExecution.create({
+    data: {
+      clinicId: testClinicId,
+      flowId: testFlow.id,
+      status: "PENDING",
+      triggerType: "INCOMING_WHATSAPP",
+      triggerEventId: `create_test_${Date.now()}`,
+      conversationId: conv.id,
+      currentNodeId: "n_create",
+      idempotencyKey: `create_exec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      context: {
+        vars: {
+          patient_name: "Sneha Patel",
+          contact_phone: newPhone,
+          booking_as_couple: "true",
+          partner_name: "Arun Patel",
+        },
+      },
+    },
+  });
+
+  const runResult = await runExecution(tenant, exec.id);
+  assert.equal(runResult.status, "COMPLETED");
+
+  const createdPatient = await prisma.patient.findFirst({
+    where: { clinicId: testClinicId, firstName: "Sneha", lastName: "Patel" },
+  });
+  assert.ok(createdPatient, "Patient Sneha Patel must be created in DB");
+  assert.ok(createdPatient?.whatsappNumber?.includes("9876500001"), "WhatsApp phone must match");
+
+  const createdCouple = await prisma.couple.findFirst({
+    where: { clinicId: testClinicId, primaryPatientId: createdPatient!.id },
+  });
+  assert.ok(createdCouple, "Couple record must be created for fertility patient");
+});
+
+// Test M — Confirm Booking without Pre-existing Couple
+test("Test M — Confirm Booking: patient without couple auto-creates couple and confirms appointment", async () => {
+  const soloPatient = await prisma.patient.create({
+    data: {
+      clinicId: testClinicId,
+      firstName: "Vikram",
+      lastName: "Singh",
+      phone: "+919999000022",
+      whatsappNumber: "+919999000022",
+      status: "ACTIVE",
+    },
+  });
+
+  const targetDate = new Date("2026-09-08T05:00:00.000Z");
+  const slotId = encodeSlotId({
+    startMs: targetDate.getTime(),
+    durationMin: 30,
+    doctorName: "Dr. Ananya Rao",
+    appointmentType: "Consultation",
+  });
+
+  const booked = await bookAppointmentFromSlot({
+    tenant,
+    conversationId: testConvId,
+    patientId: soloPatient.id,
+    coupleId: null, // intentionally null
+    slotId,
+    idempotencyKey: `solo_book_${Date.now()}`,
+  });
+
+  assert.equal(booked.ok, true, "Booking must succeed even when coupleId is initially null");
+  assert.ok(booked.appointmentId);
+
+  const appt = await prisma.appointment.findUnique({ where: { id: booked.appointmentId } });
+  assert.ok(appt);
+  assert.equal(appt!.status, "CONFIRMED");
+
+  // Check couple was auto-created and linked
+  const linkedCouple = await prisma.couple.findFirst({
+    where: { clinicId: testClinicId, primaryPatientId: soloPatient.id },
+  });
+  assert.ok(linkedCouple, "Couple should be auto-created for the patient");
+  assert.equal(appt!.coupleId, linkedCouple!.id);
+
+  // CareTask must also be created
+  const task = await prisma.careTask.findFirst({
+    where: { clinicId: testClinicId, coupleId: linkedCouple!.id },
+  });
+  assert.ok(task, "CareTask must be created for the appointment");
+});
+
+// Test N — Existing Patient Second Appointment
+test("Test N — Existing Patient Second Appointment: reuses same patient, does not duplicate", async () => {
+  const initialPatientCount = await prisma.patient.count({ where: { clinicId: testClinicId } });
+
+  const targetDate = new Date("2026-09-08T06:00:00.000Z");
+  const slotId = encodeSlotId({
+    startMs: targetDate.getTime(),
+    durationMin: 30,
+    doctorName: "Dr. Ananya Rao",
+    appointmentType: "Follow-up",
+  });
+
+  const booked = await bookAppointmentFromSlot({
+    tenant,
+    conversationId: testConvId,
+    patientId: testPatientId,
+    coupleId: testCoupleId,
+    slotId,
+    idempotencyKey: `second_appt_${Date.now()}`,
+  });
+
+  assert.equal(booked.ok, true, "Second booking for existing patient must succeed");
+  const finalPatientCount = await prisma.patient.count({ where: { clinicId: testClinicId } });
+  assert.equal(finalPatientCount, initialPatientCount, "No duplicate patient created for second booking");
+});
+
+
