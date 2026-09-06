@@ -1414,6 +1414,82 @@ async function executeNode(
         waitForReply: shouldWait,
       };
     }
+    case "SEND_DOCTOR_CARD": {
+      const targetDoctorId = vars["selectedDoctorId"] || String(node.config["doctorId"] ?? "");
+      const doctors = await resolveClinicDoctors(tenant.clinicId);
+      const doc = (targetDoctorId ? doctors.find((d) => d.id === targetDoctorId) : null) ?? doctors[0];
+
+      const docName = doc?.name || vars["doctor.name"] || "Specialist";
+      const docSpecialty = doc?.specialty || vars["doctor.specialty"] || "Fertility & Reproductive Medicine";
+      const docExp = doc?.experience || vars["doctor.experience"] || "10+ years experience";
+      const docBio = doc?.bio || vars["doctor.bio"] || "Compassionate, personalized patient care.";
+      const docLangs = doc?.languages?.join(" • ") || vars["doctor.languages"] || "English • Hindi";
+      const docPhoto = doc?.photoUrl || vars["doctor.photoUrl"] || "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=800&auto=format&fit=crop&q=80";
+
+      const bodyText = interpolateVariables(
+        String(node.config["body"] || `👨‍⚕️ Dr. {{doctor.name}}\n{{doctor.specialty}}\n\n⏳ {{doctor.experience}}\n🗣️ Languages: {{doctor.languages}}\n\n"${docBio}"`),
+        {
+          ...vars,
+          "doctor.name": docName,
+          "doctor.specialty": docSpecialty,
+          "doctor.experience": docExp,
+          "doctor.languages": docLangs,
+          "doctor.bio": docBio,
+          "doctor.photoUrl": docPhoto,
+        }
+      );
+
+      const buttons = [
+        { id: `appt_doctor_slots_${doc?.id || "doc"}`, title: "📅 See Slots" },
+        { id: "appt_doctors_list", title: "👩‍⚕️ Other Doctor" },
+      ];
+
+      const next = nextNodes(definition, node.id)[0];
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            doctorCard: { name: docName, specialty: docSpecialty, experience: docExp, photoUrl: docPhoto },
+            body: bodyText,
+            buttons,
+            note: "TEST MODE — Doctor card simulated; no message sent",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      if (!execution.conversationId) {
+        return {
+          output: { skipped: true, reason: "SEND_DOCTOR_CARD requires an open conversation (conversationId)." },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      const settings = await getClinicCommSettings(tenant.clinicId);
+      const consent = await assertAutomationConsent({
+        clinicId: tenant.clinicId,
+        patientId: execution.patientId,
+        requireGranted: settings.requireConsentGranted,
+      });
+      if (!consent.ok) {
+        return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
+      }
+
+      const sendResult = await sendWhatsAppInteractiveButtons(tenant, {
+        conversationId: execution.conversationId,
+        body: bodyText,
+        buttons,
+        header: docPhoto ? { type: "image", link: docPhoto } : { type: "text", text: `Dr. ${docName}` },
+        footer: tenant.clinicName,
+      });
+
+      const shouldWait = Boolean(node.config["waitForReply"] ?? true);
+      return {
+        output: { sendResult, doctorId: doc?.id, channel: "doctor_card" },
+        nextNodeId: next?.id ?? null,
+        waitForReply: shouldWait,
+      };
+    }
     case "GET_DOCTORS": {
       const doctors = await resolveClinicDoctors(tenant.clinicId);
       vars["_availableDoctorsJson"] = JSON.stringify(doctors);

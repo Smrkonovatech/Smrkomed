@@ -1,14 +1,12 @@
-"use client";
-
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Pause, Play, Plus, Archive } from "lucide-react";
+import { Copy, Pause, Play, Plus, Archive, Trash2, CalendarCheck, Sparkles } from "lucide-react";
 
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ApiError, apiGet, apiPost } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPost } from "@/lib/api/client";
 
 type FlowRow = {
   id: string;
@@ -17,6 +15,7 @@ type FlowRow = {
   status: "DRAFT" | "ACTIVE" | "PAUSED" | "ARCHIVED";
   triggerType: string;
   isLibrary: boolean;
+  libraryKey: string | null;
   lastRunAt: string | null;
   successRate: number | null;
   patientsReached: number | null;
@@ -37,6 +36,8 @@ export default function WhatsAppFlowsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<FlowRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +65,10 @@ export default function WhatsAppFlowsPage() {
     return rows;
   }, [rows, filter]);
 
+  const canonicalLibraryAppt = useMemo(() => {
+    return rows.find((r) => r.isLibrary && r.libraryKey === "appointment_booking_whatsapp");
+  }, [rows]);
+
   async function act(id: string, action: "duplicate" | "activate" | "pause" | "archive") {
     setBusyId(id);
     try {
@@ -85,11 +90,36 @@ export default function WhatsAppFlowsPage() {
     }
   }
 
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    if (deleteTarget.status === "ACTIVE") {
+      toast.error("An active flow cannot be permanently deleted. Pause/archive it first.");
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await apiDelete<{ deleted: boolean; archived?: boolean; message?: string }>(
+        `/api/v1/whatsapp-automation/flows/${deleteTarget.id}`,
+      );
+      if (res.archived) {
+        toast.info(res.message || "Flow has execution history and was archived instead.");
+      } else {
+        toast.success("Flow permanently deleted");
+      }
+      setDeleteTarget(null);
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to delete flow");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-[1500px] space-y-4">
       <PageHeader
         title="Flows"
-        subtitle="Clinic automation workflows. Recommended flows stay draft until you duplicate and activate."
+        subtitle="WhatsApp automation workflows. Editable node-based journeys with real appointment scheduling."
         actions={
           <Button asChild size="sm">
             <Link href="/whatsapp/flows/new">
@@ -123,16 +153,54 @@ export default function WhatsAppFlowsPage() {
       {error ? (
         <EmptyState title="Unable to load flows" description={error} action={<Button onClick={() => void load()}>Retry</Button>} />
       ) : null}
+
       {!loading && !error && visible.length === 0 ? (
-        <EmptyState
-          title="No flows yet"
-          description="Create a flow or open Recommended to duplicate a clinic starter."
-          action={
-            <Button asChild>
-              <Link href="/whatsapp/flows/new">Create Flow</Link>
-            </Button>
-          }
-        />
+        <div className="space-y-4">
+          <EmptyState
+            title="No custom flows yet"
+            description="Create a flow from scratch or activate the canonical Appointment Booking workflow below."
+            action={
+              <Button asChild>
+                <Link href="/whatsapp/flows/new">Create Flow</Link>
+              </Button>
+            }
+          />
+          {canonicalLibraryAppt ? (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <CalendarCheck className="size-5 text-primary" />
+                    <h3 className="text-base font-semibold text-foreground">Appointment Booking — WhatsApp</h3>
+                    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-medium text-primary">
+                      CANONICAL FLOW
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Complete 17-node patient appointment booking automation with doctor cards, real available dates, time slots, confirmation buttons, and Care Loop task creation.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    asChild
+                  >
+                    <Link href={`/whatsapp/flows/${canonicalLibraryAppt.id}`}>View Template</Link>
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={busyId === canonicalLibraryAppt.id}
+                    onClick={() => void act(canonicalLibraryAppt.id, "duplicate")}
+                  >
+                    <Sparkles className="mr-1 size-3.5" />
+                    Duplicate & Edit
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       <ul className="grid gap-3 lg:grid-cols-2">
@@ -172,7 +240,7 @@ export default function WhatsAppFlowsPage() {
               {flow.createdByName ? `By ${flow.createdByName} · ` : ""}
               Updated {new Date(flow.updatedAt).toLocaleDateString()}
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
               <Button asChild size="sm" variant="outline">
                 <Link href={`/whatsapp/flows/${flow.id}`}>Edit</Link>
               </Button>
@@ -213,10 +281,59 @@ export default function WhatsAppFlowsPage() {
                   Archive
                 </Button>
               ) : null}
+              {!flow.isLibrary ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  disabled={busyId === flow.id}
+                  onClick={() => setDeleteTarget(flow)}
+                >
+                  <Trash2 className="mr-1 size-3.5" />
+                  Delete
+                </Button>
+              ) : null}
             </div>
           </li>
         ))}
       </ul>
+
+      {/* Delete Confirmation Modal */}
+      {deleteTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="surface-card w-full max-w-md space-y-4 rounded-xl border border-destructive/20 p-6 shadow-xl">
+            <div className="space-y-1">
+              <h3 className="text-lg font-semibold text-foreground">Delete flow?</h3>
+              <p className="text-sm text-muted-foreground">
+                This permanently removes this draft flow <strong className="text-foreground">{deleteTarget.name}</strong> and its configuration. Executions/history will not be deleted.
+              </p>
+              {deleteTarget.status === "ACTIVE" ? (
+                <p className="mt-2 rounded-md bg-destructive/10 p-2 text-xs font-medium text-destructive">
+                  An active flow cannot be permanently deleted. Pause/archive it first.
+                </p>
+              ) : null}
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={deleting}
+                onClick={() => setDeleteTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleting || deleteTarget.status === "ACTIVE"}
+                onClick={() => void confirmDelete()}
+              >
+                {deleting ? "Deleting…" : "Delete Flow"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

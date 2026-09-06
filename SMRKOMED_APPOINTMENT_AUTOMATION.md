@@ -47,12 +47,13 @@ The appointment automation uses the following node types:
 
 | Category | Node Type | Purpose | Configuration Options |
 |---|---|---|---|
-| **TRIGGER** | `TRIGGER` | Initiates flow on inbound WhatsApp event or keyword intent | `triggerType: "INBOUND_MESSAGE"` |
+| **TRIGGER** | `TRIGGER` | Initiates flow on inbound WhatsApp event or keyword intent | `triggerType: "INCOMING_WHATSAPP"` |
 | **AI** | `DETECT_INTENT` | Classifies patient intent (booking, reschedule, cancel) | Strict heuristic + fallback allowlist |
 | **AI** | `EXTRACT_PREFERENCES` | Parses natural language date/time/doctor choices | Heuristic date/time window parser |
-| **COMMUNICATION** | `SEND_TEXT` | Sends personalized copy with variable interpolation | Text body, safe variable tags (`{{patient.name}}`, etc.) |
-| **COMMUNICATION** | `SEND_BUTTONS` | Dispatches native WhatsApp quick-reply buttons (up to 3) | Body text, button titles, target node mapping |
-| **COMMUNICATION** | `SEND_LIST` | Dispatches native WhatsApp interactive list bottom-sheet (up to 10 items) | Header, body, button title, dynamic doctor/slot rows |
+| **MESSAGES** | `SEND_TEXT` | Sends personalized copy with variable interpolation | Text body, safe variable tags (`{{patient.name}}`, etc.) |
+| **MESSAGES** | `SEND_BUTTONS` | Dispatches native WhatsApp quick-reply buttons (up to 3) | Body text, button titles, target node mapping |
+| **MESSAGES** | `SEND_LIST` | Dispatches native WhatsApp interactive list bottom-sheet (up to 10 items) | Header, body, button title, dynamic doctor/slot rows |
+| **MESSAGES** | `SEND_DOCTOR_CARD` | Formatted doctor profile card with photo, bio, languages & CTA | Doctor selector, header, CTA buttons |
 | **APPOINTMENT** | `GET_DOCTORS` | Fetches active clinic providers with medical photos | Specialty filter, branch scoping |
 | **APPOINTMENT** | `GET_DOCTOR_DETAILS`| Loads rich doctor profile (specialty, experience, clinic) | Formatting template |
 | **APPOINTMENT** | `GET_AVAILABLE_DATES`| Queries real upcoming schedule dates with open slots | Search window (e.g. 7-14 days) |
@@ -61,9 +62,9 @@ The appointment automation uses the following node types:
 | **APPOINTMENT** | `BOOK_APPOINTMENT` | Revalidates slot in DB, executes transactional booking | Idempotency key, CareTask trigger |
 | **CARE LOOP** | `CREATE_TASK` | Generates or updates associated patient CareTask | Task category, priority, due date |
 | **HUMAN** | `HUMAN_HANDOFF` | Escalates to clinic staff inbox when patient asks or slots fail | Escalation reason, staff notification |
-| **LOGIC** | `CONDITION` | Evaluates branching rules | Variable operators (`equals`, `contains`, etc.) |
+| **LOGIC** | `CONDITION` | Evaluates branching rules | Variable operators (`equals`, `truthy`, `falsy`) |
 | **LOGIC** | `WAIT_FOR_REPLY` | Pauses flow execution in DB until patient responds | Timeout duration, allowed reply types |
-| **LOGIC** | `END` | Terminates workflow execution | Exit message, terminal status |
+| **CONTROL** | `END` | Terminates workflow execution | Exit message, terminal status |
 
 ---
 
@@ -101,46 +102,48 @@ All IDs are validated against tenant clinic boundaries before processing.
 
 ---
 
-## 6. Authoritative Slot Revalidation & Idempotency
+## 6. Flow Lifecycle Management & Cleanup
 
-1. **Slot Presentation**: Slots retrieved by `getAvailableAppointmentSlots` are assigned encoded identifiers incorporating doctor, date, start time, and duration.
-2. **Pre-Booking Revalidation**: Before invoking `bookAppointmentFromSlot`, `engine.ts` executes `validateSlotStillAvailable`. If another patient booked the slot in the interim, the flow transitions to the `UNAVAILABLE` branch and presents fresh slots.
-3. **Idempotency**: All booking requests pass clinic-scoped idempotency keys (`appt_booking_<clinicId>_<patientId>_<slotId>`). Duplicate webhook retries from Meta will never generate duplicate appointments.
-
----
-
-## 7. Natural Language & Intent Precedence (Bug Fix)
-
-Previously, messages like *"Show available slots next Monday"* or *"Can I see a doctor"* could be intercepted by generic AI chatbot fallbacks that replied *"I don't have published slots..."*.
-
-The pipeline now enforces strict precedence:
-1. `resumeWaitForReplyExecutions` executes before AI dispatch.
-2. `classifyPatientIntent` checks for appointment keywords first (`book`, `doctor`, `slots`, `appointment`, `reschedule`, `cancel`).
-3. If appointment intent is detected, it enters the deterministic appointment flow rather than the general LLM knowledge pipeline.
+1. **Flow List Operations**:
+   - `Create Flow`: Starter templates (Appointment Booking recommended with 17-node graph, Follow-up, Escalation, Blank).
+   - `Edit Flow`: Opens the 3-column node builder.
+   - `Duplicate`: Duplicates flow definition as an independent draft.
+   - `Activate / Pause`: Sets flow status to `ACTIVE` or `PAUSED`.
+   - `Archive`: Soft-deletes flow to `ARCHIVED`.
+   - `Delete`: Permanent deletion via `DELETE /flows/:id` with confirmation modal.
+     - **Active flow protection**: An active flow cannot be permanently deleted; it must be paused or archived first.
+     - **Execution history protection**: If a flow has recorded execution steps, the system automatically transitions it to `ARCHIVED` to preserve audit records.
+2. **Canonical Main Flow**:
+   - Every clinic is pre-seeded with the canonical **Appointment Booking — WhatsApp** flow.
 
 ---
 
-## 8. Visual Editor & Live Phone Simulator
+## 7. Dual Test Modes: Phone Simulator & Live WhatsApp
 
-1. **Visual Canvas** (`apps/web/src/components/whatsapp/flow-canvas.tsx`):
-   - Categorized node palette with drag-and-drop.
-   - Interactive zoom, pan, mini-map, and auto-layout.
-   - Color-coded badges and icons for Trigger, AI, Communication, Appointment, Care Loop, Logic, and Human nodes.
-2. **Node Inspector** (`apps/web/src/app/(dashboard)/whatsapp/flows/[id]/page.tsx`):
-   - Detailed inspection forms for button configurations, list sections, doctor rosters, date queries, and booking triggers.
-   - Variable substitution guide (`{{patient.name}}`, `{{doctor.name}}`, etc.).
-3. **Live WhatsApp Phone Simulator** (`apps/web/src/components/whatsapp/whatsapp-phone-simulator.tsx`):
-   - Native WhatsApp mobile frame with clinic header, verified badge, and chat bubbles.
-   - Real interactive buttons and interactive list bottom-sheet picker.
-   - Step-by-step synchronization highlighting the active node on the canvas.
-   - Multi-turn testing for the entire booking journey from trigger to booking confirmation without risking production data or sending live WhatsApp messages.
+The builder provides two distinct testing workflows:
+
+### Mode A: Phone Simulator
+- In-browser interactive WhatsApp phone mockup.
+- Interactive quick-reply buttons, interactive list bottom-sheet picker, and message input.
+- Real-time step highlighting synchronized with the React Flow canvas.
+- Safe testing without consuming Meta API messaging credits or sending live messages.
+
+### Mode B: Live WhatsApp Testing
+- Dispatches actual native WhatsApp interactive messages via Meta Cloud API.
+- Recipient picker: Select from active clinic patients or input a designated clinic test phone number.
+- Masked phone number preview (`+91 ••••••7328`).
+- Safety confirmation modal requiring explicit user confirmation before dispatching.
+- Connects through `POST /api/v1/whatsapp-automation/flows/:id/test` with `mode: "LIVE_WHATSAPP"`.
+- Validates Meta credentials (`WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`) and presents clear actionable error messages if unconfigured.
 
 ---
 
-## 9. Verification Summary
+## 8. Verification Summary
 
 | Stage | Status | Notes |
 |---|---|---|
 | **Code Verification** | **CODE VERIFIED** | TypeScript clean compile on both API (`apps/api/tsconfig.json`) and Web (`apps/web/tsconfig.json`). |
-| **Automated Tests** | **AUTOMATED TEST VERIFIED** | 22/22 unit tests passing in `whatsapp-automation.test.ts`; 5/5 integration tests passing in `appointment-booking.test.ts`. |
-| **Production E2E** | **PENDING LIVE CLINIC PROVISIONING** | Requires live Meta Cloud API phone number and verified clinic webhook token in target production environment. |
+| **Automated Tests** | **AUTOMATED TEST VERIFIED** | 22/22 unit tests passing in `whatsapp-automation.test.ts`; 7/7 integration tests passing in `appointment-booking.test.ts`. |
+| **Simulator Verification** | **SIMULATOR VERIFIED** | Interactive multi-turn booking journey tested in `WhatsAppPhoneSimulator`. |
+| **Live WhatsApp Testing** | **LIVE WHATSAPP READY** | Requires clinic test device number and Meta Cloud API credentials in target deployment. |
+| **Production E2E** | **PENDING LIVE CLINIC PROVISIONING** | Pending end-to-end verification through registered WhatsApp test number. |

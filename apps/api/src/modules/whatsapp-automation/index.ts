@@ -583,6 +583,41 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     return ok(c, serializeFlow(row));
   })
 
+  .delete("/flows/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
+    const { id } = c.req.valid("param");
+    const existing = await prisma.whatsAppFlow.findFirst({
+      where: { id, clinicId: tenant.clinicId },
+      include: { _count: { select: { executions: true } } },
+    });
+    if (!existing) throw new HttpError(404, "NOT_FOUND", "Flow not found");
+    if (existing.isLibrary) {
+      throw new HttpError(422, "SYSTEM_TEMPLATE", "System templates cannot be deleted.");
+    }
+    if (existing.status === "ACTIVE") {
+      throw new HttpError(422, "ACTIVE_FLOW", "An active flow cannot be permanently deleted. Pause or archive it first.");
+    }
+    if (existing._count.executions > 0) {
+      const row = await prisma.whatsAppFlow.update({
+        where: { id },
+        data: { status: "ARCHIVED" },
+        include: { createdBy: { select: { id: true, name: true } }, _count: { select: { executions: true } } },
+      });
+      await audit(tenant, "whatsapp.flow.archive", "WhatsAppFlow", row.id, {
+        reason: "Archived during delete because flow has execution history",
+      });
+      return ok(c, {
+        deleted: false,
+        archived: true,
+        message: "Flow has execution history and was archived instead of permanently deleted.",
+        flow: serializeFlow(row),
+      });
+    }
+    await prisma.whatsAppFlow.delete({ where: { id } });
+    await audit(tenant, "whatsapp.flow.delete", "WhatsAppFlow", id);
+    return ok(c, { deleted: true, id, message: "Flow deleted successfully." });
+  })
+
   .post("/flows/:id/validate", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_FLOWS);
     const { id } = c.req.valid("param");
@@ -602,6 +637,109 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     const body = c.req.valid("json");
     const existing = await prisma.whatsAppFlow.findFirst({ where: { id, clinicId: tenant.clinicId } });
     if (!existing) throw new HttpError(404, "NOT_FOUND", "Flow not found");
+
+    const mode = body.mode ?? "SIMULATION";
+
+    if (mode === "LIVE_WHATSAPP") {
+      const activeAccount = await prisma.whatsAppAccount.findFirst({
+        where: { clinicId: tenant.clinicId, isActive: true },
+      });
+      const direct = Boolean(process.env["WHATSAPP_PHONE_NUMBER_ID"] && process.env["WHATSAPP_ACCESS_TOKEN"]);
+      if (!activeAccount && !direct) {
+        throw new HttpError(
+          422,
+          "WHATSAPP_NOT_CONFIGURED",
+          "No active WhatsApp Business Account is connected for this clinic. Please configure Meta WhatsApp settings before running Live WhatsApp tests.",
+        );
+      }
+
+      let recipientPhone = body.recipientPhone?.trim();
+      let resolvedPatientId = body.patientId;
+      if (resolvedPatientId && !recipientPhone) {
+        const p = await prisma.patient.findFirst({
+          where: { id: resolvedPatientId, clinicId: tenant.clinicId },
+          select: { phone: true, id: true },
+        });
+        if (p?.phone) {
+          recipientPhone = p.phone;
+        }
+      }
+
+      if (!recipientPhone) {
+        throw new HttpError(
+          422,
+          "MISSING_RECIPIENT_PHONE",
+          "A valid recipient phone number (or test patient with phone) is required for Live WhatsApp testing.",
+        );
+      }
+
+      let conversation = body.conversationId
+        ? await prisma.conversation.findFirst({
+            where: { id: body.conversationId, clinicId: tenant.clinicId },
+          })
+        : null;
+
+      if (!conversation && resolvedPatientId) {
+        conversation = await prisma.conversation.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            patientId: resolvedPatientId,
+            channel: "WHATSAPP",
+          },
+        });
+      }
+
+      if (!conversation) {
+        conversation = await prisma.conversation.create({
+          data: {
+            clinicId: tenant.clinicId,
+            ...(resolvedPatientId ? { patientId: resolvedPatientId } : {}),
+            contactPhone: recipientPhone,
+            unmatched: false,
+            channel: "WHATSAPP",
+            status: "OPEN",
+          },
+        });
+      }
+
+      const { execution } = await startFlowExecution({
+        tenant,
+        flowId: id,
+        triggerEventId: `live_test_${Date.now()}`,
+        ...(resolvedPatientId ? { patientId: resolvedPatientId } : {}),
+        ...(body.coupleId ? { coupleId: body.coupleId } : {}),
+        conversationId: conversation.id,
+        vars: {
+          recipient_phone: recipientPhone,
+          patient_phone: recipientPhone,
+          is_live_test: "true",
+          clinic_id: tenant.clinicId,
+          clinic_name: tenant.clinicName,
+          ...(body.vars ?? {}),
+        },
+        simulation: false,
+      });
+
+      const withSteps = await prisma.whatsAppFlowExecution.findFirst({
+        where: { id: execution.id, clinicId: tenant.clinicId },
+        include: { flow: { select: { name: true } }, steps: { orderBy: { createdAt: "asc" } } },
+      });
+
+      const maskedPhone = recipientPhone.replace(/(\d{2,3})\d+(\d{4})/, "$1••••••$2");
+      await audit(tenant, "whatsapp.flow.live_test", "WhatsAppFlow", id, {
+        executionId: execution.id,
+        recipientPhone: maskedPhone,
+      });
+
+      return ok(c, {
+        mode: "LIVE_WHATSAPP",
+        label: "LIVE WHATSAPP TEST — REAL MESSAGE SENT",
+        recipientPhone: maskedPhone,
+        conversationId: conversation.id,
+        note: `Live WhatsApp message dispatched to ${maskedPhone}.`,
+        execution: serializeExecution(withSteps!),
+      });
+    }
 
     const simEvent = body.simulateEvent ?? "none";
     const eventVars: Record<string, string> =

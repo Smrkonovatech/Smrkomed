@@ -64,11 +64,13 @@ export const testFlowSchema = z.object({
   conversationId: z.string().optional(),
   vars: z.record(z.string(), z.string()).optional(),
   simulateBranch: z.enum(["yes", "no"]).optional(),
-  /** TEST-only simulated domain event context (never sends WhatsApp). */
+  /** TEST-only simulated domain event context. */
   simulateEvent: z
     .enum(["none", "incoming_whatsapp", "appointment", "care_loop"])
     .optional()
     .default("none"),
+  mode: z.enum(["SIMULATION", "LIVE_WHATSAPP"]).optional().default("SIMULATION"),
+  recipientPhone: z.string().max(32).optional(),
 });
 
 export const manualTriggerSchema = z.object({

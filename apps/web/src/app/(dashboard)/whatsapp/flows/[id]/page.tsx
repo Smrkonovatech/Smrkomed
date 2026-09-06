@@ -4,11 +4,48 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FlaskConical, Pause, Play, Save, Trash2, Smartphone, Settings } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarCheck,
+  Check,
+  CheckCircle2,
+  Clock,
+  Copy,
+  ExternalLink,
+  Eye,
+  FileText,
+  FlaskConical,
+  Info,
+  Layers,
+  ListFilter,
+  Maximize2,
+  Pause,
+  Phone,
+  Play,
+  Plus,
+  Radio,
+  RefreshCw,
+  Save,
+  Send,
+  Settings,
+  ShieldAlert,
+  Smartphone,
+  Sparkles,
+  Trash2,
+  Undo2,
+  User,
+  UserCheck,
+  Users,
+  X,
+  XCircle,
+} from "lucide-react";
 
 import {
+  CATEGORIZED_PALETTE,
   FLOW_PALETTE,
   MobileNodeList,
+  NodePaletteSidebar,
   WhatsAppFlowCanvas,
   addPaletteNode,
   type FlowDefinition,
@@ -40,7 +77,8 @@ type FlowDetail = {
   updatedAt: string;
 };
 
-type PatientOption = { id: string; firstName: string; lastName: string };
+type PatientOption = { id: string; firstName: string; lastName: string; phone?: string | null };
+
 type ExecutionRow = {
   id: string;
   status: string;
@@ -59,6 +97,8 @@ type ExecutionRow = {
   }>;
 };
 
+type ValidationIssue = { code: string; message: string; nodeId?: string };
+
 export default function WhatsAppFlowBuilderPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -71,15 +111,32 @@ export default function WhatsAppFlowBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<FlowDefinition[]>([]);
-  const [testResult, setTestResult] = useState<string | null>(null);
-  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [redoStack, setRedoStack] = useState<FlowDefinition[]>([]);
+
+  // Right Panel State
+  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "testing">("inspector");
+
+  // Testing & Simulation State
+  const [testMode, setTestMode] = useState<"SIMULATOR" | "LIVE_WHATSAPP">("SIMULATOR");
   const [testPatientId, setTestPatientId] = useState("");
+  const [testPhoneNumber, setTestPhoneNumber] = useState("");
+  const [confirmLiveTestModalOpen, setConfirmLiveTestModalOpen] = useState(false);
+  const [testingLive, setTestingLive] = useState(false);
+  const [testResult, setTestResult] = useState<{
+    mode: string;
+    label?: string;
+    note: string;
+    recipientPhone?: string;
+    execution: ExecutionRow;
+  } | null>(null);
+  const [patients, setPatients] = useState<PatientOption[]>([]);
   const [executions, setExecutions] = useState<ExecutionRow[]>([]);
-  const [testEvent, setTestEvent] = useState<
-    "none" | "incoming_whatsapp" | "appointment" | "care_loop"
-  >("none");
-  const [configOpen, setConfigOpen] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "simulator">("inspector");
+  const [activeConsoleExecution, setActiveConsoleExecution] = useState<ExecutionRow | null>(null);
+
+  // Validation State
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[] | null>(null);
+  const [validating, setValidating] = useState(false);
+  const [validationModalOpen, setValidationModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,6 +152,9 @@ export default function WhatsAppFlowBuilderPage() {
         `/api/v1/whatsapp-automation/executions?flowId=${id}&pageSize=8`,
       ).catch(() => ({ items: [] as ExecutionRow[] }));
       setExecutions(exec.items);
+      if (exec.items.length > 0 && exec.items[0]) {
+        setActiveConsoleExecution(exec.items[0]);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Could not load flow");
     } finally {
@@ -108,7 +168,15 @@ export default function WhatsAppFlowBuilderPage() {
 
   useEffect(() => {
     void apiGet<PatientOption[]>("/api/v1/patients")
-      .then((list) => setPatients(Array.isArray(list) ? list.slice(0, 50) : []))
+      .then((list) => {
+        if (Array.isArray(list)) {
+          setPatients(list.slice(0, 60));
+          if (list.length > 0 && list[0]?.phone) {
+            setTestPhoneNumber(list[0].phone);
+            setTestPatientId(list[0].id);
+          }
+        }
+      })
       .catch(() => setPatients([]));
   }, []);
 
@@ -120,15 +188,24 @@ export default function WhatsAppFlowBuilderPage() {
 
   function pushHistory(next: FlowDefinition) {
     setHistory((h) => [...h.slice(-29), definition]);
+    setRedoStack([]);
     setDefinition(next);
   }
 
-  function undo() {
-    setHistory((h) => {
-      if (!h.length) return h;
-      setDefinition(h[h.length - 1]!);
-      return h.slice(0, -1);
-    });
+  function handleUndo() {
+    if (!history.length) return;
+    const prev = history[history.length - 1]!;
+    setRedoStack((r) => [...r, definition]);
+    setHistory((h) => h.slice(0, -1));
+    setDefinition(prev);
+  }
+
+  function handleRedo() {
+    if (!redoStack.length) return;
+    const next = redoStack[redoStack.length - 1]!;
+    setHistory((h) => [...h, definition]);
+    setRedoStack((r) => r.slice(0, -1));
+    setDefinition(next);
   }
 
   function updateSelected(patch: Partial<{ label: string; config: Record<string, unknown> }>) {
@@ -143,16 +220,55 @@ export default function WhatsAppFlowBuilderPage() {
     });
   }
 
-  function deleteSelected() {
-    if (!selected || selected.type === "TRIGGER" || readOnly) {
-      toast.error(selected?.type === "TRIGGER" ? "Trigger cannot be deleted." : "Cannot edit system template.");
+  function duplicateNode(nodeId: string) {
+    if (readOnly) return;
+    const target = definition.nodes.find((n) => n.id === nodeId);
+    if (!target || target.type === "TRIGGER" || target.type === "END") return;
+
+    const newId = `n_${Math.random().toString(36).slice(2, 9)}`;
+    const newNode = {
+      ...target,
+      id: newId,
+      label: `${target.label} (Copy)`,
+      position: {
+        x: (target.position?.x ?? 250) + 40,
+        y: (target.position?.y ?? 200) + 60,
+      },
+    };
+    pushHistory({
+      ...definition,
+      nodes: [...definition.nodes, newNode],
+    });
+    setSelectedId(newId);
+    toast.success(`Duplicated ${target.label}`);
+  }
+
+  function deleteNode(nodeId: string) {
+    if (readOnly) return;
+    const target = definition.nodes.find((n) => n.id === nodeId);
+    if (!target) return;
+    if (target.type === "TRIGGER") {
+      toast.error("Trigger node cannot be deleted.");
       return;
     }
     pushHistory({
-      nodes: definition.nodes.filter((n) => n.id !== selected.id),
-      edges: definition.edges.filter((e) => e.source !== selected.id && e.target !== selected.id),
+      nodes: definition.nodes.filter((n) => n.id !== nodeId),
+      edges: definition.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
     });
-    setSelectedId(null);
+    if (selectedId === nodeId) {
+      setSelectedId(null);
+    }
+    toast.info(`Deleted ${target.label}`);
+  }
+
+  async function handleAddPaletteNode(type: string, defaults: Record<string, unknown>) {
+    if (readOnly) return;
+    const next = addPaletteNode(definition, type, defaults);
+    pushHistory(next);
+    const added = next.nodes[next.nodes.length - (next.nodes.some((n) => n.type === "END") ? 2 : 1)];
+    if (added) {
+      setSelectedId(added.id);
+    }
   }
 
   async function saveDraft() {
@@ -166,7 +282,7 @@ export default function WhatsAppFlowBuilderPage() {
         status: flow?.status === "ACTIVE" ? "ACTIVE" : "DRAFT",
       });
       setFlow(next);
-      toast.success("Draft saved");
+      toast.success("Draft saved successfully");
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Save failed");
     } finally {
@@ -174,7 +290,22 @@ export default function WhatsAppFlowBuilderPage() {
     }
   }
 
-  async function activate() {
+  async function validateFlow() {
+    setValidating(true);
+    try {
+      const res = await apiPost<{ issues: ValidationIssue[] }>(
+        `/api/v1/whatsapp-automation/flows/${id}/validate`,
+      );
+      setValidationIssues(res.issues);
+      setValidationModalOpen(true);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Validation failed");
+    } finally {
+      setValidating(false);
+    }
+  }
+
+  async function activateFlow() {
     if (readOnly) return;
     setSaving(true);
     try {
@@ -185,15 +316,15 @@ export default function WhatsAppFlowBuilderPage() {
       });
       const next = await apiPost<FlowDetail>(`/api/v1/whatsapp-automation/flows/${id}/activate`);
       setFlow(next);
-      toast.success("Flow activated");
+      toast.success("Flow published and activated!");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Activate failed");
+      toast.error(err instanceof ApiError ? err.message : "Activation failed");
     } finally {
       setSaving(false);
     }
   }
 
-  async function pause() {
+  async function pauseFlow() {
     try {
       const next = await apiPost<FlowDetail>(`/api/v1/whatsapp-automation/flows/${id}/pause`);
       setFlow(next);
@@ -203,7 +334,7 @@ export default function WhatsAppFlowBuilderPage() {
     }
   }
 
-  async function testSim() {
+  async function runSimulationTest() {
     setTestResult(null);
     try {
       if (!readOnly) {
@@ -219,1023 +350,831 @@ export default function WhatsAppFlowBuilderPage() {
         note: string;
         execution: ExecutionRow;
       }>(`/api/v1/whatsapp-automation/flows/${id}/test`, {
+        simulateEvent: "incoming_whatsapp",
+        mode: "SIMULATION",
         ...(testPatientId ? { patientId: testPatientId } : {}),
-        vars: {
-          patient_name: "Test Patient",
-          clinic_name: "Clinic",
-          "patient.firstName": "Priya",
-          "appointment.date": "2 Sep 2026",
-          "appointment.time": "10:30 AM",
-        },
-        simulateBranch: "no",
-        simulateEvent: testEvent,
       });
-      const tplSteps = result.execution.steps.filter((s) => s.nodeType === "SEND_TEMPLATE");
-      const tplSummary = tplSteps
-        .map((s) => {
-          const out = s.output ?? {};
-          const bits = [
-            out["templateName"] ? `template=${String(out["templateName"])}` : null,
-            out["valid"] === false ? "INVALID mapping" : out["valid"] === true ? "vars OK" : null,
-            out["error"] ? String(out["error"]) : null,
-            out["reason"] ? String(out["reason"]) : null,
-            s.error,
-          ].filter(Boolean);
-          return bits.join(" · ") || s.status;
-        })
-        .join("; ");
-      setTestResult(
-        `${result.label ?? result.mode}: ${result.execution.status} — ${result.execution.steps.length} steps. ${result.note}${
-          tplSummary ? ` | SEND_TEMPLATE: ${tplSummary}` : ""
-        }`,
-      );
-      toast.success("TEST MODE — no WhatsApp message sent");
-      await load();
+      setTestResult(result);
+      setActiveConsoleExecution(result.execution);
+      setExecutions((prev) => [result.execution, ...prev.slice(0, 7)]);
+      toast.success("Simulation test executed");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Test failed");
+      toast.error(err instanceof ApiError ? err.message : "Simulation failed");
     }
   }
 
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <PageHeader title="Flow builder" subtitle="Loading…" />
-        <LoadingRows rows={6} />
-      </div>
-    );
+  async function runLiveWhatsAppTest() {
+    setConfirmLiveTestModalOpen(false);
+    setTestingLive(true);
+    setTestResult(null);
+    try {
+      if (!readOnly) {
+        await apiPatch(`/api/v1/whatsapp-automation/flows/${id}`, {
+          definition,
+          name,
+          description: description || null,
+        });
+      }
+      const result = await apiPost<{
+        mode: string;
+        label?: string;
+        note: string;
+        recipientPhone?: string;
+        execution: ExecutionRow;
+      }>(`/api/v1/whatsapp-automation/flows/${id}/test`, {
+        mode: "LIVE_WHATSAPP",
+        recipientPhone: testPhoneNumber,
+        ...(testPatientId ? { patientId: testPatientId } : {}),
+      });
+      setTestResult(result);
+      setActiveConsoleExecution(result.execution);
+      setExecutions((prev) => [result.execution, ...prev.slice(0, 7)]);
+      toast.success(`Live test sent to ${result.recipientPhone || testPhoneNumber}`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Live test failed");
+    } finally {
+      setTestingLive(false);
+    }
   }
 
-  if (error || !flow) {
-    return (
-      <EmptyState
-        title="Flow not found"
-        description={error ?? "Check the URL or your clinic access."}
-        action={
-          <Button asChild>
-            <Link href="/whatsapp/flows">Back to flows</Link>
-          </Button>
-        }
-      />
-    );
+  function handleInsertVariable(varName: string) {
+    if (!selected || readOnly) return;
+    const currentBody = String(selected.config["body"] || "");
+    updateSelected({
+      config: { ...selected.config, body: `${currentBody} {{${varName}}}` },
+    });
   }
 
   return (
-    <div className="mx-auto max-w-[1600px] space-y-3">
-      <PageHeader
-        title={name || "Flow"}
-        subtitle={`${flow.triggerType.replaceAll("_", " ")} · ${readOnly ? "SYSTEM TEMPLATE" : flow.status}`}
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href="/whatsapp/flows">Flows</Link>
-            </Button>
-            <Button size="sm" variant="outline" onClick={undo} disabled={!history.length || readOnly}>
-              Undo
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => void testSim()}>
-              <FlaskConical className="mr-1 size-3.5" />
-              Test
-            </Button>
-            <Button size="sm" onClick={() => void saveDraft()} disabled={saving || readOnly}>
-              <Save className="mr-1 size-3.5" />
-              Save draft
-            </Button>
-            {flow.status === "ACTIVE" ? (
-              <Button size="sm" variant="outline" onClick={() => void pause()} disabled={readOnly}>
-                <Pause className="mr-1 size-3.5" />
-                Pause
-              </Button>
-            ) : (
-              <Button size="sm" onClick={() => void activate()} disabled={saving || readOnly}>
-                <Play className="mr-1 size-3.5" />
-                Activate
-              </Button>
-            )}
-          </div>
-        }
-      />
-
-      {readOnly ? (
-        <p className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
-          SYSTEM TEMPLATE — view and duplicate only. Duplicate from the Flows list to create a CUSTOM editable flow.
-        </p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <span>Success: {flow.successRate == null ? "No data" : `${flow.successRate}%`}</span>
-        <span>Failures: {flow.failureCount}</span>
-        <span>Last run: {flow.lastRunAt ? new Date(flow.lastRunAt).toLocaleString() : "Never"}</span>
-        <span>Updated: {new Date(flow.updatedAt).toLocaleString()}</span>
-      </div>
-
-      <div className="surface-card flex flex-wrap items-end gap-3 p-3">
-        <div className="space-y-1">
-          <Label className="text-xs">TEST MODE patient (optional)</Label>
-          <select
-            className="flex h-9 min-w-[200px] rounded-md border bg-background px-2 text-sm"
-            value={testPatientId}
-            onChange={(e) => setTestPatientId(e.target.value)}
-          >
-            <option value="">No patient</option>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.firstName} {p.lastName}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Simulate event</Label>
-          <select
-            className="flex h-9 min-w-[180px] rounded-md border bg-background px-2 text-sm"
-            value={testEvent}
-            onChange={(e) =>
-              setTestEvent(e.target.value as "none" | "incoming_whatsapp" | "appointment" | "care_loop")
-            }
-          >
-            <option value="none">None</option>
-            <option value="incoming_whatsapp">Incoming WhatsApp</option>
-            <option value="appointment">Appointment</option>
-            <option value="care_loop">Care Loop</option>
-          </select>
-        </div>
-        <p className="text-xs font-medium text-amber-800 dark:text-amber-200">
-          TEST MODE — NO MESSAGE WILL BE SENT
-        </p>
-      </div>
-
-      {testResult ? (
-        <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">{testResult}</p>
-      ) : null}
-
-      <div
-        className={cn(
-          "grid gap-3",
-          rightPanelTab === "simulator"
-            ? "lg:grid-cols-[200px_minmax(0,1fr)_370px]"
-            : "lg:grid-cols-[200px_minmax(0,1fr)_320px]",
-        )}
-      >
-        <aside className="surface-card hidden space-y-2 p-3 lg:block">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nodes</p>
-          {FLOW_PALETTE.map((item) => (
-            <Button
-              key={item.type}
-              size="sm"
-              variant="outline"
-              className="w-full justify-start"
-              disabled={readOnly}
-              onClick={() => pushHistory(addPaletteNode(definition, item.type, { ...item.defaults }))}
-            >
-              {item.label}
-            </Button>
-          ))}
-        </aside>
-
-        <section className="space-y-3">
-          <div className="hidden md:block">
-            <WhatsAppFlowCanvas
-              definition={definition}
-              readOnly={readOnly}
-              selectedId={selectedId}
-              onSelect={(nid) => {
-                setSelectedId(nid);
-                setConfigOpen(true);
-              }}
-              onChange={(next) => {
-                if (readOnly) return;
-                pushHistory(next);
-              }}
-            />
-          </div>
-          <MobileNodeList
-            definition={definition}
-            selectedId={selectedId}
-            onSelect={(nid) => {
-              setSelectedId(nid);
-              setConfigOpen(true);
-            }}
-          />
-          <div className="flex flex-wrap gap-2 md:hidden">
-            {FLOW_PALETTE.slice(0, 5).map((item) => (
-              <Button
-                key={item.type}
-                size="sm"
-                variant="outline"
+    <div className="flex h-[calc(100vh-4.5rem)] flex-col space-y-2">
+      {/* Top Action Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
+        <div className="flex items-center gap-3">
+          <Button asChild variant="ghost" size="sm" className="size-8 p-0">
+            <Link href="/whatsapp/flows" title="Back to flows list">
+              <ArrowLeft className="size-4" />
+            </Link>
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <Input
+                value={name}
                 disabled={readOnly}
-                onClick={() => pushHistory(addPaletteNode(definition, item.type, { ...item.defaults }))}
-              >
-                {item.label}
-              </Button>
-            ))}
-          </div>
-        </section>
-
-        <aside
-          className={`surface-card space-y-3 p-3 ${configOpen ? "" : "hidden lg:block"} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[70vh] max-lg:overflow-y-auto max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-lg`}
-        >
-          <div className="flex items-center justify-between border-b pb-2">
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                type="button"
-                variant={rightPanelTab === "inspector" ? "default" : "ghost"}
-                className="h-7 text-xs"
-                onClick={() => setRightPanelTab("inspector")}
-              >
-                <Settings className="mr-1 size-3" />
-                Inspector
-              </Button>
-              <Button
-                size="sm"
-                type="button"
-                variant={rightPanelTab === "simulator" ? "default" : "outline"}
-                className={cn(
-                  "h-7 text-xs",
-                  rightPanelTab === "simulator"
-                    ? "bg-emerald-700 text-white hover:bg-emerald-800"
-                    : "border-emerald-600/30 text-emerald-700 dark:text-emerald-400",
-                )}
-                onClick={() => setRightPanelTab("simulator")}
-              >
-                <Smartphone className="mr-1 size-3" />
-                Live WhatsApp
-              </Button>
-            </div>
-            <Button size="sm" variant="ghost" className="lg:hidden" onClick={() => setConfigOpen(false)}>
-              Close
-            </Button>
-          </div>
-
-          {rightPanelTab === "simulator" ? (
-            <div className="py-1">
-              <WhatsAppPhoneSimulator
-                clinicName={flow?.name ? flow.name.replace(/— WhatsApp.*/, "").trim() : "SmrkoMed Clinic"}
-                onSimulateStep={(step) => {
-                  const match = definition.nodes.find((n) => n.type === step);
-                  if (match) setSelectedId(match.id);
-                }}
+                onChange={(e) => setName(e.target.value)}
+                className="h-8 max-w-xs font-semibold text-sm border-transparent hover:border-border focus:border-primary"
+              />
+              <StatusBadge
+                label={flow?.isLibrary ? "SYSTEM TEMPLATE" : flow?.status ?? "DRAFT"}
+                tone={flow?.isLibrary ? "warning" : flow?.status === "ACTIVE" ? "success" : "warning"}
               />
             </div>
-          ) : (
-            <>
-              <p className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:block">
-                Flow
-              </p>
-          <div className="space-y-2">
-            <Label>Name</Label>
-            <Input value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
+            <p className="text-[11px] text-muted-foreground px-1 truncate max-w-md">
+              {description || "No flow description"}
+            </p>
           </div>
-          <div className="space-y-2">
-            <Label>Description</Label>
-            <Textarea
-              rows={2}
-              value={description}
-              disabled={readOnly}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
+        </div>
 
-          {selected ? (
-            <>
-              <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Selected · {selected.type}
-              </p>
-              <div className="space-y-2">
-                <Label>Label</Label>
-                <Input
-                  value={selected.label}
-                  disabled={readOnly}
-                  onChange={(e) => updateSelected({ label: e.target.value })}
-                />
-              </div>
-              {selected.type === "SEND_TEMPLATE" ? (
-                <SendTemplateNodePanel
-                  config={selected.config}
-                  readOnly={readOnly}
-                  onChange={(next) => updateSelected({ config: next })}
-                />
-              ) : null}
-              {selected.type === "SEND_TEXT" ? (
-                <div className="space-y-2">
-                  <Label>Message body</Label>
-                  <Textarea
-                    value={String(selected.config["body"] ?? selected.config["text"] ?? "")}
-                    disabled={readOnly}
-                    rows={4}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, body: e.target.value } })
-                    }
-                    placeholder="Requires an open WhatsApp session (conversation)."
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Uses the existing session text send. Outside the 24h window, use Send template.
-                  </p>
-                </div>
-              ) : null}
-              {selected.type === "SEND_MEDIA" ? (
-                <div className="space-y-2">
-                  <Label>Patient document ID</Label>
-                  <Input
-                    value={String(selected.config["documentId"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, documentId: e.target.value } })
-                    }
-                    placeholder="Document id from patient chart"
-                  />
-                  <Label>Caption (optional)</Label>
-                  <Input
-                    value={String(selected.config["caption"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, caption: e.target.value } })
-                    }
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Uses existing outbound media + patient document storage. Needs conversationId at
-                    runtime.
-                  </p>
-                </div>
-              ) : null}
-              {selected.type === "AI_DRAFT" ? (
-                <div className="space-y-2">
-                  <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
-                    Uses clinic Knowledge Base + safety rules. Default is draft (no WhatsApp send).
-                    Set mode to Send only when the flow should explicitly send.
-                  </p>
-                  <Label>Mode</Label>
-                  <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                    value={String(selected.config["mode"] ?? "draft")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, mode: e.target.value } })
-                    }
-                  >
-                    <option value="draft">Draft only (review)</option>
-                    <option value="send">Send via WhatsApp</option>
-                  </select>
-                  <Label>Prompt hint</Label>
-                  <Textarea
-                    value={String(selected.config["promptHint"] ?? "")}
-                    disabled={readOnly}
-                    rows={3}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, promptHint: e.target.value } })
-                    }
-                    placeholder="Optional instruction for Smrko AI"
-                  />
-                  <Label>Tone</Label>
-                  <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                    value={String(selected.config["tone"] ?? "clinical_empathetic")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, tone: e.target.value } })
-                    }
-                  >
-                    <option value="clinical_empathetic">Clinical · empathetic</option>
-                    <option value="concise">Concise</option>
-                    <option value="formal">Formal</option>
-                  </select>
-                </div>
-              ) : null}
-              {selected.type === "ASSIGN_STAFF" ? (
-                <div className="space-y-2">
-                  <Label>Staff user ID</Label>
-                  <Input
-                    value={String(selected.config["assigneeId"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, assigneeId: e.target.value } })
-                    }
-                    placeholder="User id"
-                  />
-                  <Label>Task title</Label>
-                  <Input
-                    value={String(selected.config["title"] ?? "Staff assignment")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, title: e.target.value } })
-                    }
-                  />
-                </div>
-              ) : null}
-              {selected.type === "WAIT" ? (
-                <div className="space-y-2">
-                  <Label>Wait mode</Label>
-                  <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                    value={String(selected.config["mode"] ?? "duration")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, mode: e.target.value } })
-                    }
-                  >
-                    <option value="duration">Duration</option>
-                    <option value="wait_for_reply">Wait for patient reply</option>
-                    <option value="before_appointment">Before appointment</option>
-                    <option value="until_datetime">Until date/time</option>
-                    <option value="at_time">Until clock time</option>
-                  </select>
-                  {String(selected.config["mode"]) === "wait_for_reply" ? (
-                    <div className="space-y-1">
-                      <Label>Timeout hours (0 = until reply only)</Label>
-                      <Input
-                        type="number"
-                        disabled={readOnly}
-                        value={Number(selected.config["timeoutHours"] ?? 0)}
-                        onChange={(e) =>
-                          updateSelected({
-                            config: { ...selected.config, timeoutHours: Number(e.target.value) },
-                          })
-                        }
-                      />
-                      <p className="text-[11px] text-muted-foreground">
-                        Persists WAITING on conversationId. Resumes when patient sends WhatsApp.
-                      </p>
-                    </div>
-                  ) : null}
-                  {String(selected.config["mode"] ?? "duration") === "duration" ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        disabled={readOnly}
-                        value={Number(selected.config["amount"] ?? 0)}
-                        onChange={(e) =>
-                          updateSelected({ config: { ...selected.config, amount: Number(e.target.value) } })
-                        }
-                        placeholder="Amount"
-                      />
-                      <select
-                        className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                        value={String(selected.config["unit"] ?? "hours")}
-                        disabled={readOnly}
-                        onChange={(e) =>
-                          updateSelected({ config: { ...selected.config, unit: e.target.value } })
-                        }
-                      >
-                        <option value="minutes">Minutes</option>
-                        <option value="hours">Hours</option>
-                        <option value="days">Days</option>
-                      </select>
-                    </div>
-                  ) : null}
-                  {String(selected.config["mode"]) === "before_appointment" ? (
-                    <div className="space-y-1">
-                      <Label>Hours before appointment</Label>
-                      <Input
-                        type="number"
-                        disabled={readOnly}
-                        value={Number(selected.config["hoursBefore"] ?? 24)}
-                        onChange={(e) =>
-                          updateSelected({
-                            config: { ...selected.config, hoursBefore: Number(e.target.value) },
-                          })
-                        }
-                      />
-                    </div>
-                  ) : null}
-                  {String(selected.config["mode"]) === "until_datetime" ? (
-                    <div className="space-y-1">
-                      <Label>Until (ISO date/time)</Label>
-                      <Input
-                        disabled={readOnly}
-                        value={String(selected.config["until"] ?? "")}
-                        onChange={(e) =>
-                          updateSelected({ config: { ...selected.config, until: e.target.value } })
-                        }
-                        placeholder="2026-09-01T09:00:00"
-                      />
-                    </div>
-                  ) : null}
-                  {String(selected.config["mode"]) === "at_time" ? (
-                    <div className="grid grid-cols-2 gap-2">
-                      <Input
-                        type="number"
-                        disabled={readOnly}
-                        value={Number(selected.config["hour"] ?? 9)}
-                        onChange={(e) =>
-                          updateSelected({ config: { ...selected.config, hour: Number(e.target.value) } })
-                        }
-                        placeholder="Hour"
-                      />
-                      <Input
-                        type="number"
-                        disabled={readOnly}
-                        value={Number(selected.config["minute"] ?? 0)}
-                        onChange={(e) =>
-                          updateSelected({
-                            config: { ...selected.config, minute: Number(e.target.value) },
-                          })
-                        }
-                        placeholder="Minute"
-                      />
-                    </div>
-                  ) : null}
-                  <p className="text-[11px] text-muted-foreground">
-                    WAIT is durable (`resumeAt`). Production worker resumes — not a browser timer.
-                  </p>
-                </div>
-              ) : null}
-              {selected.type === "WAIT_FOR_REPLY" ? (
-                <div className="space-y-2">
-                  <Label>Timeout hours (0 = until reply only)</Label>
-                  <Input
-                    type="number"
-                    disabled={readOnly}
-                    value={Number(selected.config["timeoutHours"] ?? 0)}
-                    onChange={(e) =>
-                      updateSelected({
-                        config: { ...selected.config, timeoutHours: Number(e.target.value) },
-                      })
-                    }
-                  />
-                  <p className="text-[11px] text-muted-foreground">
-                    Durable wait — stored on the execution (flowId, executionId, nodeId, conversationId,
-                    clinicId). Resumes on inbound WhatsApp.
-                  </p>
-                </div>
-              ) : null}
-              {selected.type === "CONDITION" ? (
-                <div className="space-y-2">
-                  <Label>Field</Label>
-                  <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                    value={String(selected.config["field"] ?? selected.config["kind"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({
-                        config: { ...selected.config, field: e.target.value, kind: e.target.value },
-                      })
-                    }
-                  >
-                    {[
-                      "communication.patient_replied",
-                      "communication.no_response",
-                      "communication.conversation_status",
-                      "communication.message_text",
-                      "message.content",
-                      "message.type",
-                      "patient.status",
-                      "patient.stage",
-                      "patient.inactive_days",
-                      "staff.doctor",
-                      "staff.coordinator",
-                      "appointment.status",
-                      "appointment.type",
-                      "appointment.days_until",
-                      "appointment.doctor",
-                      "care_task.status",
-                      "care_task.overdue",
-                      "care_task.assigned",
-                      "treatment.stage",
-                      "treatment.status",
-                      "journey.stage",
-                      "care_loop.status",
-                      "care_plan.status",
-                      "medication.assigned",
-                      "payment.pending",
-                      "payment.paid",
-                      "payment.overdue",
-                      "workflow.has_tag",
-                    ].map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                  <Label>Operator</Label>
-                  <select
-                    className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                    value={String(selected.config["operator"] ?? "truthy")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, operator: e.target.value } })
-                    }
-                  >
-                    {["truthy", "equals", "not_equals", "contains", "gt", "gte", "lt", "lte", "in"].map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </select>
-                  <Label>Value</Label>
-                  <Input
-                    value={String(selected.config["value"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, value: e.target.value } })
-                    }
-                  />
-                </div>
-              ) : null}
-              {selected.type === "CREATE_TASK" || selected.type === "ASSIGN_TASK" ? (
-                <div className="space-y-2">
-                  <Label>Task title</Label>
-                  <Input
-                    value={String(selected.config["title"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, title: e.target.value } })
-                    }
-                  />
-                </div>
-              ) : null}
-              {(selected.type === "ADD_TAG" || selected.type === "REMOVE_TAG") && (
-                <div className="space-y-2">
-                  <Label>Tag</Label>
-                  <Input
-                    value={String(selected.config["tag"] ?? "")}
-                    disabled={readOnly}
-                    onChange={(e) =>
-                      updateSelected({ config: { ...selected.config, tag: e.target.value } })
-                    }
-                  />
-                </div>
-              )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={validating}
+            onClick={() => void validateFlow()}
+          >
+            <ShieldAlert className="mr-1 size-3.5" />
+            Validate Flow
+          </Button>
 
-              {selected.type === "SEND_BUTTONS" ? (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label>Header text (optional)</Label>
-                    <Input
-                      value={String(selected.config["header"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="e.g. Appointment Options"
-                      onChange={(e) =>
-                        updateSelected({ config: { ...selected.config, header: e.target.value } })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Message body</Label>
-                    <Textarea
-                      rows={3}
-                      value={String(selected.config["body"] ?? selected.config["text"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="Please choose an option:"
-                      onChange={(e) =>
-                        updateSelected({ config: { ...selected.config, body: e.target.value } })
-                      }
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Supports safe variables like &#123;&#123;doctor.name&#125;&#125;, &#123;&#123;appointment.date&#125;&#125;
-                    </p>
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Footer text (optional)</Label>
-                    <Input
-                      value={String(selected.config["footer"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="e.g. SmrkoMed Clinic"
-                      onChange={(e) =>
-                        updateSelected({ config: { ...selected.config, footer: e.target.value } })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold">Interactive Buttons (up to 3)</Label>
-                    {(
-                      (selected.config["buttons"] as Array<{ id: string; title: string }>) || [
-                        { id: "btn_1", title: "Option 1" },
-                      ]
-                    ).map((btn, idx) => (
-                      <div key={idx} className="flex items-center gap-1.5">
-                        <Input
-                          value={btn.title}
-                          disabled={readOnly}
-                          placeholder="Title"
-                          onChange={(e) => {
-                            const next = [
-                              ...(((selected.config["buttons"] as any[]) || []) as Array<{
-                                id: string;
-                                title: string;
-                              }>),
-                            ];
-                            next[idx] = { ...next[idx]!, title: e.target.value };
-                            updateSelected({ config: { ...selected.config, buttons: next } });
-                          }}
-                          className="flex-1 text-xs"
-                        />
-                        <Input
-                          value={btn.id}
-                          disabled={readOnly}
-                          placeholder="ID"
-                          onChange={(e) => {
-                            const next = [
-                              ...(((selected.config["buttons"] as any[]) || []) as Array<{
-                                id: string;
-                                title: string;
-                              }>),
-                            ];
-                            next[idx] = { ...next[idx]!, id: e.target.value };
-                            updateSelected({ config: { ...selected.config, buttons: next } });
-                          }}
-                          className="w-24 font-mono text-xs"
-                        />
-                      </div>
-                    ))}
-                    {!readOnly &&
-                    (((selected.config["buttons"] as any[]) || []).length < 3) ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        type="button"
-                        className="w-full text-xs"
-                        onClick={() => {
-                          const curr = ((selected.config["buttons"] as any[]) || []) as Array<{
-                            id: string;
-                            title: string;
-                          }>;
-                          const next = [
-                            ...curr,
-                            { id: `btn_${curr.length + 1}`, title: `Option ${curr.length + 1}` },
-                          ];
-                          updateSelected({ config: { ...selected.config, buttons: next } });
-                        }}
-                      >
-                        + Add Button
-                      </Button>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="checkbox"
-                      id="wait_reply_btn"
-                      checked={Boolean(selected.config["waitForReply"])}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, waitForReply: e.target.checked },
-                        })
-                      }
-                      className="rounded border-slate-300"
-                    />
-                    <label htmlFor="wait_reply_btn" className="text-xs text-muted-foreground">
-                      Pause flow until patient clicks a button
-                    </label>
-                  </div>
-                </div>
-              ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={saving || readOnly}
+            onClick={() => void saveDraft()}
+          >
+            <Save className="mr-1 size-3.5" />
+            Save Draft
+          </Button>
 
-              {selected.type === "SEND_LIST" ? (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label>Button text</Label>
-                    <Input
-                      value={String(selected.config["buttonText"] ?? "Select Option")}
-                      disabled={readOnly}
-                      placeholder="e.g. Choose Doctor"
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, buttonText: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Message body</Label>
-                    <Textarea
-                      rows={2}
-                      value={String(selected.config["body"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="Please select an option from the list below:"
-                      onChange={(e) =>
-                        updateSelected({ config: { ...selected.config, body: e.target.value } })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Dynamic data source</Label>
-                    <select
-                      className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
-                      value={String(selected.config["dataSource"] ?? "custom")}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, dataSource: e.target.value },
-                        })
-                      }
-                    >
-                      <option value="doctors">Available Doctors (Clinic Roster)</option>
-                      <option value="dates">Available Dates (Upcoming Slots)</option>
-                      <option value="slots">Available Slots (Time breakdown)</option>
-                      <option value="custom">Custom List Configuration</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="checkbox"
-                      id="wait_reply_list"
-                      checked={Boolean(selected.config["waitForReply"])}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, waitForReply: e.target.checked },
-                        })
-                      }
-                      className="rounded border-slate-300"
-                    />
-                    <label htmlFor="wait_reply_list" className="text-xs text-muted-foreground">
-                      Pause flow until patient selects an item
-                    </label>
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === "GET_DOCTORS" ? (
-                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-                  <p className="font-semibold text-foreground">Clinic Doctor Roster</p>
-                  <p>
-                    Queries active providers configured for this clinic from ClinicMembership. Never
-                    invents fake doctors.
-                  </p>
-                  <div className="pt-1">
-                    <Label className="text-xs">Specialty filter (optional)</Label>
-                    <Input
-                      value={String(selected.config["specialty"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="e.g. Fertility, Andrology"
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, specialty: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === "GET_AVAILABLE_DATES" ? (
-                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-                  <p className="font-semibold text-foreground">Real Date Availability</p>
-                  <p>
-                    Computes dates with verified availability using clinic working hours and
-                    unbooked slots.
-                  </p>
-                  <div className="pt-1">
-                    <Label className="text-xs">Days ahead to query</Label>
-                    <Input
-                      type="number"
-                      value={Number(selected.config["daysAhead"] ?? 7)}
-                      disabled={readOnly}
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, daysAhead: Number(e.target.value) },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === "GET_AVAILABLE_SLOTS" ? (
-                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-                  <p className="font-semibold text-foreground">Real Slot Engine</p>
-                  <p>
-                    Retrieves slot IDs from the database availability engine. Segments into Morning
-                    and Afternoon/Evening.
-                  </p>
-                </div>
-              ) : null}
-
-              {selected.type === "BOOKING_SUMMARY" ? (
-                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
-                  <p className="font-semibold text-foreground">Booking Summary Preview</p>
-                  <p>Generates concise confirmation card using runtime appointment variables:</p>
-                  <div className="rounded bg-background p-2 font-mono text-[11px] text-foreground">
-                    Please confirm your appointment ✨<br />
-                    👩‍⚕️ Dr. &#123;&#123;doctor.name&#125;&#125;<br />
-                    📅 &#123;&#123;appointment.date&#125;&#125;<br />
-                    ⏰ &#123;&#123;appointment.time&#125;&#125;<br />
-                    📍 &#123;&#123;clinic.name&#125;&#125;
-                  </div>
-                </div>
-              ) : null}
-
-              {selected.type === "BOOK_APPOINTMENT" ? (
-                <div className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50/50 p-2.5 text-xs text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200">
-                  <p className="font-semibold">Authoritative Booking Node</p>
-                  <p>
-                    1. Revalidates selected slot against DB immediately before mutation.<br />
-                    2. Creates transactional Appointment row with stable slot ID.<br />
-                    3. Records idempotent booking row (duplicate-webhook safe).<br />
-                    4. Dispatches CareTask and realtime update to Care Loop.
-                  </p>
-                </div>
-              ) : null}
-
-              {selected.type === "HUMAN_HANDOFF" ? (
-                <div className="space-y-2">
-                  <div className="space-y-1">
-                    <Label>Handoff Reason</Label>
-                    <Input
-                      value={String(selected.config["reason"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="e.g. Patient requested staff assistance"
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, reason: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Patient Notification Message</Label>
-                    <Textarea
-                      rows={3}
-                      value={String(selected.config["message"] ?? "")}
-                      disabled={readOnly}
-                      placeholder="I've connected you with our clinic team..."
-                      onChange={(e) =>
-                        updateSelected({
-                          config: { ...selected.config, message: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              <Button size="sm" variant="ghost" disabled={readOnly} onClick={deleteSelected}>
-                <Trash2 className="mr-1 size-3.5" />
-                Delete node
-              </Button>
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Select a node to configure.</p>
+          {!readOnly && flow?.status !== "ACTIVE" && (
+            <Button size="sm" disabled={saving} onClick={() => void activateFlow()}>
+              <Play className="mr-1 size-3.5" />
+              Publish Flow
+            </Button>
           )}
-            </>
+
+          {!readOnly && flow?.status === "ACTIVE" && (
+            <Button size="sm" variant="outline" onClick={() => void pauseFlow()}>
+              <Pause className="mr-1 size-3.5" />
+              Pause Flow
+            </Button>
           )}
-        </aside>
+        </div>
       </div>
 
-      <section className="surface-card space-y-3 p-4">
-        <h2 className="text-sm font-semibold">Recent executions</h2>
-        {executions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No executions yet. Use Test or activate a live trigger.</p>
-        ) : (
-          <ul className="space-y-3">
-            {executions.map((ex) => (
-              <li key={ex.id} className="rounded-lg border p-3 text-sm">
-                <div className="flex flex-wrap items-center gap-2">
-                  <StatusBadge
-                    label={ex.status}
-                    tone={
-                      ex.status === "COMPLETED"
-                        ? "success"
-                        : ex.status === "FAILED"
-                          ? "danger"
-                          : ex.status === "WAITING"
-                            ? "warning"
-                            : "muted"
-                    }
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(ex.startedAt).toLocaleString()}
-                    {ex.resumeAt ? ` · next ${new Date(ex.resumeAt).toLocaleString()}` : ""}
-                    {ex.retryCount ? ` · retries ${ex.retryCount}` : ""}
-                  </span>
-                  <Link href="/whatsapp/logs" className="ml-auto text-xs text-primary hover:underline">
-                    Logs
-                  </Link>
-                </div>
-                <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  {ex.steps.map((s, i) => (
-                    <li key={i}>
-                      {s.status === "COMPLETED" ? "✓" : s.status === "FAILED" ? "✕" : "○"} {s.nodeType}
-                      {s.error ? ` — ${s.error}` : ""}
-                    </li>
-                  ))}
-                  {ex.status === "WAITING" ? <li>⏳ WAIT / retry scheduled</li> : null}
-                </ol>
-                {ex.error ? <p className="mt-1 text-xs text-destructive">{ex.error}</p> : null}
-                {ex.status === "FAILED" ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-2"
-                    onClick={() => {
-                      void apiPost(`/api/v1/whatsapp-automation/executions/${ex.id}/retry`)
-                        .then(() => {
-                          toast.success("Retry started");
-                          return load();
-                        })
-                        .catch((err) =>
-                          toast.error(err instanceof ApiError ? err.message : "Retry failed"),
-                        );
-                    }}
+      {/* Main 3-Column Layout: Palette | Canvas | Inspector & Testing */}
+      <div className="grid flex-1 grid-cols-12 gap-3 overflow-hidden">
+        {/* Left Column: Categorized Palette (2.5 cols) */}
+        <div className="col-span-12 md:col-span-3 lg:col-span-3 surface-card flex flex-col rounded-xl border p-2 overflow-hidden">
+          <div className="flex items-center justify-between border-b pb-2 mb-2 px-1">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Node Palette
+            </span>
+            <span className="text-[10px] text-muted-foreground">Drag to Canvas</span>
+          </div>
+          <NodePaletteSidebar
+            onAddNode={handleAddPaletteNode}
+            readOnly={readOnly}
+          />
+        </div>
+
+        {/* Center Column: Visual Canvas (6 cols) */}
+        <div className="col-span-12 md:col-span-9 lg:col-span-6 flex flex-col rounded-xl border bg-card overflow-hidden">
+          <WhatsAppFlowCanvas
+            definition={definition}
+            readOnly={readOnly}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onChange={pushHistory}
+            onDuplicateNode={duplicateNode}
+            onDeleteNode={deleteNode}
+            onUndo={handleUndo}
+            onRedo={handleRedo}
+            canUndo={history.length > 0}
+            canRedo={redoStack.length > 0}
+          />
+        </div>
+
+        {/* Right Column: Inspector & Live Testing (3.5 cols) */}
+        <div className="col-span-12 lg:col-span-3 surface-card flex flex-col rounded-xl border overflow-hidden">
+          {/* Top Panel Tab Bar */}
+          <div className="flex border-b bg-muted/30 p-1">
+            <button
+              type="button"
+              className={cn(
+                "flex-1 rounded-md py-1.5 text-xs font-semibold transition-all flex items-center justify-center gap-1.5",
+                rightPanelTab === "inspector"
+                  ? "bg-background text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setRightPanelTab("inspector")}
+            >
+              <Settings className="size-3.5" />
+              Inspector
+            </button>
+            <button
+              type="button"
+              className={cn(
+                "flex-1 rounded-md py-1.5 text-xs font-semibold transition-all flex items-center justify-center gap-1.5",
+                rightPanelTab === "testing"
+                  ? "bg-background text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => setRightPanelTab("testing")}
+            >
+              <Smartphone className="size-3.5" />
+              Simulator & Test
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-3">
+            {rightPanelTab === "inspector" && (
+              <div className="space-y-4">
+                {selected ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between border-b pb-2">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-primary">
+                          {selected.type.replaceAll("_", " ")}
+                        </p>
+                        <Input
+                          value={selected.label}
+                          disabled={readOnly}
+                          onChange={(e) => updateSelected({ label: e.target.value })}
+                          className="h-7 text-xs font-medium mt-0.5"
+                        />
+                      </div>
+                      {!readOnly && selected.type !== "TRIGGER" && selected.type !== "END" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="size-7 p-0 text-destructive"
+                          title="Delete Node"
+                          onClick={() => deleteNode(selected.id)}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Node-Specific Settings */}
+                    {selected.type === "SEND_TEXT" && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Message Copy</Label>
+                        <Textarea
+                          rows={4}
+                          disabled={readOnly}
+                          value={String(selected.config["body"] || "")}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, body: e.target.value },
+                            })
+                          }
+                          placeholder="e.g. Absolutely! 👋 Who would you like to consult?"
+                          className="text-xs"
+                        />
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-medium text-muted-foreground">Insert Variables:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {["patient.name", "doctor.name", "appointment.date", "appointment.time", "clinic.name"].map(
+                              (v) => (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  disabled={readOnly}
+                                  onClick={() => handleInsertVariable(v)}
+                                  className="rounded border bg-muted/60 px-1.5 py-0.5 text-[10px] hover:bg-muted"
+                                >
+                                  +{v}
+                                </button>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selected.type === "SEND_BUTTONS" && (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Body Text</Label>
+                          <Textarea
+                            rows={3}
+                            disabled={readOnly}
+                            value={String(selected.config["body"] || "")}
+                            onChange={(e) =>
+                              updateSelected({
+                                config: { ...selected.config, body: e.target.value },
+                              })
+                            }
+                            className="text-xs"
+                          />
+                        </div>
+
+                        <div className="space-y-2 border-t pt-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs">Quick Reply Buttons (Max 3)</Label>
+                            {Array.isArray(selected.config["buttons"]) &&
+                              (selected.config["buttons"] as any[]).length < 3 &&
+                              !readOnly && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-[10px] p-1"
+                                  onClick={() => {
+                                    const current = (selected.config["buttons"] as any[]) || [];
+                                    const nextBtn = { id: `btn_${current.length + 1}`, title: `Option ${current.length + 1}` };
+                                    updateSelected({
+                                      config: { ...selected.config, buttons: [...current, nextBtn] },
+                                    });
+                                  }}
+                                >
+                                  + Add Button
+                                </Button>
+                              )}
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {Array.isArray(selected.config["buttons"]) &&
+                              (selected.config["buttons"] as any[]).map((btn, idx) => (
+                                <div key={idx} className="flex items-center gap-1 rounded border p-1.5 bg-muted/20">
+                                  <Input
+                                    value={btn.title || ""}
+                                    disabled={readOnly}
+                                    placeholder="Button Label"
+                                    onChange={(e) => {
+                                      const current = [...(selected.config["buttons"] as any[])];
+                                      current[idx] = { ...current[idx], title: e.target.value };
+                                      updateSelected({ config: { ...selected.config, buttons: current } });
+                                    }}
+                                    className="h-7 text-xs flex-1"
+                                  />
+                                  <Input
+                                    value={btn.id || ""}
+                                    disabled={readOnly}
+                                    placeholder="Machine ID"
+                                    onChange={(e) => {
+                                      const current = [...(selected.config["buttons"] as any[])];
+                                      current[idx] = { ...current[idx], id: e.target.value };
+                                      updateSelected({ config: { ...selected.config, buttons: current } });
+                                    }}
+                                    className="h-7 text-[10px] w-24 font-mono"
+                                  />
+                                  {!readOnly && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const current = (selected.config["buttons"] as any[]).filter((_, i) => i !== idx);
+                                        updateSelected({ config: { ...selected.config, buttons: current } });
+                                      }}
+                                      className="p-1 text-muted-foreground hover:text-destructive"
+                                    >
+                                      <X className="size-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {selected.type === "SEND_LIST" && (
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Prompt Copy</Label>
+                          <Textarea
+                            rows={2}
+                            disabled={readOnly}
+                            value={String(selected.config["body"] || "")}
+                            onChange={(e) =>
+                              updateSelected({
+                                config: { ...selected.config, body: e.target.value },
+                              })
+                            }
+                            className="text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Bottom Sheet Button Label</Label>
+                          <Input
+                            value={String(selected.config["buttonText"] || "Select Option")}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              updateSelected({
+                                config: { ...selected.config, buttonText: e.target.value },
+                              })
+                            }
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                        <div className="space-y-1 border-t pt-2">
+                          <Label className="text-xs">Data Source</Label>
+                          <select
+                            disabled={readOnly}
+                            value={String(selected.config["dataSource"] || "custom")}
+                            onChange={(e) =>
+                              updateSelected({
+                                config: { ...selected.config, dataSource: e.target.value },
+                              })
+                            }
+                            className="flex h-8 w-full rounded-md border bg-background px-2 text-xs"
+                          >
+                            <option value="doctors">Available Clinic Doctors</option>
+                            <option value="dates">Available Schedule Dates</option>
+                            <option value="slots">Available Time Slots</option>
+                            <option value="custom">Custom Sections / Rows</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {selected.type === "SEND_DOCTOR_CARD" && (
+                      <div className="space-y-3">
+                        <div className="rounded-lg border bg-purple-50/50 p-2 text-xs dark:bg-purple-950/20">
+                          <div className="flex items-center gap-2 font-medium text-purple-900 dark:text-purple-200">
+                            <UserCheck className="size-4 text-purple-600" />
+                            Doctor Profile Card
+                          </div>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Displays doctor photo, specialty, experience, languages, bio, and interactive slots button.
+                          </p>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Card Header / Title</Label>
+                          <Input
+                            value={String(selected.config["header"] || "Specialist Profile")}
+                            disabled={readOnly}
+                            onChange={(e) =>
+                              updateSelected({ config: { ...selected.config, header: e.target.value } })
+                            }
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {selected.type === "SEND_TEMPLATE" && (
+                      <SendTemplateNodePanel
+                        config={selected.config}
+                        readOnly={readOnly}
+                        onChange={(config) => updateSelected({ config })}
+                      />
+                    )}
+
+                    {selected.type === "GET_AVAILABLE_DATES" && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Days to Search Ahead</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={Number(selected.config["daysAhead"] ?? 7)}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, daysAhead: Number(e.target.value) },
+                            })
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <p className="text-[10px] text-muted-foreground">
+                          Queries real appointment schedule slots within this calendar window.
+                        </p>
+                      </div>
+                    )}
+
+                    {selected.type === "HUMAN_HANDOFF" && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Escalation Reason</Label>
+                        <Input
+                          value={String(selected.config["reason"] || "Patient requested human assistance")}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, reason: e.target.value },
+                            })
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <Label className="text-xs">Patient Handoff Notice</Label>
+                        <Textarea
+                          rows={2}
+                          value={String(
+                            selected.config["message"] ||
+                              "I've connected you with our clinic team. A coordinator will reply shortly.",
+                          )}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, message: e.target.value },
+                            })
+                          }
+                          className="text-xs"
+                        />
+                      </div>
+                    )}
+
+                    {selected.type === "BOOK_APPOINTMENT" && (
+                      <div className="rounded-lg border bg-emerald-50/50 p-2.5 text-xs dark:bg-emerald-950/20">
+                        <div className="flex items-center gap-1.5 font-semibold text-emerald-900 dark:text-emerald-200">
+                          <CalendarCheck className="size-4 text-emerald-700" />
+                          Authoritative Appointment Booking
+                        </div>
+                        <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                          Revalidates selected slot in PostgreSQL right before booking. Transaction safe, clinic-scoped, and duplicate-safe with idempotency key.
+                        </p>
+                      </div>
+                    )}
+
+                    {selected.type === "CREATE_TASK" && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Care Task Title</Label>
+                        <Input
+                          value={String(selected.config["title"] || "WhatsApp Appointment Follow-up")}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, title: e.target.value },
+                            })
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <Label className="text-xs">Task Priority</Label>
+                        <select
+                          disabled={readOnly}
+                          value={String(selected.config["priority"] || "NORMAL")}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, priority: e.target.value },
+                            })
+                          }
+                          className="flex h-8 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="HIGH">HIGH</option>
+                          <option value="NORMAL">NORMAL</option>
+                          <option value="LOW">LOW</option>
+                        </select>
+                      </div>
+                    )}
+
+                    {selected.type === "CONDITION" && (
+                      <div className="space-y-2">
+                        <Label className="text-xs">Condition Field</Label>
+                        <Input
+                          value={String(selected.config["field"] || "communication.patient_replied")}
+                          disabled={readOnly}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, field: e.target.value },
+                            })
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <Label className="text-xs">Operator</Label>
+                        <select
+                          disabled={readOnly}
+                          value={String(selected.config["operator"] || "truthy")}
+                          onChange={(e) =>
+                            updateSelected({
+                              config: { ...selected.config, operator: e.target.value },
+                            })
+                          }
+                          className="flex h-8 w-full rounded-md border bg-background px-2 text-xs"
+                        >
+                          <option value="truthy">Truthy (Yes / Active)</option>
+                          <option value="falsy">Falsy (No / Empty)</option>
+                          <option value="equals">Equals</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center text-xs text-muted-foreground">
+                    <Info className="mx-auto size-5 mb-1.5 opacity-50" />
+                    Select a node on the canvas to inspect and edit its settings.
+                  </div>
+                )}
+              </div>
+            )}
+
+            {rightPanelTab === "testing" && (
+              <div className="space-y-4">
+                {/* Sub-tab Toggle: Simulator vs Live WhatsApp */}
+                <div className="flex rounded-lg border bg-muted/40 p-1">
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex-1 rounded-md py-1 text-xs font-semibold transition-all",
+                      testMode === "SIMULATOR"
+                        ? "bg-background text-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setTestMode("SIMULATOR")}
                   >
-                    Retry execution
-                  </Button>
-                ) : null}
-              </li>
+                    Phone Simulator
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "flex-1 rounded-md py-1 text-xs font-semibold transition-all",
+                      testMode === "LIVE_WHATSAPP"
+                        ? "bg-background text-foreground shadow-2xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setTestMode("LIVE_WHATSAPP")}
+                  >
+                    Live WhatsApp
+                  </button>
+                </div>
+
+                {testMode === "SIMULATOR" ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">In-Browser Mockup</span>
+                      <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => void runSimulationTest()}>
+                        <FlaskConical className="mr-1 size-3" />
+                        Run Simulation
+                      </Button>
+                    </div>
+                    <WhatsAppPhoneSimulator
+                      clinicName="ABC Fertility Centre"
+                      onSimulateStep={(step) => {
+                        const targetNode = definition.nodes.find((n) => n.type === step);
+                        if (targetNode) setSelectedId(targetNode.id);
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs">
+                      <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                        <Radio className="size-4 text-primary animate-pulse" />
+                        Live Meta WhatsApp Test
+                      </div>
+                      <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                        Sends genuine WhatsApp interactive messages from your clinic WABA account to the target phone number.
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Test Patient</Label>
+                        <select
+                          className="flex h-8 w-full rounded-md border bg-background px-2 text-xs"
+                          value={testPatientId}
+                          onChange={(e) => {
+                            const pId = e.target.value;
+                            setTestPatientId(pId);
+                            const found = patients.find((p) => p.id === pId);
+                            if (found?.phone) setTestPhoneNumber(found.phone);
+                          }}
+                        >
+                          <option value="">Select patient…</option>
+                          {patients.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.firstName} {p.lastName} {p.phone ? `(${p.phone})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label className="text-xs">Recipient Phone Number</Label>
+                        <Input
+                          value={testPhoneNumber}
+                          onChange={(e) => setTestPhoneNumber(e.target.value)}
+                          placeholder="+91 86607 17328"
+                          className="h-8 text-xs font-mono"
+                        />
+                        {testPhoneNumber && (
+                          <p className="text-[10px] text-muted-foreground">
+                            Masked preview: {testPhoneNumber.replace(/(\d{2,3})\d+(\d{4})/, "$1••••••$2")}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="rounded-md border bg-amber-50/60 p-2.5 text-[11px] text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+                        <div className="flex items-center gap-1 font-semibold">
+                          <AlertTriangle className="size-3.5" />
+                          Safety Confirmation Required
+                        </div>
+                        Real interactive messages will be sent to this number. Do not send tests to external clinic patients.
+                      </div>
+
+                      <Button
+                        className="w-full"
+                        size="sm"
+                        disabled={testingLive || !testPhoneNumber.trim()}
+                        onClick={() => setConfirmLiveTestModalOpen(true)}
+                      >
+                        <Send className="mr-1 size-3.5" />
+                        {testingLive ? "Dispatching Live Test…" : "Send Test WhatsApp Message"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Execution Console Drawer */}
+      {activeConsoleExecution && (
+        <div className="surface-card rounded-xl border p-3">
+          <div className="flex items-center justify-between border-b pb-2 mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Execution Trace
+              </span>
+              <StatusBadge
+                label={activeConsoleExecution.status}
+                tone={activeConsoleExecution.status === "COMPLETED" ? "success" : activeConsoleExecution.status === "WAITING" ? "warning" : "muted"}
+              />
+              <span className="text-[11px] text-muted-foreground font-mono">
+                ID: {activeConsoleExecution.id}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-[11px]"
+                onClick={() => setActiveConsoleExecution(null)}
+              >
+                Hide Console
+              </Button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 overflow-x-auto py-1">
+            {activeConsoleExecution.steps.map((step, idx) => (
+              <div
+                key={idx}
+                className={cn(
+                  "flex items-center gap-1.5 shrink-0 rounded-lg border px-2.5 py-1 text-xs",
+                  step.status === "COMPLETED" && "border-emerald-200 bg-emerald-50/50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200",
+                  step.status === "WAITING" && "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-200",
+                  step.status === "FAILED" && "border-destructive/30 bg-destructive/10 text-destructive",
+                )}
+              >
+                {step.status === "COMPLETED" ? (
+                  <CheckCircle2 className="size-3.5 text-emerald-600 shrink-0" />
+                ) : step.status === "WAITING" ? (
+                  <Clock className="size-3.5 text-sky-600 shrink-0" />
+                ) : (
+                  <XCircle className="size-3.5 text-destructive shrink-0" />
+                )}
+                <span className="font-semibold text-[11px]">{step.nodeType}</span>
+              </div>
             ))}
-          </ul>
-        )}
-      </section>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Live WhatsApp Testing */}
+      {confirmLiveTestModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="surface-card w-full max-w-md space-y-4 rounded-xl border p-6 shadow-xl">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-primary font-semibold text-base">
+                <Radio className="size-5" />
+                Confirm Live WhatsApp Test
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This will trigger the current flow and send actual WhatsApp messages via Meta Cloud API to:
+              </p>
+              <div className="rounded-lg border bg-muted/40 p-2 font-mono text-sm font-semibold text-foreground text-center">
+                {testPhoneNumber}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Standard Meta messaging rates may apply. The recipient will be able to reply directly using interactive buttons.
+              </p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmLiveTestModalOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void runLiveWhatsAppTest()}
+              >
+                Confirm & Send Message
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Flow Validation Issues Modal */}
+      {validationModalOpen && validationIssues && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="surface-card w-full max-w-lg space-y-4 rounded-xl border p-6 shadow-xl max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between border-b pb-2">
+              <div className="flex items-center gap-2 font-semibold">
+                <ShieldAlert className="size-5 text-primary" />
+                <span>Flow Validation Results</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setValidationModalOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {validationIssues.length === 0 ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-center text-xs text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">
+                  <CheckCircle2 className="mx-auto size-6 text-emerald-600 mb-1" />
+                  <p className="font-semibold text-sm">Flow is Ready to Publish!</p>
+                  <p className="mt-1 text-[11px]">No disconnected nodes, invalid edges, or missing configurations detected.</p>
+                </div>
+              ) : (
+                validationIssues.map((iss, i) => (
+                  <div
+                    key={i}
+                    onClick={() => {
+                      if (iss.nodeId) setSelectedId(iss.nodeId);
+                      setValidationModalOpen(false);
+                    }}
+                    className="flex items-start gap-2 rounded-lg border p-2.5 text-xs hover:bg-muted/40 cursor-pointer transition-colors"
+                  >
+                    <AlertTriangle className="size-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-foreground">{iss.code}</p>
+                      <p className="text-[11px] text-muted-foreground">{iss.message}</p>
+                      {iss.nodeId && <span className="text-[10px] text-primary underline">Focus Node</span>}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t">
+              <Button size="sm" onClick={() => setValidationModalOpen(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

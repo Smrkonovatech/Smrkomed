@@ -121,3 +121,39 @@ test("appointment default library flow definition validates cleanly with no cycl
   const issues = validateFlowDefinition(parsed);
   assert.equal(issues.length, 0, `Issues found: ${JSON.stringify(issues)}`);
 });
+
+test("SEND_DOCTOR_CARD node type is valid in flow definition", () => {
+  const def = {
+    nodes: [
+      { id: "trigger", type: "TRIGGER" as const, label: "Trigger", config: { triggerType: "INCOMING_WHATSAPP" } },
+      { id: "doc_card", type: "SEND_DOCTOR_CARD" as const, label: "Doctor Profile", config: { doctorId: "doc_1" } },
+      { id: "end", type: "END" as const, label: "End", config: {} },
+    ],
+    edges: [
+      { id: "e1", source: "trigger", target: "doc_card" },
+      { id: "e2", source: "doc_card", target: "end" },
+    ],
+  };
+  const issues = validateFlowDefinition(def);
+  const typeErrors = issues.filter((i) => i.code === "INVALID_NODE_TYPE");
+  assert.equal(typeErrors.length, 0, "SEND_DOCTOR_CARD should be a valid node type");
+});
+
+test("testFlowSchema accepts both SIMULATION and LIVE_WHATSAPP modes", async () => {
+  const { testFlowSchema } = await import("../schemas");
+
+  const simResult = testFlowSchema.safeParse({
+    mode: "SIMULATION",
+    simulateEvent: "incoming_whatsapp",
+  });
+  assert.ok(simResult.success, "SIMULATION mode should parse successfully");
+
+  const liveResult = testFlowSchema.safeParse({
+    mode: "LIVE_WHATSAPP",
+    recipientPhone: "+918660717328",
+  });
+  assert.ok(liveResult.success, "LIVE_WHATSAPP mode should parse successfully");
+  assert.equal(liveResult.data.mode, "LIVE_WHATSAPP");
+  assert.equal(liveResult.data.recipientPhone, "+918660717328");
+});
+

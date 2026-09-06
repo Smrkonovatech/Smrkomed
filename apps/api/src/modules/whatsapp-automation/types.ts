@@ -19,6 +19,7 @@ export type FlowNodeType =
   | "AI_DRAFT"
   | "SEND_BUTTONS"
   | "SEND_LIST"
+  | "SEND_DOCTOR_CARD"
   | "GET_DOCTORS"
   | "GET_DOCTOR_DETAILS"
   | "GET_AVAILABLE_DATES"
