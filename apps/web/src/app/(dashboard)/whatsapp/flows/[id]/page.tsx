@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { FlaskConical, Pause, Play, Save, Trash2 } from "lucide-react";
+import { FlaskConical, Pause, Play, Save, Trash2, Smartphone, Settings } from "lucide-react";
 
 import {
   FLOW_PALETTE,
@@ -13,6 +13,7 @@ import {
   addPaletteNode,
   type FlowDefinition,
 } from "@/components/whatsapp/flow-canvas";
+import { WhatsAppPhoneSimulator } from "@/components/whatsapp/whatsapp-phone-simulator";
 import { SendTemplateNodePanel } from "@/components/whatsapp/send-template-node-panel";
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 
 type FlowDetail = {
   id: string;
@@ -77,6 +79,7 @@ export default function WhatsAppFlowBuilderPage() {
     "none" | "incoming_whatsapp" | "appointment" | "care_loop"
   >("none");
   const [configOpen, setConfigOpen] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<"inspector" | "simulator">("inspector");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -365,7 +368,14 @@ export default function WhatsAppFlowBuilderPage() {
         <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">{testResult}</p>
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[200px_minmax(0,1fr)_300px]">
+      <div
+        className={cn(
+          "grid gap-3",
+          rightPanelTab === "simulator"
+            ? "lg:grid-cols-[200px_minmax(0,1fr)_370px]"
+            : "lg:grid-cols-[200px_minmax(0,1fr)_320px]",
+        )}
+      >
         <aside className="surface-card hidden space-y-2 p-3 lg:block">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nodes</p>
           {FLOW_PALETTE.map((item) => (
@@ -424,15 +434,54 @@ export default function WhatsAppFlowBuilderPage() {
         <aside
           className={`surface-card space-y-3 p-3 ${configOpen ? "" : "hidden lg:block"} max-lg:fixed max-lg:inset-x-0 max-lg:bottom-0 max-lg:z-40 max-lg:max-h-[70vh] max-lg:overflow-y-auto max-lg:rounded-t-2xl max-lg:border-t max-lg:shadow-lg`}
         >
-          <div className="flex items-center justify-between lg:hidden">
-            <p className="text-sm font-semibold">Configure node</p>
-            <Button size="sm" variant="ghost" onClick={() => setConfigOpen(false)}>
+          <div className="flex items-center justify-between border-b pb-2">
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                type="button"
+                variant={rightPanelTab === "inspector" ? "default" : "ghost"}
+                className="h-7 text-xs"
+                onClick={() => setRightPanelTab("inspector")}
+              >
+                <Settings className="mr-1 size-3" />
+                Inspector
+              </Button>
+              <Button
+                size="sm"
+                type="button"
+                variant={rightPanelTab === "simulator" ? "default" : "outline"}
+                className={cn(
+                  "h-7 text-xs",
+                  rightPanelTab === "simulator"
+                    ? "bg-emerald-700 text-white hover:bg-emerald-800"
+                    : "border-emerald-600/30 text-emerald-700 dark:text-emerald-400",
+                )}
+                onClick={() => setRightPanelTab("simulator")}
+              >
+                <Smartphone className="mr-1 size-3" />
+                Live WhatsApp
+              </Button>
+            </div>
+            <Button size="sm" variant="ghost" className="lg:hidden" onClick={() => setConfigOpen(false)}>
               Close
             </Button>
           </div>
-          <p className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:block">
-            Flow
-          </p>
+
+          {rightPanelTab === "simulator" ? (
+            <div className="py-1">
+              <WhatsAppPhoneSimulator
+                clinicName={flow?.name ? flow.name.replace(/— WhatsApp.*/, "").trim() : "SmrkoMed Clinic"}
+                onSimulateStep={(step) => {
+                  const match = definition.nodes.find((n) => n.type === step);
+                  if (match) setSelectedId(match.id);
+                }}
+              />
+            </div>
+          ) : (
+            <>
+              <p className="hidden text-xs font-semibold uppercase tracking-wide text-muted-foreground lg:block">
+                Flow
+              </p>
           <div className="space-y-2">
             <Label>Name</Label>
             <Input value={name} disabled={readOnly} onChange={(e) => setName(e.target.value)} />
@@ -806,6 +855,310 @@ export default function WhatsAppFlowBuilderPage() {
                   />
                 </div>
               )}
+
+              {selected.type === "SEND_BUTTONS" ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Header text (optional)</Label>
+                    <Input
+                      value={String(selected.config["header"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="e.g. Appointment Options"
+                      onChange={(e) =>
+                        updateSelected({ config: { ...selected.config, header: e.target.value } })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Message body</Label>
+                    <Textarea
+                      rows={3}
+                      value={String(selected.config["body"] ?? selected.config["text"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="Please choose an option:"
+                      onChange={(e) =>
+                        updateSelected({ config: { ...selected.config, body: e.target.value } })
+                      }
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      Supports safe variables like &#123;&#123;doctor.name&#125;&#125;, &#123;&#123;appointment.date&#125;&#125;
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Footer text (optional)</Label>
+                    <Input
+                      value={String(selected.config["footer"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="e.g. SmrkoMed Clinic"
+                      onChange={(e) =>
+                        updateSelected({ config: { ...selected.config, footer: e.target.value } })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold">Interactive Buttons (up to 3)</Label>
+                    {(
+                      (selected.config["buttons"] as Array<{ id: string; title: string }>) || [
+                        { id: "btn_1", title: "Option 1" },
+                      ]
+                    ).map((btn, idx) => (
+                      <div key={idx} className="flex items-center gap-1.5">
+                        <Input
+                          value={btn.title}
+                          disabled={readOnly}
+                          placeholder="Title"
+                          onChange={(e) => {
+                            const next = [
+                              ...(((selected.config["buttons"] as any[]) || []) as Array<{
+                                id: string;
+                                title: string;
+                              }>),
+                            ];
+                            next[idx] = { ...next[idx]!, title: e.target.value };
+                            updateSelected({ config: { ...selected.config, buttons: next } });
+                          }}
+                          className="flex-1 text-xs"
+                        />
+                        <Input
+                          value={btn.id}
+                          disabled={readOnly}
+                          placeholder="ID"
+                          onChange={(e) => {
+                            const next = [
+                              ...(((selected.config["buttons"] as any[]) || []) as Array<{
+                                id: string;
+                                title: string;
+                              }>),
+                            ];
+                            next[idx] = { ...next[idx]!, id: e.target.value };
+                            updateSelected({ config: { ...selected.config, buttons: next } });
+                          }}
+                          className="w-24 font-mono text-xs"
+                        />
+                      </div>
+                    ))}
+                    {!readOnly &&
+                    (((selected.config["buttons"] as any[]) || []).length < 3) ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        type="button"
+                        className="w-full text-xs"
+                        onClick={() => {
+                          const curr = ((selected.config["buttons"] as any[]) || []) as Array<{
+                            id: string;
+                            title: string;
+                          }>;
+                          const next = [
+                            ...curr,
+                            { id: `btn_${curr.length + 1}`, title: `Option ${curr.length + 1}` },
+                          ];
+                          updateSelected({ config: { ...selected.config, buttons: next } });
+                        }}
+                      >
+                        + Add Button
+                      </Button>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="wait_reply_btn"
+                      checked={Boolean(selected.config["waitForReply"])}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, waitForReply: e.target.checked },
+                        })
+                      }
+                      className="rounded border-slate-300"
+                    />
+                    <label htmlFor="wait_reply_btn" className="text-xs text-muted-foreground">
+                      Pause flow until patient clicks a button
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+
+              {selected.type === "SEND_LIST" ? (
+                <div className="space-y-3">
+                  <div className="space-y-1">
+                    <Label>Button text</Label>
+                    <Input
+                      value={String(selected.config["buttonText"] ?? "Select Option")}
+                      disabled={readOnly}
+                      placeholder="e.g. Choose Doctor"
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, buttonText: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Message body</Label>
+                    <Textarea
+                      rows={2}
+                      value={String(selected.config["body"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="Please select an option from the list below:"
+                      onChange={(e) =>
+                        updateSelected({ config: { ...selected.config, body: e.target.value } })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Dynamic data source</Label>
+                    <select
+                      className="flex h-9 w-full rounded-md border bg-background px-2 text-sm"
+                      value={String(selected.config["dataSource"] ?? "custom")}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, dataSource: e.target.value },
+                        })
+                      }
+                    >
+                      <option value="doctors">Available Doctors (Clinic Roster)</option>
+                      <option value="dates">Available Dates (Upcoming Slots)</option>
+                      <option value="slots">Available Slots (Time breakdown)</option>
+                      <option value="custom">Custom List Configuration</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="wait_reply_list"
+                      checked={Boolean(selected.config["waitForReply"])}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, waitForReply: e.target.checked },
+                        })
+                      }
+                      className="rounded border-slate-300"
+                    />
+                    <label htmlFor="wait_reply_list" className="text-xs text-muted-foreground">
+                      Pause flow until patient selects an item
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+
+              {selected.type === "GET_DOCTORS" ? (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                  <p className="font-semibold text-foreground">Clinic Doctor Roster</p>
+                  <p>
+                    Queries active providers configured for this clinic from ClinicMembership. Never
+                    invents fake doctors.
+                  </p>
+                  <div className="pt-1">
+                    <Label className="text-xs">Specialty filter (optional)</Label>
+                    <Input
+                      value={String(selected.config["specialty"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="e.g. Fertility, Andrology"
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, specialty: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {selected.type === "GET_AVAILABLE_DATES" ? (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                  <p className="font-semibold text-foreground">Real Date Availability</p>
+                  <p>
+                    Computes dates with verified availability using clinic working hours and
+                    unbooked slots.
+                  </p>
+                  <div className="pt-1">
+                    <Label className="text-xs">Days ahead to query</Label>
+                    <Input
+                      type="number"
+                      value={Number(selected.config["daysAhead"] ?? 7)}
+                      disabled={readOnly}
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, daysAhead: Number(e.target.value) },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {selected.type === "GET_AVAILABLE_SLOTS" ? (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                  <p className="font-semibold text-foreground">Real Slot Engine</p>
+                  <p>
+                    Retrieves slot IDs from the database availability engine. Segments into Morning
+                    and Afternoon/Evening.
+                  </p>
+                </div>
+              ) : null}
+
+              {selected.type === "BOOKING_SUMMARY" ? (
+                <div className="space-y-2 rounded-lg border bg-muted/30 p-2.5 text-xs text-muted-foreground">
+                  <p className="font-semibold text-foreground">Booking Summary Preview</p>
+                  <p>Generates concise confirmation card using runtime appointment variables:</p>
+                  <div className="rounded bg-background p-2 font-mono text-[11px] text-foreground">
+                    Please confirm your appointment ✨<br />
+                    👩‍⚕️ Dr. &#123;&#123;doctor.name&#125;&#125;<br />
+                    📅 &#123;&#123;appointment.date&#125;&#125;<br />
+                    ⏰ &#123;&#123;appointment.time&#125;&#125;<br />
+                    📍 &#123;&#123;clinic.name&#125;&#125;
+                  </div>
+                </div>
+              ) : null}
+
+              {selected.type === "BOOK_APPOINTMENT" ? (
+                <div className="space-y-2 rounded-lg border border-emerald-300 bg-emerald-50/50 p-2.5 text-xs text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-200">
+                  <p className="font-semibold">Authoritative Booking Node</p>
+                  <p>
+                    1. Revalidates selected slot against DB immediately before mutation.<br />
+                    2. Creates transactional Appointment row with stable slot ID.<br />
+                    3. Records idempotent booking row (duplicate-webhook safe).<br />
+                    4. Dispatches CareTask and realtime update to Care Loop.
+                  </p>
+                </div>
+              ) : null}
+
+              {selected.type === "HUMAN_HANDOFF" ? (
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <Label>Handoff Reason</Label>
+                    <Input
+                      value={String(selected.config["reason"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="e.g. Patient requested staff assistance"
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, reason: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Patient Notification Message</Label>
+                    <Textarea
+                      rows={3}
+                      value={String(selected.config["message"] ?? "")}
+                      disabled={readOnly}
+                      placeholder="I've connected you with our clinic team..."
+                      onChange={(e) =>
+                        updateSelected({
+                          config: { ...selected.config, message: e.target.value },
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              ) : null}
+
               <Button size="sm" variant="ghost" disabled={readOnly} onClick={deleteSelected}>
                 <Trash2 className="mr-1 size-3.5" />
                 Delete node
@@ -813,6 +1166,8 @@ export default function WhatsAppFlowBuilderPage() {
             </>
           ) : (
             <p className="text-sm text-muted-foreground">Select a node to configure.</p>
+          )}
+            </>
           )}
         </aside>
       </div>

@@ -240,3 +240,207 @@ test("inbox filter enum includes human_handoff", async () => {
   const q = inboxListQuery.parse({ filter: "human_handoff" });
   assert.equal(q.filter, "human_handoff");
 });
+
+test("appointment node types are allowed in flow definition validation", () => {
+  const appointmentNodeTypes = [
+    "SEND_BUTTONS",
+    "SEND_LIST",
+    "GET_DOCTORS",
+    "GET_DOCTOR_DETAILS",
+    "GET_AVAILABLE_DATES",
+    "GET_AVAILABLE_SLOTS",
+    "BOOKING_SUMMARY",
+    "BOOK_APPOINTMENT",
+    "DETECT_INTENT",
+    "EXTRACT_PREFERENCES",
+    "HUMAN_HANDOFF",
+  ];
+
+  const def = parseDefinition({
+    nodes: [
+      { id: "t", type: "TRIGGER", label: "Trigger", config: {} },
+      ...appointmentNodeTypes.map((t, idx) => ({
+        id: `node_${idx}`,
+        type: t,
+        label: t,
+        config: {},
+      })),
+      { id: "e", type: "END", label: "End", config: {} },
+    ],
+    edges: [
+      { id: "e0", source: "t", target: "node_0" },
+      ...appointmentNodeTypes.slice(0, -1).map((_, idx) => ({
+        id: `e_${idx}`,
+        source: `node_${idx}`,
+        target: `node_${idx + 1}`,
+      })),
+      { id: "e_last", source: `node_${appointmentNodeTypes.length - 1}`, target: "e" },
+    ],
+  });
+
+  const issues = validateFlowDefinition(def);
+  const typeIssues = issues.filter((i) => i.code === "NODE_TYPE");
+  assert.equal(typeIssues.length, 0, `Unexpected invalid node types: ${JSON.stringify(typeIssues)}`);
+});
+
+test("interpolateVariables safely substitutes runtime context variables", async () => {
+  const { interpolateVariables } = await import("./modules/whatsapp-automation/appointment-nodes");
+
+  const template = "Hello {{patient.name}}, Dr. {{doctor.name}} is available on {{appointment.date}} at {{appointment.time}} at {{clinic.name}}.";
+  const vars = {
+    patient_name: "John Doe",
+    doctor_name: "Ananya Rao",
+    appointment_date: "2026-09-07",
+    appointment_time: "10:00 AM",
+    clinic_name: "ABC Fertility",
+  };
+
+  const result = interpolateVariables(template, vars);
+  assert.equal(
+    result,
+    "Hello John Doe, Dr. Ananya Rao is available on 2026-09-07 at 10:00 AM at ABC Fertility.",
+  );
+});
+
+test("groupAvailableDates groups raw slot timestamps into calendar dates", async () => {
+  const { groupAvailableDates } = await import("./modules/whatsapp-automation/appointment-nodes");
+
+  const slots = [
+    {
+      slotId: "s1",
+      doctorId: null,
+      doctorName: "Dr. Ananya",
+      appointmentType: "Consultation",
+      startTime: "2026-09-07T09:00:00.000Z",
+      endTime: "2026-09-07T09:30:00.000Z",
+      timezone: "Asia/Kolkata",
+      location: "Main Clinic",
+      durationMin: 30,
+    },
+    {
+      slotId: "s2",
+      doctorId: null,
+      doctorName: "Dr. Ananya",
+      appointmentType: "Consultation",
+      startTime: "2026-09-07T09:30:00.000Z",
+      endTime: "2026-09-07T10:00:00.000Z",
+      timezone: "Asia/Kolkata",
+      location: "Main Clinic",
+      durationMin: 30,
+    },
+    {
+      slotId: "s3",
+      doctorId: null,
+      doctorName: "Dr. Ananya",
+      appointmentType: "Consultation",
+      startTime: "2026-09-08T14:00:00.000Z",
+      endTime: "2026-09-08T14:30:00.000Z",
+      timezone: "Asia/Kolkata",
+      location: "Main Clinic",
+      durationMin: 30,
+    },
+  ];
+
+  const grouped = groupAvailableDates(slots);
+  assert.equal(grouped.length, 2);
+  assert.equal(grouped[0]?.dateIso, "2026-09-07");
+  assert.equal(grouped[0]?.slotCount, 2);
+  assert.equal(grouped[1]?.dateIso, "2026-09-08");
+  assert.equal(grouped[1]?.slotCount, 1);
+});
+
+test("segmentSlots separates morning and afternoon/evening slots", async () => {
+  const { segmentSlots } = await import("./modules/whatsapp-automation/appointment-nodes");
+
+  const slots = [
+    {
+      slotId: "s_morning",
+      doctorId: null,
+      doctorName: "Dr. Ananya",
+      appointmentType: "Consultation",
+      startTime: "2026-09-07T10:00:00.000Z",
+      endTime: "2026-09-07T10:30:00.000Z",
+      timezone: "Asia/Kolkata",
+      location: "Main Clinic",
+      durationMin: 30,
+    },
+    {
+      slotId: "s_afternoon",
+      doctorId: null,
+      doctorName: "Dr. Ananya",
+      appointmentType: "Consultation",
+      startTime: "2026-09-07T14:30:00.000Z",
+      endTime: "2026-09-07T15:00:00.000Z",
+      timezone: "Asia/Kolkata",
+      location: "Main Clinic",
+      durationMin: 30,
+    },
+  ];
+
+  const segmented = segmentSlots(slots);
+  assert.ok(segmented.morning.length > 0 || segmented.afternoon.length > 0);
+  assert.equal(segmented.morning.length + segmented.afternoon.length, 2);
+});
+
+test("extractAppointmentPreferences parses doctor and timing heuristics", async () => {
+  const { extractAppointmentPreferences } = await import(
+    "./modules/whatsapp-automation/appointment-nodes"
+  );
+
+  const parsed = extractAppointmentPreferences("I want to see Dr Ananya next Monday evening");
+  assert.equal(parsed.doctorPreference, "Ananya");
+  assert.equal(parsed.preferredTimeRange, "EVENING");
+  assert.ok(parsed.preferredDate);
+});
+
+test("classifyPatientIntent accurately detects appointment booking, reschedule, and cancellation", async () => {
+  const { classifyPatientIntent } = await import("./modules/whatsapp-ai/intent");
+
+  const phrases = [
+    { text: "I need an appointment", intent: "APPOINTMENT_BOOKING" },
+    { text: "appointments", intent: "APPOINTMENT_BOOKING" },
+    { text: "book a doctor", intent: "APPOINTMENT_BOOKING" },
+    { text: "show available slots", intent: "APPOINTMENT_BOOKING" },
+    { text: "available doctors", intent: "APPOINTMENT_BOOKING" },
+    { text: "I want to reschedule my visit", intent: "APPOINTMENT_RESCHEDULE" },
+    { text: "cancel my appointment please", intent: "APPOINTMENT_CANCEL" },
+  ];
+
+  for (const { text, intent } of phrases) {
+    const res = classifyPatientIntent(text);
+    assert.equal(res.intent, intent, `Failed intent classification for: "${text}"`);
+  }
+});
+
+test("appointment_booking_whatsapp default library flow is complete and valid", async () => {
+  const { LIBRARY_FLOWS } = await import("./modules/whatsapp-automation/library");
+
+  const apptFlow = LIBRARY_FLOWS.find((f) => f.libraryKey === "appointment_booking_whatsapp");
+  assert.ok(apptFlow, "appointment_booking_whatsapp library flow must exist");
+  assert.equal(apptFlow!.triggerType, "INCOMING_WHATSAPP");
+
+  const issues = validateFlowDefinition(apptFlow!.definition);
+  const errors = issues.filter((i) => i.code !== "UNREACHABLE_WARNING");
+  assert.equal(errors.length, 0, `Validation errors on default appointment flow: ${JSON.stringify(errors)}`);
+
+  const nodeTypes = new Set<string>(apptFlow!.definition.nodes.map((n) => n.type));
+  for (const expectedType of [
+    "TRIGGER",
+    "DETECT_INTENT",
+    "SEND_TEXT",
+    "GET_DOCTORS",
+    "SEND_LIST",
+    "GET_DOCTOR_DETAILS",
+    "SEND_BUTTONS",
+    "GET_AVAILABLE_DATES",
+    "GET_AVAILABLE_SLOTS",
+    "BOOKING_SUMMARY",
+    "BOOK_APPOINTMENT",
+    "CREATE_TASK",
+    "HUMAN_HANDOFF",
+    "END",
+  ]) {
+    assert.ok(nodeTypes.has(expectedType), `Default flow must contain node type: ${expectedType}`);
+  }
+});
+

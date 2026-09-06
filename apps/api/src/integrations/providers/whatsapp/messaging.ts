@@ -3,7 +3,15 @@ import { prisma, writeAuditLog, type TenantContext } from "@smrkomed/database";
 import { IntegrationError } from "../../core/errors";
 import { credentialService } from "../../credentials/service";
 import { createMemoryRateLimiter } from "../../../middleware/rate-limit";
-import { sendTemplateMessage, sendTextMessage, type TemplateSendComponentParameters } from "./graph";
+import {
+  sendTemplateMessage,
+  sendTextMessage,
+  sendInteractiveButtons,
+  sendInteractiveList,
+  type TemplateSendComponentParameters,
+  type InteractiveButton,
+  type InteractiveListSection,
+} from "./graph";
 import { normalizeWhatsAppPhone } from "./phone";
 import { isSendableTemplateStatus } from "./templates";
 import { parseWhatsAppTemplateComponents } from "./template-variables";
@@ -559,6 +567,232 @@ async function resolveConversation(
   throw new IntegrationError("INVALID_RECIPIENT", "A conversation or patient is required.", 422);
 }
 
+export async function sendWhatsAppInteractiveButtons(
+  ctx: TenantContext,
+  input: {
+    conversationId: string;
+    body: string;
+    buttons: InteractiveButton[];
+    header?: { type: "text"; text: string } | { type: "image"; link?: string; id?: string };
+    footer?: string;
+    senderType?: "STAFF" | "AI" | "SYSTEM";
+  },
+) {
+  const body = input.body.trim();
+  if (!body) {
+    throw new IntegrationError("INVALID_TEMPLATE", "Interactive message body is required.", 422);
+  }
+  if (!input.buttons.length || input.buttons.length > 3) {
+    throw new IntegrationError("INVALID_TEMPLATE", "Interactive message requires between 1 and 3 buttons.", 422);
+  }
+
+  const integration = await prisma.integration.findUnique({
+    where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
+  });
+  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+    throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
+  });
+  if (!account) {
+    throw new IntegrationError("PHONE_NOT_REGISTERED", "No active WhatsApp phone number is connected.", 409);
+  }
+
+  const conversation = await resolveConversation(ctx, { conversationId: input.conversationId }, integration.id);
+  const recipient = conversation.contactPhone;
+  if (!recipient) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No WhatsApp number is associated with this conversation.", 422);
+  }
+
+  if (conversation.patientId) {
+    const consent = await prisma.consent.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: conversation.patientId,
+        channel: "WHATSAPP",
+        consentType: "WHATSAPP_COMMUNICATION",
+        status: "REVOKED",
+      },
+    });
+    if (consent) {
+      throw new IntegrationError("INVALID_RECIPIENT", "This patient has revoked WhatsApp communication.", 403);
+    }
+  }
+
+  const credentials = credentialService.decrypt(integration.encryptedCredentials);
+  const token = credentials.accessToken ?? credentials.systemUserToken;
+  if (!token) {
+    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  }
+
+  const senderType = input.senderType ?? "AI";
+  const result = await sendInteractiveButtons({
+    phoneNumberId: account.phoneNumberId,
+    accessToken: token,
+    to: recipient,
+    body,
+    buttons: input.buttons,
+    ...(input.header ? { header: input.header } : {}),
+    ...(input.footer ? { footer: input.footer } : {}),
+  });
+
+  const providerMessageId = (result["messages"] as Array<{ id: string }> | undefined)?.[0]?.id ?? null;
+  const buttonLabels = input.buttons.map((b) => `[${b.title}]`).join(" ");
+  const stored = await prisma.message.create({
+    data: {
+      conversationId: conversation.id,
+      direction: "OUTBOUND",
+      senderType,
+      content: `${body}\n\n${buttonLabels}`,
+      messageType: "interactive",
+      providerMessageId: providerMessageId ?? null,
+      status: "SENT",
+    },
+  });
+
+  realtimeBus.publish({
+    type: "MESSAGE_CREATED",
+    clinicId: ctx.clinicId,
+    conversationId: conversation.id,
+    message: {
+      id: stored.id,
+      direction: "OUTBOUND",
+      senderType: stored.senderType,
+      content: stored.content,
+      messageType: "interactive",
+      createdAt: stored.createdAt.toISOString(),
+      status: stored.status,
+      label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
+    },
+    conversation: {
+      id: conversation.id,
+      status: conversation.status,
+      unreadCount: 0,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+
+  return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+}
+
+export async function sendWhatsAppInteractiveList(
+  ctx: TenantContext,
+  input: {
+    conversationId: string;
+    body: string;
+    buttonLabel: string;
+    sections: InteractiveListSection[];
+    headerText?: string;
+    footerText?: string;
+    senderType?: "STAFF" | "AI" | "SYSTEM";
+  },
+) {
+  const body = input.body.trim();
+  if (!body) {
+    throw new IntegrationError("INVALID_TEMPLATE", "Interactive list body is required.", 422);
+  }
+  if (!input.sections.length) {
+    throw new IntegrationError("INVALID_TEMPLATE", "Interactive list requires at least one section.", 422);
+  }
+
+  const integration = await prisma.integration.findUnique({
+    where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
+  });
+  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+    throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  const account = await prisma.whatsAppAccount.findFirst({
+    where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
+  });
+  if (!account) {
+    throw new IntegrationError("PHONE_NOT_REGISTERED", "No active WhatsApp phone number is connected.", 409);
+  }
+
+  const conversation = await resolveConversation(ctx, { conversationId: input.conversationId }, integration.id);
+  const recipient = conversation.contactPhone;
+  if (!recipient) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No WhatsApp number is associated with this conversation.", 422);
+  }
+
+  if (conversation.patientId) {
+    const consent = await prisma.consent.findFirst({
+      where: {
+        clinicId: ctx.clinicId,
+        patientId: conversation.patientId,
+        channel: "WHATSAPP",
+        consentType: "WHATSAPP_COMMUNICATION",
+        status: "REVOKED",
+      },
+    });
+    if (consent) {
+      throw new IntegrationError("INVALID_RECIPIENT", "This patient has revoked WhatsApp communication.", 403);
+    }
+  }
+
+  const credentials = credentialService.decrypt(integration.encryptedCredentials);
+  const token = credentials.accessToken ?? credentials.systemUserToken;
+  if (!token) {
+    throw new IntegrationError("AUTHORIZATION_EXPIRED", "WhatsApp authorization requires attention.", 401);
+  }
+
+  const senderType = input.senderType ?? "AI";
+  const result = await sendInteractiveList({
+    phoneNumberId: account.phoneNumberId,
+    accessToken: token,
+    to: recipient,
+    body,
+    buttonLabel: input.buttonLabel,
+    sections: input.sections,
+    ...(input.headerText ? { headerText: input.headerText } : {}),
+    ...(input.footerText ? { footerText: input.footerText } : {}),
+  });
+
+  const providerMessageId = (result["messages"] as Array<{ id: string }> | undefined)?.[0]?.id ?? null;
+  const listSummary = input.sections
+    .flatMap((s) => s.rows.map((r) => `• ${r.title}${r.description ? ` (${r.description})` : ""}`))
+    .join("\n");
+
+  const stored = await prisma.message.create({
+    data: {
+      conversationId: conversation.id,
+      direction: "OUTBOUND",
+      senderType,
+      content: `${body}\n\n${listSummary}`,
+      messageType: "interactive",
+      providerMessageId: providerMessageId ?? null,
+      status: "SENT",
+    },
+  });
+
+  realtimeBus.publish({
+    type: "MESSAGE_CREATED",
+    clinicId: ctx.clinicId,
+    conversationId: conversation.id,
+    message: {
+      id: stored.id,
+      direction: "OUTBOUND",
+      senderType: stored.senderType,
+      content: stored.content,
+      messageType: "interactive",
+      createdAt: stored.createdAt.toISOString(),
+      status: stored.status,
+      label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
+    },
+    conversation: {
+      id: conversation.id,
+      status: conversation.status,
+      unreadCount: 0,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+
+  return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+}
+
 export const WhatsAppMessagingService = {
   sendTemplate: sendWhatsAppTemplate,
+  sendButtons: sendWhatsAppInteractiveButtons,
+  sendList: sendWhatsAppInteractiveList,
 };
+

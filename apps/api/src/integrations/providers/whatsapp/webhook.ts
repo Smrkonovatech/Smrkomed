@@ -171,9 +171,15 @@ export interface ExtractedInboundMessage {
   type: string;
   text: string;
   media: InboundMediaMeta | null;
+  interactive?: {
+    type: "button_reply" | "list_reply" | "button";
+    id: string;
+    title: string;
+    description?: string | null;
+  } | null;
 }
 
-function extractInboundMessage(rawBody: string, messageId: string): ExtractedInboundMessage {
+export function extractInboundMessage(rawBody: string, messageId: string): ExtractedInboundMessage {
   try {
     const payload = JSON.parse(rawBody) as {
       entry?: Array<{
@@ -183,6 +189,12 @@ function extractInboundMessage(rawBody: string, messageId: string): ExtractedInb
               id?: string;
               type?: string;
               text?: { body?: string };
+              interactive?: {
+                type?: "button_reply" | "list_reply";
+                button_reply?: { id: string; title: string };
+                list_reply?: { id: string; title: string; description?: string };
+              };
+              button?: { payload?: string; text?: string };
               audio?: { id?: string; mime_type?: string; sha256?: string; voice?: boolean };
               image?: { id?: string; mime_type?: string; sha256?: string; caption?: string };
               video?: { id?: string; mime_type?: string; sha256?: string; caption?: string; filename?: string };
@@ -197,6 +209,39 @@ function extractInboundMessage(rawBody: string, messageId: string): ExtractedInb
       for (const change of entry.changes ?? []) {
         const match = change.value?.messages?.find((row) => row.id === messageId);
         if (!match) continue;
+
+        if (match.type === "interactive" && match.interactive) {
+          const reply = match.interactive.button_reply ?? match.interactive.list_reply;
+          const id = reply?.id ?? "";
+          const title = reply?.title ?? "";
+          const desc = match.interactive.list_reply?.description ?? null;
+          return {
+            type: "interactive",
+            text: id || title,
+            media: null,
+            interactive: {
+              type: (match.interactive.type as "button_reply" | "list_reply") || "button_reply",
+              id,
+              title,
+              description: desc,
+            },
+          };
+        }
+
+        if (match.type === "button" && match.button) {
+          const id = match.button.payload ?? match.button.text ?? "";
+          const title = match.button.text ?? id;
+          return {
+            type: "button",
+            text: id,
+            media: null,
+            interactive: {
+              type: "button",
+              id,
+              title,
+            },
+          };
+        }
 
         if (match.type === "text" && match.text?.body) {
           return { type: "text", text: match.text.body, media: null };

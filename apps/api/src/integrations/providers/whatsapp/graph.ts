@@ -295,6 +295,123 @@ export async function sendTextMessage(input: {
   });
 }
 
+export type InteractiveButton = {
+  id: string;
+  title: string;
+};
+
+export async function sendInteractiveButtons(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  to: string;
+  body: string;
+  buttons: InteractiveButton[];
+  header?: { type: "text"; text: string } | { type: "image"; link?: string; id?: string };
+  footer?: string;
+}) {
+  const interactive: GraphJson = {
+    type: "button",
+    body: { text: input.body.slice(0, 1024) },
+    action: {
+      buttons: input.buttons.slice(0, 3).map((btn) => ({
+        type: "reply",
+        reply: {
+          id: btn.id.slice(0, 256),
+          title: btn.title.slice(0, 20),
+        },
+      })),
+    },
+  };
+
+  if (input.header) {
+    if (input.header.type === "text") {
+      interactive["header"] = { type: "text", text: input.header.text.slice(0, 60) };
+    } else if (input.header.type === "image") {
+      interactive["header"] = {
+        type: "image",
+        image: input.header.id ? { id: input.header.id } : { link: input.header.link },
+      };
+    }
+  }
+
+  if (input.footer) {
+    interactive["footer"] = { text: input.footer.slice(0, 60) };
+  }
+
+  return graphRequest(`/${input.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: input.to,
+      type: "interactive",
+      interactive,
+    }),
+  });
+}
+
+export type InteractiveListRow = {
+  id: string;
+  title: string;
+  description?: string;
+};
+
+export type InteractiveListSection = {
+  title: string;
+  rows: InteractiveListRow[];
+};
+
+export async function sendInteractiveList(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  to: string;
+  body: string;
+  buttonLabel: string;
+  sections: InteractiveListSection[];
+  headerText?: string;
+  footerText?: string;
+}) {
+  const interactive: GraphJson = {
+    type: "list",
+    body: { text: input.body.slice(0, 1024) },
+    action: {
+      button: (input.buttonLabel || "Select").slice(0, 20),
+      sections: input.sections.map((sec) => ({
+        title: sec.title.slice(0, 24),
+        rows: sec.rows.slice(0, 10).map((r) => ({
+          id: r.id.slice(0, 200),
+          title: r.title.slice(0, 24),
+          ...(r.description ? { description: r.description.slice(0, 72) } : {}),
+        })),
+      })),
+    },
+  };
+
+  if (input.headerText) {
+    interactive["header"] = { type: "text", text: input.headerText.slice(0, 60) };
+  }
+  if (input.footerText) {
+    interactive["footer"] = { text: input.footerText.slice(0, 60) };
+  }
+
+  return graphRequest(`/${input.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: input.to,
+      type: "interactive",
+      interactive,
+    }),
+  });
+}
+
 export interface MetaMediaMetadata {
   id: string;
   url: string;

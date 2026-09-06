@@ -11,7 +11,22 @@ import { classifyRetry } from "../../integrations/core/retry";
 import {
   sendWhatsAppSessionText,
   sendWhatsAppTemplate,
+  sendWhatsAppInteractiveButtons,
+  sendWhatsAppInteractiveList,
 } from "../../integrations/providers/whatsapp/messaging";
+import {
+  resolveClinicDoctors,
+  interpolateVariables,
+  groupAvailableDates,
+  segmentSlots,
+  extractAppointmentPreferences,
+  getAvailableAppointmentSlots,
+  validateSlotStillAvailable,
+  decodeSlotId,
+  bookAppointmentFromSlot,
+  classifyPatientIntent,
+  escalateToHuman,
+} from "./appointment-nodes";
 import { sendPatientDocumentOverWhatsApp } from "../../integrations/providers/whatsapp/outbound-media";
 import {
   buildOrderedParameters,
@@ -275,8 +290,9 @@ export async function runExecution(
       return execution;
     }
 
-    const definition = parseDefinition(execution.flow.definition);
     let ctx = parseExecutionContext(execution.context);
+    const rawDef = ((ctx as Record<string, unknown>)["definitionSnapshot"] ?? execution.flow.definition) as unknown;
+    const definition = parseDefinition(rawDef);
     const vars = { ...(ctx.vars ?? {}) } as CtxVars;
     let tags = [...(ctx.tags ?? [])];
     let currentId: string | null =
@@ -1199,6 +1215,493 @@ async function executeNode(
         nextNodeId: nextNodes(definition, node.id)[0]?.id ?? null,
       };
     }
+    case "SEND_BUTTONS": {
+      const rawBody = String(node.config["body"] ?? node.config["text"] ?? "").trim();
+      const body = interpolateVariables(rawBody, vars);
+      const rawHeader = typeof node.config["header"] === "string" ? node.config["header"] : undefined;
+      const header = rawHeader ? interpolateVariables(rawHeader, vars) : undefined;
+      const rawFooter = typeof node.config["footer"] === "string" ? node.config["footer"] : undefined;
+      const footer = rawFooter ? interpolateVariables(rawFooter, vars) : undefined;
+      const rawButtons = Array.isArray(node.config["buttons"])
+        ? (node.config["buttons"] as Array<{ id?: string; title?: string }>)
+        : [];
+      const buttons = rawButtons.slice(0, 3).map((b, idx) => ({
+        id: interpolateVariables(String(b.id || `btn_${idx}`), vars),
+        title: interpolateVariables(String(b.title || `Option ${idx + 1}`), vars).slice(0, 20),
+      }));
+
+      const next = nextNodes(definition, node.id)[0];
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            body,
+            header,
+            footer,
+            buttons,
+            note: "TEST MODE — Interactive buttons simulated; no message sent",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      if (!execution.conversationId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "SEND_BUTTONS requires an open conversation (conversationId).",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      const settings = await getClinicCommSettings(tenant.clinicId);
+      const consent = await assertAutomationConsent({
+        clinicId: tenant.clinicId,
+        patientId: execution.patientId,
+        requireGranted: settings.requireConsentGranted,
+      });
+      if (!consent.ok) {
+        return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
+      }
+
+      const sendResult = await sendWhatsAppInteractiveButtons(tenant, {
+        conversationId: execution.conversationId,
+        body: body || "Please choose an option:",
+        buttons: buttons.length > 0 ? buttons : [{ id: "btn_ok", title: "OK" }],
+        ...(header ? { header: { type: "text" as const, text: header } } : {}),
+        ...(footer ? { footer } : {}),
+      });
+
+      const shouldWait = Boolean(node.config["waitForReply"]);
+      return {
+        output: { sendResult, buttons, channel: "interactive_buttons" },
+        nextNodeId: next?.id ?? null,
+        waitForReply: shouldWait,
+      };
+    }
+    case "SEND_LIST": {
+      const rawBody = String(node.config["body"] ?? node.config["text"] ?? "").trim();
+      const body = interpolateVariables(rawBody, vars);
+      const buttonText = String(node.config["buttonText"] ?? "Select Option").slice(0, 20);
+      const title = typeof node.config["title"] === "string" ? interpolateVariables(node.config["title"], vars) : undefined;
+      const footer = typeof node.config["footer"] === "string" ? interpolateVariables(node.config["footer"], vars) : undefined;
+      const dataSource = String(node.config["dataSource"] ?? "custom");
+
+      let sections: Array<{ title: string; rows: Array<{ id: string; title: string; description?: string }> }> = [];
+
+      if (dataSource === "doctors") {
+        const doctorsJson = vars["_availableDoctorsJson"];
+        const doctors = doctorsJson ? JSON.parse(doctorsJson) : await resolveClinicDoctors(tenant.clinicId);
+        sections = [
+          {
+            title: "Available Doctors",
+            rows: (doctors as any[]).slice(0, 10).map((d: any) => ({
+              id: `appt_doctor_${d.id}`,
+              title: String(d.name).slice(0, 24),
+              description: String(d.specialty || "Fertility Specialist").slice(0, 72),
+            })),
+          },
+        ];
+      } else if (dataSource === "dates") {
+        const datesJson = vars["_availableDatesJson"];
+        const dates = datesJson ? JSON.parse(datesJson) : [];
+        sections = [
+          {
+            title: "Available Dates",
+            rows: (dates as any[]).slice(0, 10).map((d: any) => ({
+              id: `appt_date_${d.dateIso || d.date}`,
+              title: String(d.label || d.dateIso || d.date).slice(0, 24),
+              description: `${d.slotCount || 1} available slots`.slice(0, 72),
+            })),
+          },
+        ];
+      } else if (dataSource === "slots") {
+        const slotsJson = vars["_availableSlotsJson"];
+        const slots = slotsJson ? JSON.parse(slotsJson) : [];
+        const segmented = segmentSlots(slots);
+        sections = [];
+        if (segmented.morning.length > 0) {
+          sections.push({
+            title: "☀️ Morning",
+            rows: segmented.morning.slice(0, 5).map((s: any) => ({
+              id: `appt_slot_${s.slotId}`,
+              title: s.timeLabel,
+              description: "Available consultation slot",
+            })),
+          });
+        }
+        if (segmented.afternoon.length > 0) {
+          sections.push({
+            title: "🌤️ Afternoon",
+            rows: segmented.afternoon.slice(0, 5).map((s: any) => ({
+              id: `appt_slot_${s.slotId}`,
+              title: s.timeLabel,
+              description: "Available consultation slot",
+            })),
+          });
+        }
+        if (sections.length === 0 && (slots as any[]).length > 0) {
+          sections = [
+            {
+              title: "Available Slots",
+              rows: (slots as any[]).slice(0, 10).map((s: any) => ({
+                id: `appt_slot_${s.slotId}`,
+                title: s.startTime?.slice(11, 16) || "Available Slot",
+                description: "Available consultation slot",
+              })),
+            },
+          ];
+        }
+      } else if (Array.isArray(node.config["sections"])) {
+        sections = node.config["sections"] as any[];
+      }
+
+      const next = nextNodes(definition, node.id)[0];
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            body,
+            buttonText,
+            sections,
+            note: "TEST MODE — Interactive list simulated; no message sent",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      if (!execution.conversationId) {
+        return {
+          output: {
+            skipped: true,
+            reason: "SEND_LIST requires an open conversation (conversationId).",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      const settings = await getClinicCommSettings(tenant.clinicId);
+      const consent = await assertAutomationConsent({
+        clinicId: tenant.clinicId,
+        patientId: execution.patientId,
+        requireGranted: settings.requireConsentGranted,
+      });
+      if (!consent.ok) {
+        return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
+      }
+
+      if (sections.length === 0 || sections.every((s) => s.rows.length === 0)) {
+        return {
+          output: { skipped: true, reason: "No list items available to display." },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      const sendResult = await sendWhatsAppInteractiveList(tenant, {
+        conversationId: execution.conversationId,
+        body: body || "Please select from the list below:",
+        buttonLabel: buttonText,
+        sections,
+        ...(title ? { headerText: title } : {}),
+        ...(footer ? { footerText: footer } : {}),
+      });
+
+      const shouldWait = Boolean(node.config["waitForReply"]);
+      return {
+        output: { sendResult, sectionsCount: sections.length, channel: "interactive_list" },
+        nextNodeId: next?.id ?? null,
+        waitForReply: shouldWait,
+      };
+    }
+    case "GET_DOCTORS": {
+      const doctors = await resolveClinicDoctors(tenant.clinicId);
+      vars["_availableDoctorsJson"] = JSON.stringify(doctors);
+      vars["doctorCount"] = String(doctors.length);
+      if (doctors.length > 0 && doctors[0]) {
+        vars["firstDoctorName"] = doctors[0].name;
+        vars["firstDoctorId"] = doctors[0].id;
+      }
+      const branch = doctors.length === 0 ? "no_doctors" : "default";
+      const next = nextNodes(definition, node.id, branch)[0] ?? nextNodes(definition, node.id)[0];
+      return {
+        output: {
+          count: doctors.length,
+          doctors: doctors.map((d) => ({
+            id: d.id,
+            name: d.name,
+            specialty: d.specialty,
+            experience: d.experience,
+          })),
+        },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "GET_DOCTOR_DETAILS": {
+      const targetDoctorId = vars["selectedDoctorId"] || String(node.config["doctorId"] ?? "");
+      const doctors = await resolveClinicDoctors(tenant.clinicId);
+      const doc = (targetDoctorId ? doctors.find((d) => d.id === targetDoctorId) : null) ?? doctors[0];
+      if (doc) {
+        vars["doctor.id"] = doc.id;
+        vars["doctor.name"] = doc.name;
+        vars["doctor.specialty"] = doc.specialty;
+        vars["doctor.experience"] = doc.experience;
+        vars["doctor.bio"] = doc.bio;
+        if (doc.photoUrl) vars["doctor.photoUrl"] = doc.photoUrl;
+        vars["doctor.languages"] = doc.languages.join(" • ");
+      }
+      const next = nextNodes(definition, node.id)[0];
+      return {
+        output: { found: Boolean(doc), doctor: doc ?? null },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "GET_AVAILABLE_DATES": {
+      const daysAhead = Number(node.config["daysAhead"] ?? 7);
+      const res = await getAvailableAppointmentSlots({
+        clinicId: tenant.clinicId,
+        doctorName: vars["doctor.name"] || null,
+        days: daysAhead,
+      });
+      const dates = groupAvailableDates(res.slots);
+      vars["_availableDatesJson"] = JSON.stringify(dates);
+      vars["availableDatesCount"] = String(dates.length);
+      if (dates.length > 0 && dates[0]) {
+        vars["firstAvailableDate"] = dates[0].dateIso;
+      }
+      const branch = dates.length === 0 ? "no_slots" : "default";
+      const next = nextNodes(definition, node.id, branch)[0] ?? nextNodes(definition, node.id)[0];
+      return {
+        output: { count: dates.length, dates },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "GET_AVAILABLE_SLOTS": {
+      const date = vars["selectedDate"] || null;
+      const res = await getAvailableAppointmentSlots({
+        clinicId: tenant.clinicId,
+        doctorName: vars["doctor.name"] || null,
+        preferredDate: date,
+        days: 1,
+      });
+      const segmented = segmentSlots(res.slots);
+      vars["_availableSlotsJson"] = JSON.stringify(res.slots);
+      vars["availableSlotsCount"] = String(res.slots.length);
+      const branch = res.slots.length === 0 ? "no_slots" : "default";
+      const next = nextNodes(definition, node.id, branch)[0] ?? nextNodes(definition, node.id)[0];
+      return {
+        output: {
+          total: res.slots.length,
+          morningCount: segmented.morning.length,
+          afternoonCount: segmented.afternoon.length,
+        },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "BOOKING_SUMMARY": {
+      const doctorName = vars["doctor.name"] || vars["doctor_name"] || "Specialist";
+      const specialty = vars["doctor.specialty"] || "";
+      const date = vars["selectedDate"] || vars["appointment.date"] || "Upcoming";
+      const time = vars["selectedTime"] || vars["appointment.time"] || "Morning";
+      const clinicRow = tenant.clinicId
+        ? await prisma.clinic.findUnique({ where: { id: tenant.clinicId } })
+        : null;
+      const clinicName = clinicRow?.name ?? "SmrkoMed Clinic";
+      vars["clinic.name"] = clinicName;
+
+      const summary = `Please confirm your appointment ✨\n\n👩‍⚕️ ${doctorName}${specialty ? `\n${specialty}` : ""}\n\n📅 ${date}\n⏰ ${time}\n📍 ${clinicName}`;
+      vars["bookingSummaryText"] = summary;
+      vars["appointment.date"] = date;
+      vars["appointment.time"] = time;
+
+      const next = nextNodes(definition, node.id)[0];
+      return {
+        output: { summary, doctorName, date, time, clinicName },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "BOOK_APPOINTMENT": {
+      const selectedSlotId = vars["selectedSlotId"] || String(node.config["slotId"] ?? "");
+      const next = nextNodes(definition, node.id)[0];
+
+      if (simulation) {
+        return {
+          output: {
+            simulation: true,
+            status: "SIMULATED_SUCCESS",
+            appointmentId: `sim_appt_${Date.now()}`,
+            note: "TEST MODE — Real appointment was NOT created in database.",
+          },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      if (!selectedSlotId) {
+        const fallbackNext =
+          nextNodes(definition, node.id, "slot_expired")[0] ??
+          nextNodes(definition, node.id, "no_slots")[0] ??
+          next;
+        return {
+          output: { error: "NO_SLOT_SELECTED", reason: "No appointment slot was selected." },
+          nextNodeId: fallbackNext?.id ?? null,
+        };
+      }
+
+      // Revalidate slot right before booking (Rule 14 & 16)
+      const decoded = decodeSlotId(selectedSlotId);
+      if (!decoded) {
+        return {
+          output: { error: "INVALID_SLOT", reason: "Invalid slot ID." },
+          nextNodeId: nextNodes(definition, node.id, "slot_expired")[0]?.id ?? next?.id ?? null,
+        };
+      }
+
+      const valid = await validateSlotStillAvailable({
+        clinicId: tenant.clinicId,
+        startTime: new Date(decoded.startMs),
+        durationMin: decoded.durationMin,
+        doctorName: decoded.doctorName,
+      });
+      if (!valid.ok) {
+        const fallbackNext =
+          nextNodes(definition, node.id, "slot_expired")[0] ??
+          nextNodes(definition, node.id, "no_slots")[0] ??
+          next;
+        return {
+          output: { error: "SLOT_UNAVAILABLE", reason: valid.reason },
+          nextNodeId: fallbackNext?.id ?? null,
+        };
+      }
+
+      if (!execution.conversationId) {
+        return {
+          output: { error: "NO_CONVERSATION", reason: "Booking requires an active conversationId." },
+          nextNodeId: next?.id ?? null,
+        };
+      }
+
+      const idemKey = `appt_flow_${execution.id}_${selectedSlotId}`;
+      const booked = await bookAppointmentFromSlot({
+        tenant,
+        conversationId: execution.conversationId,
+        patientId: execution.patientId,
+        coupleId: execution.coupleId,
+        slotId: selectedSlotId,
+        idempotencyKey: idemKey,
+      });
+
+      if (!booked.ok) {
+        const fallbackNext =
+          nextNodes(definition, node.id, "slot_expired")[0] ??
+          nextNodes(definition, node.id, "no_slots")[0] ??
+          next;
+        return {
+          output: { error: "BOOKING_FAILED", reason: booked.reason },
+          nextNodeId: fallbackNext?.id ?? null,
+        };
+      }
+
+      vars["appointment_id"] = booked.appointmentId;
+      vars["appointment_date"] = booked.startsAt.slice(0, 10);
+      vars["appointment_time"] = booked.startsAt.slice(11, 16);
+      if (booked.doctorName) vars["doctor.name"] = booked.doctorName;
+
+      return {
+        output: {
+          appointmentId: booked.appointmentId,
+          alreadyExisted: booked.alreadyExisted,
+          status: "CONFIRMED",
+        },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "DETECT_INTENT": {
+      const text =
+        vars["message_text"] ||
+        vars["last_patient_message"] ||
+        String(node.config["input"] ?? "");
+      const classified = classifyPatientIntent(text);
+      vars["detectedIntent"] = classified.intent;
+
+      let branch = "default";
+      if (classified.intent === "APPOINTMENT_BOOKING") branch = "appointment";
+      else if (classified.intent === "APPOINTMENT_RESCHEDULE") branch = "reschedule";
+      else if (classified.intent === "APPOINTMENT_CANCEL") branch = "cancel";
+      else branch = "not_appointment";
+
+      const next = nextNodes(definition, node.id, branch)[0] ?? nextNodes(definition, node.id)[0];
+      return {
+        output: { intent: classified.intent, branch, input: text },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "EXTRACT_PREFERENCES": {
+      const text =
+        vars["message_text"] ||
+        vars["last_patient_message"] ||
+        String(node.config["input"] ?? "");
+      const prefs = extractAppointmentPreferences(text);
+      if (prefs.doctorPreference) {
+        vars["preferredDoctor"] = prefs.doctorPreference;
+      }
+      if (prefs.preferredDate) {
+        vars["selectedDate"] = prefs.preferredDate;
+        vars["preferredDate"] = prefs.preferredDate;
+      }
+      if (prefs.preferredTimeRange) {
+        vars["preferredTimeRange"] = prefs.preferredTimeRange;
+      }
+
+      const next = nextNodes(definition, node.id)[0];
+      return {
+        output: { preferences: prefs },
+        nextNodeId: next?.id ?? null,
+      };
+    }
+    case "HUMAN_HANDOFF": {
+      const reason = String(
+        node.config["reason"] ??
+          "Patient requested assistance or booking could not be completed automatically.",
+      );
+      const message = String(
+        node.config["message"] ??
+          "I couldn't complete that booking automatically. I've connected you with our clinic team, and they'll help you with the appointment shortly.",
+      );
+      const next = nextNodes(definition, node.id)[0];
+
+      if (simulation) {
+        return {
+          output: { simulation: true, reason, message, note: "TEST MODE — Escalate simulated" },
+          nextNodeId: next?.id ?? null,
+          escalated: true,
+        };
+      }
+
+      if (execution.conversationId && message) {
+        await sendWhatsAppSessionText(tenant, {
+          conversationId: execution.conversationId,
+          body: message,
+        }).catch(() => undefined);
+      }
+
+      let taskId: string | null = null;
+      if (execution.conversationId) {
+        const escalation = await escalateToHuman({
+          tenant,
+          conversationId: execution.conversationId,
+          patientId: execution.patientId,
+          coupleId: execution.coupleId,
+          reason,
+          notifyStaff: true,
+        });
+        taskId = escalation.careTaskId;
+      }
+      return {
+        output: { escalated: true, careTaskId: taskId, reason },
+        nextNodeId: next?.id ?? null,
+        escalated: true,
+      };
+    }
     case "END":
       return { output: { done: true }, done: true };
     default:
@@ -1265,6 +1768,7 @@ export async function startFlowExecution(input: {
           retryCount: 0,
           maxRetries: DEFAULT_MAX_RETRIES,
           tags: [],
+          definitionSnapshot: flow.definition as unknown as Prisma.InputJsonValue,
         } as Prisma.InputJsonValue,
       },
     });

@@ -56,6 +56,26 @@ export function buildIncomingWhatsAppVars(input: {
     media_caption: (input.mediaCaption ?? "").slice(0, 500),
     unmatched: input.unmatched ? "true" : "false",
     inbound_at: input.timestampIso,
+    ...(text.startsWith("appt_doctor_")
+      ? {
+          selectedDoctorId: text.replace("appt_doctor_", ""),
+          selected_doctor_id: text.replace("appt_doctor_", ""),
+        }
+      : {}),
+    ...(text.startsWith("appt_date_")
+      ? {
+          selectedDate: text.replace("appt_date_", ""),
+          selected_date: text.replace("appt_date_", ""),
+        }
+      : {}),
+    ...(text.startsWith("appt_slot_")
+      ? {
+          selectedSlotId: text.replace("appt_slot_", ""),
+          selected_slot_id: text.replace("appt_slot_", ""),
+        }
+      : {}),
+    ...(text === "appt_confirm" ? { appointmentConfirmed: "true" } : {}),
+    ...(text === "appt_cancel" ? { appointmentCancelled: "true" } : {}),
   };
 }
 
@@ -313,11 +333,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     timestampIso: input.timestampIso,
   });
 
-  // AI may already have been awaited in the webhook; skipAi avoids double-send.
-  const ai = input.skipAi
-    ? { skipped: true as const, reason: "already_ran_in_webhook" }
-    : await runInboundWhatsAppAi(input);
-
+  // 1. Resume waiting executions first!
   const resumed = await resumeWaitForReplyExecutions({
     tenant,
     conversationId: input.conversationId,
@@ -330,6 +346,25 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     return [] as Awaited<ReturnType<typeof resumeWaitForReplyExecutions>>;
   });
 
+  const hasResumedActive = resumed.some((r) => r.status && r.status !== "FAILED" && !r.skipped);
+  if (hasResumedActive) {
+    console.log("[WhatsApp inbound] active flow resumed, bypassing new dispatch and general AI", {
+      resumed,
+      conversationId: input.conversationId,
+    });
+    return { resumed, dispatched: null, ai: { skipped: true as const, reason: "flow_resumed" } };
+  }
+
+  // 2. Check if this is an appointment intent or interactive appointment button
+  const { classifyPatientIntent } = await import("../whatsapp-ai/intent");
+  const intentResult = classifyPatientIntent(input.messageText);
+  const isApptIntent =
+    input.messageText.startsWith("appt_") ||
+    intentResult.intent === "APPOINTMENT_BOOKING" ||
+    intentResult.intent === "APPOINTMENT_RESCHEDULE" ||
+    intentResult.intent === "APPOINTMENT_CANCEL";
+
+  // 3. Dispatch INCOMING_WHATSAPP trigger
   const dispatched = await dispatchWhatsAppTrigger({
     tenant,
     triggerType: "INCOMING_WHATSAPP",
@@ -337,14 +372,34 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     patientId: input.patientId ?? null,
     coupleId,
     conversationId: input.conversationId,
-    vars,
+    vars: {
+      ...vars,
+      detected_intent: intentResult.intent,
+      is_appointment_intent: isApptIntent ? "true" : "false",
+    },
   }).catch((err) => {
     console.error(
       "[WhatsApp automation] INCOMING_WHATSAPP dispatch failed:",
       err instanceof Error ? err.message : err,
     );
-    return { matched: 0, executions: [] as string[] };
+    return { matched: 0, results: [] };
   });
+
+  // 4. If an ACTIVE flow matched and started, or if appointment intent is matched by active automation, skip general AI
+  const activeFlowStarted = (dispatched.results ?? []).some((r) => r.executionId && !r.error);
+  if (activeFlowStarted || (isApptIntent && (dispatched.matched ?? 0) > 0)) {
+    console.log("[WhatsApp inbound] automation flow active/started for appointment intent, bypassing generic AI", {
+      isApptIntent,
+      activeFlowStarted,
+      intent: intentResult.intent,
+    });
+    return { resumed, dispatched, ai: { skipped: true as const, reason: "flow_active_or_appointment_intent" } };
+  }
+
+  // 5. Fallback to general AI auto-reply only when no automation is active
+  const ai = input.skipAi
+    ? { skipped: true as const, reason: "already_ran_in_webhook" }
+    : await runInboundWhatsAppAi(input);
 
   return { resumed, dispatched, ai };
 }

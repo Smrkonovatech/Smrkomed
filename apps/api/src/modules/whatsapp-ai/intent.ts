@@ -57,7 +57,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "APPOINTMENT_BOOKING",
-    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation)|want\s+(an?\s+)?appointment|need\s+(an?\s+)?appointment|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?)|available\s+(slots?|appointments?|timings?)|any\s+(open\s+)?slots?)\b/i,
+    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(an?\s+)?(appointment|doctor)|need\s+(an?\s+)?(appointment|doctor)|need\s+a\s+appointment|(show|list|see|get|check)\s+(me\s+)?(available\s+)?(slots?|timings?|times?|doctors?)|available\s+(slots?|appointments?|timings?|doctors?)|any\s+(open\s+)?slots?|^appointments?$|book\s+for\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
     tools: ["getAvailableAppointmentSlots", "getAppointments"],
     confidence: "high",
   },
@@ -69,7 +69,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "APPOINTMENT_CANCEL",
-    re: /\b(cancel)\s+(my\s+)?(appointment|appt|visit)\b/i,
+    re: /\b(cancel)\s+(my\s+)?(appointment|appt|visit|booking)\b/i,
     tools: ["cancelAppointment"],
     confidence: "high",
   },

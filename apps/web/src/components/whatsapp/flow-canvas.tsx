@@ -61,6 +61,17 @@ const NODE_COLORS: Record<string, string> = {
   MEDICATION_LOOKUP: "border-teal-700 bg-teal-50/80",
   PATIENT_LOOKUP: "border-cyan-700 bg-cyan-50",
   APPOINTMENT_LOOKUP: "border-blue-700 bg-blue-50",
+  SEND_BUTTONS: "border-emerald-600 bg-emerald-50",
+  SEND_LIST: "border-teal-600 bg-teal-50",
+  GET_DOCTORS: "border-purple-600 bg-purple-50",
+  GET_DOCTOR_DETAILS: "border-purple-500 bg-purple-50/80",
+  GET_AVAILABLE_DATES: "border-blue-600 bg-blue-50",
+  GET_AVAILABLE_SLOTS: "border-blue-500 bg-blue-50/80",
+  BOOKING_SUMMARY: "border-indigo-600 bg-indigo-50",
+  BOOK_APPOINTMENT: "border-emerald-700 bg-emerald-100",
+  DETECT_INTENT: "border-violet-700 bg-violet-50",
+  EXTRACT_PREFERENCES: "border-violet-600 bg-violet-50/80",
+  HUMAN_HANDOFF: "border-rose-600 bg-rose-50",
 };
 
 function FlowCardNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
@@ -85,6 +96,36 @@ function FlowCardNode({ data, selected }: NodeProps<Node<FlowNodeData>>) {
         <p className="mt-1 truncate text-[11px] text-muted-foreground">
           {String(d.config["body"] || d.config["text"] || "Session text")}
         </p>
+      ) : null}
+      {d.type === "SEND_BUTTONS" ? (
+        <p className="mt-1 truncate text-[11px] text-muted-foreground">
+          {Array.isArray(d.config["buttons"])
+            ? (d.config["buttons"] as any[]).map((b) => `[${b.title || b.id}]`).join(" ")
+            : "Interactive buttons"}
+        </p>
+      ) : null}
+      {d.type === "SEND_LIST" ? (
+        <p className="mt-1 truncate text-[11px] text-muted-foreground">
+          List · {String(d.config["dataSource"] ?? "custom")} ({String(d.config["buttonText"] ?? "Select")})
+        </p>
+      ) : null}
+      {d.type === "GET_DOCTORS" ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">Query clinic doctors</p>
+      ) : null}
+      {d.type === "GET_AVAILABLE_DATES" ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">Query dates ({String(d.config["daysAhead"] ?? 7)}d)</p>
+      ) : null}
+      {d.type === "GET_AVAILABLE_SLOTS" ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">Query real time slots</p>
+      ) : null}
+      {d.type === "BOOK_APPOINTMENT" ? (
+        <p className="mt-1 text-[11px] font-medium text-emerald-800 dark:text-emerald-300">Revalidates & books slot</p>
+      ) : null}
+      {d.type === "DETECT_INTENT" ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">Detects booking / cancel</p>
+      ) : null}
+      {d.type === "HUMAN_HANDOFF" ? (
+        <p className="mt-1 text-[11px] text-rose-700 dark:text-rose-300">Escalate to staff inbox</p>
       ) : null}
       {d.type === "AI_DRAFT" ? (
         <p className="mt-1 text-[11px] text-muted-foreground">Phase 5 · human review</p>
@@ -312,9 +353,19 @@ export const FLOW_PALETTE = [
   },
   { type: "MEDICATION_LOOKUP", label: "Medication lookup", defaults: {} },
   { type: "PATIENT_LOOKUP", label: "Patient lookup", defaults: {} },
-  { type: "APPOINTMENT_LOOKUP", label: "Appointment lookup", defaults: {} },
+  { type: "SEND_BUTTONS", label: "Send Buttons", defaults: { body: "Please select an option:", buttons: [{ id: "btn_1", title: "Option 1" }], waitForReply: true } },
+  { type: "SEND_LIST", label: "Send List", defaults: { body: "Choose from the list:", buttonText: "Select", dataSource: "custom", waitForReply: true } },
+  { type: "GET_DOCTORS", label: "Get Doctors", defaults: {} },
+  { type: "GET_DOCTOR_DETAILS", label: "Doctor Details", defaults: {} },
+  { type: "GET_AVAILABLE_DATES", label: "Get Available Dates", defaults: { daysAhead: 7 } },
+  { type: "GET_AVAILABLE_SLOTS", label: "Get Available Slots", defaults: {} },
+  { type: "BOOKING_SUMMARY", label: "Booking Summary", defaults: {} },
+  { type: "BOOK_APPOINTMENT", label: "Book Appointment", defaults: {} },
+  { type: "DETECT_INTENT", label: "Detect Intent (AI)", defaults: {} },
+  { type: "EXTRACT_PREFERENCES", label: "Extract Preferences", defaults: {} },
+  { type: "HUMAN_HANDOFF", label: "Human Handoff", defaults: { reason: "Patient requested assistance" } },
   { type: "END", label: "End", defaults: {} },
-] as const;
+];
 
 export function addPaletteNode(def: FlowDefinition, type: string, defaults: Record<string, unknown>): FlowDefinition {
   const id = `n_${Math.random().toString(36).slice(2, 9)}`;
