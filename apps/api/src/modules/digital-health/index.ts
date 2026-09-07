@@ -25,6 +25,7 @@ import {
   prepareExchangeSchema,
   shareExchangeSchema,
 } from "./schemas";
+import { abdmV3Routes } from "./v3-routes";
 
 async function recordAbdmTransaction(
   tenant: TenantContext,
@@ -424,6 +425,7 @@ async function buildTimeline(tenant: TenantContext, patientId: string) {
 }
 
 export const digitalHealthRoutes = new Hono<AppEnv>()
+  .route("/v3", abdmV3Routes)
   // ─── Clinic ABDM settings / dashboard ──────────────────────────────────────
   .get("/abdm/status", async (c) => {
     requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);

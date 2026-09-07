@@ -7,7 +7,7 @@ export function getAbdmConfig() {
   const isEnabled = env.abdmEnabled || process.env["ABDM_ENABLED"] === "1";
   const rawBaseUrl = env.abdmBaseUrl?.trim() || process.env["ABDM_BASE_URL"]?.trim();
   const environment: "production" | "sandbox" =
-    ((env.abdmEnv ?? process.env["ABDM_ENV"]) ?? "sandbox").toLowerCase() === "production" ? "production" : "sandbox";
+    ((process.env["ABDM_ENV"] ?? env.abdmEnv) ?? "sandbox").toLowerCase() === "production" ? "production" : "sandbox";
   
   // In sandbox, if base URL is not specified or blank, default to official ABDM sandbox gateway
   const baseUrl = rawBaseUrl || (environment === "sandbox" ? ABDM_DEFAULT_SANDBOX_URL : "");
