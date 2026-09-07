@@ -444,6 +444,7 @@ model Clinic {
   digitalHealthConsents DigitalHealthConsent[]
   healthRecordExchanges HealthRecordExchange[]
   abdmTransactions AbdmTransaction[]
+  doctorAvailabilities DoctorAvailability[]
 
   @@index([organizationId])
 }
@@ -2633,4 +2634,24 @@ model AbdmTransaction {
   @@index([clinicId, createdAt])
   @@index([patientId, createdAt])
   @@index([clinicId, operation, status])
+}
+
+// ─── Doctor Availability & Schedules ─────────────────────────────────────────
+
+model DoctorAvailability {
+  id             String   @id @default(cuid())
+  clinicId       String
+  doctorId       String
+  doctorName     String
+  weeklySchedule Json
+  settings       Json?
+  leaves         Json?
+  blockedTimes   Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Cascade)
+
+  @@unique([clinicId, doctorId])
+  @@index([clinicId, doctorName])
 }
