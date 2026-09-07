@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { CheckCircle, Download, ExternalLink, QrCode, RefreshCw, Shield, UserCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, apiPost } from "@/lib/api/client";
+import { ApiError, apiGet, apiPost } from "@/lib/api/client";
 import { CONSENT_VERSION } from "@/lib/abdm/status";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,13 @@ type PatientSnapshot = {
 
 type Step =
   | "entry"
+  | "v3_aadhaar_input"
+  | "v3_aadhaar_otp"
+  | "v3_suggestions"
+  | "v3_mobile_input"
+  | "v3_mobile_otp"
+  | "v3_account_select"
+  | "v3_face_auth"
   | "path_has"
   | "path_create"
   | "details"
@@ -66,16 +74,37 @@ export function AbhaSetupWizard({
   const [patient, setPatient] = useState<PatientSnapshot | null>(null);
   const [purpose, setPurpose] = useState<"LINK_EXISTING" | "CREATE_ABHA" | "DISCOVER">("LINK_EXISTING");
   const [abhaInput, setAbhaInput] = useState("");
+  const [aadhaarInput, setAadhaarInput] = useState("");
+  const [mobileInput, setMobileInput] = useState("");
   const [authMethod, setAuthMethod] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [maskedMobile, setMaskedMobile] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [selectedAddress, setSelectedAddress] = useState("");
+  const [customAddress, setCustomAddress] = useState("");
+  const [faceAuthQrUrl, setFaceAuthQrUrl] = useState<string | null>(null);
+  const [accountsList, setAccountsList] = useState<
+    Array<{
+      ABHANumber: string;
+      name?: string;
+      preferredAbhaAddress?: string;
+      gender?: string;
+      dob?: string;
+    }>
+  >([]);
+  const [v3Token, setV3Token] = useState<string | null>(null);
+
   const [verifiedProfile, setVerifiedProfile] = useState<{
-    id: string;
-    name: string;
-    gender?: string;
-    yearOfBirth?: number | null;
+    id?: string | undefined;
+    name?: string | undefined;
+    gender?: string | undefined;
+    yearOfBirth?: number | null | undefined;
+    photo?: string | undefined;
+    abhaNumber?: string | undefined;
+    abhaAddress?: string | undefined;
   } | null>(null);
+
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(300);
@@ -89,24 +118,13 @@ export function AbhaSetupWizard({
   const [successMasked, setSuccessMasked] = useState<string | null>(null);
   const [sandboxHint, setSandboxHint] = useState(false);
 
-  const methods = connection.authMethods?.length
-    ? connection.authMethods
-    : connection.demoLinkAllowed
-      ? [
-          {
-            id: "sandbox_otp",
-            label: "Sandbox OTP (MOCK)",
-            description: "Test only — enter any 6-digit code. Not a real ABDM OTP.",
-            sandboxOnly: true,
-          },
-        ]
-      : [];
-
   useEffect(() => {
     if (!open) {
       setStep("entry");
       setBusy(false);
       setAbhaInput("");
+      setAadhaarInput("");
+      setMobileInput("");
       setOtp(["", "", "", "", "", ""]);
       setConsentAgreed(false);
       setSessionId(null);
@@ -116,11 +134,17 @@ export function AbhaSetupWizard({
       setMessage(null);
       setDiscoverFound(null);
       setSuccessMasked(null);
+      setSuggestions([]);
+      setSelectedAddress("");
+      setCustomAddress("");
+      setFaceAuthQrUrl(null);
+      setAccountsList([]);
+      setV3Token(null);
     }
   }, [open]);
 
   useEffect(() => {
-    if (step !== "otp" || !expiresAt) return;
+    if ((step !== "otp" && step !== "v3_aadhaar_otp" && step !== "v3_mobile_otp") || !expiresAt) return;
     const tick = () => {
       const left = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
       setSecondsLeft(left);
@@ -132,213 +156,243 @@ export function AbhaSetupWizard({
 
   const otpValue = useMemo(() => otp.join(""), [otp]);
 
-  async function startPath(path: "HAS_ABHA" | "NO_ABHA" | "NOT_SURE") {
-    setBusy(true);
-    try {
-      const res = await apiPost<{
-        patient: PatientSnapshot;
-        message: string;
-        connection: Connection;
-      }>(`/api/v1/digital-health/patients/${patientId}/journey/start`, { path });
-      setPatient(res.patient);
-      setMessage(res.message);
-      if (path === "HAS_ABHA") {
-        setPurpose("LINK_EXISTING");
-        setStep("path_has");
-      } else if (path === "NOT_SURE") {
-        setPurpose("DISCOVER");
-        setStep("details");
-      } else {
-        setPurpose("CREATE_ABHA");
-        setStep("path_create");
-      }
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Unable to start ABHA setup.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  // ─────────────────────────────────────────────────────────────────────────────
+  // V3 ACTION HANDLERS
+  // ─────────────────────────────────────────────────────────────────────────────
 
-  async function recordConsent() {
-    if (!consentAgreed) {
-      toast.error("Please agree to continue.");
+  // V3 Flow 1: Aadhaar OTP Enrolment
+  async function startV3AadhaarEnrol() {
+    const clean = aadhaarInput.replace(/\D/g, "");
+    if (clean.length !== 12) {
+      toast.error("Please enter a valid 12-digit Aadhaar number.");
       return;
     }
     setBusy(true);
     try {
-      await apiPost(`/api/v1/digital-health/patients/${patientId}/journey/consent`, {
-        sessionPurpose: purpose,
-        consentVersion: CONSENT_VERSION,
-        agreed: true,
-      });
-      setStep("auth_method");
-      if (!authMethod && methods[0]) setAuthMethod(methods[0].id);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Unable to record consent.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function startAuth() {
-    if (!authMethod) {
-      toast.error("Choose an authentication method.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await apiPost<{
-        sessionId: string;
-        transactionId?: string;
-        maskedMobile?: string;
-        expiresAt: string;
-        message: string;
-        sandboxMode?: boolean;
-      }>(`/api/v1/digital-health/patients/${patientId}/journey/auth/start`, {
-        purpose,
-        authMethod,
-        ...(abhaInput.trim() ? { identifier: abhaInput.trim() } : {}),
-      });
-      setSessionId(res.sessionId);
-      setTransactionId(res.transactionId ?? null);
-      setMaskedMobile(res.maskedMobile ?? null);
-      setExpiresAt(res.expiresAt);
-      setSandboxHint(Boolean(res.sandboxMode));
-      setMessage(res.message);
-      setStep("otp");
-      toast.message(res.message);
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "We couldn't start verification. Please try again.");
-      setStep("error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verifyOtp() {
-    if (!sessionId || otpValue.length !== 6) {
-      toast.error("Enter the 6-digit OTP.");
-      return;
-    }
-    setBusy(true);
-    try {
-      const res = await apiPost<{
-        authenticated: boolean;
-        message: string;
-        sandboxMode?: boolean;
-        profile?: { id: string; name: string; gender?: string; yearOfBirth?: number | null };
-        officialAbhaNumber?: string;
-        officialAbhaAddress?: string;
-        identity?: { abhaMasked: string | null; abhaAddress: string | null };
-      }>(
-        `/api/v1/digital-health/patients/${patientId}/journey/auth/verify`,
-        {
-          sessionId,
-          otp: otpValue,
-          ...(transactionId ? { transactionId } : {}),
-        },
+      const res = await apiPost<{ txnId: string; message: string }>(
+        "/api/v1/digital-health/v3/enrol/aadhaar/request-otp",
+        { aadhaarNumber: clean },
       );
-      setSandboxHint(Boolean(res.sandboxMode));
+      setTransactionId(res.txnId);
       setMessage(res.message);
-
-      if (res.profile) {
-        setVerifiedProfile(res.profile);
-      }
-
-      if (res.identity) {
-        setSuccessMasked(res.identity.abhaMasked);
-        setStep("success_link");
-        toast.success("ABHA verified and linked successfully!");
-        return;
-      }
-
-      if (purpose === "CREATE_ABHA" || purpose === "DISCOVER") {
-        await runDiscoverThenCreate();
-      } else {
-        await finishLink();
-      }
+      setExpiresAt(new Date(Date.now() + 10 * 60 * 1000).toISOString());
+      setStep("v3_aadhaar_otp");
+      toast.success(res.message);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "We couldn't complete verification right now.");
+      toast.error(err instanceof ApiError ? err.message : "Failed to request Aadhaar OTP.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function runDiscoverThenCreate() {
-    try {
-      const discovered = await apiPost<{
-        found: boolean;
-        abhaMasked?: string;
-        verifiedName?: string;
-        message: string;
-      }>(`/api/v1/digital-health/patients/${patientId}/journey/discover`, {
-        forceMockFound: false,
-      });
-      if (discovered.found && discovered.abhaMasked) {
-        setDiscoverFound({
-          abhaMasked: discovered.abhaMasked,
-          verifiedName: discovered.verifiedName ?? patient?.name ?? "",
-          message: discovered.message,
-        });
-        setStep("discover");
-        return;
-      }
-      if (purpose === "DISCOVER" || purpose === "CREATE_ABHA") {
-        if (!sessionId) return;
-        const created = await apiPost<{
-          message: string;
-          identity: { abhaMasked: string | null };
-          sandboxMode?: boolean;
-        }>(`/api/v1/digital-health/patients/${patientId}/journey/create`, {
-          sessionId,
-          detailsConfirmed: true,
-        });
-        setSuccessMasked(created.identity.abhaMasked);
-        setMessage(created.message);
-        setStep("success_create");
-      }
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Discovery failed.");
-      setStep("error");
-    }
-  }
-
-  async function finishLink() {
-    if (abhaInput.trim().length < 8) {
-      setStep("match");
+  async function verifyV3AadhaarOtp() {
+    if (!transactionId || otpValue.length !== 6) {
+      toast.error("Please enter the complete 6-digit OTP.");
       return;
     }
     setBusy(true);
     try {
-      await apiPost(`/api/v1/digital-health/patients/${patientId}/journey/match-confirm`, {
-        confirmed: true,
-        abhaNumber: abhaInput.trim(),
-        sessionId: sessionId ?? undefined,
+      const res = await apiPost<{
+        message: string;
+        txnId: string;
+        tokens: { token: string };
+        ABHAProfile: {
+          firstName: string;
+          lastName?: string;
+          dob: string;
+          gender: string;
+          ABHANumber: string;
+          phrAddress?: string[];
+          photo?: string;
+        };
+      }>("/api/v1/digital-health/v3/enrol/aadhaar/verify", {
+        txnId: transactionId,
+        otp: otpValue,
+        mobile: mobileInput.trim() || patient?.phone || "9999999999",
+        patientId,
       });
-      await apiPost(`/api/v1/digital-health/patients/${patientId}/abha/link`, {
-        abhaNumber: abhaInput.trim(),
+
+      setSuccessMasked(res.ABHAProfile.ABHANumber);
+      setVerifiedProfile({
+        name: `${res.ABHAProfile.firstName} ${res.ABHAProfile.lastName ?? ""}`.trim(),
+        gender: res.ABHAProfile.gender,
+        photo: res.ABHAProfile.photo,
+        abhaNumber: res.ABHAProfile.ABHANumber,
+        abhaAddress: res.ABHAProfile.phrAddress?.[0],
       });
-      // Sandbox may allow verify; production stays pending honestly.
+
+      // Load address suggestions for the user to pick
       try {
-        await apiPost(`/api/v1/digital-health/patients/${patientId}/abha/verify`, {});
+        const suggRes = await apiGet<{ abhaAddressList: string[] }>(
+          `/api/v1/digital-health/v3/enrol/suggestions?txnId=${res.txnId}`,
+        );
+        if (suggRes.abhaAddressList && suggRes.abhaAddressList.length > 0 && suggRes.abhaAddressList[0]) {
+          setSuggestions(suggRes.abhaAddressList);
+          setSelectedAddress(suggRes.abhaAddressList[0]);
+          setStep("v3_suggestions");
+          return;
+        }
       } catch {
-        // leave pending
+        // if suggestions not supported, go to success
       }
-      setSuccessMasked(null);
+
       setStep("success_link");
+      toast.success("ABHA created and linked successfully!");
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Unable to link ABHA.");
-      setStep("error");
+      toast.error(err instanceof ApiError ? err.message : "Aadhaar OTP verification failed.");
     } finally {
       setBusy(false);
     }
   }
 
-  async function linkExistingFromDiscover() {
-    setStep("match");
-    setMessage(
-      "We found an existing ABHA association. Enter the patient's ABHA number to link — do not create another.",
-    );
+  async function saveV3Address() {
+    const addressToSet = customAddress.trim() || selectedAddress;
+    if (!addressToSet || !transactionId) {
+      setStep("success_link");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiPost("/api/v1/digital-health/v3/enrol/abha-address", {
+        txnId: transactionId,
+        abhaAddress: addressToSet,
+        patientId,
+      });
+      if (verifiedProfile) {
+        setVerifiedProfile({ ...verifiedProfile, abhaAddress: addressToSet });
+      }
+      setStep("success_link");
+      toast.success(`ABHA address ${addressToSet} set successfully!`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to set custom ABHA address.");
+      setStep("success_link");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // V3 Flow 2: Mobile OTP Login / Verification
+  async function startV3MobileLogin() {
+    const clean = mobileInput.replace(/\D/g, "");
+    if (clean.length !== 10) {
+      toast.error("Enter a valid 10-digit mobile number.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiPost<{ txnId: string; message: string }>(
+        "/api/v1/digital-health/v3/auth/request-otp",
+        { loginType: "mobile", identifier: clean },
+      );
+      setTransactionId(res.txnId);
+      setMessage(res.message);
+      setExpiresAt(new Date(Date.now() + 10 * 60 * 1000).toISOString());
+      setStep("v3_mobile_otp");
+      toast.success(res.message);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to request mobile OTP.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyV3MobileOtp() {
+    if (!transactionId || otpValue.length !== 6) {
+      toast.error("Please enter the complete 6-digit OTP.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiPost<{
+        txnId: string;
+        token?: string;
+        accounts?: Array<{
+          ABHANumber: string;
+          preferredAbhaAddress?: string;
+          name?: string;
+          gender?: string;
+          dob?: string;
+        }>;
+      }>("/api/v1/digital-health/v3/auth/verify-otp", {
+        txnId: transactionId,
+        otp: otpValue,
+        loginType: "mobile",
+        patientId,
+      });
+
+      if (res.token) setV3Token(res.token);
+
+      if (res.accounts && res.accounts.length > 1) {
+        setAccountsList(res.accounts);
+        setStep("v3_account_select");
+        return;
+      }
+
+      if (res.accounts && res.accounts.length === 1 && res.accounts[0]) {
+        const acc = res.accounts[0];
+        setSuccessMasked(acc.ABHANumber);
+        setVerifiedProfile({
+          name: acc.name,
+          abhaNumber: acc.ABHANumber,
+          abhaAddress: acc.preferredAbhaAddress,
+          gender: acc.gender,
+        });
+        setStep("success_link");
+        toast.success("ABHA verified and linked!");
+        return;
+      }
+
+      setStep("success_link");
+      toast.success("Verified successfully!");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Mobile OTP verification failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function selectV3Account(account: { ABHANumber: string; name?: string; preferredAbhaAddress?: string }) {
+    if (!transactionId || !v3Token) return;
+    setBusy(true);
+    try {
+      await apiPost("/api/v1/digital-health/v3/auth/select-account", {
+        txnId: transactionId,
+        abhaNumber: account.ABHANumber,
+        tToken: v3Token,
+        patientId,
+      });
+      setSuccessMasked(account.ABHANumber);
+      setVerifiedProfile({
+        name: account.name,
+        abhaNumber: account.ABHANumber,
+        abhaAddress: account.preferredAbhaAddress,
+      });
+      setStep("success_link");
+      toast.success("Account selected and linked!");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to select account.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // V3 Flow 3: FaceAuth QR
+  async function startV3FaceAuth() {
+    setBusy(true);
+    try {
+      const res = await apiPost<{ txnId: string; qrCodeUrl: string; message: string }>(
+        "/api/v1/digital-health/v3/face-auth/init",
+        {},
+      );
+      setTransactionId(res.txnId);
+      setFaceAuthQrUrl(res.qrCodeUrl);
+      setMessage(res.message);
+      setStep("v3_face_auth");
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to initialize FaceAuth.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function onOtpChange(index: number, value: string) {
@@ -347,354 +401,415 @@ export function AbhaSetupWizard({
     next[index] = digit;
     setOtp(next);
     if (digit && index < 5) {
-      const el = document.getElementById(`abha-otp-${index + 1}`);
+      const el = document.getElementById(`v3-otp-${index + 1}`);
       el?.focus();
     }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {step === "entry" && "Set up ABHA"}
-            {step === "path_has" && "Link existing ABHA"}
-            {step === "path_create" && "Create ABHA"}
-            {step === "details" && "Confirm patient details"}
-            {step === "consent" && "Your consent is required"}
-            {step === "auth_method" && "Choose authentication"}
-            {step === "otp" && "Enter OTP"}
-            {step === "discover" && "Existing ABHA found"}
-            {step === "match" && "Verify identity match"}
-            {step === "success_link" && "ABHA linked successfully"}
-            {step === "success_create" && "ABHA creation recorded"}
-            {step === "error" && "Unable to continue"}
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <Shield className="h-5 w-5 text-primary" />
+            {step === "entry" && "Set up ABHA (Ayushman Bharat Health Account)"}
+            {step === "v3_aadhaar_input" && "Create ABHA via Aadhaar OTP (V3)"}
+            {step === "v3_aadhaar_otp" && "Enter Aadhaar OTP"}
+            {step === "v3_suggestions" && "Choose Your ABHA Address"}
+            {step === "v3_mobile_input" && "Verify & Link ABHA via Mobile OTP"}
+            {step === "v3_mobile_otp" && "Enter Mobile OTP"}
+            {step === "v3_account_select" && "Select ABHA Account"}
+            {step === "v3_face_auth" && "ABHA Mobile App FaceAuth"}
+            {step === "success_link" && "ABHA Connected & Verified"}
+            {step === "error" && "Verification Interrupted"}
           </DialogTitle>
           <DialogDescription>
-            ABHA helps patients securely connect digital health records across participating providers.
-            Each person needs their own ABHA — couples do not share one.
+            ABHA empowers patients to connect their health records securely across Indian healthcare providers under ABDM.
           </DialogDescription>
         </DialogHeader>
 
-        {(connection.environment === "sandbox" || sandboxHint || !connection.connected) && (
-          <p className="rounded-md bg-sky-50 px-2.5 py-1.5 text-[11px] font-semibold tracking-wide text-sky-900 uppercase">
-            ABDM Sandbox / Mock paths labelled clearly — never production ABHA invention
-          </p>
+        {connection.environment === "sandbox" && (
+          <div className="flex items-center gap-2 rounded-md bg-sky-50 px-3 py-1.5 text-xs text-sky-800">
+            <span className="font-semibold uppercase tracking-wide">ABDM Sandbox (V3)</span>
+            <span>· SBXID_071353 active</span>
+          </div>
         )}
 
+        {/* ─── Step: ENTRY / CHOICES ─── */}
         {step === "entry" && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Do not assume the patient has no ABHA just because SmrkoMed has no record yet.
+          <div className="space-y-3 pt-2">
+            <p className="text-xs text-muted-foreground">
+              Choose an official ABDM V3 action for this patient:
             </p>
-            <Button className="h-auto w-full justify-start py-3 text-left" disabled={busy} onClick={() => void startPath("HAS_ABHA")}>
-              <span>
-                <span className="block font-semibold">I already have an ABHA</span>
-                <span className="text-xs font-normal opacity-80">Find and link an existing ABHA</span>
-              </span>
-            </Button>
+
             <Button
+              className="h-auto w-full justify-start py-3.5 text-left border"
               variant="outline"
-              className="h-auto w-full justify-start py-3 text-left"
               disabled={busy}
-              onClick={() => void startPath("NO_ABHA")}
+              onClick={() => {
+                setOtp(["", "", "", "", "", ""]);
+                setStep("v3_aadhaar_input");
+              }}
             >
-              <span>
-                <span className="block font-semibold">I don&apos;t have an ABHA</span>
-                <span className="text-xs font-normal opacity-80">Assisted creation through ABDM</span>
-              </span>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  <UserCheck className="h-4 w-4 text-primary" />
+                  Create New ABHA (Instant Aadhaar OTP)
+                </div>
+                <p className="text-xs text-muted-foreground font-normal">
+                  Creates official 14-digit ABHA with instant KYC & photo from UIDAI
+                </p>
+              </div>
             </Button>
-            <button
-              type="button"
-              className="text-sm text-primary underline"
+
+            <Button
+              className="h-auto w-full justify-start py-3.5 text-left border"
+              variant="outline"
               disabled={busy}
-              onClick={() => void startPath("NOT_SURE")}
+              onClick={() => {
+                setOtp(["", "", "", "", "", ""]);
+                setStep("v3_mobile_input");
+              }}
             >
-              Not sure if I have one?
-            </button>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 font-semibold text-foreground">
+                  <Shield className="h-4 w-4 text-emerald-600" />
+                  Link Existing ABHA (Mobile OTP)
+                </div>
+                <p className="text-xs text-muted-foreground font-normal">
+                  Fetches existing ABHA cards linked to patient&apos;s mobile number
+                </p>
+              </div>
+            </Button>
+
+            <Button
+              className="h-auto w-full justify-start py-3 text-left border"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => void startV3FaceAuth()}
+            >
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2 font-medium text-foreground text-sm">
+                  <QrCode className="h-4 w-4 text-purple-600" />
+                  Create via FaceAuth (Scan QR on ABHA App)
+                </div>
+                <p className="text-[11px] text-muted-foreground font-normal">
+                  Patient scans a QR code using the official ABHA mobile app
+                </p>
+              </div>
+            </Button>
           </div>
         )}
 
-        {step === "path_has" && (
-          <div className="space-y-3">
+        {/* ─── Step: V3 AADHAAR INPUT ─── */}
+        {step === "v3_aadhaar_input" && (
+          <div className="space-y-4 pt-2">
             <div>
-              <Label>ABHA Number</Label>
+              <Label htmlFor="v3-aadhaar">Patient&apos;s 12-digit Aadhaar Number</Label>
               <Input
-                className="mt-1"
-                value={abhaInput}
-                onChange={(e) => setAbhaInput(e.target.value)}
-                placeholder="14-digit ABHA"
-                autoComplete="off"
+                id="v3-aadhaar"
+                className="mt-1.5 font-mono text-base tracking-wider"
+                placeholder="1234 5678 9012"
+                maxLength={14}
+                value={aadhaarInput}
+                onChange={(e) => setAadhaarInput(e.target.value)}
               />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Or continue with mobile authentication if preferred by ABDM.
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Encrypted using ABDM RSA public certificate. Plaintext Aadhaar is never saved.
               </p>
             </div>
-            <Button
-              disabled={busy || abhaInput.trim().length < 8}
-              onClick={() => {
-                setPurpose("LINK_EXISTING");
-                setStep("consent");
-              }}
-            >
-              Continue
-            </Button>
-          </div>
-        )}
 
-        {step === "path_create" && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              SmrkoMed can help create an ABHA through the ABDM system. The patient must complete identity
-              verification and consent. SmrkoMed will not invent an official ABHA number.
-            </p>
-            <Button
-              disabled={busy}
-              onClick={() => {
-                setPurpose("CREATE_ABHA");
-                setStep("details");
-              }}
-            >
-              Start ABHA Creation
-            </Button>
-          </div>
-        )}
+            <div>
+              <Label htmlFor="v3-mobile">Mobile Number (for SMS notifications)</Label>
+              <Input
+                id="v3-mobile"
+                className="mt-1.5 font-mono"
+                placeholder="10-digit mobile"
+                maxLength={10}
+                value={mobileInput}
+                onChange={(e) => setMobileInput(e.target.value)}
+              />
+            </div>
 
-        {step === "details" && patient && (
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">Verify these details before authentication.</p>
-            <dl className="rounded-xl border bg-muted/20 px-3 py-2 text-sm">
-              <Row label="Name" value={patient.name} />
-              <Row label="Date of birth" value={patient.dateOfBirth ?? "—"} />
-              <Row label="Gender" value={patient.gender ?? "—"} />
-              <Row label="Mobile" value={patient.phone ?? "—"} />
-            </dl>
-            <Button disabled={busy} onClick={() => setStep("consent")}>
-              Details are correct
-            </Button>
-          </div>
-        )}
-
-        {step === "consent" && (
-          <div className="space-y-3">
-            <p className="text-sm">
-              SmrkoMed is helping create/link ABHA with the Ayushman Bharat Digital Mission. Information is
-              processed through ABDM for the selected purpose only.
-            </p>
-            <ul className="list-inside list-disc text-xs text-muted-foreground">
-              <li>Purpose: ABHA {purpose === "CREATE_ABHA" ? "creation" : "linking / discovery"}</li>
-              <li>Data: demographics needed for ABDM authentication</li>
-              <li>Requester: this clinic via SmrkoMed</li>
-              <li>Consent version: {CONSENT_VERSION}</li>
-            </ul>
-            <label className="flex items-start gap-2 text-sm">
-              <Checkbox checked={consentAgreed} onCheckedChange={(v) => setConsentAgreed(Boolean(v))} />
-              I Agree & Continue
-            </label>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setStep("entry")}>
+                Back
               </Button>
-              <Button disabled={busy || !consentAgreed} onClick={() => void recordConsent()}>
-                I Agree & Continue
+              <Button disabled={busy || aadhaarInput.replace(/\D/g, "").length !== 12} onClick={() => void startV3AadhaarEnrol()}>
+                {busy ? "Requesting OTP…" : "Request Aadhaar OTP"}
               </Button>
             </div>
           </div>
         )}
 
-        {step === "auth_method" && (
-          <div className="space-y-3">
-            {!methods.length ? (
-              <p className="text-sm text-muted-foreground">
-                No authentication methods available. Configure ABDM credentials or enable sandbox demo mode.
-              </p>
-            ) : (
-              methods.map((m) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setAuthMethod(m.id)}
-                  className={cn(
-                    "w-full rounded-xl border px-3 py-3 text-left text-sm",
-                    authMethod === m.id ? "border-primary bg-primary-soft/40" : "hover:border-primary/40",
-                  )}
-                >
-                  <span className="font-semibold">{m.label}</span>
-                  <span className="mt-0.5 block text-xs text-muted-foreground">{m.description}</span>
-                </button>
-              ))
-            )}
-            <Button disabled={busy || !authMethod} onClick={() => void startAuth()}>
-              Continue
-            </Button>
-          </div>
-        )}
-
-        {step === "otp" && (
-          <div className="space-y-4">
+        {/* ─── Step: V3 AADHAAR OTP ─── */}
+        {step === "v3_aadhaar_otp" && (
+          <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
-              Enter the OTP sent to the registered mobile number. OTP is never stored or shown in logs.
+              Enter the 6-digit OTP sent to patient&apos;s Aadhaar-linked mobile number:
             </p>
-            {maskedMobile && (
-              <p className="rounded-lg bg-muted/60 p-2 text-center text-xs font-medium text-foreground">
-                OTP sent to registered mobile: <span className="font-mono font-semibold">{maskedMobile}</span>
-              </p>
-            )}
-            {sandboxHint && (
-              <p className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-950">
-                SANDBOX MOCK: Enter any 6-digit code. This is not a real ABDM OTP.
-              </p>
-            )}
-            <div className="flex justify-center gap-2">
+
+            <div className="flex justify-center gap-2 py-2">
               {otp.map((d, i) => (
                 <Input
                   key={i}
-                  id={`abha-otp-${i}`}
-                  className="h-11 w-10 text-center text-lg"
+                  id={`v3-otp-${i}`}
+                  className="h-11 w-11 text-center text-lg font-mono"
                   inputMode="numeric"
                   maxLength={1}
                   value={d}
                   onChange={(e) => onOtpChange(i, e.target.value)}
-                  autoComplete="one-time-code"
                 />
               ))}
             </div>
-            <p className="text-center text-xs text-muted-foreground">
-              Expires in {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")} · Max 3
-              attempts
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button disabled={busy || otpValue.length !== 6} onClick={() => void verifyOtp()}>
-                Verify OTP
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setStep("v3_aadhaar_input")}>
+                Back
               </Button>
-              <Button variant="outline" disabled={busy} onClick={() => void startAuth()}>
-                Resend OTP
-              </Button>
-              <Button variant="ghost" onClick={() => setStep("auth_method")}>
-                Change method
-              </Button>
-              <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
+              <Button disabled={busy || otpValue.length !== 6} onClick={() => void verifyV3AadhaarOtp()}>
+                {busy ? "Verifying…" : "Verify & Enrol"}
               </Button>
             </div>
           </div>
         )}
 
-        {step === "discover" && discoverFound && (
-          <div className="space-y-3">
-            <p className="text-sm font-medium">We found an existing ABHA associated with your verified details.</p>
-            <p className="text-xs text-muted-foreground">{discoverFound.message}</p>
-            <dl className="rounded-xl border px-3 py-2 text-sm">
-              <Row label="ABHA" value={discoverFound.abhaMasked} />
-              <Row label="Name" value={discoverFound.verifiedName} />
-            </dl>
-            <p className="text-xs text-amber-800">
-              Do not create another ABHA. Prefer linking the existing one.
-            </p>
-            <div className="flex gap-2">
-              <Button onClick={() => void linkExistingFromDiscover()}>Link Existing ABHA</Button>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
+        {/* ─── Step: V3 SUGGESTIONS & CUSTOM ADDRESS ─── */}
+        {step === "v3_suggestions" && (
+          <div className="space-y-4 pt-2">
+            <p className="text-sm font-medium">Choose an ABHA Address (@sbx / @abdm):</p>
+            <div className="space-y-2">
+              {suggestions.map((addr) => (
+                <button
+                  key={addr}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAddress(addr);
+                    setCustomAddress("");
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm text-left transition-all",
+                    selectedAddress === addr ? "border-primary bg-primary/10 font-medium" : "hover:border-primary/40",
+                  )}
+                >
+                  <span>{addr}@sbx</span>
+                  {selectedAddress === addr && <CheckCircle className="h-4 w-4 text-primary" />}
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <Label htmlFor="custom-address">Or enter custom preferred address</Label>
+              <Input
+                id="custom-address"
+                className="mt-1"
+                placeholder="e.g. rahul.sharma"
+                value={customAddress}
+                onChange={(e) => {
+                  setCustomAddress(e.target.value);
+                  setSelectedAddress("");
+                }}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setStep("success_link")}>
+                Skip
+              </Button>
+              <Button disabled={busy || (!selectedAddress && !customAddress)} onClick={() => void saveV3Address()}>
+                {busy ? "Saving…" : "Confirm ABHA Address"}
               </Button>
             </div>
           </div>
         )}
 
-        {step === "match" && (
-          <div className="space-y-3">
-            <p className="text-sm">Please verify this is the correct patient.</p>
+        {/* ─── Step: V3 MOBILE INPUT ─── */}
+        {step === "v3_mobile_input" && (
+          <div className="space-y-4 pt-2">
+            <div>
+              <Label htmlFor="v3-login-mobile">Patient&apos;s Mobile Number</Label>
+              <Input
+                id="v3-login-mobile"
+                className="mt-1.5 font-mono text-base"
+                placeholder="10-digit mobile"
+                maxLength={10}
+                value={mobileInput}
+                onChange={(e) => setMobileInput(e.target.value)}
+              />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                ABDM will return any active ABHA numbers associated with this mobile number.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setStep("entry")}>
+                Back
+              </Button>
+              <Button disabled={busy || mobileInput.replace(/\D/g, "").length !== 10} onClick={() => void startV3MobileLogin()}>
+                {busy ? "Sending OTP…" : "Send Mobile OTP"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Step: V3 MOBILE OTP ─── */}
+        {step === "v3_mobile_otp" && (
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Enter the 6-digit OTP sent to <span className="font-mono font-semibold">{mobileInput}</span>:
+            </p>
+
+            <div className="flex justify-center gap-2 py-2">
+              {otp.map((d, i) => (
+                <Input
+                  key={i}
+                  id={`v3-otp-${i}`}
+                  className="h-11 w-11 text-center text-lg font-mono"
+                  inputMode="numeric"
+                  maxLength={1}
+                  value={d}
+                  onChange={(e) => onOtpChange(i, e.target.value)}
+                />
+              ))}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setStep("v3_mobile_input")}>
+                Back
+              </Button>
+              <Button disabled={busy || otpValue.length !== 6} onClick={() => void verifyV3MobileOtp()}>
+                {busy ? "Verifying…" : "Verify OTP"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Step: V3 ACCOUNT SELECT (When mobile has multiple ABHAs) ─── */}
+        {step === "v3_account_select" && (
+          <div className="space-y-3 pt-2">
+            <p className="text-sm font-medium">Multiple ABHA accounts found for this mobile number. Select one:</p>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {accountsList.map((acc) => (
+                <div
+                  key={acc.ABHANumber}
+                  className="flex items-center justify-between rounded-lg border p-3 text-sm hover:border-primary/50 cursor-pointer"
+                  onClick={() => void selectV3Account(acc)}
+                >
+                  <div>
+                    <p className="font-semibold text-foreground">{acc.name ?? "Patient"}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{acc.ABHANumber}</p>
+                    {acc.preferredAbhaAddress && (
+                      <p className="text-xs text-primary">{acc.preferredAbhaAddress}</p>
+                    )}
+                  </div>
+                  <Button size="sm">Select</Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ─── Step: V3 FACEAUTH QR CODE ─── */}
+        {step === "v3_face_auth" && (
+          <div className="space-y-4 text-center pt-2">
+            <p className="text-sm font-medium">Scan with the official ABHA Mobile App</p>
+            {faceAuthQrUrl && (
+              <div className="mx-auto flex flex-col items-center justify-center p-4 border rounded-xl bg-card">
+                <div className="h-44 w-44 rounded-lg bg-muted flex items-center justify-center border font-mono text-xs text-center p-2 break-all">
+                  {faceAuthQrUrl}
+                </div>
+                <a
+                  href={faceAuthQrUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 flex items-center gap-1.5 text-xs text-primary underline"
+                >
+                  <span>Open FaceAuth URL directly</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
-              Do not reassign an ABHA to a different patient record without confirming demographics.
+              Once scanned, the ABHA app performs biometric face capture via UIDAI RD service.
             </p>
-            <dl className="rounded-xl border px-3 py-2 text-sm">
-              <Row label="Patient" value={patient?.name ?? "—"} />
-              <Row label="Phone" value={patient?.phone ?? "—"} />
-              <Row label="ABHA Input" value={abhaInput ? `XX-XXXX-XXXX-${abhaInput.replace(/\D/g, "").slice(-4)}` : "—"} />
-            </dl>
-            <div className="flex gap-2">
-              <Button disabled={busy} onClick={() => void finishLink()}>
-                Confirm and link
+            <div className="flex justify-center gap-2">
+              <Button variant="outline" onClick={() => setStep("entry")}>
+                Cancel
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Step: SUCCESS LINK / CARD DISPLAY ─── */}
+        {step === "success_link" && (
+          <div className="space-y-4 pt-2">
+            <div className="rounded-xl border bg-gradient-to-br from-primary/10 via-background to-emerald-500/10 p-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-[10px] font-bold tracking-widest text-primary uppercase">
+                    ABHA Digital Health Card
+                  </span>
+                  <p className="text-base font-semibold text-foreground mt-0.5">
+                    {verifiedProfile?.name ?? "Verified Patient"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
+                  VERIFIED
+                </span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <span className="text-muted-foreground block">ABHA Number</span>
+                  <span className="font-mono font-bold text-foreground text-sm">
+                    {successMasked ?? verifiedProfile?.abhaNumber ?? "—"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block">ABHA Address</span>
+                  <span className="font-semibold text-foreground">
+                    {verifiedProfile?.abhaAddress ?? "—"}
+                  </span>
+                </div>
+                {verifiedProfile?.gender && (
+                  <div>
+                    <span className="text-muted-foreground block">Gender</span>
+                    <span className="font-medium text-foreground">{verifiedProfile.gender}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-1">
               <Button
-                variant="outline"
                 onClick={() => {
-                  toast.message("Linking stopped due to mismatch review.");
+                  onCompleted();
                   onOpenChange(false);
                 }}
               >
-                Details do not match
+                Done
               </Button>
             </div>
           </div>
         )}
 
-        {(step === "success_link" || step === "success_create") && (
-          <div className="space-y-3">
-            <p className="text-sm font-medium">
-              {step === "success_link" ? "ABHA linked successfully" : "Your ABHA journey was recorded"}
-            </p>
-            <dl className="rounded-xl border px-3 py-2 text-sm">
-              <Row label="Patient" value={verifiedProfile?.name ?? patient?.name ?? "—"} />
-              <Row
-                label="ABHA Number"
-                value={
-                  successMasked ??
-                  (abhaInput
-                    ? `XX-XXXX-XXXX-${abhaInput.replace(/\D/g, "").slice(-4)}`
-                    : "Pending ABDM confirmation")
-                }
-              />
-              {verifiedProfile?.id && <Row label="ABHA Address" value={verifiedProfile.id} />}
-              <Row
-                label="Status"
-                value={
-                  step === "success_link"
-                    ? sandboxHint
-                      ? "SANDBOX Verified (Testing)"
-                      : "Official ABDM Verified & Linked"
-                    : "Creation intent"
-                }
-              />
-            </dl>
-            {message && <p className="text-xs text-muted-foreground">{message}</p>}
-            <Button
-              onClick={() => {
-                onCompleted();
-                onOpenChange(false);
-              }}
-            >
-              Continue to Digital Health
-            </Button>
-          </div>
-        )}
-
+        {/* ─── Step: ERROR ─── */}
         {step === "error" && (
-          <div className="space-y-3">
-            <p className="text-sm">
-              We couldn&apos;t complete verification right now. Please try again. Clinic workflows can continue
-              without ABDM.
+          <div className="space-y-3 pt-2">
+            <p className="text-sm text-danger">
+              We couldn&apos;t complete the verification. Please verify the credentials or try another method.
             </p>
-            <div className="flex gap-2">
-              <Button onClick={() => setStep("auth_method")}>Retry</Button>
+            <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setStep("entry")}>
-                Try another path
+                Try Again
               </Button>
               <Button variant="ghost" onClick={() => onOpenChange(false)}>
-                Cancel
+                Close
               </Button>
             </div>
           </div>
         )}
       </DialogContent>
     </Dialog>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-2 py-1">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium">{value}</dd>
-    </div>
   );
 }
