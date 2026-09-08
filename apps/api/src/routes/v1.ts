@@ -26,6 +26,7 @@ import { paymentWebhookRoutes } from "../modules/payments/webhooks";
 import { publicIntegrationRoutes } from "../modules/integrations/public";
 import { whatsappAutomationRoutes } from "../modules/whatsapp-automation";
 import { digitalHealthRoutes } from "../modules/digital-health";
+import { appointmentBookingRoutes } from "../modules/appointment-booking";
 import type { AppEnv } from "../types";
 
 const protectedRoutes = new Hono<AppEnv>();
@@ -57,5 +58,7 @@ export const v1 = new Hono<AppEnv>();
 v1.route("/health", healthRoutes);
 v1.route("/public", publicLeadRoutes);
 v1.route("/payments/webhooks", paymentWebhookRoutes);
+v1.route("/appointment-booking", appointmentBookingRoutes);
 v1.route("/", publicIntegrationRoutes);
 v1.route("/", protectedRoutes);
+

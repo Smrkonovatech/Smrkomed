@@ -188,6 +188,74 @@ async function processInbound(event: NormalizedWebhookEvent, clinicId: string, r
       },
     }).catch(() => undefined);
   }
+
+  // ─── Automated Appointment Booking State Machine Hook ───────────
+  try {
+    const { bookingSessionStore } = await import("../../../modules/appointment-booking/session-store");
+    const { AppointmentBookingMachine } = await import("../../../modules/appointment-booking/state-machine");
+    const { sendTextMessage } = await import("./graph");
+
+    const activeSession = bookingSessionStore.getActiveByPhone(clinicId, from);
+    const text = (inbound.text ?? "").trim().toLowerCase();
+    const isBookingIntent =
+      text.includes("book") ||
+      text.includes("appointment") ||
+      text.includes("doctor") ||
+      text.includes("consultation") ||
+      text.includes("schedule");
+
+    if (activeSession || isBookingIntent) {
+      const clinicRecord = await prisma.clinic.findUnique({
+        where: { id: clinicId },
+        select: { id: true, name: true, organizationId: true },
+      });
+      if (clinicRecord) {
+        const session =
+          activeSession ??
+          bookingSessionStore.create({
+            channel: "WHATSAPP",
+            clinicId,
+            organizationId: clinicRecord.organizationId,
+            contactPhone: from,
+          });
+
+        if (patient && !session.registrationDraft.patientName) {
+          const dbPat = await prisma.patient.findUnique({
+            where: { id: patient.id },
+            select: { firstName: true, lastName: true },
+          });
+          if (dbPat) {
+            session.registrationDraft.patientName = `${dbPat.firstName} ${dbPat.lastName}`.trim();
+            session.isExistingPatient = true;
+          }
+        }
+
+        const result = await AppointmentBookingMachine.processMessage(session, inbound.text ?? "", {
+          clinicId,
+          organizationId: clinicRecord.organizationId,
+          clinicName: clinicRecord.name,
+        });
+
+        const integrationObj = await findActiveIntegration(event);
+        if (integrationObj?.account?.phoneNumberId && integrationObj?.integration?.encryptedCredentials) {
+          const { credentialService } = await import("../../credentials/service");
+          const creds = credentialService.decrypt(integrationObj.integration.encryptedCredentials);
+          const token = creds.accessToken ?? creds.systemUserToken;
+          if (token) {
+            await sendTextMessage({
+              phoneNumberId: integrationObj.account.phoneNumberId,
+              accessToken: token,
+              to: from,
+              body: result.responseMessage,
+            }).catch(() => undefined);
+          }
+        }
+      }
+    }
+  } catch {
+    // Non-blocking; booking flow errors never interrupt core webhook processing
+  }
+
   return "PROCESSED" as const;
 }
 
