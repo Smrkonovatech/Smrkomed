@@ -12,8 +12,9 @@ import {
   Clock,
   ExternalLink,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { DoctorAvailabilityDialog } from "@/components/doctors/doctor-availability-dialog";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { AiInsightCard } from "@/components/ai/ai-insight-card";
 import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
@@ -384,11 +385,36 @@ function Availability({
   doctors: ReturnType<typeof useDoctors>;
   onSelectSlot: () => void;
 }) {
+  const [editingDoctor, setEditingDoctor] = useState<{ id: string; name: string } | null>(null);
+  const [dbData, setDbData] = useState<any[] | null>(null);
+  const [fetchTick, setFetchTick] = useState(0);
+
+  useEffect(() => {
+    fetch(`/api/doctors/availability?date=${selectedDate}`)
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.doctors) {
+          setDbData(json.doctors);
+        }
+      })
+      .catch(() => {});
+  }, [selectedDate, fetchTick]);
+
   const date = new Date(`${selectedDate}T00:00:00`);
   const rows = doctors.map((doctor) => {
-    const slots = generateDaySlots(doctor, date).filter((s) => s.status === "available");
-    return { doctor, slots };
+    const dbDoc = dbData?.find((d) => d.id === doctor.id || d.name.includes(doctor.lastName));
+    const openSlots: Array<{ start: string; end: string; status: string }> = dbDoc
+      ? dbDoc.openSlots.map((s: { time: string }) => ({ start: s.time, end: s.time, status: "available" }))
+      : generateDaySlots(doctor, date).filter((s) => s.status === "available");
+
+    return {
+      doctor,
+      slots: openSlots,
+      isWorking: dbDoc ? dbDoc.isWorkingDay : openSlots.length > 0,
+      bookedCount: dbDoc?.bookedCount || 0,
+    };
   });
+
   const openCount = rows.reduce((sum, row) => sum + row.slots.length, 0);
 
   return (
@@ -406,13 +432,14 @@ function Availability({
               <th className="px-4 py-2.5 font-medium">Doctor</th>
               <th className="px-3 py-2.5 font-medium">Availability</th>
               <th className="px-3 py-2.5 font-medium">Open slots</th>
+              <th className="px-4 py-2.5 font-medium text-right">Calendar</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ doctor, slots }) => {
+            {rows.map(({ doctor, slots, isWorking, bookedCount }) => {
               const name = displayNameOf(doctor);
               return (
-                <tr key={doctor.id} className="border-b last:border-0">
+                <tr key={doctor.id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
                   <td className="px-4 py-3">
                     <Link href={`/doctors/${doctor.id}`} className="block font-semibold hover:text-primary">
                       {name}
@@ -420,17 +447,26 @@ function Availability({
                     <span className="text-xs text-muted-foreground">{doctor.designation}</span>
                   </td>
                   <td className="px-3 py-3">
-                    <StatusBadge
-                      label={slots.length > 0 ? "Available" : "Unavailable"}
-                      tone={slots.length > 0 ? "success" : "muted"}
-                    />
+                    <div className="flex flex-col gap-0.5">
+                      <StatusBadge
+                        label={isWorking && slots.length > 0 ? "Available" : "Unavailable"}
+                        tone={isWorking && slots.length > 0 ? "success" : "muted"}
+                      />
+                      {bookedCount > 0 && (
+                        <span className="text-[10px] text-muted-foreground font-medium">
+                          {bookedCount} booked today
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap gap-1.5">
                       {slots.length === 0 ? (
-                        <span className="text-xs text-muted-foreground">No open slots</span>
+                        <span className="text-xs text-muted-foreground">
+                          {isWorking ? "All slots booked" : "Closed today"}
+                        </span>
                       ) : (
-                        slots.slice(0, 8).map((slot) => (
+                        slots.slice(0, 8).map((slot: { start: string; end: string }) => (
                           <button
                             key={`${slot.start}-${slot.end}`}
                             onClick={onSelectSlot}
@@ -443,12 +479,33 @@ function Availability({
                       )}
                     </div>
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingDoctor({ id: doctor.id, name })}
+                      className="h-7 text-xs font-semibold gap-1 text-primary border-primary/30 hover:bg-primary/10"
+                    >
+                      <CalendarDays className="size-3.5" />
+                      Set Schedule
+                    </Button>
+                  </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
+
+      {editingDoctor && (
+        <DoctorAvailabilityDialog
+          doctorId={editingDoctor.id}
+          doctorName={editingDoctor.name}
+          open={Boolean(editingDoctor)}
+          onOpenChange={(open) => !open && setEditingDoctor(null)}
+          onSaved={() => setFetchTick((t) => t + 1)}
+        />
+      )}
     </div>
   );
 }

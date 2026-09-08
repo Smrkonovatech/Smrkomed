@@ -33,6 +33,7 @@ import { whatsappAutomationRoutes } from "../modules/whatsapp-automation";
 import { digitalHealthRoutes } from "../modules/digital-health";
 import { abdmCallbackRoutes } from "../modules/digital-health/abdm-callbacks";
 import { realtimeRoutes } from "../modules/realtime/routes";
+import { appointmentBookingRoutes } from "../modules/appointment-booking";
 import type { AppEnv } from "../types";
 
 const protectedRoutes = new Hono<AppEnv>();
@@ -69,5 +70,7 @@ v1.route("/public", publicLeadRoutes);
 v1.route("/payments/webhooks", paymentWebhookRoutes);
 v1.route("/digital-health/abdm/v0.5", abdmCallbackRoutes);
 v1.route("/v0.5", abdmCallbackRoutes);
+v1.route("/appointment-booking", appointmentBookingRoutes);
 v1.route("/", publicIntegrationRoutes);
 v1.route("/", protectedRoutes);
+

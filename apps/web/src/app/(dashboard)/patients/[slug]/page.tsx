@@ -18,6 +18,7 @@ import {
   MessageCircle,
   Mic,
   Phone,
+  PhoneCall,
   Pill,
   ShieldCheck,
   Stethoscope,
@@ -37,6 +38,7 @@ import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { useCreateTask } from "@/components/create-task-drawer";
 import { JourneyStrip } from "@/components/journey-strip";
 import { VoiceNotesPanel } from "@/components/voice/voice-notes";
+import { AiOutboundCallDialog } from "@/components/voice/ai-outbound-call-dialog";
 import { WhatsAppThread, conversationFor } from "@/components/whatsapp-thread";
 import { Avatar, EmptyState, LoadingRows, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -67,6 +69,22 @@ const initials = (name: string) =>
     .map((part) => part[0])
     .join("")
     .slice(0, 2);
+
+function formatVisitDate(dateStr?: string) {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr.includes("T") ? dateStr : `${dateStr}T00:00:00`);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("en-IN", {
+      weekday: "short",
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  } catch {
+    return dateStr;
+  }
+}
 
 const tabs = [
   ["overview", "Overview"],
@@ -100,6 +118,11 @@ export default function PatientProfile() {
   const [phoneDraft, setPhoneDraft] = useState<string | undefined>(undefined);
   const [savingPhone, setSavingPhone] = useState(false);
   const phoneValue = phoneDraft ?? savedPhone;
+  const [callTarget, setCallTarget] = useState<{
+    patientName: string;
+    partnerName?: string | undefined;
+    phoneNumber: string;
+  } | null>(null);
 
   if (appState.loadState === "loading") {
     return <p className="p-6 text-sm text-muted-foreground">Loading patient...</p>;
@@ -269,15 +292,53 @@ export default function PatientProfile() {
                       >
                         Save
                       </Button>
+                      {phoneValue?.trim() ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setCallTarget({
+                              patientName: partner!.name,
+                              partnerName: couple.partner?.name,
+                              phoneNumber: phoneValue,
+                            });
+                          }}
+                          className="h-7 gap-1.5 px-2.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200 hover:border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/60 transition-colors shadow-xs"
+                        >
+                          <PhoneCall className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          Call
+                        </Button>
+                      ) : null}
                     </span>
                   ) : (
-                    <a
-                      href={`tel:${partner!.phone.replace(/\s/g, "")}`}
-                      className="inline-flex items-center gap-1.5 hover:text-foreground"
-                    >
-                      <Phone className="size-3" />
-                      {partner!.phone}
-                    </a>
+                    <span className="inline-flex items-center gap-2">
+                      <a
+                        href={`tel:${partner!.phone.replace(/\s/g, "")}`}
+                        className="inline-flex items-center gap-1.5 hover:text-foreground"
+                      >
+                        <Phone className="size-3" />
+                        {partner!.phone}
+                      </a>
+                      {partner!.phone?.trim() ? (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setCallTarget({
+                              patientName: partner!.name,
+                              partnerName: couple.primary.name,
+                              phoneNumber: partner!.phone,
+                            });
+                          }}
+                          className="h-7 gap-1.5 px-2.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200 hover:border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/60 transition-colors shadow-xs"
+                        >
+                          <PhoneCall className="size-3 text-emerald-600 dark:text-emerald-400" />
+                          Call
+                        </Button>
+                      ) : null}
+                    </span>
                   )}
                 </div>
               </div>
@@ -435,11 +496,20 @@ export default function PatientProfile() {
             {coupleAppointments.map((appointment) => (
               <li
                 key={appointment.id}
-                className="grid grid-cols-[76px_minmax(0,1fr)_auto] items-center gap-3 py-3"
+                className="grid grid-cols-[140px_minmax(0,1fr)_auto] items-center gap-4 py-3 border-b border-border/40 last:border-0"
               >
-                <span className="text-sm font-semibold tabular-nums">{appointment.time}</span>
+                <div className="flex flex-col">
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
+                    {appointment.time}
+                  </span>
+                  {appointment.date && (
+                    <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">
+                      {formatVisitDate(appointment.date)}
+                    </span>
+                  )}
+                </div>
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{appointment.type}</p>
+                  <p className="truncate text-sm font-medium text-foreground">{appointment.type}</p>
                   <p className="truncate text-xs text-muted-foreground">
                     {appointment.doctor} · {appointment.room}
                   </p>
@@ -641,6 +711,28 @@ export default function PatientProfile() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {callTarget && (
+        <AiOutboundCallDialog
+          open={Boolean(callTarget)}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setCallTarget(null);
+          }}
+          patientName={callTarget.patientName}
+          partnerName={callTarget.partnerName}
+          phoneNumber={callTarget.phoneNumber}
+          treatment={couple.treatment}
+          stage={couple.stage}
+          doctorName="Dr. Ananya Rao"
+          clinicName="ABC Fertility Centre"
+          upcomingAppointment={
+            coupleAppointments[0]
+              ? `${coupleAppointments[0].date} ${coupleAppointments[0].time}`
+              : undefined
+          }
+          coupleId={couple.id}
+        />
+      )}
     </div>
   );
 }
