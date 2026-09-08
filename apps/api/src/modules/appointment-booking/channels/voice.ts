@@ -79,6 +79,33 @@ export function formatVoiceSuccess(session: BookingSession, lang = "en"): string
   return `Thank you! Your appointment is confirmed with ${session.doctorName} on ${formatDateLabel(d)} at ${session.selectedSlot}. A confirmation has also been sent to your WhatsApp. Have a great day!`;
 }
 
+export interface ActiveVoiceCall {
+  phoneNumber: string;
+  patientName?: string | undefined;
+  doctorName?: string | undefined;
+  clinicName?: string | undefined;
+  startedAt: number;
+}
+
+const activeVoiceCalls: ActiveVoiceCall[] = [];
+
+export function recordActiveVoiceCall(call: ActiveVoiceCall) {
+  activeVoiceCalls.unshift(call);
+  if (activeVoiceCalls.length > 30) {
+    activeVoiceCalls.pop();
+  }
+}
+
+export function getLatestActiveVoiceCall(phoneSuffix?: string): ActiveVoiceCall | undefined {
+  const now = Date.now();
+  const recent = activeVoiceCalls.filter((c) => now - c.startedAt < 30 * 60 * 1000);
+  if (phoneSuffix && phoneSuffix.length >= 8) {
+    const matched = recent.find((c) => c.phoneNumber.includes(phoneSuffix));
+    if (matched) return matched;
+  }
+  return recent[0];
+}
+
 /**
  * Initiates an automated AI Outbound Phone Call via the Sarvam Samvaad API.
  */
@@ -121,6 +148,15 @@ export async function triggerSarvamOutboundCall(params: {
 
     const callSummary = `Patient ${patientName} booking consultation at ${clinicName} with ${doctorName}. Only book within verified open slots.`;
 
+    // Track active voice call so webhook endpoint knows the patient even if bot omits phone
+    recordActiveVoiceCall({
+      phoneNumber: formattedPhone,
+      patientName: params.patientName,
+      doctorName,
+      clinicName,
+      startedAt: Date.now(),
+    });
+
     const payload = {
       app_config: {
         app_id: appId,
@@ -133,6 +169,8 @@ export async function triggerSarvamOutboundCall(params: {
         agent_variables: {
           call_summary: callSummary,
           user_name: patientName,
+          phone_number: formattedPhone,
+          patient_phone: formattedPhone,
         },
       },
       user_config: {
@@ -180,25 +218,25 @@ export async function triggerSarvamOutboundCall(params: {
 
 /**
  * Automatically syncs completed Sarvam call outcomes to create appointments in SmrkoMed
- * if the patient scheduled an appointment on the call.
+ * if the patient scheduled or requested an appointment on the call.
  */
 function scheduleSarvamPostCallSync(params: {
   phoneNumber: string;
-  patientName?: string;
-  doctorName?: string;
-  clinicName?: string;
+  patientName?: string | undefined;
+  doctorName?: string | undefined;
+  clinicName?: string | undefined;
   orgId: string;
   workspaceId: string;
   appId: string;
   apiKey: string;
 }) {
-  const delays = [60_000, 100_000, 140_000];
+  const delays = [45_000, 75_000, 110_000, 150_000];
   for (const delay of delays) {
     setTimeout(async () => {
       try {
         const { prisma } = await import("@smrkomed/database");
         const now = new Date();
-        const start = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
+        const start = new Date(now.getTime() - 20 * 60 * 1000).toISOString();
         const end = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
 
         const url = `https://apps.sarvam.ai/api/analytics/v1/${params.orgId}/${params.workspaceId}/${params.appId}/attempts?start_datetime=${encodeURIComponent(start)}&end_datetime=${encodeURIComponent(end)}`;
@@ -214,8 +252,12 @@ function scheduleSarvamPostCallSync(params: {
         if (!attempt) return;
         const summary = String(attempt.agent_variables?.call_summary || "");
 
-        // If call summary indicates an appointment was booked
-        if (/booked\s+(?:an\s+)?appointment|scheduled\s+(?:an\s+)?appointment/i.test(summary)) {
+        // If call summary indicates an appointment was booked, scheduled, or attempted
+        const isBookingIntent =
+          /(?:booked|scheduled|help\s+book|book|confirm|requested)\s+(?:an?\s+)?(?:appointment|consultation)/i.test(summary) ||
+          /(?:appointment|consultation)\s+with\s+Dr\./i.test(summary);
+
+        if (isBookingIntent) {
           const patient = await prisma.patient.findFirst({
             where: {
               OR: [
@@ -307,4 +349,5 @@ function scheduleSarvamPostCallSync(params: {
     }, delay);
   }
 }
+
 

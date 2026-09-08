@@ -6,6 +6,7 @@
 
 import { Hono } from "hono";
 import { prisma } from "@smrkomed/database";
+import { getLatestActiveVoiceCall } from "../modules/appointment-booking/channels/voice";
 import type { AppEnv } from "../types";
 
 function parseDateAndTime(dateStr?: string, timeStr?: string): Date {
@@ -32,7 +33,7 @@ function parseDateAndTime(dateStr?: string, timeStr?: string): Date {
 
   // Parse time
   const cleanTime = (timeStr || "").toLowerCase().trim();
-  let hours = 10;
+  let hours = 9;
   let minutes = 0;
 
   if (cleanTime) {
@@ -60,11 +61,14 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
   try {
     const json = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
 
+    const activeCall = getLatestActiveVoiceCall();
+
     let rawPhone = String(
       json["phoneNumber"] ||
         json["phone_number"] ||
         json["patient_phone"] ||
         json["phone"] ||
+        activeCall?.phoneNumber ||
         "",
     ).replace(/\D/g, "");
 
@@ -79,15 +83,16 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       json["appointmentTime"] ||
         json["appointment_time"] ||
         json["time"] ||
-        "10:00 AM",
+        "09:00 AM",
     );
 
-    const rawName = String(
+    let rawName = String(
       json["patientName"] ||
         json["patient_name"] ||
         json["userName"] ||
         json["user_name"] ||
         json["name"] ||
+        activeCall?.patientName ||
         "",
     ).trim();
 
@@ -95,6 +100,7 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       json["doctorName"] ||
         json["doctor_name"] ||
         json["doctor"] ||
+        activeCall?.doctorName ||
         "Dr. Ananya Rao",
     );
 
@@ -107,10 +113,11 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
 
     const phoneLast10 = rawPhone.slice(-10);
 
-    // 1. Match patient by phone or name
+    // Resilient patient & couple resolution
     let patient = null;
     let couple = null;
 
+    // 1. Match patient by phone number
     if (phoneLast10.length >= 8) {
       patient = await prisma.patient.findFirst({
         where: {
@@ -131,7 +138,67 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       }
     }
 
+    // 2. Fallback: match by recent active conversation (within 30 mins)
+    if (!patient) {
+      const recentConv = await prisma.conversation.findFirst({
+        where: {
+          updatedAt: { gte: new Date(Date.now() - 30 * 60 * 1000) },
+          patientId: { not: null },
+        },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          patient: {
+            include: {
+              clinic: true,
+              primaryCouples: true,
+              partnerCouples: true,
+            },
+          },
+        },
+      });
+      if (recentConv?.patient) {
+        patient = recentConv.patient;
+        couple = patient.primaryCouples[0] || patient.partnerCouples[0] || null;
+      }
+    }
+
+    // 3. Fallback: match by patient name if provided
     if (!patient && rawName) {
+      patient = await prisma.patient.findFirst({
+        where: {
+          OR: [
+            { firstName: { contains: rawName, mode: "insensitive" } },
+            { lastName: { contains: rawName, mode: "insensitive" } },
+          ],
+        },
+        include: {
+          clinic: true,
+          primaryCouples: true,
+          partnerCouples: true,
+        },
+      });
+      if (patient) {
+        couple = patient.primaryCouples[0] || patient.partnerCouples[0] || null;
+      }
+    }
+
+    // 4. Fallback: latest active patient in clinic
+    if (!patient) {
+      patient = await prisma.patient.findFirst({
+        orderBy: { updatedAt: "desc" },
+        include: {
+          clinic: true,
+          primaryCouples: true,
+          partnerCouples: true,
+        },
+      });
+      if (patient) {
+        couple = patient.primaryCouples[0] || patient.partnerCouples[0] || null;
+      }
+    }
+
+    // 5. If still no patient, create default patient for consultation
+    if (!patient) {
       const clinic = await prisma.clinic.findFirst();
       if (clinic) {
         patient = await prisma.patient.create({
