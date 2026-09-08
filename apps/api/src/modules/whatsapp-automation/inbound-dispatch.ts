@@ -288,13 +288,52 @@ export async function resumeWaitForReplyExecutions(input: {
         replyAction = rawReply;
       }
     } else if (waitId === "n_channel_choice") {
-      if (/^(btn_ai_call|action_call|call|phone|voice|call me|2)$/i.test(rawReply)) {
+      const isCallChoice =
+        /btn_ai_call/i.test(rawReply) ||
+        /\b(call|phone|voice)\b/i.test(rawReply) ||
+        cleanLower.includes("call") ||
+        cleanLower.includes("phone") ||
+        cleanLower.includes("voice") ||
+        rawReply === "2";
+
+      const isBookChoice =
+        /btn_book_wa/i.test(rawReply) ||
+        /\b(book|chat|whatsapp|message|text)\b/i.test(rawReply) ||
+        cleanLower.includes("book") ||
+        cleanLower.includes("chat") ||
+        cleanLower.includes("whatsapp") ||
+        rawReply === "1";
+
+      if (isCallChoice) {
         replyAction = "btn_ai_call";
         mergedVars["bookingChannel"] = "CALL";
         mergedVars["channel_choice"] = "CALL";
 
         // Trigger Sarvam AI Outbound Call to the caller's phone
-        const callerPhone = input.inboundVars?.["sender_phone"] || input.inboundVars?.["contact_phone"] || "";
+        let callerPhone =
+          input.inboundVars?.["sender_phone"] ||
+          input.inboundVars?.["contact_phone"] ||
+          mergedVars["sender_phone"] ||
+          mergedVars["contact_phone"] ||
+          mergedVars["patient_phone"] ||
+          "";
+
+        if (!callerPhone && input.conversationId) {
+          const conv = await prisma.whatsAppConversation.findUnique({
+            where: { id: input.conversationId },
+            select: { contactPhone: true },
+          });
+          if (conv?.contactPhone) {
+            callerPhone = conv.contactPhone;
+          }
+        }
+
+        console.log("[SARVAM OUTBOUND DISPATCH]", {
+          callerPhone,
+          patientName: mergedVars["patient_name"] || "Valued Patient",
+          conversationId: input.conversationId,
+        });
+
         if (callerPhone) {
           const { triggerSarvamOutboundCall } = await import("../appointment-booking/channels/voice");
           void triggerSarvamOutboundCall({
@@ -304,7 +343,7 @@ export async function resumeWaitForReplyExecutions(input: {
             doctorName: "Dr. Ananya Rao",
           });
         }
-      } else if (/^(btn_book_wa|action_book|book|chat|whatsapp|message|text|1)$/i.test(rawReply)) {
+      } else if (isBookChoice) {
         replyAction = "btn_book_wa";
         mergedVars["bookingChannel"] = "WHATSAPP";
         mergedVars["channel_choice"] = "WHATSAPP";
