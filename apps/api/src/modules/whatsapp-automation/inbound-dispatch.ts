@@ -557,6 +557,47 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     return { resumed, dispatched: null, ai: { skipped: true as const, reason: "flow_resumed" } };
   }
 
+  // 1.5. Check if contact is unregistered/unmatched and replying to registration
+  if (input.unmatched || !input.patientId) {
+    const { tryHandleRegistrationMessage } = await import("../whatsapp-ai/registration");
+    const regResult: Awaited<ReturnType<typeof tryHandleRegistrationMessage>> =
+      await tryHandleRegistrationMessage({
+        tenant,
+        conversationId: input.conversationId,
+        contactPhone: input.contactPhone || "",
+        messageText: input.messageText,
+      }).catch((err) => {
+        console.error("[WhatsApp automation] registration handler error:", err);
+        return { handled: false };
+      });
+
+    if (regResult.handled) {
+      console.log("[WhatsApp inbound] unregistered contact registration handled", {
+        conversationId: input.conversationId,
+        registered: regResult.registered,
+        patientId: regResult.patientId,
+      });
+      return {
+        resumed,
+        dispatched: null,
+        registration: regResult,
+        ai: { skipped: true as const, reason: "registration_handled" },
+      };
+    }
+
+    // Unregistered contact message didn't contain registration data (e.g. "Hi", "Appointment", inquiry).
+    // Route directly to AI to explain they are not yet registered, prompt for registration, and answer queries.
+    // Do NOT trigger automated flows that create ghost appointments without patient records.
+    console.log("[WhatsApp inbound] unregistered contact — routing to registration AI", {
+      conversationId: input.conversationId,
+      phone: input.contactPhone,
+    });
+    const ai = input.skipAi
+      ? { skipped: true as const, reason: "already_ran_in_webhook" }
+      : await runInboundWhatsAppAi(input);
+    return { resumed, dispatched: null, ai };
+  }
+
   // 2. Check if this is an appointment intent or interactive appointment button
   const { classifyPatientIntent } = await import("../whatsapp-ai/intent");
   const intentResult = classifyPatientIntent(input.messageText);

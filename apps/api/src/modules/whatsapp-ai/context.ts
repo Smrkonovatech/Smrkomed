@@ -2,6 +2,9 @@ import { prisma, type TenantContext } from "@smrkomed/database";
 
 export type WhatsAppAiContext = {
   clinicName: string;
+  clinicSlug?: string | null | undefined;
+  isRegistered?: boolean | undefined;
+  registrationUrl?: string | null | undefined;
   patientFirstName: string | null;
   appointmentSummary: string | null;
   journeyStage: string | null;
@@ -15,7 +18,7 @@ export async function loadWhatsAppAiContext(
 ): Promise<WhatsAppAiContext> {
   const clinic = await prisma.clinic.findFirst({
     where: { id: tenant.clinicId, organizationId: tenant.organizationId },
-    select: { name: true },
+    select: { name: true, slug: true },
   });
 
   let patientFirstName: string | null = null;
@@ -79,8 +82,15 @@ export async function loadWhatsAppAiContext(
       text: m.content.slice(0, 400),
     }));
 
+  const isRegistered = Boolean(input.patientId);
+  const clinicSlug = clinic?.slug ?? null;
+  const registrationUrl = clinicSlug ? `/book/${clinicSlug}` : null;
+
   return {
     clinicName: clinic?.name ?? tenant.clinicName,
+    clinicSlug,
+    isRegistered,
+    registrationUrl,
     patientFirstName,
     appointmentSummary,
     journeyStage,

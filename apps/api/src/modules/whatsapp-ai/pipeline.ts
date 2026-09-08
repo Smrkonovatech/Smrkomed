@@ -1012,6 +1012,16 @@ export async function runWhatsAppAiPipeline(input: {
       body: generated.text,
     });
 
+    if (!ctx.isRegistered && !conversation.pendingAction) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: {
+          pendingAction: { kind: "REGISTRATION", subStep: 1 },
+          pendingActionExpiresAt: new Date(Date.now() + 60 * 60_000),
+        },
+      }).catch(() => undefined);
+    }
+
     const interaction = await recordAiInteraction({
       clinicId: input.tenant.clinicId,
       conversationId: conversation.id,

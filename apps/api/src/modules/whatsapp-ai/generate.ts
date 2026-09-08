@@ -28,7 +28,10 @@ function buildUserPrompt(input: {
 }) {
   const lines = [
     `Clinic: ${input.ctx.clinicName}`,
-    input.ctx.patientFirstName ? `Patient first name: ${input.ctx.patientFirstName}` : null,
+    (input.ctx.isRegistered ?? Boolean(input.ctx.patientFirstName))
+      ? (input.ctx.patientFirstName ? `Patient first name: ${input.ctx.patientFirstName}` : "Patient status: Registered")
+      : "Patient status: UNREGISTERED CONTACT (Not yet registered in clinic records)",
+    input.ctx.clinicSlug ? `Clinic online booking/registration URL: https://smrkomed.com/book/${input.ctx.clinicSlug}` : null,
     input.ctx.appointmentSummary ? `Upcoming appointment: ${input.ctx.appointmentSummary}` : null,
     input.ctx.journeyStage ? `Journey stage: ${input.ctx.journeyStage}` : null,
     input.ctx.careTaskTitle ? `Open care task: ${input.ctx.careTaskTitle}` : null,
@@ -49,6 +52,9 @@ function buildUserPrompt(input: {
     "- If tool facts include appointment_slots with available=true, list those numbered slots and ask the patient to reply with a number. Never say you cannot show or book appointments.",
     "- If tool facts say slots are unavailable (available=false), say no open times were found — do not invent times; offer staff help.",
     "- If information is missing, say so and offer staff help.",
+    !(input.ctx.isRegistered ?? Boolean(input.ctx.patientFirstName))
+      ? "- This contact is NOT yet registered in clinic records. If they ask to book an appointment or ask about registration, invite them to reply with their Full Name, Age/DOB, and Gender, or visit the online registration link."
+      : null,
     "",
     input.promptHint ? `Staff instruction: ${input.promptHint}` : null,
     `Patient message: ${input.patientMessage}`,
@@ -71,6 +77,15 @@ export function isSimpleAck(text: string): boolean {
 }
 
 function greetingReply(ctx: WhatsAppAiContext): string {
+  const isRegistered = ctx.isRegistered ?? Boolean(ctx.patientFirstName);
+  if (!isRegistered) {
+    let msg = `✦ Smrko AI\n\nHello! 👋 Welcome to *${ctx.clinicName}*.\n\nWe noticed this phone number is not yet registered in our patient records. To help you book consultations and receive care services, please register your profile with us:\n\n📝 *Quick Registration — please reply with:* \n1️⃣ *Full Name*\n2️⃣ *Age* or *Date of Birth* (e.g. 29 or 1996-05-12)\n3️⃣ *Gender* (Female / Male / Other)\n4️⃣ *Partner's Name* _(optional, for couples)_\n`;
+    if (ctx.clinicSlug) {
+      msg += `\n🌐 *Or register & book online:*\nhttps://smrkomed.com/book/${ctx.clinicSlug}\n`;
+    }
+    msg += `\nHow can I help you today? (I'm Smrko AI, not a doctor.)`;
+    return msg;
+  }
   const name = ctx.patientFirstName ? ` ${ctx.patientFirstName}` : "";
   return `✦ Smrko AI\n\nHello${name}! Thanks for messaging ${ctx.clinicName}. How can I help you today — appointments, clinic info, or something else? (I'm Smrko AI, not a doctor.)`;
 }
@@ -91,13 +106,20 @@ function kbFallbackReply(input: {
   if (isSimpleAck(input.patientMessage)) {
     return ackReply(input.ctx);
   }
+  const isRegistered = input.ctx.isRegistered ?? Boolean(input.ctx.patientFirstName);
+  const regNote = !isRegistered
+    ? (input.ctx.clinicSlug
+        ? `\n\n📝 _Note: You are not yet registered with ${input.ctx.clinicName}. Reply with your Full Name, Age, and Gender, or visit https://smrkomed.com/book/${input.ctx.clinicSlug} to register._`
+        : `\n\n📝 _Note: You are not yet registered with ${input.ctx.clinicName}. Reply with your Full Name, Age, and Gender to register._`)
+    : "";
+
   const name = input.ctx.patientFirstName ? ` ${input.ctx.patientFirstName}` : "";
   const hit = input.knowledge.find((k) => k.score > 0) ?? input.knowledge[0];
   if (hit && hit.score > 0) {
     const snippet = hit.content.replace(/\s+/g, " ").slice(0, 280);
-    return `✦ Smrko AI\n\nHello${name}! Based on our clinic information about "${hit.title}":\n\n${snippet}\n\n(This may include DEMO / DEVELOPMENT content and is not medical advice.) If you need a doctor or staff member, just say so.`;
+    return `✦ Smrko AI\n\nHello${name}! Based on our clinic information about "${hit.title}":\n\n${snippet}\n\n(This may include DEMO / DEVELOPMENT content and is not medical advice.) If you need a doctor or staff member, just say so.${regNote}`;
   }
-  return `✦ Smrko AI\n\nHello${name}! I don't have a published knowledge article for that yet. Your care team can help — reply "speak to staff" if you'd like a human to take over.`;
+  return `✦ Smrko AI\n\nHello${name}! I don't have a published knowledge article for that yet. Your care team can help — reply "speak to staff" if you'd like a human to take over.${regNote}`;
 }
 
 async function callOpenAiChat(system: string, user: string, model: string): Promise<string> {
