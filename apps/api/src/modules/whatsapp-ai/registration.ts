@@ -282,7 +282,14 @@ export async function tryHandleRegistrationMessage(input: {
     /\b(register|sign\s*up|new\s*patient|create\s*(my\s*)?account|registration)\b/i.test(clean) &&
     !clean.includes("how");
 
-  if (isRegisterTrigger && !composite && !inDraft) {
+  // Or if unregistered user asks to book an appointment
+  const isBookingTrigger =
+    /\b(book\s*appointment|book\s*consultation|book|appointment|consultation|schedule|doctor)\b/i.test(clean) ||
+    clean.startsWith("appt_") ||
+    clean === "btn_book_wa" ||
+    clean === "btn_ai_call";
+
+  if ((isRegisterTrigger || isBookingTrigger) && !composite && !inDraft) {
     const draft: RegistrationDraft = { kind: "REGISTRATION", subStep: 1 };
     await prisma.conversation.update({
       where: { id: conversation.id },
@@ -291,7 +298,9 @@ export async function tryHandleRegistrationMessage(input: {
         pendingActionExpiresAt: new Date(Date.now() + 60 * 60_000), // 1 hour TTL
       },
     });
-    const prompt = formatRegistrationStepPrompt(draft);
+    const prompt = isBookingTrigger
+      ? `👋 Welcome to *${clinicName}*!\n\nTo book your consultation with our specialists, we just need to register you as a patient first.\n\n📝 *Please reply with your Full Name* (e.g. Priya Sharma) to get started, or reply with:\n*Full Name, Age, Gender* (e.g. Priya Sharma, 28, Female)`
+      : formatRegistrationStepPrompt(draft);
     await sendWhatsAppAiSessionText(input.tenant, {
       conversationId: conversation.id,
       body: prompt,

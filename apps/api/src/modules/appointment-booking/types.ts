@@ -41,6 +41,7 @@ export interface BookingDoctorSummary {
   consultationFee?: number;
   languages: string[];
   bio: string;
+  photoUrl?: string;
   availableDates: string[]; // ["2026-09-09", "2026-09-10"]
 }
 

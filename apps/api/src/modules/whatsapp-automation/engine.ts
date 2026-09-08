@@ -1348,18 +1348,20 @@ async function executeNode(
         return { output: { skipped: true, reason: consent.reason }, nextNodeId: next?.id ?? null };
       }
 
-      const docPhoto = vars["doctor.photoUrl"] || (vars["doctor.id"] ? getDoctorPhotoUrl(vars["doctor.id"]) : null);
+      const docId = vars["doctor.id"] || vars["selectedDoctorId"] || "";
+      const docPhoto = vars["doctor.photoUrl"] || (docId ? getDoctorPhotoUrl(docId) : null);
+      const isDoctorCardNode = Boolean(docPhoto && (node.id === "n_show_details" || node.id.includes("doctor") || vars["doctor.name"]));
       const isImageHeader =
         node.config["headerType"] === "image" ||
+        isDoctorCardNode ||
         Boolean(header && (header.startsWith("http://") || header.startsWith("https://")));
 
       let headerPayload: { type: "text"; text: string } | { type: "image"; link?: string; id?: string } | undefined = undefined;
       if (isImageHeader) {
-        const docId = vars["doctor.id"] || vars["selectedDoctorId"] || "";
         let metaMediaId: string | null = null;
         if (docId) {
           const { getOrUploadDoctorMetaMediaId } = await import("./doctor-photos");
-          metaMediaId = await getOrUploadDoctorMetaMediaId(tenant, docId);
+          metaMediaId = await getOrUploadDoctorMetaMediaId(tenant, docId, vars["doctor.name"]);
         }
         const link = (header && (header.startsWith("http://") || header.startsWith("https://"))) ? header : (docPhoto || undefined);
         if (metaMediaId) {

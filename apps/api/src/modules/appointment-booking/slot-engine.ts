@@ -18,6 +18,7 @@ export const DEFAULT_DOCTORS: BookingDoctorSummary[] = [
     consultationFee: 1200,
     languages: ["English", "Hindi", "Kannada"],
     bio: "Senior Fertility Specialist with 14+ years experience focusing on IVF and patient-centered protocols.",
+    photoUrl: "https://smrkomed-api-production.up.railway.app/api/v1/public/doctors/doc_ananya/photo",
     availableDates: [],
   },
   {
@@ -29,6 +30,7 @@ export const DEFAULT_DOCTORS: BookingDoctorSummary[] = [
     consultationFee: 1000,
     languages: ["English", "Hindi"],
     bio: "Specialist in male fertility evaluations, surgical sperm retrieval, and couple counselling.",
+    photoUrl: "https://smrkomed-api-production.up.railway.app/api/v1/public/doctors/doc_rahul/photo",
     availableDates: [],
   },
   {
@@ -40,6 +42,7 @@ export const DEFAULT_DOCTORS: BookingDoctorSummary[] = [
     consultationFee: 900,
     languages: ["English", "Malayalam", "Tamil"],
     bio: "Consultant obstetrician supporting IVF pregnancies and antenatal care.",
+    photoUrl: "https://smrkomed-api-production.up.railway.app/api/v1/public/doctors/doc_priya/photo",
     availableDates: [],
   },
 ];

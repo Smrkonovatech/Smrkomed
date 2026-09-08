@@ -53,7 +53,7 @@ function buildUserPrompt(input: {
     "- If tool facts say slots are unavailable (available=false), say no open times were found — do not invent times; offer staff help.",
     "- If information is missing, say so and offer staff help.",
     !(input.ctx.isRegistered ?? Boolean(input.ctx.patientFirstName))
-      ? "- This contact is NOT yet registered in clinic records. If they ask to book an appointment or ask about registration, invite them to reply with their Full Name, Age/DOB, and Gender, or visit the online registration link."
+      ? "- This contact is a new visitor not yet registered in clinic records. Greet them warmly and answer questions directly. Do NOT mention registration, patient profile, or registration links unless they specifically ask to book an appointment or ask how to register."
       : null,
     "",
     input.promptHint ? `Staff instruction: ${input.promptHint}` : null,

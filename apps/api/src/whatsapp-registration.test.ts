@@ -87,7 +87,8 @@ test("formatRegistrationSuccessMessage formats confirmation with quick actions",
 });
 
 test("generateWhatsAppAiReply adapts greeting and answers for unregistered contacts", async () => {
-  const result = await generateWhatsAppAiReply({
+  // Case 1: General greeting -> Friendly reply without demanding registration
+  const greetingResult = await generateWhatsAppAiReply({
     patientMessage: "hi",
     ctx: {
       clinicName: "Apex Fertility",
@@ -103,10 +104,28 @@ test("generateWhatsAppAiReply adapts greeting and answers for unregistered conta
     knowledge: [],
   });
 
-  assert.ok(/Apex Fertility/i.test(result.text));
-  assert.ok(/not yet registered|register your profile/i.test(result.text));
-  assert.ok(/Full Name/i.test(result.text));
-  assert.ok(/https:\/\/smrkomed\.com\/book\/apex-fertility/i.test(result.text));
+  assert.ok(/Apex Fertility/i.test(greetingResult.text));
+  // On general greeting "hi", should NOT demand registration or complain about not being registered
+  assert.ok(!/please reply with your full name|not yet registered/i.test(greetingResult.text));
+
+  // Case 2: Booking intent -> Prompts for registration details
+  const bookingResult = await generateWhatsAppAiReply({
+    patientMessage: "I want to book an appointment with a doctor",
+    ctx: {
+      clinicName: "Apex Fertility",
+      clinicSlug: "apex-fertility",
+      isRegistered: false,
+      registrationUrl: "https://smrkomed.com/book/apex-fertility",
+      patientFirstName: null,
+      appointmentSummary: null,
+      journeyStage: null,
+      careTaskTitle: null,
+      recentMessages: [],
+    },
+    knowledge: [],
+  });
+
+  assert.ok(/register|appointment/i.test(bookingResult.text));
 });
 
 test("tryHandleRegistrationMessage completes registration, creates Patient/Couple, and updates Conversation", async () => {
