@@ -44,12 +44,14 @@ export const DEFAULT_DOCTORS: BookingDoctorSummary[] = [
   },
 ];
 
-/** Standard daily consultation hours: 10:00 to 17:00 in 30-min intervals (excluding 13:00-14:00 lunch) */
+/** Standard daily consultation hours: 09:00 to 17:30 in 30-min intervals (excluding 13:00-14:00 lunch) */
 const STANDARD_SLOT_TIMES = [
+  "09:00", "09:30",
   "10:00", "10:30", "11:00", "11:30",
   "12:00", "12:30",
   "14:00", "14:30", "15:00", "15:30",
   "16:00", "16:30",
+  "17:00",
 ];
 
 export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorSummary[]> {
@@ -122,7 +124,7 @@ export async function getDoctorDaySlots(
   const dayStart = new Date(`${dateIso}T00:00:00.000Z`);
   const dayEnd = new Date(`${dateIso}T23:59:59.999Z`);
 
-  let bookedAppointments: Array<{ startsAt: Date; durationMin: number }> = [];
+  let bookedAppointments: Array<{ startsAt: Date; durationMin: number; doctorName?: string | null }> = [];
   try {
     bookedAppointments = await prisma.appointment.findMany({
       where: {
@@ -137,6 +139,14 @@ export async function getDoctorDaySlots(
     });
   } catch {
     bookedAppointments = [];
+  }
+
+  const cleanDoc = doctorId.replace(/^doc_/, "").replace(/^dr\.?\s*/i, "").trim().toLowerCase();
+  if (cleanDoc) {
+    bookedAppointments = bookedAppointments.filter((a) => {
+      const doc = (a.doctorName || "").toLowerCase();
+      return doc.includes(cleanDoc) || cleanDoc.includes(doc);
+    });
   }
 
   const slots: BookingSlot[] = [];

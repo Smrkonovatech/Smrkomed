@@ -146,7 +146,27 @@ export async function triggerSarvamOutboundCall(params: {
     const doctorName = params.doctorName || "Dr. Ananya Rao";
     const treatment = params.treatment || "Consultation";
 
-    const callSummary = `Patient ${patientName} booking consultation at ${clinicName} with ${doctorName}. Only book within verified open slots.`;
+    // Fetch doctor's real schedule and open slots for tomorrow from database
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateIso = tomorrow.toISOString().split("T")[0]!;
+    let openSlotsSummary = "09:00 AM, 09:30 AM, 10:30 AM, 11:30 AM, 02:00 PM";
+    try {
+      const { getDoctorDaySlots } = await import("../slot-engine");
+      const { prisma } = await import("@smrkomed/database");
+      const clinic = await prisma.clinic.findFirst();
+      if (clinic) {
+        const daySlots = await getDoctorDaySlots(clinic.id, doctorName, dateIso);
+        const available = daySlots.filter((s) => s.status === "available").slice(0, 6).map((s) => s.timeLabel);
+        if (available.length > 0) {
+          openSlotsSummary = available.join(", ");
+        }
+      }
+    } catch (e) {
+      console.warn("[Voice Call Schedule Fetch Warning]", e);
+    }
+
+    const callSummary = `Patient ${patientName} booking consultation at ${clinicName} with ${doctorName}. Available open slots for tomorrow (${dateIso}): ${openSlotsSummary}. Only book within these verified open slots. Do NOT double-book or overlap with existing appointments.`;
 
     // Track active voice call so webhook endpoint knows the patient even if bot omits phone
     recordActiveVoiceCall({
@@ -171,6 +191,9 @@ export async function triggerSarvamOutboundCall(params: {
           user_name: patientName,
           phone_number: formattedPhone,
           patient_phone: formattedPhone,
+          doctor_name: doctorName,
+          available_slots: openSlotsSummary,
+          schedule_date: dateIso,
         },
       },
       user_config: {

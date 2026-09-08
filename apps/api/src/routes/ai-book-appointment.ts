@@ -51,12 +51,49 @@ function parseDateAndTime(dateStr?: string, timeStr?: string): Date {
     }
   }
 
-  target.setHours(hours, minutes, 0, 0);
-  return target;
+  const y = target.getFullYear();
+  const mo = String(target.getMonth() + 1).padStart(2, "0");
+  const d = String(target.getDate()).padStart(2, "0");
+  const isoDate = `${y}-${mo}-${d}`;
+
+  const startsAt = new Date(`${isoDate}T00:00:00.000Z`);
+  startsAt.setUTCHours(hours, minutes, 0, 0);
+  return startsAt;
 }
 
 export const aiBookAppointmentRoute = new Hono<AppEnv>()
-  .get("/", (c) => c.json({ status: "ok", service: "ai-book-appointment" }))
+  .get("/", async (c) => {
+    try {
+      const doctorQuery = c.req.query("doctor") || c.req.query("doctorName") || "Dr. Ananya Rao";
+      const dateQuery = c.req.query("date") || "tomorrow";
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateIso = dateQuery === "tomorrow" ? tomorrow.toISOString().split("T")[0]! : dateQuery;
+
+      const clinic = await prisma.clinic.findFirst();
+      const clinicId = clinic?.id || "clinic_default";
+
+      const { getDoctorDaySlots } = await import("../modules/appointment-booking/slot-engine");
+      const slots = await getDoctorDaySlots(clinicId, doctorQuery, dateIso);
+
+      const availableSlots = slots.filter((s) => s.status === "available").map((s) => s.timeLabel);
+      const bookedSlots = slots.filter((s) => s.status === "booked").map((s) => s.timeLabel);
+
+      return c.json({
+        status: "ok",
+        service: "ai-book-appointment",
+        doctor: doctorQuery,
+        date: dateIso,
+        is_working_day: slots.length > 0,
+        available_slots: availableSlots,
+        booked_slots: bookedSlots,
+        total_slots: slots.length,
+      });
+    } catch (e: any) {
+      return c.json({ status: "ok", service: "ai-book-appointment", error: e?.message });
+    }
+  })
   .post("/", async (c) => {
   try {
     const json = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -234,28 +271,120 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
     }
 
     const startsAt = parseDateAndTime(inputDate, inputTime);
+    const durationMin = 30;
+    const cleanDoc = doctorName.replace(/^dr\.?\s*/i, "").trim();
 
-    const appointment = await prisma.appointment.create({
-      data: {
+    // 1. DUPLICATE CHECK FOR SAME PATIENT / COUPLE:
+    // If patient already has a confirmed appointment on this day, update/reschedule it to avoid duplicate overlapping records
+    const existingPatientAppt = await prisma.appointment.findFirst({
+      where: {
         clinicId: couple.clinicId,
         coupleId: couple.id,
-        type: inputType,
-        doctorName,
-        startsAt,
-        durationMin: 30,
         status: "CONFIRMED",
-        notes: `Booked in real-time via Sarvam AI Voice Call.`,
+        startsAt: {
+          gte: new Date(startsAt.getTime() - 6 * 3600 * 1000),
+          lte: new Date(startsAt.getTime() + 6 * 3600 * 1000),
+        },
       },
     });
 
+    let conflictResolved = false;
+    let originalRequestedTime = startsAt.toLocaleTimeString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // 2. DOCTOR COLLISION / CONFLICT CHECK (with ANY other patient):
+    const reqStart = startsAt.getTime();
+    const doctorConflict = await prisma.appointment.findFirst({
+      where: {
+        clinicId: couple.clinicId,
+        status: "CONFIRMED",
+        doctorName: { contains: cleanDoc, mode: "insensitive" },
+        ...(existingPatientAppt ? { id: { not: existingPatientAppt.id } } : {}),
+        startsAt: {
+          gte: new Date(reqStart - 29 * 60 * 1000),
+          lte: new Date(reqStart + 29 * 60 * 1000),
+        },
+      },
+    });
+
+    if (doctorConflict) {
+      // Slot collision detected! Find the nearest available open slot for this doctor on this day
+      const { getDoctorDaySlots } = await import("../modules/appointment-booking/slot-engine");
+      const dateIso = startsAt.toISOString().split("T")[0]!;
+      const daySlots = await getDoctorDaySlots(couple.clinicId, doctorName, dateIso);
+      const openSlots = daySlots.filter((s) => s.status === "available");
+
+      if (openSlots.length > 0) {
+        const reqMinutes = startsAt.getHours() * 60 + startsAt.getMinutes();
+        const sorted = [...openSlots].sort((a, b) => {
+          const [ha, ma] = a.time.split(":").map(Number);
+          const [hb, mb] = b.time.split(":").map(Number);
+          const diffA = Math.abs((ha! * 60 + ma!) - reqMinutes);
+          const diffB = Math.abs((hb! * 60 + mb!) - reqMinutes);
+          return diffA - diffB;
+        });
+
+        const nearest = sorted[0]!;
+        const [nh, nm] = nearest.time.split(":").map(Number);
+        startsAt.setUTCHours(nh!, nm!, 0, 0);
+        conflictResolved = true;
+      } else {
+        return c.json(
+          {
+            success: false,
+            error: "SLOT_UNAVAILABLE",
+            message: `${doctorName} is fully booked on this day. Please select another date.`,
+          },
+          409,
+        );
+      }
+    }
+
+    let appointment: any = null;
+    if (existingPatientAppt) {
+      // Reschedule/update existing appointment without creating duplicate
+      appointment = await prisma.appointment.update({
+        where: { id: existingPatientAppt.id },
+        data: {
+          startsAt,
+          doctorName,
+          type: inputType,
+          status: "CONFIRMED",
+          notes: conflictResolved
+            ? `Rescheduled via AI Voice Call. Requested ${originalRequestedTime} was taken, automatically resolved to open slot.`
+            : `Updated via AI Voice Call.`,
+        },
+      });
+    } else {
+      appointment = await prisma.appointment.create({
+        data: {
+          clinicId: couple.clinicId,
+          coupleId: couple.id,
+          type: inputType,
+          doctorName,
+          startsAt,
+          durationMin,
+          status: "CONFIRMED",
+          notes: conflictResolved
+            ? `Booked via AI Voice Call. Conflict avoided: requested ${originalRequestedTime} was busy, allocated nearest open slot.`
+            : `Booked in real-time via Sarvam AI Voice Call.`,
+        },
+      });
+    }
+
     const patientDisplayName = `${patient.firstName} ${patient.lastName || ""}`.trim();
     const formattedDate = startsAt.toLocaleDateString("en-IN", {
+      timeZone: "UTC",
       weekday: "long",
       year: "numeric",
       month: "short",
       day: "numeric",
     });
     const formattedTime = startsAt.toLocaleTimeString("en-IN", {
+      timeZone: "UTC",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
@@ -280,7 +409,11 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
     const clinicName = clinic?.name || "ABC Fertility Centre";
 
     if (conv) {
-      const confirmationText = `You're all set, ${patientDisplayName}! 🎉\n\nYour appointment is confirmed:\n\n👩‍⚕️ ${doctorName}\n📅 ${formattedDate}\n⏰ ${formattedTime}\n📍 ${clinicName}\n\nWe'll remind you before your appointment!`;
+      let confirmationText = `You're all set, ${patientDisplayName}! 🎉\n\nYour appointment is confirmed:\n\n👩‍⚕️ ${doctorName}\n📅 ${formattedDate}\n⏰ ${formattedTime}\n📍 ${clinicName}\n\nWe'll remind you before your appointment!`;
+      if (conflictResolved) {
+        confirmationText = `You're all set, ${patientDisplayName}! 🎉\n\nYour appointment is confirmed for the nearest available open slot:\n\n👩‍⚕️ ${doctorName}\n📅 ${formattedDate}\n⏰ ${formattedTime} (adjusted from ${originalRequestedTime} to avoid schedule conflict)\n📍 ${clinicName}\n\nWe'll remind you before your appointment!`;
+      }
+
       await prisma.message.create({
         data: {
           conversationId: conv.id,
@@ -301,7 +434,10 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       doctor_name: doctorName,
       confirmed_date: formattedDate,
       confirmed_time: formattedTime,
-      message: `Appointment successfully confirmed for ${patientDisplayName} on ${formattedDate} at ${formattedTime} with ${doctorName}.`,
+      conflict_avoided: conflictResolved,
+      message: conflictResolved
+        ? `Appointment successfully confirmed for ${patientDisplayName} on ${formattedDate} at ${formattedTime} with ${doctorName} (adjusted from ${originalRequestedTime} to avoid doctor schedule conflict).`
+        : `Appointment successfully confirmed for ${patientDisplayName} on ${formattedDate} at ${formattedTime} with ${doctorName}.`,
     });
   } catch (error) {
     console.error("[AI Book Appointment Route Error]", error);

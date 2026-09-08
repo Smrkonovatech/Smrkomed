@@ -19,6 +19,8 @@ export function createApp() {
   app.route("/v0.5", abdmCallbackRoutes);
   app.route("/api/v1/ai/book-appointment", aiBookAppointmentRoute);
   app.route("/api/ai/book-appointment", aiBookAppointmentRoute);
+  app.route("/api/v1/ai/doctor-schedule", aiBookAppointmentRoute);
+  app.route("/api/ai/doctor-schedule", aiBookAppointmentRoute);
   app.route("/api/v1", v1);
   return app;
 }
