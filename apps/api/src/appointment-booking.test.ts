@@ -61,6 +61,11 @@ test("appointment-booking: end-to-end golden path (WhatsApp)", async () => {
     contactPhone: phone,
   });
 
+  // Step 0: SELECT_CHANNEL -> chooses 1 (Book on WhatsApp)
+  const res0 = await AppointmentBookingMachine.processMessage(session, "1", ctx);
+  assert.equal(res0.session.currentStep, "IDENTIFY_PATIENT");
+  assert.ok(res0.responseMessage.includes("SmrkoMed"));
+
   // Step 1: IDENTIFY_PATIENT -> chooses 2 (new patient)
   const res1 = await AppointmentBookingMachine.processMessage(session, "2", ctx);
   assert.equal(res1.session.currentStep, "REGISTER_PATIENT");
@@ -126,11 +131,15 @@ test("appointment-booking: navigation recovery (Back, Restart, Human Handoff)", 
     contactPhone: phone,
   });
 
-  // Start with existing patient
-  await AppointmentBookingMachine.processMessage(session, "1", ctx);
-  assert.equal(session.currentStep, "SELECT_DOCTOR");
+  // 1. SELECT_CHANNEL -> chooses 1 (WhatsApp)
+  const res0 = await AppointmentBookingMachine.processMessage(session, "1", ctx);
+  assert.equal(res0.session.currentStep, "IDENTIFY_PATIENT");
 
-  // Select doctor
+  // 2. IDENTIFY_PATIENT -> chooses 1 (Existing patient)
+  const res1 = await AppointmentBookingMachine.processMessage(session, "1", ctx);
+  assert.equal(res1.session.currentStep, "SELECT_DOCTOR");
+
+  // 3. Select doctor
   await AppointmentBookingMachine.processMessage(session, "1", ctx);
   assert.equal(session.currentStep, "VIEW_DOCTOR");
 
@@ -215,4 +224,31 @@ test("appointment-booking: HTTP API endpoints (/api/v1/appointment-booking)", as
   assert.ok(Array.isArray(docJson.data));
   assert.ok(docJson.data.length > 0);
 });
+
+test("appointment-booking: channel choice AI call trigger", async () => {
+  const clinicId = "clinic_test_call";
+  const orgId = "org_test_call";
+  const phone = "+919876543211";
+  const ctx = { clinicId, organizationId: orgId, clinicName: "SmrkoMed Fertility Clinic" };
+
+  bookingSessionStore.clear();
+  const session = bookingSessionStore.create({
+    channel: "WHATSAPP",
+    clinicId,
+    organizationId: orgId,
+    contactPhone: phone,
+  });
+
+  // Prompt shows options to Call or Book
+  const prompt = await AppointmentBookingMachine.processMessage(session, "", ctx);
+  assert.ok(prompt.responseMessage.includes("Book on WhatsApp"));
+  assert.ok(prompt.responseMessage.includes("AI Phone Call"));
+
+  // User chooses option 2 (AI Call)
+  const callRes = await AppointmentBookingMachine.processMessage(session, "2", ctx);
+  assert.equal(callRes.session.channel, "CALL");
+  assert.ok(callRes.responseMessage.includes("Calling you right now"));
+  assert.ok(callRes.responseMessage.includes(phone));
+});
+
 

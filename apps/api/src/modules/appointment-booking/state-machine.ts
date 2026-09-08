@@ -16,6 +16,7 @@ import {
   formatHandoffPrompt,
   formatIdentifyPatientPrompt,
   formatRegisterPatientPrompt,
+  formatSelectChannelPrompt,
   formatSelectDatePrompt,
   formatSelectDoctorPrompt,
   formatSelectSlotPrompt,
@@ -27,6 +28,7 @@ import {
   formatVoiceGreeting,
   formatVoiceSlotList,
   formatVoiceSuccess,
+  triggerSarvamOutboundCall,
 } from "./channels/voice";
 import { parseNaturalDate, parseNaturalTime } from "./nlp-parser";
 import {
@@ -53,6 +55,27 @@ export class AppointmentBookingMachine {
       return this.handleHandoff(session, "User requested human care coordinator");
     }
 
+    if (lower === "call me" || lower === "call" || lower === "phone call" || lower === "ai call") {
+      session.channel = "CALL";
+      bookingSessionStore.save(session);
+      void triggerSarvamOutboundCall({
+        phoneNumber: session.contactPhone,
+        patientName: session.registrationDraft.patientName || "Valued Patient",
+        clinicName: ctx.clinicName || "SmrkoMed",
+        doctorName: "Dr. Ananya Rao",
+      });
+      return {
+        session,
+        responseMessage:
+          `📞 *Calling you now!*\n\n` +
+          `Our AI Care Assistant is dialing *${session.contactPhone}* to assist you with booking your consultation.\n\n` +
+          `Please answer the call when your phone rings! 📲\n\n` +
+          `_If you miss the call, reply *CALL* to retry, or *1* to book here on WhatsApp._`,
+        requiresInput: false,
+        actionTaken: "ADVANCE",
+      };
+    }
+
     if (lower === "restart" || lower === "start over" || lower === "cancel" || lower === "reset") {
       return this.handleRestart(session, ctx);
     }
@@ -77,6 +100,9 @@ export class AppointmentBookingMachine {
 
     // ─── 2. State-Specific Handlers ──────────────────────────────────────────
     switch (session.currentStep) {
+      case "SELECT_CHANNEL":
+        return this.stepSelectChannel(session, input, ctx);
+
       case "IDENTIFY_PATIENT":
         return this.stepIdentifyPatient(session, input, ctx);
 
@@ -130,6 +156,72 @@ export class AppointmentBookingMachine {
         bookingSessionStore.save(session);
         return this.renderSelectDoctor(session, ctx);
     }
+  }
+
+  // ─── STEP: SELECT_CHANNEL ──────────────────────────────────────────────────
+  private static async stepSelectChannel(
+    session: BookingSession,
+    input: string,
+    ctx: BookingMachineContext,
+  ): Promise<StateTransitionResult> {
+    const clean = input.trim().toLowerCase();
+
+    // Option 1: WhatsApp chat booking
+    if (
+      clean === "1" ||
+      clean.includes("whatsapp") ||
+      clean.includes("chat") ||
+      clean.includes("book") ||
+      clean.includes("message") ||
+      clean.includes("text")
+    ) {
+      session.channel = "WHATSAPP";
+      this.pushHistory(session, "IDENTIFY_PATIENT");
+      bookingSessionStore.save(session);
+      return {
+        session,
+        responseMessage: formatIdentifyPatientPrompt(session, session.registrationDraft.patientName),
+        requiresInput: true,
+        actionTaken: "ADVANCE",
+      };
+    }
+
+    // Option 2: AI phone call via Sarvam AI
+    if (
+      clean === "2" ||
+      clean.includes("call") ||
+      clean.includes("phone") ||
+      clean.includes("voice") ||
+      clean.includes("callback")
+    ) {
+      session.channel = "CALL";
+      bookingSessionStore.save(session);
+
+      void triggerSarvamOutboundCall({
+        phoneNumber: session.contactPhone,
+        patientName: session.registrationDraft.patientName || "Valued Patient",
+        clinicName: ctx.clinicName || "SmrkoMed",
+        doctorName: "Dr. Ananya Rao",
+      });
+
+      return {
+        session,
+        responseMessage:
+          `📞 *Calling you right now!*\n\n` +
+          `Our AI Care Assistant is dialing *${session.contactPhone}* to assist you with booking your consultation.\n\n` +
+          `Please answer the call when your phone rings! 📲\n\n` +
+          `_If you miss the call, reply *CALL* to retry, or *1* to book here on WhatsApp._`,
+        requiresInput: false,
+        actionTaken: "ADVANCE",
+      };
+    }
+
+    // Initial prompt / re-prompt
+    return {
+      session,
+      responseMessage: formatSelectChannelPrompt(session),
+      requiresInput: true,
+    };
   }
 
   // ─── STEP: IDENTIFY_PATIENT ────────────────────────────────────────────────

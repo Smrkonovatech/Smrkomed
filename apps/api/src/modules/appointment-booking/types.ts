@@ -6,6 +6,7 @@
 export type BookingChannel = "WHATSAPP" | "CALL";
 
 export type BookingState =
+  | "SELECT_CHANNEL"
   | "IDENTIFY_PATIENT"
   | "REGISTER_PATIENT"
   | "SELECT_BRANCH"

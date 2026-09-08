@@ -9,6 +9,18 @@ import { formatDateLabel } from "../nlp-parser";
 
 const FOOTER_NAV = "\n\n_Reply with option number, or type *BACK*, *RESTART*, or *HUMAN* for assistance._";
 
+export function formatSelectChannelPrompt(session: BookingSession): string {
+  return (
+    `👋 Welcome to *SmrkoMed*!\n\n` +
+    `How would you like to book your consultation today?\n\n` +
+    `1️⃣ 💬 *Book on WhatsApp* (Continue chatting here)\n` +
+    `2️⃣ 📞 *AI Phone Call* (Receive an instant call from our AI Care Assistant)\n\n` +
+    `_Reply *1* to book here in chat, or *2* to receive a phone call._` +
+    FOOTER_NAV
+  );
+}
+
+
 export function formatIdentifyPatientPrompt(session: BookingSession, matchedName?: string | null): string {
   if (matchedName) {
     return (

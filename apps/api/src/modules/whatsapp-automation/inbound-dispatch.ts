@@ -221,6 +221,28 @@ export async function resumeWaitForReplyExecutions(input: {
     const def = parseDefinition(flow.definition);
     const waitId = row.currentNodeId;
     const rawReply = (input.inboundVars?.["message_text"] ?? "").trim();
+    const cleanLower = rawReply.toLowerCase();
+
+    // If user types 'appointment' or 'restart' while waiting on an old mid-flow step (other than channel choice), cancel old execution and allow fresh flow
+    if (
+      waitId !== "n_channel_choice" &&
+      (cleanLower === "appointment" ||
+        cleanLower === "book appointment" ||
+        cleanLower === "restart" ||
+        cleanLower === "start over" ||
+        cleanLower === "reset")
+    ) {
+      await prisma.whatsAppFlowExecution.update({
+        where: { id: row.id },
+        data: {
+          status: "CANCELLED",
+          error: "Superseded by fresh appointment request",
+          completedAt: new Date(),
+        },
+      });
+      continue;
+    }
+
     let replyAction = rawReply;
 
     const mergedVars: Record<string, string> = {
@@ -264,6 +286,28 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["selectedDoctorId"] = docId;
         mergedVars["doctor.id"] = docId;
         replyAction = rawReply;
+      }
+    } else if (waitId === "n_channel_choice") {
+      if (/^(btn_ai_call|action_call|call|phone|voice|call me|2)$/i.test(rawReply)) {
+        replyAction = "btn_ai_call";
+        mergedVars["bookingChannel"] = "CALL";
+        mergedVars["channel_choice"] = "CALL";
+
+        // Trigger Sarvam AI Outbound Call to the caller's phone
+        const callerPhone = input.inboundVars?.["sender_phone"] || input.inboundVars?.["contact_phone"] || "";
+        if (callerPhone) {
+          const { triggerSarvamOutboundCall } = await import("../appointment-booking/channels/voice");
+          void triggerSarvamOutboundCall({
+            phoneNumber: callerPhone,
+            patientName: mergedVars["patient_name"] || "Valued Patient",
+            clinicName: input.tenant.clinicName || "SmrkoMed",
+            doctorName: "Dr. Ananya Rao",
+          });
+        }
+      } else if (/^(btn_book_wa|action_book|book|chat|whatsapp|message|text|1)$/i.test(rawReply)) {
+        replyAction = "btn_book_wa";
+        mergedVars["bookingChannel"] = "WHATSAPP";
+        mergedVars["channel_choice"] = "WHATSAPP";
       }
     } else if (waitId === "n_ask_name" && rawReply && !rawReply.startsWith("appt_")) {
       mergedVars["patient_name"] = rawReply;

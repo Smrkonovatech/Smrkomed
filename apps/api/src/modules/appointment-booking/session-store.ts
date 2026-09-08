@@ -66,7 +66,7 @@ class BookingSessionStore {
       isExistingPatient: false,
       registrationDraft: {},
       appointmentType: "Consultation",
-      currentStep: params.initialStep || "IDENTIFY_PATIENT",
+      currentStep: params.initialStep || "SELECT_CHANNEL",
       stepHistory: [],
       status: "ACTIVE",
       createdAt: now,

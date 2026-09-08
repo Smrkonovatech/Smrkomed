@@ -78,3 +78,90 @@ export function formatVoiceSuccess(session: BookingSession, lang = "en"): string
   }
   return `Thank you! Your appointment is confirmed with ${session.doctorName} on ${formatDateLabel(d)} at ${session.selectedSlot}. A confirmation has also been sent to your WhatsApp. Have a great day!`;
 }
+
+/**
+ * Initiates an automated AI Outbound Phone Call via the Sarvam Samvaad API.
+ */
+export async function triggerSarvamOutboundCall(params: {
+  phoneNumber: string;
+  patientName?: string;
+  partnerName?: string;
+  treatment?: string;
+  stage?: string;
+  doctorName?: string;
+  clinicName?: string;
+  language?: "kn" | "hi" | "en";
+}): Promise<{ success: boolean; data?: unknown; error?: string }> {
+  try {
+    const apiKey =
+      process.env["SARVAM_SAMVAAD_API_KEY"] ||
+      process.env["SARVAM_API_KEY"] ||
+      "sk_samvaad_xywpvl90_4qRfmMh1fcGrL9XcM48TdBbF";
+    const orgId = process.env["SARVAM_ORG_ID"] || "01a06777-00d4-7317-835c-507054052514";
+    const workspaceId = process.env["SARVAM_WORKSPACE_ID"] || "01a06777-00da-7f77-abe3-dc1fc871a5ab";
+    const appId = process.env["SARVAM_APP_ID"] || "smrkomed-8401f738-b749";
+    const appVersion = Number(process.env["SARVAM_APP_VERSION"]) || 7;
+    const connectionId = process.env["SARVAM_CONNECTION_ID"] || "587ab0c5-8f-f564346c-f2ae";
+    const agentPhoneNumber = process.env["SARVAM_AGENT_PHONE_NUMBER"] || "+918064265889";
+
+    const digits = params.phoneNumber.replace(/\D/g, "");
+    let formattedPhone = params.phoneNumber;
+    if (digits.length === 10) {
+      formattedPhone = `+91${digits}`;
+    } else if (digits.length === 12 && digits.startsWith("91")) {
+      formattedPhone = `+${digits}`;
+    } else if (!formattedPhone.startsWith("+")) {
+      formattedPhone = `+${digits}`;
+    }
+
+    const patientName = params.patientName || "Valued Patient";
+    const clinicName = params.clinicName || "SmrkoMed";
+    const doctorName = params.doctorName || "Dr. Ananya Rao";
+    const treatment = params.treatment || "Consultation";
+
+    const callSummary = `Patient ${patientName} booking consultation at ${clinicName} with ${doctorName}. Only book within verified open slots.`;
+
+    const payload = {
+      app_config: {
+        app_id: appId,
+        app_version: appVersion,
+        app_type: "agent",
+        connection_config: {
+          connection_id: connectionId,
+          agent_phone_number: agentPhoneNumber,
+        },
+        agent_variables: {
+          call_summary: callSummary,
+          user_name: patientName,
+        },
+      },
+      user_config: {
+        user_phone_number: formattedPhone,
+      },
+    };
+
+    const url = `https://apps.sarvam.ai/api/outbounds/v1/orgs/${orgId}/workspaces/${workspaceId}/outbounds`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseData = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const err = (responseData as { message?: string })?.message || "Sarvam API call failed";
+      console.error("[Sarvam Outbound Call Error]", response.status, responseData);
+      return { success: false, error: err };
+    }
+
+    console.log("[Sarvam Outbound Call Initiated]", { phone: formattedPhone, patientName });
+    return { success: true, data: responseData };
+  } catch (err) {
+    console.error("[Sarvam Outbound Call Exception]", err);
+    return { success: false, error: err instanceof Error ? err.message : "Outbound call failed" };
+  }
+}
+

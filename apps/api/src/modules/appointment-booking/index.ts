@@ -14,7 +14,7 @@ import type { AppEnv } from "../../types";
 
 import { AppointmentBookingMachine } from "./state-machine";
 import { bookingSessionStore } from "./session-store";
-import { formatIdentifyPatientPrompt } from "./channels/whatsapp";
+import { formatIdentifyPatientPrompt, formatSelectChannelPrompt } from "./channels/whatsapp";
 import { formatVoiceGreeting } from "./channels/voice";
 import { getClinicDoctors } from "./slot-engine";
 
@@ -71,7 +71,9 @@ export const appointmentBookingRoutes = new Hono<AppEnv>()
             clinic?.name || "ABC Fertility Centre",
             body.language,
           )
-        : formatIdentifyPatientPrompt(session, session.registrationDraft.patientName);
+        : session.currentStep === "SELECT_CHANNEL"
+          ? formatSelectChannelPrompt(session)
+          : formatIdentifyPatientPrompt(session, session.registrationDraft.patientName);
 
     return ok(c, {
       sessionId: session.id,
