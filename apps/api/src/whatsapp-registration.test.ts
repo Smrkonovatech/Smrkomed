@@ -211,6 +211,7 @@ test("handleInboundWhatsAppAutomation routes unregistered contact to registratio
       providerMessageId: `pmsg_${Date.now()}`,
       messageType: "text",
       messageText: "Appointment",
+      timestampIso: new Date().toISOString(),
       skipAi: true,
     });
 
