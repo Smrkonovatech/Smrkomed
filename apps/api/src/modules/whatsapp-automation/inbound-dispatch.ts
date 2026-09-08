@@ -318,9 +318,41 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["patient_phone"] ||
           "";
 
+        let resolvedPatientName = mergedVars["patient_name"];
+        if (!resolvedPatientName || resolvedPatientName === "Valued Patient") {
+          const conv = await prisma.conversation.findUnique({
+            where: { id: input.conversationId },
+            include: { patient: { select: { firstName: true, lastName: true } } },
+          });
+          if (conv?.patient) {
+            resolvedPatientName = `${conv.patient.firstName} ${conv.patient.lastName || ""}`.trim();
+          } else if (callerPhone) {
+            const phoneSearch = callerPhone.slice(-10);
+            if (phoneSearch.length >= 8) {
+              const p = await prisma.patient.findFirst({
+                where: {
+                  clinicId: input.tenant.clinicId,
+                  OR: [
+                    { phone: { contains: phoneSearch } },
+                    { whatsappNumber: { contains: phoneSearch } },
+                  ],
+                },
+                select: { firstName: true, lastName: true },
+              });
+              if (p) {
+                resolvedPatientName = `${p.firstName} ${p.lastName || ""}`.trim();
+              }
+            }
+          }
+        }
+        if (resolvedPatientName) {
+          mergedVars["patient_name"] = resolvedPatientName;
+          mergedVars["patient.name"] = resolvedPatientName;
+        }
+
         console.log("[SARVAM OUTBOUND DISPATCH]", {
           callerPhone,
-          patientName: mergedVars["patient_name"] || "Valued Patient",
+          patientName: resolvedPatientName || "Valued Patient",
           conversationId: input.conversationId,
         });
 
@@ -328,7 +360,7 @@ export async function resumeWaitForReplyExecutions(input: {
           const { triggerSarvamOutboundCall } = await import("../appointment-booking/channels/voice");
           await triggerSarvamOutboundCall({
             phoneNumber: callerPhone,
-            patientName: mergedVars["patient_name"] || "Valued Patient",
+            patientName: resolvedPatientName || undefined,
             clinicName: input.tenant.clinicName || "SmrkoMed",
             doctorName: "Dr. Ananya Rao",
           }).catch((err) => {

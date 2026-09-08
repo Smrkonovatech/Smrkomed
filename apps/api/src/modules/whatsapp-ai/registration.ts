@@ -118,7 +118,7 @@ function parseGender(text: string): Gender {
 function splitFullName(name: string): { firstName: string; lastName: string } {
   const parts = name.trim().split(/\s+/);
   const firstName = parts[0] || "Patient";
-  const lastName = parts.slice(1).join(" ") || "Registered";
+  const lastName = parts.slice(1).join(" ") || "";
   return { firstName, lastName };
 }
 

@@ -6,6 +6,7 @@ import { onError } from "./middleware/error";
 import { rateLimitMiddleware } from "./middleware/rate-limit";
 import { v1 } from "./routes/v1";
 import { abdmCallbackRoutes } from "./modules/digital-health/abdm-callbacks";
+import { aiBookAppointmentRoute } from "./routes/ai-book-appointment";
 import type { AppEnv } from "./types";
 
 export function createApp() {
@@ -16,6 +17,8 @@ export function createApp() {
   app.use("*", rateLimitMiddleware);
   app.get("/", (c) => c.json({ status: "ok", service: "SmrkoMed API", version: "v1" }));
   app.route("/v0.5", abdmCallbackRoutes);
+  app.route("/api/v1/ai/book-appointment", aiBookAppointmentRoute);
+  app.route("/api/ai/book-appointment", aiBookAppointmentRoute);
   app.route("/api/v1", v1);
   return app;
 }
