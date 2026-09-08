@@ -286,6 +286,18 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["selectedDoctorId"] = docId;
         mergedVars["doctor.id"] = docId;
         replyAction = rawReply;
+      } else if (/1|ananya/i.test(rawReply)) {
+        mergedVars["selectedDoctorId"] = "doc_ananya";
+        mergedVars["doctor.id"] = "doc_ananya";
+        replyAction = "appt_doctor_doc_ananya";
+      } else if (/2|rahul|rajesh/i.test(rawReply)) {
+        mergedVars["selectedDoctorId"] = "doc_rahul";
+        mergedVars["doctor.id"] = "doc_rahul";
+        replyAction = "appt_doctor_doc_rahul";
+      } else if (/3|priya/i.test(rawReply)) {
+        mergedVars["selectedDoctorId"] = "doc_priya";
+        mergedVars["doctor.id"] = "doc_priya";
+        replyAction = "appt_doctor_doc_priya";
       }
     } else if (waitId === "n_channel_choice") {
       const isCallChoice =
