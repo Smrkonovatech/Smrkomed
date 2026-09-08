@@ -310,23 +310,13 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["channel_choice"] = "CALL";
 
         // Trigger Sarvam AI Outbound Call to the caller's phone
-        let callerPhone =
+        const callerPhone =
           input.inboundVars?.["sender_phone"] ||
           input.inboundVars?.["contact_phone"] ||
           mergedVars["sender_phone"] ||
           mergedVars["contact_phone"] ||
           mergedVars["patient_phone"] ||
           "";
-
-        if (!callerPhone && input.conversationId) {
-          const conv = await prisma.whatsAppConversation.findUnique({
-            where: { id: input.conversationId },
-            select: { contactPhone: true },
-          });
-          if (conv?.contactPhone) {
-            callerPhone = conv.contactPhone;
-          }
-        }
 
         console.log("[SARVAM OUTBOUND DISPATCH]", {
           callerPhone,
@@ -336,11 +326,13 @@ export async function resumeWaitForReplyExecutions(input: {
 
         if (callerPhone) {
           const { triggerSarvamOutboundCall } = await import("../appointment-booking/channels/voice");
-          void triggerSarvamOutboundCall({
+          await triggerSarvamOutboundCall({
             phoneNumber: callerPhone,
             patientName: mergedVars["patient_name"] || "Valued Patient",
             clinicName: input.tenant.clinicName || "SmrkoMed",
             doctorName: "Dr. Ananya Rao",
+          }).catch((err) => {
+            console.error("[SARVAM OUTBOUND ERROR]", err);
           });
         }
       } else if (isBookChoice) {
