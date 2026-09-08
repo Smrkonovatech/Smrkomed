@@ -189,11 +189,6 @@ export async function triggerSarvamOutboundCall(params: {
         agent_variables: {
           call_summary: callSummary,
           user_name: patientName,
-          phone_number: formattedPhone,
-          patient_phone: formattedPhone,
-          doctor_name: doctorName,
-          available_slots: openSlotsSummary,
-          schedule_date: dateIso,
         },
       },
       user_config: {

@@ -310,7 +310,7 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["channel_choice"] = "CALL";
 
         // Trigger Sarvam AI Outbound Call to the caller's phone
-        const callerPhone =
+        let callerPhone =
           input.inboundVars?.["sender_phone"] ||
           input.inboundVars?.["contact_phone"] ||
           mergedVars["sender_phone"] ||
@@ -319,11 +319,16 @@ export async function resumeWaitForReplyExecutions(input: {
           "";
 
         let resolvedPatientName = mergedVars["patient_name"];
+        const conv = await prisma.conversation.findUnique({
+          where: { id: input.conversationId },
+          include: { patient: { select: { firstName: true, lastName: true, phone: true, whatsappNumber: true } } },
+        });
+
+        if (!callerPhone && conv?.patient) {
+          callerPhone = conv.patient.phone || conv.patient.whatsappNumber || "";
+        }
+
         if (!resolvedPatientName || resolvedPatientName === "Valued Patient") {
-          const conv = await prisma.conversation.findUnique({
-            where: { id: input.conversationId },
-            include: { patient: { select: { firstName: true, lastName: true } } },
-          });
           if (conv?.patient) {
             resolvedPatientName = `${conv.patient.firstName} ${conv.patient.lastName || ""}`.trim();
           } else if (callerPhone) {
