@@ -128,7 +128,7 @@ export async function getDoctorDaySlots(
   try {
     bookedAppointments = await prisma.appointment.findMany({
       where: {
-        clinicId,
+        ...(clinicId && clinicId !== "clinic_default" ? { clinicId } : {}),
         status: "CONFIRMED",
         startsAt: {
           gte: dayStart,

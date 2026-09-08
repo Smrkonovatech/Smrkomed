@@ -219,34 +219,45 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       }
     }
 
-    // 4. Fallback: latest active patient in clinic
-    if (!patient) {
-      patient = await prisma.patient.findFirst({
-        orderBy: { updatedAt: "desc" },
-        include: {
-          clinic: true,
-          primaryCouples: true,
-          partnerCouples: true,
-        },
-      });
-      if (patient) {
-        couple = patient.primaryCouples[0] || patient.partnerCouples[0] || null;
-      }
-    }
-
-    // 5. If still no patient, create default patient for consultation
+    // 4. Create new patient if phone or name provided, otherwise fallback to latest active patient
     if (!patient) {
       const clinic = await prisma.clinic.findFirst();
       if (clinic) {
-        patient = await prisma.patient.create({
-          data: {
-            clinicId: clinic.id,
-            firstName: rawName.split(" ")[0] || "Patient",
-            lastName: rawName.split(" ").slice(1).join(" ") || "",
-            phone: rawPhone ? `+91${phoneLast10}` : `+9199999${Math.floor(10000 + Math.random() * 90000)}`,
-            status: "ACTIVE",
-          },
-        });
+        const hasSpecificInfo = rawPhone.length >= 10 || (rawName && !rawName.toLowerCase().includes("patient") && !rawName.toLowerCase().includes("user"));
+        if (hasSpecificInfo) {
+          patient = await prisma.patient.create({
+            data: {
+              clinicId: clinic.id,
+              firstName: rawName ? rawName.split(" ")[0] || "Patient" : "Patient",
+              lastName: rawName ? rawName.split(" ").slice(1).join(" ") || "" : "",
+              phone: rawPhone ? (rawPhone.startsWith("+") ? rawPhone : `+91${phoneLast10}`) : `+9199999${Math.floor(10000 + Math.random() * 90000)}`,
+              status: "ACTIVE",
+            },
+          });
+        } else {
+          // No phone and no name provided: fallback to latest active patient
+          patient = await prisma.patient.findFirst({
+            orderBy: { updatedAt: "desc" },
+            include: {
+              clinic: true,
+              primaryCouples: true,
+              partnerCouples: true,
+            },
+          });
+          if (patient) {
+            couple = patient.primaryCouples[0] || patient.partnerCouples[0] || null;
+          } else {
+            patient = await prisma.patient.create({
+              data: {
+                clinicId: clinic.id,
+                firstName: "Patient",
+                lastName: "",
+                phone: `+9199999${Math.floor(10000 + Math.random() * 90000)}`,
+                status: "ACTIVE",
+              },
+            });
+          }
+        }
       }
     }
 
