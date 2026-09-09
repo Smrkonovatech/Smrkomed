@@ -1,15 +1,28 @@
 /**
  * WhatsApp Patient & Couple Self-Registration Handler
  * Guides visitors through structured couple registration (primary + partner details + treatment focus),
- * parses composite registration replies, creates official Patient and Couple records,
- * and seamlessly presents the Namma Metro-style interactive menu.
+ * parses composite registration replies, collects exact DOB and partner WhatsApp numbers,
+ * creates official Patient and Couple records, and seamlessly presents the Namma Metro-style interactive menu.
  */
 
 import { Prisma, type Gender } from "@prisma/client";
 import type { TenantContext } from "@smrkomed/database";
 import { prisma } from "@smrkomed/database";
 
-import { sendWhatsAppAiSessionText } from "../../integrations/providers/whatsapp/messaging";
+import {
+  sendWhatsAppAiSessionText,
+  sendWhatsAppInteractiveButtons,
+} from "../../integrations/providers/whatsapp/messaging";
+
+export const REG_ACTIONS = {
+  COUPLE_YES: "reg_couple_yes",
+  COUPLE_SOLO: "reg_couple_solo",
+  PARTNER_PHONE_SKIP: "reg_partner_phone_skip",
+  FOCUS_IVF: "reg_focus_ivf",
+  FOCUS_IUI: "reg_focus_iui",
+  FOCUS_EVAL: "reg_focus_eval",
+  FOCUS_GEN: "reg_focus_gen",
+} as const;
 
 export type RegistrationDraft = {
   kind: "REGISTRATION";
@@ -64,26 +77,111 @@ export function formatUnregisteredWelcomePrompt(options: {
 }
 
 /**
+ * Helper to parse either a full Date of Birth or an Age number.
+ */
+export function parseDobOrAge(text: string): {
+  dateOfBirth?: string | undefined;
+  age?: number | undefined;
+} {
+  const clean = text.trim();
+
+  // 1. ISO format: YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const isoMatch = clean.match(/\b(19\d{2}|20[0-2]\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/);
+  if (isoMatch) {
+    const yr = parseInt(isoMatch[1]!, 10);
+    const mo = parseInt(isoMatch[2]!, 10);
+    const da = parseInt(isoMatch[3]!, 10);
+    if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) {
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const dobStr = `${yr}-${pad(mo)}-${pad(da)}`;
+      const approxAge = new Date().getFullYear() - yr;
+      return { dateOfBirth: dobStr, age: approxAge > 0 ? approxAge : undefined };
+    }
+  }
+
+  // 2. Day-Month-Year format: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+  const dmyMatch = clean.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d{2}|20[0-2]\d)\b/);
+  if (dmyMatch) {
+    const da = parseInt(dmyMatch[1]!, 10);
+    const mo = parseInt(dmyMatch[2]!, 10);
+    const yr = parseInt(dmyMatch[3]!, 10);
+    if (mo >= 1 && mo <= 12 && da >= 1 && da <= 31) {
+      const pad = (n: number) => n.toString().padStart(2, "0");
+      const dobStr = `${yr}-${pad(mo)}-${pad(da)}`;
+      const approxAge = new Date().getFullYear() - yr;
+      return { dateOfBirth: dobStr, age: approxAge > 0 ? approxAge : undefined };
+    }
+  }
+
+  // 3. Standalone Age: 2 digits (between 10 and 110)
+  const ageMatch = clean.match(/(?:^|\b|\s)(?:age[:=-]?\s*)?(\d{1,2})(?:\s*years?|\s*yrs?)?(?:$|\b|\s)/i);
+  if (ageMatch) {
+    const num = parseInt(ageMatch[1]!, 10);
+    if (num >= 10 && num <= 110) {
+      const yr = new Date().getFullYear() - num;
+      return { age: num, dateOfBirth: `${yr}-01-01` };
+    }
+  }
+
+  return {};
+}
+
+/**
+ * Helper to extract phone number (10 digits Indian or international format) from text.
+ */
+export function parsePhoneNumber(text: string): string | undefined {
+  // 1. Look for explicit international format: +[country code][10-15 digits]
+  const intlMatch = text.match(/\+(\d{10,15})\b/);
+  if (intlMatch) {
+    return `+${intlMatch[1]}`;
+  }
+
+  // 2. Look for Indian mobile (+91 or 91 or without prefix, 10 digits starting with 6-9)
+  const inMatch = text.match(/(?:\+?91[\s-]?)?([6-9]\d{9})\b/);
+  if (inMatch) {
+    return `+91${inMatch[1]}`;
+  }
+
+  // 3. Fallback: if text itself is just digits (clean)
+  const clean = text.replace(/[^0-9+]/g, "");
+  if (/^\+91\d{10}$/.test(clean)) return clean;
+  if (/^91\d{10}$/.test(clean)) return `+${clean}`;
+  if (/^[6-9]\d{9}$/.test(clean)) return `+91${clean}`;
+  if (/^\+\d{10,15}$/.test(clean)) return clean;
+
+  return undefined;
+}
+
+/**
  * Prompt for step-by-step couple and patient registration.
  */
 export function formatRegistrationStepPrompt(draft: RegistrationDraft): string {
   if (draft.subStep === 1 || !draft.patientName) {
     return (
       `📝 *Patient & Couple Registration (Step 1/3)*\n\n` +
-      `Please reply with your *Full Name* and *Age* (e.g. *Priya Sharma, 28*):` +
+      `Please reply with your *Full Name* and *Age or Date of Birth* (e.g. *Priya Sharma, 28* or *Priya Sharma, 14/08/1996*):` +
       `\n\n_(Your WhatsApp number will be linked as your registered mobile.)_` +
       FOOTER_NAV
     );
   }
 
   if (draft.subStep === 2) {
+    if (draft.isCouple && !draft.partnerName) {
+      return (
+        `📝 *Couple Registration (Step 2/3) — Partner Details*\n\n` +
+        `Please reply with your *Partner's Full Name, Age/DOB, and Mobile Number*:\n` +
+        `_Example: "Rahul Sharma, 31, 9876543210" or "Rahul Sharma, 12/05/1994"_\n\n` +
+        `_(Their number will be used to send partner-specific reminders and IVF instructions)_` +
+        FOOTER_NAV
+      );
+    }
     return (
       `📝 *Couple Registration (Step 2/3)*\n\n` +
       `Thank you, *${draft.patientName}*!\n\n` +
       `Are you registering as a couple for fertility treatment?\n` +
-      `• If *Yes*, please reply with your *Partner's Full Name & Age* (e.g. *Rahul Sharma, 31*).\n` +
-      `• If *No* (registering individually), simply reply *'Solo'* or *'No'*.\n` +
-      `_(You can also include partner Date of Birth or Gender if desired)_` +
+      `• If *Yes*, tap *Yes, Couple* or reply with your *Partner's Full Name & Age* (e.g. *Rahul Sharma, 31*).\n` +
+      `• If *No* (registering individually), tap *Solo* or reply *'Solo'*.\n` +
+      `_(You can also include partner Date of Birth, Mobile, or Gender)_` +
       FOOTER_NAV
     );
   }
@@ -95,7 +193,7 @@ export function formatRegistrationStepPrompt(draft: RegistrationDraft): string {
     `2️⃣ IUI (Intrauterine Insemination)\n` +
     `3️⃣ Fertility Evaluation & Checkup\n` +
     `4️⃣ General Consultation\n\n` +
-    `_Example: "Female, IVF" or reply with 1, 2, 3, or 4 (or reply 'Skip')._` +
+    `_Tap an option or reply 1, 2, 3, or 4 (or reply 'Female, IVF')._` +
     FOOTER_NAV
   );
 }
@@ -142,9 +240,7 @@ export function splitFullName(name: string): { firstName: string; lastName: stri
 
 /**
  * Parse one-shot composite registration text:
- * e.g. "Name: Priya Sharma, Age: 29, Gender: Female, Partner: Rahul Sharma"
- * or "Priya Sharma, 28, Female, Partner: Rahul Sharma, 31, Male, Treatment: IVF"
- * or "Sunita Verma, 29, Female"
+ * e.g. "Name: Priya Sharma, DOB: 1996-05-12, Gender: Female, Partner: Rahul Sharma, 31, 9876543210, IVF"
  */
 export function parseCompositeRegistration(text: string): {
   patientName?: string | undefined;
@@ -155,6 +251,7 @@ export function parseCompositeRegistration(text: string): {
   partnerAge?: number | undefined;
   partnerDateOfBirth?: string | undefined;
   partnerGender?: Gender | undefined;
+  partnerPhone?: string | undefined;
   treatmentInterest?: "IVF" | "IUI" | "EVALUATION" | "GENERAL" | undefined;
   isCouple?: boolean | undefined;
   subStep?: 1 | 2 | 3 | undefined;
@@ -173,16 +270,30 @@ export function parseCompositeRegistration(text: string): {
   const ageMatch = clean.match(/(?:^|\b|\n)(?:primary\s*)?age\s*[:=-]?\s*(\d{1,2})(?:\s*years?|\s*yrs?)?/i);
   const dobMatch = clean.match(/(?:dob|date\s*of\s*birth)\s*[:=-]?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})/i);
   const genderMatch = clean.match(/(?:gender|sex)\s*[:=-]?\s*(female|male|other|f|m)/i);
-  const partnerMatch = clean.match(/(?:partner|husband|wife|spouse)(?:\s*name)?\s*[:=-]?\s*([a-zA-Z\s'.]+?)(?=(?:,\s*|;|\n|\s+(?:age|dob|gender|treatment))|$)/i);
+  const partnerMatch = clean.match(/(?:partner|husband|wife|spouse)(?:\s*name)?\s*[:=-]?\s*([a-zA-Z\s'.]+?)(?=(?:,\s*|;|\n|\s+(?:age|dob|gender|treatment|phone))|$)/i);
   const partnerAgeMatch = clean.match(/partner\s*age\s*[:=-]?\s*(\d{1,2})/i);
+  const partnerDobMatch = clean.match(/partner\s*(?:dob|date\s*of\s*birth)\s*[:=-]?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})/i);
+  const partnerPhoneMatch = clean.match(/(?:partner\s*)?(?:phone|mobile|wa|whatsapp)\s*[:=-]?\s*(\+?\d{10,14})/i);
 
   if (nameMatch || (ageMatch && genderMatch)) {
     const rawName = nameMatch ? nameMatch[1]?.trim() : undefined;
     const ageNum = ageMatch ? parseInt(ageMatch[1]!, 10) : undefined;
-    const dob = dobMatch ? dobMatch[1]?.trim() : undefined;
     const gender = genderMatch ? parseGender(genderMatch[1]!) : undefined;
     const partner = partnerMatch ? partnerMatch[1]?.trim() : undefined;
     const partnerAge = partnerAgeMatch ? parseInt(partnerAgeMatch[1]!, 10) : undefined;
+    let dob = dobMatch ? dobMatch[1]?.trim() : undefined;
+    let partnerDob = partnerDobMatch ? partnerDobMatch[1]?.trim() : undefined;
+    if (!partnerDob && partner) {
+      const partnerIndex = clean.search(/(?:partner|husband|wife|spouse)/i);
+      if (partnerIndex !== -1) {
+        const afterPartner = clean.slice(partnerIndex);
+        const secondDob = afterPartner.match(/(?:dob|date\s*of\s*birth)\s*[:=-]?\s*(\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4})/i);
+        if (secondDob) {
+          partnerDob = secondDob[1]?.trim();
+        }
+      }
+    }
+    const partnerPhone = partnerPhoneMatch ? parsePhoneNumber(partnerPhoneMatch[1]!) : undefined;
 
     const out: {
       patientName?: string | undefined;
@@ -191,6 +302,9 @@ export function parseCompositeRegistration(text: string): {
       gender?: Gender | undefined;
       partnerName?: string | undefined;
       partnerAge?: number | undefined;
+      partnerDateOfBirth?: string | undefined;
+      partnerGender?: Gender | undefined;
+      partnerPhone?: string | undefined;
       treatmentInterest?: "IVF" | "IUI" | "EVALUATION" | "GENERAL" | undefined;
       isCouple?: boolean | undefined;
       subStep?: 1 | 2 | 3 | undefined;
@@ -199,13 +313,23 @@ export function parseCompositeRegistration(text: string): {
     };
     if (rawName) out.patientName = rawName;
     if (ageNum && ageNum >= 10 && ageNum <= 110) out.age = ageNum;
-    if (dob) out.dateOfBirth = dob;
+    if (dob) {
+      const parsedDob = parseDobOrAge(dob);
+      out.dateOfBirth = parsedDob.dateOfBirth || dob;
+      if (!out.age && parsedDob.age) out.age = parsedDob.age;
+    }
     if (gender) out.gender = gender;
     if (partner) {
       out.partnerName = partner;
       out.isCouple = true;
     }
     if (partnerAge) out.partnerAge = partnerAge;
+    if (partnerDob) {
+      const parsedPDob = parseDobOrAge(partnerDob);
+      out.partnerDateOfBirth = parsedPDob.dateOfBirth || partnerDob;
+      if (!out.partnerAge && parsedPDob.age) out.partnerAge = parsedPDob.age;
+    }
+    if (partnerPhone) out.partnerPhone = partnerPhone;
     if (treatmentInterest) out.treatmentInterest = treatmentInterest;
 
     return out;
@@ -221,43 +345,49 @@ export function parseCompositeRegistration(text: string): {
       let gender: Gender | undefined;
       let partnerName: string | undefined;
       let partnerAge: number | undefined;
+      let partnerDateOfBirth: string | undefined;
       let partnerGender: Gender | undefined;
+      let partnerPhone: string | undefined;
 
       for (let i = 1; i < commaParts.length; i++) {
         const part = commaParts[i]!;
 
+        // Check for partner phone
+        const pPhone = parsePhoneNumber(part);
+        if (pPhone && !partnerPhone && partnerName) {
+          partnerPhone = pPhone;
+          continue;
+        }
+
         // Check for partner prefix
         if (/^(?:partner|spouse|husband|wife)\s*[:=-]?\s*/i.test(part)) {
           const partnerRaw = part.replace(/^(?:partner|spouse|husband|wife)\s*[:=-]?\s*/i, "").trim();
-          const pParts = partnerRaw.split(/\s+/);
-          if (pParts.length >= 2) {
-            // Check if last part is age e.g. "Rahul Sharma 31"
-            const lastPart = pParts[pParts.length - 1]!;
-            const num = parseInt(lastPart, 10);
-            if (num >= 10 && num <= 110) {
-              partnerAge = num;
-              partnerName = pParts.slice(0, -1).join(" ");
-            } else {
-              partnerName = partnerRaw;
-            }
-          } else {
-            partnerName = partnerRaw;
-          }
+          const pDobAge = parseDobOrAge(partnerRaw);
+          if (pDobAge.dateOfBirth) partnerDateOfBirth = pDobAge.dateOfBirth;
+          if (pDobAge.age) partnerAge = pDobAge.age;
+
+          // Strip numbers/dates out of partnerRaw to get clean name
+          const pNameClean = partnerRaw
+            .replace(/\b(19\d{2}|20[0-2]\d)[-/.](\d{1,2})[-/.](\d{1,2})\b/g, "")
+            .replace(/\b(\d{1,2})[-/.](\d{1,2})[-/.](19\d{2}|20[0-2]\d)\b/g, "")
+            .replace(/\b\d{1,2}\b/g, "")
+            .trim();
+          partnerName = pNameClean || partnerRaw;
           continue;
         }
 
-        const num = parseInt(part.replace(/\D/g, ""), 10);
-        if (num >= 10 && num <= 110) {
-          if (!age) {
-            age = num;
-          } else if (!partnerAge && partnerName) {
-            partnerAge = num;
-          }
+        const dobOrAge = parseDobOrAge(part);
+        if (dobOrAge.dateOfBirth && !dateOfBirth) {
+          dateOfBirth = dobOrAge.dateOfBirth;
+          if (!age && dobOrAge.age) age = dobOrAge.age;
           continue;
         }
-
-        if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}$/.test(part)) {
-          if (!dateOfBirth) dateOfBirth = part;
+        if (dobOrAge.age && !age) {
+          age = dobOrAge.age;
+          continue;
+        } else if (dobOrAge.age && !partnerAge && partnerName) {
+          partnerAge = dobOrAge.age;
+          if (dobOrAge.dateOfBirth) partnerDateOfBirth = dobOrAge.dateOfBirth;
           continue;
         }
 
@@ -284,7 +414,9 @@ export function parseCompositeRegistration(text: string): {
           gender: gender ?? "UNSPECIFIED",
           partnerName,
           partnerAge,
+          partnerDateOfBirth,
           partnerGender,
+          partnerPhone,
           treatmentInterest,
           isCouple: Boolean(partnerName),
           subStep: 3,
@@ -298,6 +430,7 @@ export function parseCompositeRegistration(text: string): {
 
 export function isCommandOrGreeting(text: string): boolean {
   const lower = text.trim().toLowerCase();
+  if (lower.startsWith("reg_")) return false;
   return (
     /^(hi+|hello|hey+|restart|cancel|reset|back|human|help|menu|book|appointment|register|status)$/i.test(lower) ||
     /\b(book\s*appointment|book\s*consultation|book\s*appt|main\s*menu|more\s*services)\b/i.test(lower) ||
@@ -311,6 +444,7 @@ export function isValidPersonName(text: string): boolean {
   const clean = text.trim();
   if (clean.length < 2 || clean.length > 50) return false;
   if (/^\d+$/.test(clean)) return false;
+  if (clean.toLowerCase().startsWith("reg_")) return false;
   if (isCommandOrGreeting(clean)) return false;
   if (
     /\b(book|appointment|consultation|schedule|doctor|slots?|menu|help|register|registration|cancel|restart|reset|start|hi|hello|hey|test|clinic|dr|solo|skip|yes|no)\b/i.test(clean) ||
@@ -321,6 +455,40 @@ export function isValidPersonName(text: string): boolean {
     return false;
   }
   return /^[a-zA-Z\s'.\-]+$/.test(clean);
+}
+
+/**
+ * Dispatches WhatsApp interactive buttons with graceful fallback to session text.
+ */
+async function safeSendStepPrompt(
+  tenant: TenantContext,
+  conversationId: string,
+  options: {
+    fallbackText: string;
+    interactive?: {
+      body: string;
+      buttons: Array<{ id: string; title: string }>;
+      footer?: string;
+    };
+  },
+): Promise<void> {
+  if (options.interactive && options.interactive.buttons.length >= 1 && options.interactive.buttons.length <= 3) {
+    try {
+      await sendWhatsAppInteractiveButtons(tenant, {
+        conversationId,
+        body: options.interactive.body,
+        buttons: options.interactive.buttons,
+        ...(options.interactive.footer ? { footer: options.interactive.footer } : {}),
+      });
+      return;
+    } catch {
+      // Gracefully fall back to standard text
+    }
+  }
+  await sendWhatsAppAiSessionText(tenant, {
+    conversationId,
+    body: options.fallbackText,
+  }).catch(() => undefined);
 }
 
 export type RegistrationResult = {
@@ -409,27 +577,23 @@ export async function tryHandleRegistrationMessage(input: {
   } else if (inDraft) {
     // Step-by-step resolution
     if (pending.subStep === 1) {
-      // Step 1: User provides Full Name and Age (e.g. "Manideep, 29" or "Priya Sharma")
-      const parts = clean.split(/,|\n/).map((p) => p.trim());
-      let possibleName = parts[0]!;
-      let ageFromInput: number | undefined;
+      // Step 1: User provides Full Name and Age / DOB
+      const dobOrAge = parseDobOrAge(clean);
+      const nameParts = clean.split(/,|\n/).map((p) => p.trim());
+      let possibleName = nameParts[0]!;
 
-      const nameTokens = possibleName.split(/\s+/);
-      if (nameTokens.length >= 2) {
-        const lastToken = nameTokens[nameTokens.length - 1]!;
-        const num = parseInt(lastToken, 10);
-        if (num >= 10 && num <= 110) {
-          ageFromInput = num;
-          possibleName = nameTokens.slice(0, -1).join(" ");
+      // Check if last token is age or dob e.g. "Priya Sharma, 28"
+      const tokens = possibleName.split(/\s+/);
+      if (tokens.length >= 2) {
+        const lastToken = tokens[tokens.length - 1]!;
+        const tokenDobAge = parseDobOrAge(lastToken);
+        if (tokenDobAge.age || tokenDobAge.dateOfBirth) {
+          possibleName = tokens.slice(0, -1).join(" ");
         }
-      }
-      if (parts.length > 1) {
-        const num = parseInt(parts[1]!.replace(/\D/g, ""), 10);
-        if (num >= 10 && num <= 110) ageFromInput = num;
       }
 
       if (!isValidPersonName(possibleName)) {
-        const prompt = `Please share your actual *Full Name* and *Age* (e.g. "Manideep, 29" or "Priya Sharma") to continue registration:`;
+        const prompt = `Please share your actual *Full Name* and *Age or Date of Birth* (e.g. "Priya Sharma, 28" or "Priya Sharma, 14/08/1996") to continue registration:`;
         await sendWhatsAppAiSessionText(input.tenant, {
           conversationId: conversation.id,
           body: prompt,
@@ -438,36 +602,98 @@ export async function tryHandleRegistrationMessage(input: {
       }
 
       draftData.patientName = possibleName;
-      if (ageFromInput) draftData.age = ageFromInput;
+      if (dobOrAge.age) draftData.age = dobOrAge.age;
+      if (dobOrAge.dateOfBirth) draftData.dateOfBirth = dobOrAge.dateOfBirth;
       draftData.subStep = 2;
     } else if (pending.subStep === 2) {
       // Step 2: Couple / Partner Details
       const lower = clean.toLowerCase();
-      if (lower === "solo" || lower === "no" || lower === "skip" || lower === "none" || lower === "single" || lower === "individual") {
+
+      // Check if user tapped Solo or replied Solo / No
+      if (
+        clean === REG_ACTIONS.COUPLE_SOLO ||
+        lower === "solo" ||
+        lower === "no" ||
+        lower === "none" ||
+        lower === "single" ||
+        lower === "individual" ||
+        lower === "skip" ||
+        clean === "2"
+      ) {
         draftData.isCouple = false;
         draftData.partnerName = undefined;
         draftData.subStep = 3;
-      } else {
-        const partnerParts = clean.replace(/^(?:yes|partner|spouse|husband|wife)\s*[:=-]?\s*/i, "").split(/,|\n/).map((p) => p.trim());
+      }
+      // Check if user tapped Yes or replied Yes / Couple
+      else if (
+        (clean === REG_ACTIONS.COUPLE_YES || lower === "yes" || lower === "couple" || clean === "1") &&
+        !draftData.partnerName
+      ) {
+        draftData.isCouple = true;
+        const updatedDraft: RegistrationDraft = {
+          ...draftData,
+          kind: "REGISTRATION",
+          subStep: 2,
+          isCouple: true,
+        };
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: {
+            pendingAction: updatedDraft,
+            pendingActionExpiresAt: new Date(Date.now() + 60 * 60_000),
+          },
+        });
+        const prompt = formatRegistrationStepPrompt(updatedDraft);
+        await safeSendStepPrompt(input.tenant, conversation.id, {
+          fallbackText: prompt,
+          interactive: {
+            body: `📝 *Couple Registration (Step 2/3) — Partner Details*\n\nPlease reply with your *Partner's Full Name, Age/DOB, and Mobile Number*:\n_Example: "Rahul Sharma, 31, 9876543210"_`,
+            buttons: [{ id: REG_ACTIONS.PARTNER_PHONE_SKIP, title: "⏭️ Skip Partner Phone" }],
+            footer: "Reply with partner details or tap Skip Phone",
+          },
+        });
+        return { handled: true, responseMessage: prompt };
+      }
+      // User replied with partner details
+      else {
+        // If user tapped Skip Phone button while in partner details prompt
+        if (clean === REG_ACTIONS.PARTNER_PHONE_SKIP) {
+          const prompt = `Please reply with your Partner's *Name & Age* (e.g. "Rahul Sharma, 31"):`;
+          await sendWhatsAppAiSessionText(input.tenant, {
+            conversationId: conversation.id,
+            body: prompt,
+          }).catch(() => undefined);
+          return { handled: true, responseMessage: prompt };
+        }
+
+        // Extract partner phone if present
+        const pPhone = parsePhoneNumber(clean);
+        // Extract partner DOB or age
+        const pDobOrAge = parseDobOrAge(clean);
+
+        // Extract partner name
+        const partnerParts = clean
+          .replace(/^(?:yes|partner|spouse|husband|wife)\s*[:=-]?\s*/i, "")
+          .split(/,|\n/)
+          .map((p) => p.trim());
         let pName = partnerParts[0]!;
-        let partnerAgeFromInput: number | undefined;
 
         const pTokens = pName.split(/\s+/);
         if (pTokens.length >= 2) {
           const lastPart = pTokens[pTokens.length - 1]!;
-          const num = parseInt(lastPart, 10);
-          if (num >= 10 && num <= 110) {
-            partnerAgeFromInput = num;
+          const tokenDobAge = parseDobOrAge(lastPart);
+          if (tokenDobAge.age || tokenDobAge.dateOfBirth) {
             pName = pTokens.slice(0, -1).join(" ");
           }
         }
-        if (partnerParts.length > 1) {
-          const num = parseInt(partnerParts[1]!.replace(/\D/g, ""), 10);
-          if (num >= 10 && num <= 110) partnerAgeFromInput = num;
+
+        // Strip phone from name if matched
+        if (pPhone) {
+          pName = pName.replace(pPhone, "").replace(/\+?\d{10,14}/, "").trim();
         }
 
         if (!isValidPersonName(pName)) {
-          const prompt = `Please reply with your Partner's *Name & Age* (e.g. "Anusha, 27"), or reply *"Solo"* if attending individually:`;
+          const prompt = `Please reply with your Partner's *Name & Age* (e.g. "Rahul Sharma, 31" or "Rahul Sharma, 31, 9876543210"), or reply *"Solo"* if attending individually:`;
           await sendWhatsAppAiSessionText(input.tenant, {
             conversationId: conversation.id,
             body: prompt,
@@ -477,19 +703,21 @@ export async function tryHandleRegistrationMessage(input: {
 
         draftData.isCouple = true;
         draftData.partnerName = pName;
-        if (partnerAgeFromInput) draftData.partnerAge = partnerAgeFromInput;
+        if (pPhone) draftData.partnerPhone = pPhone;
+        if (pDobOrAge.age) draftData.partnerAge = pDobOrAge.age;
+        if (pDobOrAge.dateOfBirth) draftData.partnerDateOfBirth = pDobOrAge.dateOfBirth;
         draftData.subStep = 3;
       }
     } else if (pending.subStep === 3) {
       // Step 3: Treatment focus & gender
       const lower = clean.toLowerCase();
-      if (clean === "1" || /\b(ivf|icsi)\b/i.test(lower)) {
+      if (clean === REG_ACTIONS.FOCUS_IVF || clean === "1" || /\b(ivf|icsi)\b/i.test(lower)) {
         draftData.treatmentInterest = "IVF";
-      } else if (clean === "2" || /\biui\b/i.test(lower)) {
+      } else if (clean === REG_ACTIONS.FOCUS_IUI || clean === "2" || /\biui\b/i.test(lower)) {
         draftData.treatmentInterest = "IUI";
-      } else if (clean === "3" || /\b(evaluat|checkup|assessment)\b/i.test(lower)) {
+      } else if (clean === REG_ACTIONS.FOCUS_EVAL || clean === "3" || /\b(evaluat|checkup|assessment)\b/i.test(lower)) {
         draftData.treatmentInterest = "EVALUATION";
-      } else if (clean === "4" || /\b(consult|general)\b/i.test(lower)) {
+      } else if (clean === REG_ACTIONS.FOCUS_GEN || clean === "4" || /\b(consult|general)\b/i.test(lower)) {
         draftData.treatmentInterest = "GENERAL";
       } else {
         draftData.treatmentInterest = "GENERAL";
@@ -520,10 +748,17 @@ export async function tryHandleRegistrationMessage(input: {
         },
       });
       const prompt = formatRegistrationStepPrompt(updatedDraft);
-      await sendWhatsAppAiSessionText(input.tenant, {
-        conversationId: conversation.id,
-        body: prompt,
-      }).catch(() => undefined);
+      await safeSendStepPrompt(input.tenant, conversation.id, {
+        fallbackText: prompt,
+        interactive: {
+          body: `✅ Thank you, *${draftData.patientName}*!\n\nAre you registering as a couple for fertility treatment?`,
+          buttons: [
+            { id: REG_ACTIONS.COUPLE_YES, title: "👫 Yes, Couple" },
+            { id: REG_ACTIONS.COUPLE_SOLO, title: "👤 Solo" },
+          ],
+          footer: "Select an option to proceed",
+        },
+      });
       return { handled: true, responseMessage: prompt };
     }
 
@@ -538,6 +773,7 @@ export async function tryHandleRegistrationMessage(input: {
         partnerName: draftData.partnerName,
         partnerAge: draftData.partnerAge,
         partnerDateOfBirth: draftData.partnerDateOfBirth,
+        partnerPhone: draftData.partnerPhone,
         isCouple: draftData.isCouple,
       };
       await prisma.conversation.update({
@@ -548,14 +784,22 @@ export async function tryHandleRegistrationMessage(input: {
         },
       });
       const prompt = formatRegistrationStepPrompt(updatedDraft);
-      await sendWhatsAppAiSessionText(input.tenant, {
-        conversationId: conversation.id,
-        body: prompt,
-      }).catch(() => undefined);
+      await safeSendStepPrompt(input.tenant, conversation.id, {
+        fallbackText: prompt,
+        interactive: {
+          body: `📋 *Clinical Focus (Step 3/3)*\n\nPlease select your primary treatment interest:`,
+          buttons: [
+            { id: REG_ACTIONS.FOCUS_IVF, title: "🧬 IVF / ICSI" },
+            { id: REG_ACTIONS.FOCUS_IUI, title: "💉 IUI" },
+            { id: REG_ACTIONS.FOCUS_EVAL, title: "🏥 Evaluation" },
+          ],
+          footer: "Select an option or reply with your choice",
+        },
+      });
       return { handled: true, responseMessage: prompt };
     }
 
-    // Guard: Do NOT finalize unless composite or completed all 3 steps (subStep === 4)
+    // Guard: Do NOT finalize unless composite or completed all steps (subStep === 4)
     if (!composite && draftData.subStep !== 4) {
       return { handled: false };
     }
@@ -569,14 +813,14 @@ export async function tryHandleRegistrationMessage(input: {
     const { firstName, lastName } = splitFullName(draftData.patientName);
     const normalizedPhone = input.contactPhone.replace(/\s+/g, "");
 
-    // Calculate approximate date of birth if only age provided
+    // Calculate exact date of birth or approximate from age
     let dob: Date | null = null;
     if (draftData.dateOfBirth) {
-      const parsed = new Date(draftData.dateOfBirth.includes("T") ? draftData.dateOfBirth : `${draftData.dateOfBirth}T00:00:00`);
+      const parsed = new Date(draftData.dateOfBirth.includes("T") ? draftData.dateOfBirth : `${draftData.dateOfBirth}T00:00:00.000Z`);
       if (!Number.isNaN(parsed.getTime())) dob = parsed;
     } else if (draftData.age) {
       const yr = new Date().getFullYear() - draftData.age;
-      dob = new Date(`${yr}-01-01T00:00:00`);
+      dob = new Date(`${yr}-01-01T00:00:00.000Z`);
     }
 
     const primaryGender = draftData.gender && draftData.gender !== "UNSPECIFIED" ? draftData.gender : "FEMALE";
@@ -605,21 +849,24 @@ export async function tryHandleRegistrationMessage(input: {
       let partnerDob: Date | null = null;
       if (draftData.partnerDateOfBirth) {
         const parsed = new Date(
-          draftData.partnerDateOfBirth.includes("T") ? draftData.partnerDateOfBirth : `${draftData.partnerDateOfBirth}T00:00:00`,
+          draftData.partnerDateOfBirth.includes("T") ? draftData.partnerDateOfBirth : `${draftData.partnerDateOfBirth}T00:00:00.000Z`,
         );
         if (!Number.isNaN(parsed.getTime())) partnerDob = parsed;
       } else if (draftData.partnerAge) {
         const yr = new Date().getFullYear() - draftData.partnerAge;
-        partnerDob = new Date(`${yr}-01-01T00:00:00`);
+        partnerDob = new Date(`${yr}-01-01T00:00:00.000Z`);
       }
 
       const partnerGender = draftData.partnerGender ?? (primaryGender === "FEMALE" ? "MALE" : "FEMALE");
+      const partnerPhoneNorm = draftData.partnerPhone ? draftData.partnerPhone.replace(/\s+/g, "") : null;
+
       const partner = await prisma.patient.create({
         data: {
           clinicId: input.tenant.clinicId,
           firstName: pName.firstName,
           lastName: pName.lastName,
-          phone: draftData.partnerPhone || null,
+          phone: partnerPhoneNorm,
+          whatsappNumber: partnerPhoneNorm,
           gender: partnerGender,
           dateOfBirth: partnerDob,
           preferredLanguage: "en",
@@ -637,6 +884,38 @@ export async function tryHandleRegistrationMessage(input: {
         },
       });
       coupleId = couple.id;
+
+      // If partner provided a WhatsApp number, register/update their dedicated conversation thread
+      if (partnerPhoneNorm && coupleId) {
+        const existingPartnerConv = await prisma.conversation.findFirst({
+          where: {
+            clinicId: input.tenant.clinicId,
+            contactPhone: partnerPhoneNorm,
+          },
+        });
+        if (existingPartnerConv) {
+          await prisma.conversation.update({
+            where: { id: existingPartnerConv.id },
+            data: {
+              patientId: partner.id,
+              coupleId,
+              unmatched: false,
+            },
+          }).catch(() => undefined);
+        } else {
+          await prisma.conversation.create({
+            data: {
+              clinicId: input.tenant.clinicId,
+              patientId: partner.id,
+              coupleId,
+              contactPhone: partnerPhoneNorm,
+              channel: "WHATSAPP",
+              status: "OPEN",
+              unmatched: false,
+            },
+          }).catch(() => undefined);
+        }
+      }
     } else {
       // Individual fertility couple record
       try {
