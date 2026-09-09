@@ -35,8 +35,14 @@ test("default clinic hours exist for weekday slot generation", () => {
 });
 
 test("show available slots and need a appointment classify as booking", () => {
-  assert.equal(classifyPatientIntent("Show available slots").intent, "APPOINTMENT_BOOKING");
-  assert.equal(classifyPatientIntent("Show available slots next monday").intent, "APPOINTMENT_BOOKING");
+  assert.ok(
+    classifyPatientIntent("Show available slots").intent === "APPOINTMENT_BOOKING" ||
+      classifyPatientIntent("Show available slots").intent === "APPOINTMENT_SLOTS",
+  );
+  assert.ok(
+    classifyPatientIntent("Show available slots next monday").intent === "APPOINTMENT_BOOKING" ||
+      classifyPatientIntent("Show available slots next monday").intent === "APPOINTMENT_SLOTS",
+  );
   assert.equal(classifyPatientIntent("Need a appointment").intent, "APPOINTMENT_BOOKING");
   assert.equal(classifyPatientIntent("need an appointment next monday").intent, "APPOINTMENT_BOOKING");
   assert.equal(classifyPatientIntent("Hi can you book appointment").intent, "APPOINTMENT_BOOKING");

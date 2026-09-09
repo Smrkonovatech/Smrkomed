@@ -243,6 +243,12 @@ export async function resumeWaitForReplyExecutions(input: {
           completedAt: new Date(),
         },
       });
+      const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
+      await setConversationPendingAction({
+        clinicId: input.tenant.clinicId,
+        conversationId: input.conversationId,
+        action: null,
+      }).catch(() => undefined);
       continue;
     }
 
@@ -286,8 +292,77 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["selectedSlotId"] = slotPart;
         mergedVars["slotId"] = slotPart;
         replyAction = rawReply;
+      } else {
+        const slotsJson = mergedVars["_availableSlotsJson"] || ctx.vars?.["_availableSlotsJson"];
+        if (slotsJson) {
+          try {
+            const slots = JSON.parse(slotsJson);
+            if (Array.isArray(slots) && slots.length > 0) {
+              const idx = parseInt(rawReply, 10);
+              let matched = !isNaN(idx) && idx >= 1 && idx <= slots.length ? slots[idx - 1] : null;
+              if (!matched) {
+                matched =
+                  slots.find((s: any) => {
+                    const d = new Date(s.startTime);
+                    const h12 = d
+                      .toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })
+                      .toLowerCase();
+                    return cleanLower.includes(h12) || cleanLower.includes(s.timeLabel?.toLowerCase() || "");
+                  }) ?? null;
+              }
+              if (matched) {
+                mergedVars["selectedSlotId"] = matched.slotId;
+                mergedVars["slotId"] = matched.slotId;
+                replyAction = `appt_slot_${matched.slotId}`;
+              }
+            }
+          } catch {
+            /* ignore parse error */
+          }
+        }
       }
-    } else if (waitId === "n_show_doctors" || waitId === "n_show_details") {
+    } else if (waitId === "n_show_details") {
+      const isSeeSlots =
+        rawReply === "btn_see_slots" ||
+        rawReply.startsWith("appt_doctor_slots_") ||
+        cleanLower === "see slots" ||
+        cleanLower.includes("see slot") ||
+        cleanLower === "slots" ||
+        cleanLower === "slot" ||
+        rawReply === "1";
+
+      const isOtherDoctor =
+        rawReply === "btn_other_doc" ||
+        rawReply === "appt_doctors_list" ||
+        rawReply === "btn_doctors_list" ||
+        cleanLower.includes("other doctor") ||
+        cleanLower.includes("other doc") ||
+        cleanLower.includes("change doctor") ||
+        cleanLower.includes("choose doctor") ||
+        rawReply === "2";
+
+      if (isSeeSlots) {
+        if (rawReply.startsWith("appt_doctor_slots_")) {
+          const docId = rawReply.slice("appt_doctor_slots_".length);
+          mergedVars["selectedDoctorId"] = docId;
+          mergedVars["doctor.id"] = docId;
+        }
+        replyAction = "btn_see_slots";
+      } else if (isOtherDoctor) {
+        replyAction = "btn_other_doc";
+      } else {
+        // User asked a question or sent text instead of choosing See Slots or Other Doctor
+        await prisma.whatsAppFlowExecution.update({
+          where: { id: row.id },
+          data: {
+            status: "CANCELLED",
+            error: "Superseded by user inquiry: " + rawReply.slice(0, 80),
+            completedAt: new Date(),
+          },
+        });
+        continue;
+      }
+    } else if (waitId === "n_show_doctors") {
       if (rawReply.startsWith("appt_doctor_slots_")) {
         const docId = rawReply.slice("appt_doctor_slots_".length);
         mergedVars["selectedDoctorId"] = docId;
@@ -643,6 +718,12 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
 
   const hasResumedActive = resumed.some((r) => r.status && r.status !== "FAILED" && !r.skipped);
   if (hasResumedActive) {
+    const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
+    await setConversationPendingAction({
+      clinicId: input.clinicId,
+      conversationId: input.conversationId,
+      action: null,
+    }).catch(() => undefined);
     console.log("[WhatsApp inbound] active flow resumed, bypassing new dispatch and general AI", {
       resumed,
       conversationId: input.conversationId,
@@ -660,11 +741,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     cleanInboundText === "btn_menu" ||
     cleanInboundText === "more services" ||
     cleanInboundText.startsWith("menu_") ||
-    cleanInboundText === "1" ||
-    cleanInboundText === "2" ||
-    cleanInboundText === "3" ||
-    /^(hi|hello|hey|namaste|start|good\s*(morning|afternoon|evening))$/i.test(cleanInboundText) ||
-    /^(my\s*app(ointment)?s?|doctor\s*slots?|available\s*slots?|clinic\s*timings?)$/i.test(cleanInboundText);
+    /^(hi|hello|hey|namaste|start|good\s*(morning|afternoon|evening))$/i.test(cleanInboundText);
 
   if (isMenuTrigger) {
     const { handleMenuAction } = await import("../whatsapp-ai/menu");
@@ -738,13 +815,12 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
   }
 
   // 2. Check if this is an appointment intent or interactive appointment button
-  const { classifyPatientIntent } = await import("../whatsapp-ai/intent");
+  const { classifyPatientIntent, isAppointmentRelatedIntent } = await import("../whatsapp-ai/intent");
   const intentResult = classifyPatientIntent(input.messageText);
   const isApptIntent =
     input.messageText.startsWith("appt_") ||
-    intentResult.intent === "APPOINTMENT_BOOKING" ||
-    intentResult.intent === "APPOINTMENT_RESCHEDULE" ||
-    intentResult.intent === "APPOINTMENT_CANCEL";
+    input.messageText.startsWith("btn_") ||
+    isAppointmentRelatedIntent(intentResult.intent);
 
   // 3. Dispatch INCOMING_WHATSAPP trigger (filters appointment flows based on isApptIntent)
   const dispatched = await dispatchWhatsAppTrigger({

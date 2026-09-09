@@ -134,6 +134,11 @@ export async function tryResolvePendingAppointmentAction(input: {
 
   const msg = input.patientMessage.trim();
 
+  // If message is an automation button payload or doctor selection, do not hijack it as a pending action reply
+  if (msg.startsWith("btn_") || msg.startsWith("appt_doctor_") || msg === "appt_doctors_list") {
+    return { handled: false };
+  }
+
   if (pending.kind === "SLOT_CHOICE") {
     if (isNegative(msg)) {
       await setConversationPendingAction({
@@ -166,10 +171,21 @@ export async function tryResolvePendingAppointmentAction(input: {
 
     if (!chosen) {
       // Ambiguous / unrelated while slots pending — ask clarification; do not mutate.
-      if (/^\d+$/.test(msg) || /slot|time|option|prefer/i.test(msg)) {
+      if (/^\d+$/.test(msg) || /slot|time|option|prefer|when|show|list/i.test(msg)) {
+        if (pending.slots.length === 0) {
+          await setConversationPendingAction({
+            clinicId: input.tenant.clinicId,
+            conversationId: input.conversationId,
+            action: null,
+          });
+          return { handled: false };
+        }
+        const slotList = pending.slots
+          .map((s) => `${s.index}. ${s.label}`)
+          .join("\n");
         return {
           handled: true,
-          text: `✦ Smrko AI\n\nPlease reply with a number from 1 to ${pending.slots.length} to choose a slot.`,
+          text: `✦ Smrko AI\n\nHere are the available appointment times:\n\n${slotList}\n\nPlease reply with a number from 1 to ${pending.slots.length} to choose a slot.`,
         };
       }
       return { handled: false };

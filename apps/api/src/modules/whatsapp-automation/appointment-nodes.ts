@@ -118,7 +118,7 @@ export function interpolateVariables(template: string, vars: Record<string, stri
     if (key === "appointment.time") return vars["appointment.time"] || vars["selected_time"] || vars["appointment_time"] || "";
 
     return "";
-  });
+  }).replace(/\bDr\.\s+Dr\.\s+/gi, "Dr. ");
 }
 
 /** Extract unique available dates from slots with friendly labels. */
