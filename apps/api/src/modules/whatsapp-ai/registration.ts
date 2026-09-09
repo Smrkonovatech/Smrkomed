@@ -13,7 +13,7 @@ import { sendWhatsAppAiSessionText } from "../../integrations/providers/whatsapp
 
 export type RegistrationDraft = {
   kind: "REGISTRATION";
-  subStep: 1 | 2 | 3;
+  subStep: 1 | 2 | 3 | 4;
   patientName?: string | undefined;
   age?: number | undefined;
   dateOfBirth?: string | undefined;
@@ -296,9 +296,31 @@ export function parseCompositeRegistration(text: string): {
   return null;
 }
 
-function isCommandOrGreeting(text: string): boolean {
+export function isCommandOrGreeting(text: string): boolean {
   const lower = text.trim().toLowerCase();
-  return /^(hi+|hello|hey+|restart|cancel|reset|back|human|help|menu|book|appointment|register|status)$/i.test(lower);
+  return (
+    /^(hi+|hello|hey+|restart|cancel|reset|back|human|help|menu|book|appointment|register|status)$/i.test(lower) ||
+    /\b(book\s*appointment|book\s*consultation|book\s*appt|main\s*menu|more\s*services)\b/i.test(lower) ||
+    lower.startsWith("menu_") ||
+    lower.startsWith("btn_") ||
+    lower.startsWith("appt_")
+  );
+}
+
+export function isValidPersonName(text: string): boolean {
+  const clean = text.trim();
+  if (clean.length < 2 || clean.length > 50) return false;
+  if (/^\d+$/.test(clean)) return false;
+  if (isCommandOrGreeting(clean)) return false;
+  if (
+    /\b(book|appointment|consultation|schedule|doctor|slots?|menu|help|register|registration|cancel|restart|reset|start|hi|hello|hey|test|clinic|dr|solo|skip|yes|no)\b/i.test(clean) ||
+    clean.toLowerCase().startsWith("menu_") ||
+    clean.toLowerCase().startsWith("btn_") ||
+    clean.toLowerCase().startsWith("appt_")
+  ) {
+    return false;
+  }
+  return /^[a-zA-Z\s'.\-]+$/.test(clean);
 }
 
 export type RegistrationResult = {
@@ -359,7 +381,8 @@ export async function tryHandleRegistrationMessage(input: {
     clean === "btn_ai_call" ||
     clean === "menu_book_appt";
 
-  if ((isRegisterTrigger || isBookingTrigger) && !composite && !inDraft) {
+  // When user triggers registration or booking, ALWAYS start fresh at Step 1
+  if ((isRegisterTrigger || isBookingTrigger) && !composite) {
     const draft: RegistrationDraft = { kind: "REGISTRATION", subStep: 1 };
     await prisma.conversation.update({
       where: { id: conversation.id },
@@ -369,7 +392,7 @@ export async function tryHandleRegistrationMessage(input: {
       },
     });
     const prompt = isBookingTrigger
-      ? `👋 Welcome to *${clinicName}*!\n\nTo schedule your consultation and create your clinic file, let's complete a quick patient registration. 📝\n\n${formatRegistrationStepPrompt(draft)}`
+      ? `👋 Welcome to *${clinicName}*!\n\nTo schedule your consultation and create your clinic file, clinic guidelines require completing your registration first (3 quick steps) 📝\n\n${formatRegistrationStepPrompt(draft)}`
       : formatRegistrationStepPrompt(draft);
 
     await sendWhatsAppAiSessionText(input.tenant, {
@@ -385,54 +408,76 @@ export async function tryHandleRegistrationMessage(input: {
     Object.assign(draftData, composite);
   } else if (inDraft) {
     // Step-by-step resolution
-    if (pending.subStep === 1 && !draftData.patientName) {
-      // Step 1: User provides Full Name and Age (e.g. "Priya Sharma, 28" or "Priya Sharma")
+    if (pending.subStep === 1) {
+      // Step 1: User provides Full Name and Age (e.g. "Manideep, 29" or "Priya Sharma")
       const parts = clean.split(/,|\n/).map((p) => p.trim());
-      const possibleName = parts[0]!;
-      if (!isCommandOrGreeting(possibleName) && possibleName.length >= 2 && !/^\d+$/.test(possibleName)) {
-        draftData.patientName = possibleName;
-        // Check if age was also in step 1
-        if (parts.length > 1) {
-          const num = parseInt(parts[1]!.replace(/\D/g, ""), 10);
-          if (num >= 10 && num <= 110) draftData.age = num;
-        } else {
-          // Check trailing number e.g. "Priya Sharma 28"
-          const nameTokens = possibleName.split(/\s+/);
-          const lastToken = nameTokens[nameTokens.length - 1]!;
-          const num = parseInt(lastToken, 10);
-          if (num >= 10 && num <= 110 && nameTokens.length >= 2) {
-            draftData.age = num;
-            draftData.patientName = nameTokens.slice(0, -1).join(" ");
-          }
+      let possibleName = parts[0]!;
+      let ageFromInput: number | undefined;
+
+      const nameTokens = possibleName.split(/\s+/);
+      if (nameTokens.length >= 2) {
+        const lastToken = nameTokens[nameTokens.length - 1]!;
+        const num = parseInt(lastToken, 10);
+        if (num >= 10 && num <= 110) {
+          ageFromInput = num;
+          possibleName = nameTokens.slice(0, -1).join(" ");
         }
-        draftData.subStep = 2;
       }
+      if (parts.length > 1) {
+        const num = parseInt(parts[1]!.replace(/\D/g, ""), 10);
+        if (num >= 10 && num <= 110) ageFromInput = num;
+      }
+
+      if (!isValidPersonName(possibleName)) {
+        const prompt = `Please share your actual *Full Name* and *Age* (e.g. "Manideep, 29" or "Priya Sharma") to continue registration:`;
+        await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: prompt,
+        }).catch(() => undefined);
+        return { handled: true, responseMessage: prompt };
+      }
+
+      draftData.patientName = possibleName;
+      if (ageFromInput) draftData.age = ageFromInput;
+      draftData.subStep = 2;
     } else if (pending.subStep === 2) {
       // Step 2: Couple / Partner Details
       const lower = clean.toLowerCase();
-      if (lower === "solo" || lower === "no" || lower === "skip" || lower === "none" || lower === "single") {
+      if (lower === "solo" || lower === "no" || lower === "skip" || lower === "none" || lower === "single" || lower === "individual") {
         draftData.isCouple = false;
+        draftData.partnerName = undefined;
         draftData.subStep = 3;
       } else {
-        draftData.isCouple = true;
-        // Parse partner name & age (e.g. "Rahul Sharma, 31" or "Rahul Sharma")
         const partnerParts = clean.replace(/^(?:yes|partner|spouse|husband|wife)\s*[:=-]?\s*/i, "").split(/,|\n/).map((p) => p.trim());
-        const pName = partnerParts[0]!;
-        if (pName && !isCommandOrGreeting(pName) && pName.length >= 2) {
-          draftData.partnerName = pName;
-          if (partnerParts.length > 1) {
-            const num = parseInt(partnerParts[1]!.replace(/\D/g, ""), 10);
-            if (num >= 10 && num <= 110) draftData.partnerAge = num;
-          } else {
-            const pTokens = pName.split(/\s+/);
-            const lastPart = pTokens[pTokens.length - 1]!;
-            const num = parseInt(lastPart, 10);
-            if (num >= 10 && num <= 110 && pTokens.length >= 2) {
-              draftData.partnerAge = num;
-              draftData.partnerName = pTokens.slice(0, -1).join(" ");
-            }
+        let pName = partnerParts[0]!;
+        let partnerAgeFromInput: number | undefined;
+
+        const pTokens = pName.split(/\s+/);
+        if (pTokens.length >= 2) {
+          const lastPart = pTokens[pTokens.length - 1]!;
+          const num = parseInt(lastPart, 10);
+          if (num >= 10 && num <= 110) {
+            partnerAgeFromInput = num;
+            pName = pTokens.slice(0, -1).join(" ");
           }
         }
+        if (partnerParts.length > 1) {
+          const num = parseInt(partnerParts[1]!.replace(/\D/g, ""), 10);
+          if (num >= 10 && num <= 110) partnerAgeFromInput = num;
+        }
+
+        if (!isValidPersonName(pName)) {
+          const prompt = `Please reply with your Partner's *Name & Age* (e.g. "Anusha, 27"), or reply *"Solo"* if attending individually:`;
+          await sendWhatsAppAiSessionText(input.tenant, {
+            conversationId: conversation.id,
+            body: prompt,
+          }).catch(() => undefined);
+          return { handled: true, responseMessage: prompt };
+        }
+
+        draftData.isCouple = true;
+        draftData.partnerName = pName;
+        if (partnerAgeFromInput) draftData.partnerAge = partnerAgeFromInput;
         draftData.subStep = 3;
       }
     } else if (pending.subStep === 3) {
@@ -446,15 +491,18 @@ export async function tryHandleRegistrationMessage(input: {
         draftData.treatmentInterest = "EVALUATION";
       } else if (clean === "4" || /\b(consult|general)\b/i.test(lower)) {
         draftData.treatmentInterest = "GENERAL";
+      } else {
+        draftData.treatmentInterest = "GENERAL";
       }
 
       const g = parseGender(clean);
       if (g !== "UNSPECIFIED") draftData.gender = g;
+      draftData.subStep = 4; // Ready to finalize!
     }
   }
 
   // Advance intermediate steps
-  if (draftData.patientName && draftData.patientName.length >= 2) {
+  if (draftData.patientName && isValidPersonName(draftData.patientName)) {
     if (draftData.subStep === 2 && !composite && inDraft && pending.subStep === 1) {
       const updatedDraft: RegistrationDraft = {
         kind: "REGISTRATION",
@@ -505,6 +553,16 @@ export async function tryHandleRegistrationMessage(input: {
         body: prompt,
       }).catch(() => undefined);
       return { handled: true, responseMessage: prompt };
+    }
+
+    // Guard: Do NOT finalize unless composite or completed all 3 steps (subStep === 4)
+    if (!composite && draftData.subStep !== 4) {
+      return { handled: false };
+    }
+
+    // Guard: Must have a valid patient name before DB creation
+    if (!draftData.patientName || !isValidPersonName(draftData.patientName)) {
+      return { handled: false };
     }
 
     // Finalize registration!
