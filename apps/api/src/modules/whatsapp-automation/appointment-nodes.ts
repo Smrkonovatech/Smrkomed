@@ -165,8 +165,8 @@ export function segmentSlots(slots: AppointmentSlot[]): {
     const d = new Date(s.startTime);
     if (Number.isNaN(d.getTime())) continue;
 
-    const hours = d.getHours();
-    const minutes = String(d.getMinutes()).padStart(2, "0");
+    const hours = d.getUTCHours();
+    const minutes = String(d.getUTCMinutes()).padStart(2, "0");
     const ampm = hours >= 12 ? "PM" : "AM";
     const h12 = hours % 12 || 12;
     const timeLabel = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;

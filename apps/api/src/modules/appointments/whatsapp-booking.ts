@@ -73,8 +73,8 @@ async function dispatchApptTrigger(input: {
 }
 
 function appointmentCareDueTime(startsAt: Date): string {
-  const hh = String(startsAt.getHours()).padStart(2, "0");
-  const mm = String(startsAt.getMinutes()).padStart(2, "0");
+  const hh = String(startsAt.getUTCHours()).padStart(2, "0");
+  const mm = String(startsAt.getUTCMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
 }
 

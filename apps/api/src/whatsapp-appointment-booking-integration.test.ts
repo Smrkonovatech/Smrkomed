@@ -75,14 +75,14 @@ async function cleanup() {
 
 function nextWeekdaySlotStart(daysAhead = 1, hour = 10): Date {
   const d = new Date();
-  d.setDate(d.getDate() + daysAhead);
+  d.setUTCDate(d.getUTCDate() + daysAhead);
   // Skip Sunday (DEFAULT_HOURS.sun = null)
-  while (d.getDay() === 0) d.setDate(d.getDate() + 1);
-  d.setHours(hour, 0, 0, 0);
+  while (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
+  d.setUTCHours(hour, 0, 0, 0);
   if (d.getTime() <= Date.now()) {
-    d.setDate(d.getDate() + 1);
-    while (d.getDay() === 0) d.setDate(d.getDate() + 1);
-    d.setHours(hour, 0, 0, 0);
+    d.setUTCDate(d.getUTCDate() + 1);
+    while (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
+    d.setUTCHours(hour, 0, 0, 0);
   }
   return d;
 }

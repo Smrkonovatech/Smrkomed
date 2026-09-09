@@ -1755,8 +1755,8 @@ async function executeNode(
         const decoded = decodeSlotId(vars["selectedSlotId"]);
         if (decoded) {
           const d = new Date(decoded.startMs);
-          const hours = d.getHours();
-          const minutes = String(d.getMinutes()).padStart(2, "0");
+          const hours = d.getUTCHours();
+          const minutes = String(d.getUTCMinutes()).padStart(2, "0");
           const ampm = hours >= 12 ? "PM" : "AM";
           const h12 = hours % 12 || 12;
           time = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;

@@ -281,8 +281,8 @@ export async function getDoctorDaySlots(
   });
 
   const bookedWindows = bookedAppointments.map((appt) => {
-    const hours = appt.startsAt.getHours();
-    const mins = appt.startsAt.getMinutes();
+    const hours = appt.startsAt.getUTCHours();
+    const mins = appt.startsAt.getUTCMinutes();
     const startMins = hours * 60 + mins;
     const endMins = startMins + (appt.durationMin || 30);
     return { startMins, endMins };

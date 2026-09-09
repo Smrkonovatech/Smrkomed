@@ -452,7 +452,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const addAppointment = useCallback(async (input: AddAppointmentInput) => {
     const startsAt = input.date
-      ? new Date(`${input.date}T${normalizeTime(input.time)}`).toISOString()
+      ? `${input.date}T${normalizeTime(input.time)}Z`
       : new Date().toISOString();
     const created = await clinicApi.createAppointment({
       coupleId: input.coupleId,

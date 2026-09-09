@@ -60,8 +60,8 @@ export function buildClinicPriorities(input: {
         level: "HIGH",
         title: `Appointment soon: ${appt.type}`,
         detail: appt.coupleLabel
-          ? `${appt.coupleLabel} · ${appt.startsAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`
-          : appt.startsAt.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }),
+          ? `${appt.coupleLabel} · ${appt.startsAt.toLocaleTimeString("en-IN", { timeZone: "UTC", hour: "numeric", minute: "2-digit" })}`
+          : appt.startsAt.toLocaleTimeString("en-IN", { timeZone: "UTC", hour: "numeric", minute: "2-digit" }),
         href: "/appointments",
         ...(appt.coupleSlug ? { coupleSlug: appt.coupleSlug } : {}),
       });

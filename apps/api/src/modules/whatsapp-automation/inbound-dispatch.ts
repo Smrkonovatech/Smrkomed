@@ -101,14 +101,14 @@ export function buildIncomingWhatsAppVars(input: {
           let dateStr = "";
           if (decoded) {
             const d = new Date(decoded.startMs);
-            const hours = d.getHours();
-            const minutes = String(d.getMinutes()).padStart(2, "0");
+            const hours = d.getUTCHours();
+            const minutes = String(d.getUTCMinutes()).padStart(2, "0");
             const ampm = hours >= 12 ? "PM" : "AM";
             const h12 = hours % 12 || 12;
             timeLabel = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
-            const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
-            const month = d.toLocaleDateString("en-US", { month: "short" });
-            const day = d.getDate();
+            const weekday = d.toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" });
+            const month = d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short" });
+            const day = d.getUTCDate();
             dateStr = `${weekday}, ${day} ${month}`;
           }
           return {

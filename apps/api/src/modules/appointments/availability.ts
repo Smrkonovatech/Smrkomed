@@ -102,14 +102,15 @@ export async function getAvailableAppointmentSlots(input: {
 
   if (prefStr && /^\d{4}-\d{2}-\d{2}$/.test(prefStr)) {
     const [y, m, d] = prefStr.split("-").map(Number);
-    baseDate = new Date(y!, m! - 1, d!, 0, 0, 0, 0);
+    baseDate = new Date(Date.UTC(y!, m! - 1, d!, 0, 0, 0, 0));
     scanDays = Math.min(input.days ?? 1, 21);
   } else if (input.preferredDate) {
     const parsed = new Date(input.preferredDate);
     baseDate = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
     scanDays = Math.min(input.days ?? 1, 21);
   } else {
-    baseDate = new Date();
+    const cur = new Date();
+    baseDate = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth(), cur.getUTCDate(), 0, 0, 0, 0));
     scanDays = Math.min(input.days ?? 7, 21);
   }
 
@@ -148,16 +149,14 @@ export async function getAvailableAppointmentSlots(input: {
       if (prefStr !== localIso && prefStr !== dayIso) continue;
     }
 
-    const key = DAY_KEYS[day.getDay()]!;
+    const key = DAY_KEYS[day.getUTCDay()]!;
     const window = hours[key];
     if (!window) continue;
 
     const { h: sh, m: sm } = parseHm(window.start);
     const { h: eh, m: em } = parseHm(window.end);
-    const open = new Date(day);
-    open.setHours(sh, sm, 0, 0);
-    const close = new Date(day);
-    close.setHours(eh, em, 0, 0);
+    const open = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), sh, sm, 0, 0));
+    const close = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), eh, em, 0, 0));
 
     for (
       let cursor = new Date(open);
@@ -221,15 +220,13 @@ export async function validateSlotStillAvailable(input: {
 
   const settings = await getClinicCommSettings(input.clinicId);
   const hours = settings.workingHours ?? DEFAULT_HOURS;
-  const key = DAY_KEYS[input.startTime.getDay()]!;
+  const key = DAY_KEYS[input.startTime.getUTCDay()]!;
   const window = hours[key];
   if (!window) return { ok: false, reason: "CLINIC_CLOSED" };
   const { h: sh, m: sm } = parseHm(window.start);
   const { h: eh, m: em } = parseHm(window.end);
-  const open = new Date(input.startTime);
-  open.setHours(sh, sm, 0, 0);
-  const close = new Date(input.startTime);
-  close.setHours(eh, em, 0, 0);
+  const open = new Date(Date.UTC(input.startTime.getUTCFullYear(), input.startTime.getUTCMonth(), input.startTime.getUTCDate(), sh, sm, 0, 0));
+  const close = new Date(Date.UTC(input.startTime.getUTCFullYear(), input.startTime.getUTCMonth(), input.startTime.getUTCDate(), eh, em, 0, 0));
   if (input.startTime < open || end > close) {
     return { ok: false, reason: "OUTSIDE_WORKING_HOURS" };
   }

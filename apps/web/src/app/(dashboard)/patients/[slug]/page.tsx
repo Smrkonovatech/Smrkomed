@@ -74,9 +74,10 @@ const initials = (name: string) =>
 function formatVisitDate(dateStr?: string) {
   if (!dateStr) return "";
   try {
-    const d = new Date(dateStr.includes("T") ? dateStr : `${dateStr}T00:00:00`);
+    const d = new Date(dateStr.includes("T") ? dateStr : `${dateStr}T00:00:00Z`);
     if (isNaN(d.getTime())) return dateStr;
     return d.toLocaleDateString("en-IN", {
+      timeZone: "UTC",
       weekday: "short",
       day: "numeric",
       month: "short",

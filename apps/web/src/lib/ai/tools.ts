@@ -1673,6 +1673,7 @@ export async function runAiTool(
         const overdue = couple?.careTasks.length ?? 0;
         items.push({
           time: a.startsAt.toLocaleTimeString("en-IN", {
+            timeZone: "UTC",
             hour: "numeric",
             minute: "2-digit",
           }),

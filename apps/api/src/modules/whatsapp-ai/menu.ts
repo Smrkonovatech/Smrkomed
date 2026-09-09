@@ -269,12 +269,17 @@ export async function handleMenuAction(input: {
         for (const appt of upcoming) {
           const d = new Date(appt.startsAt);
           const dateStr = d.toLocaleDateString("en-IN", {
+            timeZone: "UTC",
             weekday: "short",
             month: "short",
             day: "numeric",
             year: "numeric",
           });
-          const timeStr = d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+          const timeStr = d.toLocaleTimeString("en-IN", {
+            timeZone: "UTC",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
           const doc = appt.doctorName || "Fertility Specialist";
           const statusIcon = appt.status === "CONFIRMED" ? "✅" : "⏳";
           msg += `🗓️ *${dateStr} at ${timeStr}*\n`;

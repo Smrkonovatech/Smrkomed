@@ -264,7 +264,11 @@ export function serializeAppointment(row: Appointment): AppointmentDto {
     doctor: row.doctorName ?? "Unassigned",
     room: row.room ?? "",
     status: APPOINTMENT_UI[row.status],
-    time: row.startsAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+    time: row.startsAt.toLocaleTimeString("en-IN", {
+      timeZone: "UTC",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
     date: row.startsAt.toISOString().slice(0, 10),
     duration: row.durationMin,
     notes: row.notes ?? "",
