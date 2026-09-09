@@ -223,15 +223,18 @@ export async function resumeWaitForReplyExecutions(input: {
     const rawReply = (input.inboundVars?.["message_text"] ?? "").trim();
     const cleanLower = rawReply.toLowerCase();
 
-    // If user types 'appointment' or 'restart' while waiting on an old mid-flow step (other than channel choice), cancel old execution and allow fresh flow
-    if (
-      waitId !== "n_channel_choice" &&
-      (cleanLower === "appointment" ||
-        cleanLower === "book appointment" ||
-        cleanLower === "restart" ||
-        cleanLower === "start over" ||
-        cleanLower === "reset")
-    ) {
+    // If user types 'appointment' or 'restart' or triggers a menu booking while waiting on an old mid-flow step (other than channel choice), cancel old execution and allow fresh flow
+    const isRestartTrigger =
+      cleanLower === "appointment" ||
+      cleanLower === "book appointment" ||
+      cleanLower === "book appt" ||
+      cleanLower === "menu_book_appt" ||
+      cleanLower === "menu_doctor_slots" ||
+      cleanLower === "restart" ||
+      cleanLower === "start over" ||
+      cleanLower === "reset";
+
+    if (waitId !== "n_channel_choice" && isRestartTrigger) {
       await prisma.whatsAppFlowExecution.update({
         where: { id: row.id },
         data: {
@@ -267,6 +270,15 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["selectedDate"] = datePart;
         mergedVars["appointment.date"] = datePart;
         replyAction = rawReply;
+      } else if (/tomorrow/i.test(rawReply) || /\b(today|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i.test(rawReply) || /^\d{4}-\d{2}-\d{2}$/.test(rawReply)) {
+        const { parseNaturalDate } = await import("../appointment-booking/nlp-parser");
+        const parsed = parseNaturalDate(rawReply);
+        if (parsed) {
+          const datePart = parsed.date;
+          mergedVars["selectedDate"] = datePart;
+          mergedVars["appointment.date"] = datePart;
+          replyAction = `appt_date_${datePart}`;
+        }
       }
     } else if (waitId === "n_show_slots") {
       if (rawReply.startsWith("appt_slot_")) {
@@ -286,18 +298,27 @@ export async function resumeWaitForReplyExecutions(input: {
         mergedVars["selectedDoctorId"] = docId;
         mergedVars["doctor.id"] = docId;
         replyAction = rawReply;
-      } else if (/1|ananya/i.test(rawReply)) {
-        mergedVars["selectedDoctorId"] = "doc_ananya";
-        mergedVars["doctor.id"] = "doc_ananya";
-        replyAction = "appt_doctor_doc_ananya";
-      } else if (/2|rahul|rajesh/i.test(rawReply)) {
-        mergedVars["selectedDoctorId"] = "doc_rahul";
-        mergedVars["doctor.id"] = "doc_rahul";
-        replyAction = "appt_doctor_doc_rahul";
-      } else if (/3|priya/i.test(rawReply)) {
-        mergedVars["selectedDoctorId"] = "doc_priya";
-        mergedVars["doctor.id"] = "doc_priya";
-        replyAction = "appt_doctor_doc_priya";
+      } else {
+        const { resolveClinicDoctors } = await import("./appointment-nodes");
+        const docs = await resolveClinicDoctors(input.tenant.clinicId);
+        const docIdx = parseInt(rawReply, 10);
+        let matched = !isNaN(docIdx) && docIdx >= 1 && docIdx <= docs.length ? docs[docIdx - 1] : null;
+        if (!matched) {
+          matched = docs.find((d: { name: string; id: string }) => {
+            const parts = d.name.split(/\s+/);
+            const firstName = parts[0] || "";
+            const lastName = parts[parts.length - 1] || "";
+            return (
+              (firstName && new RegExp(`\\b${firstName}\\b`, "i").test(rawReply)) ||
+              (lastName && new RegExp(`\\b${lastName}\\b`, "i").test(rawReply))
+            );
+          }) ?? null;
+        }
+        if (matched) {
+          mergedVars["selectedDoctorId"] = matched.id;
+          mergedVars["doctor.id"] = matched.id;
+          replyAction = `appt_doctor_${matched.id}`;
+        }
       }
     } else if (waitId === "n_channel_choice") {
       const isCallChoice =
@@ -606,7 +627,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     return { resumed, dispatched: null, ai: { skipped: true as const, reason: "flow_resumed" } };
   }
 
-  // 1.2. Check for Namma Metro Main Menu trigger, greeting, or interactive menu action
+  // 1.2. Check for Interactive Main Menu trigger, greeting, or interactive menu action
   const cleanInboundText = input.messageText.trim().toLowerCase();
   const isMenuTrigger =
     cleanInboundText === "menu" ||
@@ -616,6 +637,9 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     cleanInboundText === "btn_menu" ||
     cleanInboundText === "more services" ||
     cleanInboundText.startsWith("menu_") ||
+    cleanInboundText === "1" ||
+    cleanInboundText === "2" ||
+    cleanInboundText === "3" ||
     /^(hi|hello|hey|namaste|start|good\s*(morning|afternoon|evening))$/i.test(cleanInboundText) ||
     /^(my\s*app(ointment)?s?|doctor\s*slots?|available\s*slots?|clinic\s*timings?)$/i.test(cleanInboundText);
 

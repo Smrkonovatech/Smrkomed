@@ -184,7 +184,13 @@ export async function handleMenuAction(input: {
 
   const conversation = await prisma.conversation.findFirst({
     where: { id: input.conversationId, clinicId: input.tenant.clinicId },
-    select: { id: true, patientId: true, coupleId: true, unmatched: true },
+    select: {
+      id: true,
+      patientId: true,
+      coupleId: true,
+      unmatched: true,
+      patient: { select: { firstName: true, lastName: true } },
+    },
   });
   if (!conversation) return { handled: false };
 
@@ -330,17 +336,34 @@ export async function handleMenuAction(input: {
       msg += `\n`;
     }
 
-    if (totalSlotsShown > 0) {
-      msg += `💡 *To book any slot:*\n`;
-      msg += `Reply with your preferred doctor and time (e.g. *"Book Dr. Ananya Tomorrow 10am"*), or reply *Book* to start guided booking.\n\n`;
-    } else {
-      msg += `Please reply *Book* to request a custom consultation slot with our coordinator.\n\n`;
-    }
+    msg += `Tap *Choose Doctor* below to select your specialist and view their open slots:\n\n`;
     msg += `Type *MENU* anytime to view the main menu.`;
 
     await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(
       () => undefined,
     );
+
+    // Send interactive list dropdown so patient can select doctor and slots directly
+    if (doctors.length > 0) {
+      await sendWhatsAppInteractiveList(input.tenant, {
+        conversationId: input.conversationId,
+        body: "Choose your doctor 👩‍⚕️\n\nTap below to select a doctor and view their available consultation slots:",
+        buttonLabel: "Choose Doctor",
+        sections: [
+          {
+            title: "Available Specialists",
+            rows: doctors.slice(0, 10).map((d) => ({
+              id: `appt_doctor_${d.id}`,
+              title: d.displayName.slice(0, 24),
+              description: `${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
+            })),
+          },
+        ],
+      }).catch((err) => {
+        console.log("[WhatsApp Menu] doctor slots interactive list notice:", err instanceof Error ? err.message : err);
+      });
+    }
+
     return { handled: true, action: "DOCTOR_SLOTS", responseText: msg };
   }
 
@@ -349,7 +372,10 @@ export async function handleMenuAction(input: {
     clean === MENU_ACTIONS.BOOK_APPOINTMENT ||
     clean === "1" ||
     clean === "btn_book_wa" ||
-    clean === "btn_ai_call"
+    clean === "btn_ai_call" ||
+    clean === "book" ||
+    clean === "book appointment" ||
+    clean === "appointment"
   ) {
     // If unregistered, route to couple registration
     if (!conversation.patientId || conversation.unmatched) {
@@ -363,20 +389,71 @@ export async function handleMenuAction(input: {
       return { handled: true, action: "REGISTRATION_START", responseText: reg.responseMessage };
     }
 
-    // Registered user booking consultation
-    const doctors = await getClinicDoctors(input.tenant.clinicId);
-    let msg = `📅 *Schedule a Consultation — ${clinicName}*\n\n`;
-    msg += `Please select your preferred doctor or share your preferred day:\n\n`;
-    doctors.slice(0, 3).forEach((d, idx) => {
-      msg += `${idx + 1}️⃣ *${d.displayName}* — ${d.specialty}\n`;
+    // Registered user booking consultation -> launch interactive appointment booking automation
+    await prisma.whatsAppFlowExecution.updateMany({
+      where: {
+        clinicId: input.tenant.clinicId,
+        conversationId: input.conversationId,
+        status: "WAITING",
+      },
+      data: {
+        status: "CANCELLED",
+        error: "Superseded by user booking request",
+        completedAt: new Date(),
+      },
     });
-    msg += `\n💬 Reply with a number (1-${Math.min(doctors.length, 3)}) or say e.g.:\n*"Tomorrow at 10:30 AM with Dr. Ananya"*\n\n`;
-    msg += `Type *MENU* to view other options.`;
 
-    await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(
-      () => undefined,
-    );
-    return { handled: true, action: "BOOK_APPOINTMENT", responseText: msg };
+    const patientName = conversation.patient
+      ? `${conversation.patient.firstName} ${conversation.patient.lastName || ""}`.trim()
+      : "Valued Patient";
+
+    const { dispatchWhatsAppTrigger } = await import("../whatsapp-automation/triggers");
+    const dispatched = await dispatchWhatsAppTrigger({
+      tenant: input.tenant,
+      triggerType: "INCOMING_WHATSAPP",
+      triggerEventId: `wa_menu_book_${Date.now()}_${input.conversationId}`,
+      patientId: conversation.patientId,
+      coupleId: conversation.coupleId,
+      conversationId: input.conversationId,
+      vars: {
+        message_text: "Appointment",
+        message_content: "Appointment",
+        sender_phone: input.contactPhone,
+        contact_phone: input.contactPhone,
+        patient_name: patientName,
+        "patient.name": patientName,
+        detected_intent: "APPOINTMENT_BOOKING",
+        is_appointment_intent: "true",
+      },
+      isAppointmentIntent: true,
+    }).catch((err) => {
+      console.error("[WhatsApp Menu] dispatch booking error:", err);
+      return { matched: 0, results: [] };
+    });
+
+    // Fallback: If no active flow triggered, send the interactive doctor dropdown list directly
+    if (!dispatched || dispatched.matched === 0) {
+      const doctors = await getClinicDoctors(input.tenant.clinicId);
+      if (doctors.length > 0) {
+        await sendWhatsAppInteractiveList(input.tenant, {
+          conversationId: input.conversationId,
+          body: "Choose your doctor 👩‍⚕️\n\nPlease select a specialist from the list below to view available slots and book your consultation:",
+          buttonLabel: "Choose Doctor",
+          sections: [
+            {
+              title: "Fertility Specialists",
+              rows: doctors.slice(0, 10).map((d) => ({
+                id: `appt_doctor_${d.id}`,
+                title: d.displayName.slice(0, 24),
+                description: `${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
+              })),
+            },
+          ],
+        }).catch(() => undefined);
+      }
+    }
+
+    return { handled: true, action: "BOOK_APPOINTMENT" };
   }
 
   // 4. Treatments & Services

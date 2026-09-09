@@ -119,9 +119,9 @@ export function formatRegistrationSuccessMessage(options: {
   }
   text += `How would you like to proceed today?\n`;
   text += `1️⃣ 📅 *Book a Consultation / Appointment*\n`;
-  text += `2️⃣ 📋 *Open Main Menu (Namma Metro Style)*\n`;
+  text += `2️⃣ 📋 *Open Main Menu*\n`;
   text += `3️⃣ 👩‍⚕️ *Speak with a Care Coordinator*\n\n`;
-  text += `_Simply reply with an option number or type what you need._`;
+  text += `_Tap an option from the menu below, or type what you need._`;
   return text;
 }
 
