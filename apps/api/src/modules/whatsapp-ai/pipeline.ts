@@ -290,6 +290,31 @@ export async function runWhatsAppAiPipeline(input: {
     intentResult.intent === "APPOINTMENT_BOOKING" ||
     intentResult.intent === "APPOINTMENT_RESCHEDULE";
 
+  // Strict Clinical Rule: Unregistered contacts CANNOT book appointments until registered!
+  const isBookingAttempt =
+    intentResult.intent === "APPOINTMENT_BOOKING" ||
+    (intentResult.intent === "APPOINTMENT_DATE_SELECTION" && (!conversation.patientId || conversation.unmatched)) ||
+    /\b(book\s*appointment|book\s*consultation|schedule\s*appointment|want\s*an?\s*appointment|need\s*an?\s*appointment|book\s*a?\s*slot)\b/i.test(input.patientMessage);
+
+  if ((!conversation.patientId || conversation.unmatched) && isBookingAttempt) {
+    console.log("[WhatsApp AI] Unregistered contact attempted appointment booking — blocking until registered", {
+      conversationId: conversation.id,
+      patientMessage: input.patientMessage,
+    });
+    const { tryHandleRegistrationMessage } = await import("./registration");
+    const reg = await tryHandleRegistrationMessage({
+      tenant: input.tenant,
+      conversationId: conversation.id,
+      contactPhone: conversation.contactPhone || "",
+      messageText: input.patientMessage || "book appointment",
+    });
+    if (reg.handled && reg.responseMessage) {
+      return {
+        text: reg.responseMessage,
+      };
+    }
+  }
+
   // Tool-driven hard handoff (e.g. booking with no slot service) after signal checks.
   if (signals.handoff && signals.pauseAi && !isAppointmentIntent) {
     const escalated = await escalateToHuman({

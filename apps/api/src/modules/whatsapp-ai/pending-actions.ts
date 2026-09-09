@@ -229,6 +229,19 @@ export async function tryResolvePendingAppointmentAction(input: {
 
   if (pending.kind === "BOOK_CONFIRM") {
     if (isAffirmative(msg)) {
+      if (!input.patientId) {
+        const { tryHandleRegistrationMessage } = await import("./registration");
+        const reg = await tryHandleRegistrationMessage({
+          tenant: input.tenant,
+          conversationId: input.conversationId,
+          contactPhone: "",
+          messageText: "book appointment",
+        });
+        return {
+          handled: true,
+          text: reg.responseMessage || "Please complete your patient registration before confirming an appointment.",
+        };
+      }
       const result = await bookAppointmentFromSlot({
         tenant: input.tenant,
         conversationId: input.conversationId,
