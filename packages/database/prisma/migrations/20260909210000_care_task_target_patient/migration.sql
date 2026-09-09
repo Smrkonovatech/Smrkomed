@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "CareTask" ADD COLUMN IF NOT EXISTS "targetPatientId" TEXT;
+ALTER TABLE "CareTask" ADD COLUMN IF NOT EXISTS "targetRole" TEXT;

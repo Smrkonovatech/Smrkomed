@@ -838,6 +838,8 @@ model CareTask {
   rescheduledReason    String?
   originalDueDate      DateTime?
   exceptionId          String?
+  targetPatientId      String?
+  targetRole           String?
 
   clinic                    Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   couple                    Couple?                   @relation(fields: [coupleId], references: [id], onDelete: Cascade)
