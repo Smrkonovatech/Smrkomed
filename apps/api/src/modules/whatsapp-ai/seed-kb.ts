@@ -18,16 +18,51 @@ const DEMO_BANNER =
 
 function pack1Smrkomed(): SeedArticle[] {
   const topics: Array<[string, string, string]> = [
-    ["What is SmrkoMed", "Platform", "SmrkoMed is a fertility-clinic SaaS platform for clinic operations, Care Loop, WhatsApp, appointments, and documents."],
-    ["Platform overview", "Platform", "SmrkoMed helps clinics manage patients, couples, journeys, WhatsApp communication, pharmacy, and billing in one workspace."],
-    ["Clinic management", "Platform", "Clinic admins manage staff, roles, WhatsApp connection, knowledge base, and communication safety settings."],
-    ["Care Loop", "Platform", "Care Loop tracks patient journey stages and tasks so the clinic can follow up on operational next steps."],
-    ["WhatsApp communication", "Platform", "Clinics connect Meta WhatsApp Cloud API to message patients with templates inside the customer-care window and automation flows."],
-    ["Appointments", "Platform", "Appointments can be booked, confirmed, and used in WhatsApp reminders. Staff see schedules in the clinic calendar."],
-    ["Documents", "Platform", "Patient documents can be stored and, when files are available, shared over WhatsApp from the inbox."],
-    ["AI", "Platform", "Smrko AI assists with operational answers from the clinic knowledge base. It is not a doctor and never diagnoses or prescribes."],
-    ["Onboarding", "Platform", "Onboarding typically includes connecting WhatsApp, syncing templates, seeding knowledge, and activating reminder flows."],
-    ["Support", "Platform", "For product support, contact your SmrkoMed administrator. For clinical questions, patients should speak with clinic staff."],
+    [
+      "What is SmrkoMed",
+      "Platform",
+      "SmrkoMed is an intelligent healthcare and fertility operating system designed specifically for reproductive medicine clinics, IVF centers, and modern hospitals. It bridges patients, couples, fertility specialists, and clinic coordinators into a seamless 24/7 digital care desk.",
+    ],
+    [
+      "What SmrkoMed Does",
+      "Platform",
+      "SmrkoMed automates patient care and clinic operations: 1) Interactive WhatsApp Self-Service: view doctor availability, browse specialists, and book or reschedule consultation slots natively in WhatsApp. 2) Sarvam AI Voice Assistant: automated phone calls in natural Indian languages for instant bookings and reminders. 3) 24/7 Care Loop: tracks couple fertility journeys (IVF, ICSI, IUI, follicular scans, and medications) with proactive alerts. 4) Couple-centric medical files and clinic operations.",
+    ],
+    [
+      "Why SmrkoMed",
+      "Platform",
+      "Why choose SmrkoMed? 1) Zero App Downloads: everything works effortlessly on WhatsApp and phone calls without extra apps. 2) 24/7 Instant Access: patients get immediate answers to clinic queries, doctor availability, and slot booking at any time. 3) Empathetic Couple Support: continuous guidance throughout fertility treatment with instant escalation to clinical care coordinators.",
+    ],
+    [
+      "Platform overview",
+      "Platform",
+      "SmrkoMed helps clinics manage patients, couples, journeys, WhatsApp communication, AI voice phone calls, pharmacy, and billing in one unified workspace.",
+    ],
+    [
+      "WhatsApp communication & booking",
+      "Platform",
+      "Clinics use SmrkoMed's WhatsApp self-service to provide interactive appointment booking with native dropdowns for doctors, dates, and slots, automated reminders, and instant digital care support.",
+    ],
+    [
+      "AI Voice Phone Assistant",
+      "Platform",
+      "SmrkoMed features a voice AI assistant powered by Sarvam AI that dials patients or receives calls in Indian languages (English, Hindi, Kannada, Tamil, etc.) to schedule appointments and answer clinic questions.",
+    ],
+    [
+      "Care Loop & Patient Journeys",
+      "Platform",
+      "Care Loop tracks couple fertility journey stages (IVF stimulation, ICSI, IUI cycle monitoring, egg retrieval, embryo transfer) and sends automated medication schedules and scan reminders.",
+    ],
+    [
+      "AI and Safety",
+      "Platform",
+      "Smrko AI provides instant operational assistance, clinic timings, specialist profiles, and guided appointment bookings. It is a care assistant, not a doctor, and connects patients with human coordinators for clinical questions.",
+    ],
+    [
+      "Support & Coordinator Help",
+      "Platform",
+      "Patients can connect with a clinical care coordinator anytime directly through WhatsApp or phone call for personal medical assistance, couple counseling, and doctor guidance.",
+    ],
   ];
   return topics.map(([title, category, content]) => ({
     title: `[DEMO] ${title}`,
@@ -92,6 +127,17 @@ export async function seedDemoKnowledgePacks(clinicId: string, updatedById?: str
       select: { id: true },
     });
     if (existing) {
+      await prisma.whatsAppKnowledgeArticle.update({
+        where: { id: existing.id },
+        data: {
+          category: a.category,
+          specialty: a.specialty,
+          keywords: a.keywords,
+          content: a.content,
+          status: "PUBLISHED",
+          ...(updatedById ? { updatedById } : {}),
+        },
+      });
       skipped += 1;
       continue;
     }
@@ -109,5 +155,5 @@ export async function seedDemoKnowledgePacks(clinicId: string, updatedById?: str
     });
     created += 1;
   }
-  return { created, skipped, total: articles.length, label: "DEMO / DEVELOPMENT CONTENT" };
+  return { created, updated: skipped, total: articles.length, label: "DEMO / DEVELOPMENT CONTENT" };
 }

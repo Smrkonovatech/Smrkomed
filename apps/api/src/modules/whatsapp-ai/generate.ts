@@ -107,6 +107,21 @@ function kbFallbackReply(input: {
     return ackReply(input.ctx);
   }
 
+  // SmrkoMed platform, features, and purpose overview
+  if (/\b(what\s*(is|does)?\s*smrko(med)?|why\s*smrko(med)?|about\s*smrko(med)?|who\s*is\s*smrko|wt\s*is\s*smrko)\b/i.test(input.patientMessage)) {
+    return (
+      `✦ Smrko AI\n\n` +
+      `*SmrkoMed* is an intelligent digital healthcare and fertility platform that powers modern clinics like *${input.ctx.clinicName}* with 24/7 patient care.\n\n` +
+      `🏥 *What SmrkoMed does:*\n` +
+      `• *Interactive WhatsApp Care:* View live specialist availability, select doctor profiles, and book or reschedule consultation slots directly in WhatsApp without downloading an app.\n` +
+      `• *AI Voice Phone Assistant:* Receive instant voice phone calls in Indian languages (English, Hindi, Kannada, Tamil, etc.) for appointment booking and reminders.\n` +
+      `• *24/7 Care Loop:* Proactive treatment tracking for couples (IVF, ICSI, IUI cycle monitoring, scan alerts, and medication schedules).\n` +
+      `• *Care Coordinator Support:* Instant connection with human clinic coordinators whenever you need personal help.\n\n` +
+      `💡 *Why SmrkoMed?* Zero app friction, no waiting queues, and continuous empathetic guidance for couples on their fertility journey!\n\n` +
+      `Type *MENU* anytime to view services, or tap *Book Appt* to schedule a consultation!`
+    );
+  }
+
   const name = input.ctx.patientFirstName ? ` ${input.ctx.patientFirstName}` : "";
   const hit = input.knowledge.find((k) => k.score > 0) ?? input.knowledge[0];
   if (hit && hit.score > 0) {

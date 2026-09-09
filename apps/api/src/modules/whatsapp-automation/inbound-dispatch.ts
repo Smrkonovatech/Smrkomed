@@ -318,6 +318,17 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["selectedDoctorId"] = matched.id;
           mergedVars["doctor.id"] = matched.id;
           replyAction = `appt_doctor_${matched.id}`;
+        } else if (!rawReply.startsWith("appt_")) {
+          // User asked a question or sent text instead of picking a doctor
+          await prisma.whatsAppFlowExecution.update({
+            where: { id: row.id },
+            data: {
+              status: "CANCELLED",
+              error: "Superseded by user inquiry: " + rawReply.slice(0, 80),
+              completedAt: new Date(),
+            },
+          });
+          continue;
         }
       }
     } else if (waitId === "n_channel_choice") {
@@ -409,6 +420,18 @@ export async function resumeWaitForReplyExecutions(input: {
         replyAction = "btn_book_wa";
         mergedVars["bookingChannel"] = "WHATSAPP";
         mergedVars["channel_choice"] = "WHATSAPP";
+      } else {
+        // User asked a question or sent text inquiry instead of picking Call or WhatsApp booking.
+        // Cancel the waiting execution so general AI or menu can immediately answer their question!
+        await prisma.whatsAppFlowExecution.update({
+          where: { id: row.id },
+          data: {
+            status: "CANCELLED",
+            error: "Superseded by user inquiry: " + rawReply.slice(0, 80),
+            completedAt: new Date(),
+          },
+        });
+        continue;
       }
     } else if (waitId === "n_ask_name" && rawReply && !rawReply.startsWith("appt_")) {
       mergedVars["patient_name"] = rawReply;
