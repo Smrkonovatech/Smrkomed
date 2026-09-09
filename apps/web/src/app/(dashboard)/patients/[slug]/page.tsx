@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { useParams } from "next/navigation";
+import { notFound, useParams, useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -22,6 +21,7 @@ import {
   Pill,
   ShieldCheck,
   Stethoscope,
+  Trash2,
   Upload,
   UserRound,
   Users,
@@ -29,6 +29,7 @@ import {
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
+import { DeletePatientDialog } from "@/components/actions/delete-patient-dialog";
 import { AiPatientSummary } from "@/components/ai/ai-patient-summary";
 import { PatientJourneySummary } from "@/components/ai/patient-journey-summary";
 import { PrepareConsultation } from "@/components/ai/prepare-consultation";
@@ -101,7 +102,9 @@ const tabs = [
 ] as const;
 
 export default function PatientProfile() {
+  const router = useRouter();
   const { slug } = useParams<{ slug: string }>();
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [messageOpen, setMessageOpen] = useState(false);
   const [automationPaused, setAutomationPaused] = useState(false);
   const [voiceConsentOpen, setVoiceConsentOpen] = useState(false);
@@ -232,6 +235,13 @@ export default function PatientProfile() {
                 onClick={() => openAction("upload-document", { coupleId: couple.id })}
               >
                 <Upload className="size-4" /> Upload
+              </Button>
+              <Button
+                variant="outline"
+                className="rounded-lg border-destructive/30 bg-background/80 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="size-4" /> Delete
               </Button>
             </div>
           </div>
@@ -733,6 +743,23 @@ export default function PatientProfile() {
           coupleId={couple.id}
         />
       )}
+
+      <DeletePatientDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        couple={
+          couple
+            ? {
+                id: couple.id,
+                name: coupleFullLabel(couple),
+                slug: couple.slug,
+              }
+            : null
+        }
+        onDeleted={() => {
+          router.push("/patients");
+        }}
+      />
     </div>
   );
 }

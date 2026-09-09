@@ -10,7 +10,7 @@ import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
 import { serializeCouple } from "../clinic-dto";
 import { createCoupleSchema, idParam, updateCoupleSchema } from "./schemas";
-import { createCoupleRecord, listCouples, loadCouple } from "./service";
+import { createCoupleRecord, deleteCoupleRecord, listCouples, loadCouple } from "./service";
 
 export const coupleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
@@ -93,4 +93,45 @@ export const coupleRoutes = new Hono<AppEnv>()
       patient: `${couple.primaryPatient.firstName} ${couple.primaryPatient.lastName}`.trim(),
     });
     return ok(c, serializeCouple(couple));
+  })
+  .delete("/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);
+    const { id } = c.req.valid("param");
+    const permanent = c.req.query("permanent") === "1" || c.req.query("permanent") === "true";
+
+    let targetId = id;
+    const existing = await prisma.couple.findUnique({ where: { id } });
+    if (!existing) {
+      const bySlug = await prisma.couple.findFirst({
+        where: {
+          slug: id,
+          clinicId: tenant.clinicId,
+          clinic: { organizationId: tenant.organizationId },
+        },
+        select: { id: true },
+      });
+      if (!bySlug) throw notFound();
+      targetId = bySlug.id;
+    } else {
+      await requireClinicOwned(tenant, existing);
+    }
+
+    const result = await deleteCoupleRecord(tenant, targetId, { permanent });
+    try {
+      await audit(
+        tenant,
+        result.mode === "permanent" ? "couple.delete" : "couple.archive",
+        "Couple",
+        targetId,
+        {
+          clinicId: tenant.clinicId,
+          patient: result.patientName,
+          mode: result.mode,
+        },
+      );
+    } catch {
+      // audit failure should not break request
+    }
+    return ok(c, result);
   });
+

@@ -141,6 +141,8 @@ export interface AppState {
   couples: AppCouple[];
   addCouple: (input: AddCoupleInput) => Promise<AppCouple>;
   updatePatient: (patientId: string, patch: { phone?: string; email?: string }) => Promise<void>;
+  deleteCouple: (coupleId: string, options?: { permanent?: boolean }) => Promise<void>;
+  deletePatient: (patientId: string, options?: { permanent?: boolean }) => Promise<void>;
   appointments: AppAppointment[];
   addAppointment: (input: AddAppointmentInput) => Promise<AppAppointment>;
   patchAppointmentStatus: (id: string, status: Appointment["status"]) => Promise<void>;
@@ -419,6 +421,35 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     await reload();
   }, [reload]);
 
+  const deleteCouple = useCallback(
+    async (coupleId: string, options?: { permanent?: boolean }) => {
+      await clinicApi.deleteCouple(coupleId, options);
+      setCoupleList((previous) => previous.filter((row) => row.id !== coupleId));
+      setTasks((previous) => previous.filter((row) => row.coupleId !== coupleId));
+      setAppointmentList((previous) => previous.filter((row) => row.coupleId !== coupleId));
+      setDocumentList((previous) => previous.filter((row) => row.coupleId !== coupleId));
+      setKpis((prev) => ({ ...prev, active: Math.max(0, prev.active - 1) }));
+      try {
+        await reload();
+      } catch (error) {
+        console.warn(
+          "Couple deleted but background reload failed:",
+          clinicErrorMessage(error, "reload failed"),
+        );
+      }
+    },
+    [reload],
+  );
+
+  const deletePatient = useCallback(
+    async (patientId: string, options?: { permanent?: boolean }) => {
+      await clinicApi.deletePatient(patientId, options);
+      await reload();
+    },
+    [reload],
+  );
+
+
   const addAppointment = useCallback(async (input: AddAppointmentInput) => {
     const startsAt = input.date
       ? new Date(`${input.date}T${normalizeTime(input.time)}`).toISOString()
@@ -540,6 +571,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       couples: coupleList,
       addCouple,
       updatePatient,
+      deleteCouple,
+      deletePatient,
       appointments: appointmentList,
       addAppointment,
       patchAppointmentStatus,
@@ -575,6 +608,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       coupleList,
       addCouple,
       updatePatient,
+      deleteCouple,
+      deletePatient,
       appointmentList,
       addAppointment,
       patchAppointmentStatus,

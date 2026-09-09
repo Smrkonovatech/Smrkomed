@@ -1,4 +1,4 @@
-import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api/client";
 
 export type ClinicPerson = {
   id: string;
@@ -146,4 +146,13 @@ export const clinicApi = {
   exceptions: () => apiGet<any[]>("/api/v1/care-loop/exceptions"),
   resolveException: (id: string, notes?: string) => apiPost<any>(`/api/v1/care-loop/exceptions/${id}/resolve`, { notes }),
   careLoopAnalytics: () => apiGet<any>("/api/v1/care-loop/analytics"),
+  deleteCouple: (id: string, options?: { permanent?: boolean }) =>
+    apiDelete<{ deleted: boolean; mode: "permanent" | "archived"; id: string }>(
+      `/api/v1/couples/${id}${options?.permanent ? "?permanent=1" : ""}`,
+    ),
+  deletePatient: (id: string, options?: { permanent?: boolean }) =>
+    apiDelete<{ deleted: boolean; mode: "permanent" | "archived"; id: string }>(
+      `/api/v1/patients/${id}${options?.permanent ? "?permanent=1" : ""}`,
+    ),
 };
+

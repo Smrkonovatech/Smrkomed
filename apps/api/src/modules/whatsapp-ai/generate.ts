@@ -79,15 +79,15 @@ export function isSimpleAck(text: string): boolean {
 function greetingReply(ctx: WhatsAppAiContext): string {
   const isRegistered = ctx.isRegistered ?? Boolean(ctx.patientFirstName);
   if (!isRegistered) {
-    let msg = `✦ Smrko AI\n\nHello! 👋 Welcome to *${ctx.clinicName}*.\n\nWe noticed this phone number is not yet registered in our patient records. To help you book consultations and receive care services, please register your profile with us:\n\n📝 *Quick Registration — please reply with:* \n1️⃣ *Full Name*\n2️⃣ *Age* or *Date of Birth* (e.g. 29 or 1996-05-12)\n3️⃣ *Gender* (Female / Male / Other)\n4️⃣ *Partner's Name* _(optional, for couples)_\n`;
-    if (ctx.clinicSlug) {
-      msg += `\n🌐 *Or register & book online:*\nhttps://smrkomed.com/book/${ctx.clinicSlug}\n`;
-    }
-    msg += `\nHow can I help you today? (I'm Smrko AI, not a doctor.)`;
-    return msg;
+    return (
+      `✦ Smrko AI\n\n` +
+      `Hello! 👋 Welcome to *${ctx.clinicName}*.\n\n` +
+      `I can assist you with information about our fertility treatments, doctor consultations, clinic timings, pricing, or scheduling a visit.\n\n` +
+      `💬 How can I help you today? (Reply with your question or type *MENU* to view quick options.)`
+    );
   }
   const name = ctx.patientFirstName ? ` ${ctx.patientFirstName}` : "";
-  return `✦ Smrko AI\n\nHello${name}! Thanks for messaging ${ctx.clinicName}. How can I help you today — appointments, clinic info, or something else? (I'm Smrko AI, not a doctor.)`;
+  return `✦ Smrko AI\n\nHello${name}! Thanks for messaging ${ctx.clinicName}. How can I help you today — appointments, clinic info, or something else? (I'm Smrko AI, not a doctor. Type *MENU* anytime.)`;
 }
 
 function ackReply(ctx: WhatsAppAiContext): string {
@@ -106,20 +106,14 @@ function kbFallbackReply(input: {
   if (isSimpleAck(input.patientMessage)) {
     return ackReply(input.ctx);
   }
-  const isRegistered = input.ctx.isRegistered ?? Boolean(input.ctx.patientFirstName);
-  const regNote = !isRegistered
-    ? (input.ctx.clinicSlug
-        ? `\n\n📝 _Note: You are not yet registered with ${input.ctx.clinicName}. Reply with your Full Name, Age, and Gender, or visit https://smrkomed.com/book/${input.ctx.clinicSlug} to register._`
-        : `\n\n📝 _Note: You are not yet registered with ${input.ctx.clinicName}. Reply with your Full Name, Age, and Gender to register._`)
-    : "";
 
   const name = input.ctx.patientFirstName ? ` ${input.ctx.patientFirstName}` : "";
   const hit = input.knowledge.find((k) => k.score > 0) ?? input.knowledge[0];
   if (hit && hit.score > 0) {
     const snippet = hit.content.replace(/\s+/g, " ").slice(0, 280);
-    return `✦ Smrko AI\n\nHello${name}! Based on our clinic information about "${hit.title}":\n\n${snippet}\n\n(This may include DEMO / DEVELOPMENT content and is not medical advice.) If you need a doctor or staff member, just say so.${regNote}`;
+    return `✦ Smrko AI\n\nHello${name}! Based on our clinic information about "${hit.title}":\n\n${snippet}\n\n(This may include DEMO / DEVELOPMENT content and is not medical advice.) If you need a doctor or staff member, just say so.`;
   }
-  return `✦ Smrko AI\n\nHello${name}! I don't have a published knowledge article for that yet. Your care team can help — reply "speak to staff" if you'd like a human to take over.${regNote}`;
+  return `✦ Smrko AI\n\nHello${name}! I don't have a published knowledge article for that yet. Your care team can help — reply "speak to staff" if you'd like a human to take over.`;
 }
 
 async function callOpenAiChat(system: string, user: string, model: string): Promise<string> {
@@ -184,8 +178,8 @@ export async function generateWhatsAppAiReply(input: {
     };
   }
 
-  // Fast path — still produces an outbound reply (not silence).
-  if (input.preferFast && isSimpleGreeting(input.patientMessage)) {
+  // Fast path — immediately returns warm greeting/ack without OpenAI delay.
+  if (isSimpleGreeting(input.patientMessage)) {
     console.log("[WhatsApp AI] fallback used", { reason: "greeting-fast" });
     return {
       text: greetingReply(input.ctx),
@@ -194,7 +188,7 @@ export async function generateWhatsAppAiReply(input: {
       blocked: false,
     };
   }
-  if (input.preferFast && isSimpleAck(input.patientMessage)) {
+  if (isSimpleAck(input.patientMessage)) {
     console.log("[WhatsApp AI] fallback used", { reason: "ack-fast" });
     return {
       text: ackReply(input.ctx),

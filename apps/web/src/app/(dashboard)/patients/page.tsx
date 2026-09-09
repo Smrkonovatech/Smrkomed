@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Filter, Search, UserPlus, Users } from "lucide-react";
+import { Filter, Search, Trash2, UserPlus, Users } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { DeletePatientDialog } from "@/components/actions/delete-patient-dialog";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
 import { AiInsightCard } from "@/components/ai/ai-insight-card";
 import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
@@ -29,6 +30,9 @@ const filters = [
 export default function PatientsPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<(typeof filters)[number]>("All");
+  const [targetCouple, setTargetCouple] = useState<{ id: string; name: string; slug?: string } | null>(
+    null,
+  );
   const { openAction } = useGlobalActions();
   const { couples, loadState, loadError, reload } = useAppState();
   const inactiveHint = couples.filter((c) => c.careLoop === "Paused" || c.status === "Needs Attention")
@@ -172,9 +176,23 @@ export default function PatientsPage() {
                 <p className="mt-2 text-sm">
                   Next: <span className="font-medium">{c.nextStep}</span>
                 </p>
-                <div className="mt-3">
+                <div className="mt-3 flex items-center justify-between gap-2">
                   <Button asChild size="sm" className="w-full sm:w-auto">
                     <Link href={`/patients/${c.slug}`}>Open</Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() =>
+                      setTargetCouple({
+                        id: c.id,
+                        name: coupleLabel(c),
+                        slug: c.slug,
+                      })
+                    }
+                  >
+                    <Trash2 className="mr-1.5 size-3.5" /> Delete
                   </Button>
                 </div>
               </RecordCard>
@@ -191,6 +209,7 @@ export default function PatientsPage() {
                   <th className="px-3 py-2.5 font-medium">Coordinator</th>
                   <th className="px-3 py-2.5 font-medium">Next step</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -237,6 +256,24 @@ export default function PatientsPage() {
                         <StatusBadge label="Paused" tone="warning" className="ml-1.5" />
                       )}
                     </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="size-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Delete Patient"
+                        aria-label={`Delete ${coupleLabel(c)}`}
+                        onClick={() =>
+                          setTargetCouple({
+                            id: c.id,
+                            name: coupleLabel(c),
+                            slug: c.slug,
+                          })
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -248,6 +285,15 @@ export default function PatientsPage() {
           Showing {rows.length} of {couples.length} couples
         </div>
       </section>
+
+      <DeletePatientDialog
+        open={Boolean(targetCouple)}
+        onOpenChange={(open) => !open && setTargetCouple(null)}
+        couple={targetCouple}
+        onDeleted={() => {
+          setTargetCouple(null);
+        }}
+      />
     </div>
   );
 }

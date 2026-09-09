@@ -435,3 +435,146 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     });
   }
 }
+
+export type DeleteCoupleOptions = {
+  permanent?: boolean;
+};
+
+export async function deleteCoupleRecord(
+  ctx: TenantContext,
+  id: string,
+  options?: DeleteCoupleOptions,
+) {
+  const existing = await prisma.couple.findFirst({
+    where: {
+      id,
+      clinicId: ctx.clinicId,
+      clinic: { organizationId: ctx.organizationId },
+    },
+    include: {
+      primaryPatient: true,
+      partnerPatient: true,
+    },
+  });
+  if (!existing) throw notFound();
+
+  const isPermanent = options?.permanent === true;
+
+  if (isPermanent) {
+    await prisma.$transaction(
+      async (tx) => {
+      // 1. Delete conversation messages, media, ai interactions, and conversations
+      const conversations = await tx.conversation.findMany({
+        where: { coupleId: existing.id },
+        select: { id: true },
+      });
+      if (conversations.length > 0) {
+        const convIds = conversations.map((c) => c.id);
+        await tx.aIInteraction.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.whatsAppMedia.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.message.deleteMany({ where: { conversationId: { in: convIds } } });
+        await tx.conversation.deleteMany({ where: { id: { in: convIds } } });
+      }
+
+      // 2. Delete non-cascading couple records
+      await tx.document.deleteMany({ where: { coupleId: existing.id } });
+      await tx.escalation.deleteMany({ where: { coupleId: existing.id } });
+      await tx.lead.updateMany({
+        where: { coupleId: existing.id },
+        data: { coupleId: null },
+      });
+      await tx.billingPayment.deleteMany({ where: { coupleId: existing.id } });
+      await tx.billingInvoice.deleteMany({ where: { coupleId: existing.id } });
+      await tx.pharmacyPrescription.deleteMany({ where: { coupleId: existing.id } });
+      await tx.pharmacySale.deleteMany({ where: { coupleId: existing.id } });
+      await tx.insuranceClaim.deleteMany({ where: { coupleId: existing.id } });
+      await tx.insurancePolicy.deleteMany({ where: { coupleId: existing.id } });
+
+      // 3. Delete clinical journey records
+      await tx.appointment.deleteMany({ where: { coupleId: existing.id } });
+      await tx.careTask.deleteMany({ where: { coupleId: existing.id } });
+      await tx.carePlan.deleteMany({ where: { coupleId: existing.id } });
+      await tx.treatment.deleteMany({ where: { coupleId: existing.id } });
+      await tx.consultationNote.deleteMany({ where: { coupleId: existing.id } });
+
+      // 4. Delete couple record
+      await tx.couple.delete({ where: { id: existing.id } });
+
+      // 5. Clean up patients if they have no other couple memberships
+      const patientIds = [existing.primaryPatientId, existing.partnerPatientId].filter(
+        (pid): pid is string => Boolean(pid),
+      );
+      for (const patientId of patientIds) {
+        const otherCouples = await tx.couple.count({
+          where: {
+            OR: [{ primaryPatientId: patientId }, { partnerPatientId: patientId }],
+          },
+        });
+        if (otherCouples === 0) {
+          const patientConvs = await tx.conversation.findMany({
+            where: { patientId },
+            select: { id: true },
+          });
+          if (patientConvs.length > 0) {
+            const pConvIds = patientConvs.map((c) => c.id);
+            await tx.aIInteraction.deleteMany({ where: { conversationId: { in: pConvIds } } });
+            await tx.whatsAppMedia.deleteMany({ where: { conversationId: { in: pConvIds } } });
+            await tx.message.deleteMany({ where: { conversationId: { in: pConvIds } } });
+            await tx.conversation.deleteMany({ where: { id: { in: pConvIds } } });
+          }
+          await tx.aIInteraction.deleteMany({ where: { patientId } });
+          await tx.consent.deleteMany({ where: { patientId } });
+          await tx.document.deleteMany({ where: { patientId } });
+          await tx.lead.updateMany({
+            where: { patientId },
+            data: { patientId: null },
+          });
+          await tx.billingPayment.deleteMany({ where: { patientId } });
+          await tx.billingInvoice.deleteMany({ where: { patientId } });
+          await tx.pharmacyPrescription.deleteMany({ where: { patientId } });
+          await tx.pharmacySale.deleteMany({ where: { patientId } });
+          await tx.insuranceClaim.deleteMany({ where: { patientId } });
+          await tx.insurancePolicy.deleteMany({ where: { patientId } });
+          await tx.patient.delete({ where: { id: patientId } });
+        }
+      }
+    }, { timeout: 30000, maxWait: 10000 });
+  } else {
+    // Soft delete / archive
+    await prisma.$transaction(async (tx) => {
+      await tx.couple.update({
+        where: { id: existing.id },
+        data: {
+          status: "ARCHIVED",
+          careLoopActive: false,
+        },
+      });
+      const patientIds = [existing.primaryPatientId, existing.partnerPatientId].filter(
+        (pid): pid is string => Boolean(pid),
+      );
+      for (const patientId of patientIds) {
+        const activeCouples = await tx.couple.count({
+          where: {
+            OR: [{ primaryPatientId: patientId }, { partnerPatientId: patientId }],
+            status: { not: "ARCHIVED" },
+          },
+        });
+        if (activeCouples === 0) {
+          await tx.patient.update({
+            where: { id: patientId },
+            data: { status: "ARCHIVED" },
+          });
+        }
+      }
+    });
+  }
+
+  const patientName = `${existing.primaryPatient?.firstName ?? ""} ${existing.primaryPatient?.lastName ?? ""}`.trim();
+  return {
+    deleted: true,
+    mode: isPermanent ? ("permanent" as const) : ("archived" as const),
+    id: existing.id,
+    patientName,
+  };
+}
+

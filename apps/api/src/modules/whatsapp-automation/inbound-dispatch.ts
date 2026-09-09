@@ -606,8 +606,51 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     return { resumed, dispatched: null, ai: { skipped: true as const, reason: "flow_resumed" } };
   }
 
+  // 1.2. Check for Namma Metro Main Menu trigger, greeting, or interactive menu action
+  const cleanInboundText = input.messageText.trim().toLowerCase();
+  const isMenuTrigger =
+    cleanInboundText === "menu" ||
+    cleanInboundText === "main_menu" ||
+    cleanInboundText === "help" ||
+    cleanInboundText === "options" ||
+    cleanInboundText === "btn_menu" ||
+    cleanInboundText === "more services" ||
+    cleanInboundText.startsWith("menu_") ||
+    /^(hi|hello|hey|namaste|start|good\s*(morning|afternoon|evening))$/i.test(cleanInboundText) ||
+    /^(my\s*app(ointment)?s?|doctor\s*slots?|available\s*slots?|clinic\s*timings?)$/i.test(cleanInboundText);
+
+  if (isMenuTrigger) {
+    const { handleMenuAction } = await import("../whatsapp-ai/menu");
+    const menuResult: Awaited<ReturnType<typeof handleMenuAction>> = await handleMenuAction({
+      tenant,
+      conversationId: input.conversationId,
+      contactPhone: input.contactPhone || "",
+      actionIdOrText: input.messageText,
+    }).catch((err) => {
+      console.error("[WhatsApp inbound] menu handler error:", err);
+      return { handled: false };
+    });
+
+    if (menuResult.handled) {
+      console.log("[WhatsApp inbound] menu action handled", {
+        conversationId: input.conversationId,
+        action: menuResult.action,
+      });
+      return {
+        resumed,
+        dispatched: null,
+        menu: menuResult,
+        ai: { skipped: true as const, reason: "menu_action_handled" },
+      };
+    }
+  }
+
   // 1.5. Check if contact is unregistered/unmatched and replying to registration
   if (input.unmatched || !input.patientId) {
+    if (input.skipAi) {
+      return { resumed, dispatched: null, ai: { skipped: true as const, reason: "already_ran_in_webhook" } };
+    }
+
     const { tryHandleRegistrationMessage } = await import("../whatsapp-ai/registration");
     const regResult: Awaited<ReturnType<typeof tryHandleRegistrationMessage>> =
       await tryHandleRegistrationMessage({
