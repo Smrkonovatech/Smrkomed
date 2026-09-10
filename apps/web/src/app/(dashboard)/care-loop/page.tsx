@@ -21,6 +21,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { ExceptionCard } from "@/components/care-loop/exception-card";
+import { SingleRecordDialog } from "@/components/care-loop/single-record-dialog";
 import { useCreateTask } from "@/components/create-task-drawer";
 import { DemoRunner } from "@/components/demo-runner";
 import { CycleJourney } from "@/components/journey-strip";
@@ -30,6 +31,8 @@ import { useAppState } from "@/lib/app-state";
 import {
   coupleFullLabel,
   findCouple,
+  type CareTask,
+  type Couple,
   type ExceptionItem,
   type ExceptionKind,
 } from "@/lib/demo-data";
@@ -254,6 +257,9 @@ export default function CareLoopPage() {
   const [view, setView] = useState<View>("Attention");
   const [filter, setFilter] = useState<Filter>("All");
   const [query, setQuery] = useState("");
+  const [storyDialogOpen, setStoryDialogOpen] = useState(false);
+  const [selectedStoryTask, setSelectedStoryTask] = useState<CareTask | null>(null);
+  const [selectedStoryCouple, setSelectedStoryCouple] = useState<Couple | null>(null);
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -465,24 +471,60 @@ export default function CareLoopPage() {
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {couples.slice(0, 4).map((couple) => {
                 const cycle = cycles.find((item) => item.coupleId === couple.id);
+                const activeTask = tasks.find((t) => t.coupleId === couple.id) ?? tasks[0];
                 return (
                   <article
                     key={couple.id}
-                    className="rounded-2xl bg-card p-4 shadow-[0_1px_3px_rgb(41_35_45/0.05)] ring-1 ring-border/70"
+                    className="rounded-2xl bg-card p-4 shadow-[0_1px_3px_rgb(41_35_45/0.05)] ring-1 ring-border/70 flex flex-col justify-between"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <h3 className="text-sm font-semibold">{coupleFullLabel(couple)}</h3>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {couple.cycleLabel} · {couple.stage}
-                        </p>
+                    <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-semibold">{coupleFullLabel(couple)}</h3>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {couple.cycleLabel} · {couple.stage}
+                          </p>
+                        </div>
+                        <Button asChild variant="ghost" size="sm">
+                          <Link href={`/patients/${couple.slug}`}>Open journey</Link>
+                        </Button>
                       </div>
-                      <Button asChild variant="ghost" size="sm">
-                        <Link href={`/patients/${couple.slug}`}>Open journey</Link>
-                      </Button>
+                      <div className="mt-4 overflow-x-auto">
+                        <CycleJourney stageIndex={cycle?.stageIndex ?? couple.stageIndex} size="sm" />
+                      </div>
                     </div>
-                    <div className="mt-4 overflow-x-auto">
-                      <CycleJourney stageIndex={cycle?.stageIndex ?? couple.stageIndex} size="sm" />
+
+                    {/* Prominent Authoritative Next Action & Single-Record Story */}
+                    <div className="mt-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/10 via-card to-background p-3.5 shadow-sm">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5 text-xs font-bold text-primary">
+                          <Sparkles className="size-3.5 text-primary" />
+                          Authoritative Next Action
+                        </span>
+                        <span className="rounded-md border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                          {activeTask?.communicationChannel ?? "WHATSAPP"}
+                        </span>
+                      </div>
+                      <p className="mt-1.5 text-xs font-semibold text-foreground">
+                        {activeTask?.nextAction ?? couple.nextStep}
+                      </p>
+                      <div className="mt-3 flex items-center justify-between gap-2 border-t pt-2.5">
+                        <span className="text-[11px] text-muted-foreground">
+                          Due: <span className="font-medium text-foreground">{activeTask?.due ?? "Scheduled"}</span>
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs px-2.5 font-medium border-primary/30 hover:bg-primary/10 hover:text-primary"
+                          onClick={() => {
+                            setSelectedStoryTask(activeTask ?? null);
+                            setSelectedStoryCouple(couple);
+                            setStoryDialogOpen(true);
+                          }}
+                        >
+                          Story (19 Attributes) & Simulation
+                        </Button>
+                      </div>
                     </div>
                   </article>
                 );
@@ -552,6 +594,13 @@ export default function CareLoopPage() {
           </div>
         </section>
       )}
+
+      <SingleRecordDialog
+        open={storyDialogOpen}
+        onOpenChange={setStoryDialogOpen}
+        task={selectedStoryTask}
+        couple={selectedStoryCouple}
+      />
     </div>
   );
 }

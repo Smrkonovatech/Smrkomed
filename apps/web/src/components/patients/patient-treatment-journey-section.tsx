@@ -430,10 +430,17 @@ export function PatientTreatmentJourneySection({
               <span>Live Care Loop · Next Action</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="rounded bg-amber-100 text-amber-900 border border-amber-300/60 px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1">
-                <MessageCircle className="size-3" />
-                WhatsApp: Simulated Mode (Not Configured)
-              </span>
+              {journey?.whatsapp?.configured ? (
+                <span className="rounded bg-emerald-50 text-emerald-800 border border-emerald-300/60 px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1">
+                  <MessageCircle className="size-3 text-emerald-600" />
+                  WhatsApp: Connected {journey.whatsapp.phoneNumber ? `(${journey.whatsapp.phoneNumber})` : ""}
+                </span>
+              ) : (
+                <span className="rounded bg-amber-100 text-amber-900 border border-amber-300/60 px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1">
+                  <MessageCircle className="size-3" />
+                  WhatsApp: Simulated Mode (Not Configured)
+                </span>
+              )}
             </div>
           </div>
 

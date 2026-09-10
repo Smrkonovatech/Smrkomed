@@ -13,12 +13,17 @@ import {
   activatePatientTreatmentPlan,
   addDoctorTask,
   completeCareTask,
+  computeNextAction,
+  executeEscalationStep,
   getJourneyExecution,
   handleBranchDecision,
+  handleCycleOutcome,
+  handleIvfDecision,
   handlePatientResponse,
   modifyDoctorTask,
   pauseCarePlan,
   resumeCarePlan,
+  verifyTaskPayment,
 } from "./engine";
 import {
   assignTreatmentPlanSchema,
@@ -27,13 +32,17 @@ import {
   createCarePlanSchema,
   createCareTaskSchema,
   createTemplateSchema,
+  cycleOutcomeSchema,
+  escalateTaskSchema,
   idParam,
+  ivfDecisionSchema,
   pausePlanSchema,
   resolveExceptionSchema,
   simulateResponseSchema,
   updateCarePlanSchema,
   updateCareTaskSchema,
   updateTemplateSchema,
+  verifyPaymentSchema,
 } from "./schemas";
 
 const taskInclude = {
@@ -226,7 +235,7 @@ export const treatmentPlanTemplateRoutes = new Hono<AppEnv>()
       }
 
       return created;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     await audit(tenant, "treatment_plan_template.create", "CarePlanTemplate", template.id, {
       name: body.name,
@@ -300,7 +309,7 @@ export const treatmentPlanTemplateRoutes = new Hono<AppEnv>()
       }
 
       return tpl;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     await audit(tenant, "treatment_plan_template.update", "CarePlanTemplate", id);
     return ok(c, updated);
@@ -374,7 +383,7 @@ export const treatmentPlanTemplateRoutes = new Hono<AppEnv>()
       }
 
       return copy;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     await audit(tenant, "treatment_plan_template.duplicate", "CarePlanTemplate", duplicated.id, {
       sourceId: source.id,
@@ -434,6 +443,26 @@ export const carePlanRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     const journey = await getJourneyExecution(tenant, id);
     return ok(c, journey);
+  })
+  .get("/:id/next-action", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const { id } = c.req.valid("param");
+    const nextAction = await computeNextAction(tenant, id);
+    return ok(c, nextAction);
+  })
+  .post("/:id/decision", validate("param", idParam), validate("json", ivfDecisionSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_PLANS_WRITE);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const result = await handleIvfDecision(tenant, id, body.decision, body.notes);
+    return ok(c, result);
+  })
+  .post("/:id/outcome", validate("param", idParam), validate("json", cycleOutcomeSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_PLANS_WRITE);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const result = await handleCycleOutcome(tenant, id, body.outcome, body.notes);
+    return ok(c, result);
   })
   .post("/assign", validate("json", assignTreatmentPlanSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.CARE_PLANS_WRITE);
@@ -573,6 +602,20 @@ export const careTaskRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const result = await handlePatientResponse(tenant, id, body.text);
+    return ok(c, result);
+  })
+  .post("/:id/escalate", validate("param", idParam), validate("json", escalateTaskSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_TASKS_WRITE);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const result = await executeEscalationStep(tenant, id, body.reason);
+    return ok(c, result);
+  })
+  .post("/:id/verify-payment", validate("param", idParam), validate("json", verifyPaymentSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_TASKS_WRITE);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const result = await verifyTaskPayment(tenant, id, body);
     return ok(c, result);
   });
 

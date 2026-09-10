@@ -46,6 +46,7 @@ export {
 } from "./patient-360";
 export { seedTreatmentPlanTemplates } from "./care-loop/seed-templates";
 export {
+  IVF_CARE_LOOP_FLOW,
   IVF_STANDARD_JOURNEY,
   IVF_FREEZE_ALL_PROTOCOL,
   IVF_BASIC_JOURNEY,

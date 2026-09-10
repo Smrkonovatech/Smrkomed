@@ -8,13 +8,18 @@ import {
   activatePatientTreatmentPlan,
   addDoctorTask,
   completeCareTask,
+  computeNextAction,
   evaluateStageProgress,
+  executeEscalationStep,
   getJourneyExecution,
   handleBranchDecision,
+  handleCycleOutcome,
+  handleIvfDecision,
   handlePatientResponse,
   modifyDoctorTask,
   pauseCarePlan,
   resumeCarePlan,
+  verifyTaskPayment,
 } from "./modules/care-loop/engine";
 
 const PREFIX = "test-careloop";
@@ -537,4 +542,233 @@ test("Care Loop REST API: End-to-end endpoints through HTTP", async () => {
   assert.equal(resAnalytics.status, 200);
   const anaBody = (await resAnalytics.json()) as { data: { activeJourneys: number; totalTasks: number } };
   assert.ok(anaBody.data.activeJourneys >= 1);
+});
+
+test("Care Loop: Next Action dynamic evaluation", async () => {
+  const plan = await prisma.carePlan.findFirstOrThrow({
+    where: { coupleId: fx.coupleId, clinicId: fx.clinicId },
+  });
+
+  const nextAction = await computeNextAction(fx.ctx, plan.id);
+  assert.equal(nextAction.carePlanId, plan.id);
+  assert.ok(nextAction.nextAction);
+  assert.ok(["NORMAL", "HIGH", "CRITICAL"].includes(nextAction.urgency));
+});
+
+test("Care Loop: 4-tiered escalation ladder (WhatsApp -> 2nd reminder -> AI Call -> Staff escalation)", async () => {
+  const testTask = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      title: "Confirm semen analysis appointment",
+      taskType: "APPOINTMENT_TASK",
+      ownerRole: "PATIENT",
+      status: "WAITING",
+      priority: "NORMAL",
+    },
+  });
+
+  // Step 1: WhatsApp reminder
+  const step1 = await executeEscalationStep(fx.ctx, testTask.id);
+  assert.equal(step1.task.attempts, 1);
+  assert.equal(step1.task.escalationLevel, 1);
+  assert.match(step1.task.lastAction ?? "", /WhatsApp reminder sent/);
+
+  // Step 2: Second WhatsApp reminder
+  const step2 = await executeEscalationStep(fx.ctx, testTask.id);
+  assert.equal(step2.task.attempts, 2);
+  assert.equal(step2.task.escalationLevel, 2);
+  assert.match(step2.task.lastAction ?? "", /Second WhatsApp reminder sent/);
+
+  // Step 3: AI Voice Call
+  const step3 = await executeEscalationStep(fx.ctx, testTask.id);
+  assert.equal(step3.task.attempts, 3);
+  assert.equal(step3.task.escalationLevel, 3);
+  assert.match(step3.task.lastAction ?? "", /AI Voice Call dispatched/);
+
+  // Step 4: Staff escalation
+  const step4 = await executeEscalationStep(fx.ctx, testTask.id);
+  assert.equal(step4.task.attempts, 4);
+  assert.equal(step4.task.escalationLevel, 4);
+  assert.equal(step4.task.status, "ESCALATED");
+  assert.ok(step4.escalationId);
+
+  const escalation = await prisma.escalation.findUniqueOrThrow({ where: { id: step4.escalationId } });
+  assert.equal(escalation.status, "OPEN");
+  assert.equal(escalation.type, "TASK_OVERDUE");
+});
+
+test("Care Loop: Payment security gate (Rejects patient manual 'I paid' claim, verifies via gateway webhook)", async () => {
+  const paymentTask = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      title: "IVF package initial payment",
+      category: "PAYMENT",
+      taskType: "PATIENT_TASK",
+      ownerRole: "PATIENT",
+      status: "WAITING",
+      priority: "HIGH",
+    },
+  });
+
+  // Patient manual claim: "I paid" -> MUST NOT mark complete!
+  const manualClaim = await handlePatientResponse(fx.ctx, paymentTask.id, "I paid");
+  assert.equal(manualClaim.status, "WAITING");
+  assert.equal(manualClaim.action, "PAYMENT_CLAIM_RECORDED_PENDING_GATEWAY");
+  assert.match(manualClaim.aiReply, /verifies payments directly with our secure payment gateway/);
+
+  const unverifiedTask = await prisma.careTask.findUniqueOrThrow({ where: { id: paymentTask.id } });
+  assert.equal(unverifiedTask.status, "WAITING");
+
+  // Gateway webhook verification -> Marks complete
+  const verified = await verifyTaskPayment(fx.ctx, paymentTask.id, {
+    transactionId: "TXN_RAZORPAY_889922",
+    amount: 125000,
+    gateway: "RAZORPAY",
+  });
+  assert.equal(verified.task.status, "COMPLETED");
+  assert.match(verified.task.completedBy ?? "", /GATEWAY_WEBHOOK:RAZORPAY/);
+});
+
+test("Care Loop: Clinical concern guardrails on 'wrong dose' & 'severe pain'", async () => {
+  const medTask = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      title: "Evening stimulation injection",
+      taskType: "MEDICATION_TASK",
+      ownerRole: "PATIENT",
+      status: "WAITING",
+      priority: "HIGH",
+    },
+  });
+
+  const response = await handlePatientResponse(fx.ctx, medTask.id, "I took the wrong dose. Should I take double?");
+  assert.equal(response.status, "BLOCKED");
+  assert.equal(response.action, "EXCEPTION_CREATED");
+  assert.match(response.aiReply, /incorrect medical advice/);
+  assert.match(response.aiReply, /paused automated messages/);
+
+  const escalation = await prisma.escalation.findUniqueOrThrow({ where: { id: response.escalationId! } });
+  assert.equal(escalation.type, "CLINICAL");
+  assert.equal(escalation.severity, "HIGH");
+});
+
+test("Care Loop: Stage 3 IVF Decision milestone — Patient Undecided routes to human counseling", async () => {
+  const plan = await prisma.carePlan.findFirstOrThrow({
+    where: { coupleId: fx.coupleId, clinicId: fx.clinicId },
+  });
+
+  const result = await handleIvfDecision(fx.ctx, plan.id, "PATIENT_UNDECIDED", "Couple wants 1 week to consider costs");
+  assert.equal(result.decision, "PATIENT_UNDECIDED");
+  assert.equal(result.status, "PAUSED_FOR_COUNSELING");
+  assert.ok(result.counselingTaskId);
+
+  const counselingTask = await prisma.careTask.findUniqueOrThrow({ where: { id: result.counselingTaskId } });
+  assert.equal(counselingTask.ownerRole, "CARE_COORDINATOR");
+  assert.match(counselingTask.title, /counseling/);
+});
+
+test("Care Loop: Stage 14 Cycle Outcome milestone — Empathetic human routing on Unsuccessful", async () => {
+  const plan = await prisma.carePlan.findFirstOrThrow({
+    where: { coupleId: fx.coupleId, clinicId: fx.clinicId },
+  });
+
+  const result = await handleCycleOutcome(fx.ctx, plan.id, "UNSUCCESSFUL", "Beta-hCG negative");
+  assert.equal(result.outcome, "UNSUCCESSFUL");
+  assert.equal(result.status, "COMPLETED");
+  assert.ok(result.followUpTaskId);
+
+  // Verify empathetic counseling task
+  const followUpTask = await prisma.careTask.findUniqueOrThrow({ where: { id: result.followUpTaskId } });
+  assert.equal(followUpTask.ownerRole, "CARE_COORDINATOR");
+  assert.match(followUpTask.title, /Compassionate follow-up/);
+  assert.match(result.patientMessage, /speak with you about the result/);
+  // Verify it does NOT push "Start another cycle"
+  assert.doesNotMatch(result.patientMessage, /start another cycle/i);
+});
+
+test("Care Loop: Interactive button check-ins ([I've Arrived] & [I'm Feeling Fine])", async () => {
+  const arrivalTask = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      title: "Patient arrival check-in for OPU",
+      taskType: "ARRIVAL_TASK",
+      ownerRole: "PATIENT",
+      status: "WAITING",
+    },
+  });
+
+  const arrivalResponse = await handlePatientResponse(fx.ctx, arrivalTask.id, "[I've Arrived]");
+  assert.equal(arrivalResponse.status, "COMPLETED");
+  assert.equal(arrivalResponse.action, "PATIENT_ARRIVED");
+  assert.match(arrivalResponse.aiReply, /arrival has been confirmed/);
+
+  const wellnessTask = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      title: "Day 1 post-transfer well-being check-in",
+      taskType: "PATIENT_TASK",
+      ownerRole: "PATIENT",
+      status: "WAITING",
+    },
+  });
+
+  const wellnessResponse = await handlePatientResponse(fx.ctx, wellnessTask.id, "[I'm Feeling Fine]");
+  assert.equal(wellnessResponse.status, "COMPLETED");
+  assert.equal(wellnessResponse.action, "WELLNESS_CONFIRMED");
+  assert.match(wellnessResponse.aiReply, /glad to hear you are feeling well/);
+});
+
+test("Care Loop REST API: Endpoints for next-action, escalate, decision, and outcome", async () => {
+  const cookieHeader = { Cookie: `authjs.session-token=${fx.token}` };
+  const plan = await prisma.carePlan.findFirstOrThrow({
+    where: { coupleId: fx.coupleId, clinicId: fx.clinicId },
+  });
+
+  // 1. GET /care-plans/:id/next-action
+  const resNext = await app.request(`/api/v1/care-plans/${plan.id}/next-action`, {
+    headers: cookieHeader,
+  });
+  assert.equal(resNext.status, 200);
+  const nextBody = (await resNext.json()) as { data: { nextAction: string; urgency: string } };
+  assert.ok(nextBody.data.nextAction);
+
+  // 2. POST /care-tasks/:id/escalate
+  const task = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      title: "API Escalation Test",
+      status: "WAITING",
+    },
+  });
+  const resEscalate = await app.request(`/api/v1/care-tasks/${task.id}/escalate`, {
+    method: "POST",
+    headers: { ...cookieHeader, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "Unresponsive to reminders" }),
+  });
+  assert.equal(resEscalate.status, 200);
+  const escBody = (await resEscalate.json()) as { data: { task: { attempts: number; escalationLevel: number } } };
+  assert.equal(escBody.data.task.attempts, 1);
+  assert.equal(escBody.data.task.escalationLevel, 1);
+
+  // 3. POST /care-plans/:id/decision
+  const resDecision = await app.request(`/api/v1/care-plans/${plan.id}/decision`, {
+    method: "POST",
+    headers: { ...cookieHeader, "Content-Type": "application/json" },
+    body: JSON.stringify({ decision: "IVF", notes: "Proceeding with antagonist protocol" }),
+  });
+  assert.equal(resDecision.status, 200);
+
+  // 4. POST /care-plans/:id/outcome
+  const resOutcome = await app.request(`/api/v1/care-plans/${plan.id}/outcome`, {
+    method: "POST",
+    headers: { ...cookieHeader, "Content-Type": "application/json" },
+    body: JSON.stringify({ outcome: "POSITIVE", notes: "Beta-hCG 450 mIU/mL" }),
+  });
+  assert.equal(resOutcome.status, 200);
 });

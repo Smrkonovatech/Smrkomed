@@ -180,3 +180,24 @@ export const simulateResponseSchema = z.object({
 export const resolveExceptionSchema = z.object({
   notes: z.string().trim().max(500).optional(),
 });
+
+export const ivfDecisionSchema = z.object({
+  decision: z.enum(["IVF", "IUI", "FURTHER_INVESTIGATION", "TREATMENT_DEFERRED", "PATIENT_UNDECIDED"]),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+export const cycleOutcomeSchema = z.object({
+  outcome: z.enum(["POSITIVE", "UNSUCCESSFUL", "OTHER"]),
+  notes: z.string().trim().max(1000).optional(),
+});
+
+export const verifyPaymentSchema = z.object({
+  transactionId: z.string().min(1),
+  amount: z.number().positive(),
+  gateway: z.string().min(1).default("RAZORPAY"),
+  webhookEventId: z.string().optional(),
+});
+
+export const escalateTaskSchema = z.object({
+  reason: z.string().trim().max(500).optional(),
+});

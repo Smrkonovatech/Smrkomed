@@ -61,6 +61,158 @@ export type ModifyDoctorTaskInput = {
 };
 
 /**
+ * Calculates the dynamic "Next Action" string for any task based on its type, stage, timing, and status.
+ * Fulfills the "Next Action" core paradigm from the Care Loop architecture.
+ */
+export function computeNextActionForTask(task: {
+  title: string;
+  taskType?: string | null | undefined;
+  status: CareTaskStatus | string;
+  stageName?: string | null | undefined;
+  dueTime?: string | null | undefined;
+  priority?: string | null | undefined;
+}): string {
+  if (task.status === "COMPLETED") return "Task completed — awaiting stage progress evaluation";
+  if (task.status === "SKIPPED") return "Task skipped by clinician";
+  if (task.status === "BLOCKED") return "Clinical review required — automation paused for this issue";
+  if (task.status === "ESCALATED") return "Care team direct intervention pending";
+
+  const titleLower = task.title.toLowerCase();
+  const timeStr = task.dueTime ? ` at ${task.dueTime}` : "";
+
+  if (task.taskType === "MEDICATION_TASK" || titleLower.includes("injection") || titleLower.includes("medication")) {
+    if (titleLower.includes("trigger")) {
+      return `CRITICAL: Trigger injection scheduled${timeStr} — confirmation required immediately upon administration`;
+    }
+    return `Scheduled medication reminder active${timeStr} [I've Taken It]`;
+  }
+  if (task.taskType === "APPOINTMENT_TASK" || titleLower.includes("scan") || titleLower.includes("ultrasound")) {
+    return `Clinical scan appointment scheduled${timeStr} — attendance & report pending`;
+  }
+  if (titleLower.includes("arrival") || task.taskType === "ARRIVAL_TASK") {
+    return `Arrival check-in active — await patient tap [I've Arrived]`;
+  }
+  if (task.taskType === "REPORT_TASK" || titleLower.includes("report") || titleLower.includes("blood test") || titleLower.includes("semen")) {
+    if (titleLower.includes("pregnancy") || titleLower.includes("beta-hcg")) {
+      return `Serum Beta-hCG test scheduled — await report upload & doctor review (no autonomous AI interpretation)`;
+    }
+    return `Diagnostic test pending — await report document upload`;
+  }
+  if (titleLower.includes("decision") || titleLower.includes("pathway")) {
+    return `Doctor review complete — register clinical pathway decision (IVF / IUI / Deferred / Undecided)`;
+  }
+  if (titleLower.includes("payment")) {
+    return `Package payment required — awaiting secure payment gateway webhook confirmation`;
+  }
+  if (titleLower.includes("consent")) {
+    return `Informed consent review & signature collection pending`;
+  }
+
+  return `Next action: ${task.title}${timeStr}`;
+}
+
+/**
+ * Evaluates the authoritative "Next Action" for an entire Care Plan journey.
+ */
+export async function computeNextAction(
+  tenant: TenantContext,
+  carePlanId: string,
+): Promise<{
+  carePlanId: string;
+  stageName: string;
+  stageIndex: number;
+  nextAction: string;
+  urgency: "NORMAL" | "HIGH" | "CRITICAL";
+  activeTaskCount: number;
+  openEscalationsCount: number;
+}> {
+  const plan = await prisma.carePlan.findUnique({
+    where: { id: carePlanId },
+    include: {
+      steps: { orderBy: { sortOrder: "asc" }, include: { tasks: true } },
+      tasks: { orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  if (!plan) throw notFound("CarePlan not found");
+  await requireClinicOwned(tenant, plan);
+
+  const escalations = await prisma.escalation.findMany({
+    where: { clinicId: tenant.clinicId, coupleId: plan.coupleId, status: "OPEN" },
+  });
+
+  if (escalations.length > 0) {
+    const isClinical = escalations.some((e) => e.type === "CLINICAL" || e.severity === "HIGH");
+    return {
+      carePlanId: plan.id,
+      stageName: plan.currentStageName ?? "Unknown",
+      stageIndex: plan.currentStageIndex,
+      nextAction: isClinical
+        ? `CLINICAL ALERT: ${escalations[0]?.reason ?? "Patient clinical concern paused automation"}`
+        : `ATTENTION: ${escalations[0]?.reason ?? "Care task overdue"}`,
+      urgency: isClinical ? "CRITICAL" : "HIGH",
+      activeTaskCount: plan.tasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS").length,
+      openEscalationsCount: escalations.length,
+    };
+  }
+
+  if (plan.status !== "ACTIVE") {
+    return {
+      carePlanId: plan.id,
+      stageName: plan.currentStageName ?? "Completed",
+      stageIndex: plan.currentStageIndex,
+      nextAction: `Care plan status is ${plan.status.toLowerCase()}`,
+      urgency: "NORMAL",
+      activeTaskCount: 0,
+      openEscalationsCount: 0,
+    };
+  }
+
+  const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex);
+  const pendingTasks = plan.tasks.filter(
+    (t) => t.carePlanStepId === currentStep?.id && (t.status === "WAITING" || t.status === "IN_PROGRESS"),
+  );
+
+  if (pendingTasks.length === 0) {
+    return {
+      carePlanId: plan.id,
+      stageName: currentStep?.name ?? "Review",
+      stageIndex: plan.currentStageIndex,
+      nextAction: "Stage criteria met — ready to evaluate progress to next stage",
+      urgency: "NORMAL",
+      activeTaskCount: 0,
+      openEscalationsCount: 0,
+    };
+  }
+
+  // Find most urgent task
+  const criticalTask = pendingTasks.find((t) => t.priority === "CLINICAL" || t.title.toLowerCase().includes("trigger"));
+  const chosenTask = criticalTask ?? pendingTasks[0]!;
+
+  const actionText = computeNextActionForTask({
+    title: chosenTask.title,
+    taskType: chosenTask.taskType,
+    status: chosenTask.status,
+    stageName: currentStep?.name,
+    dueTime: chosenTask.dueTime,
+    priority: chosenTask.priority,
+  });
+
+  const isCritical = chosenTask.priority === "CLINICAL" || chosenTask.title.toLowerCase().includes("trigger");
+  const isHigh = chosenTask.priority === "HIGH";
+
+  return {
+    carePlanId: plan.id,
+    stageName: currentStep?.name ?? "Active Stage",
+    stageIndex: plan.currentStageIndex,
+    nextAction: actionText,
+    urgency: isCritical ? "CRITICAL" : isHigh ? "HIGH" : "NORMAL",
+    activeTaskCount: pendingTasks.length,
+    openEscalationsCount: 0,
+  };
+}
+
+/**
  * Checks whether WhatsApp is configured for this clinic.
  * Returns an honest status — never falsifies delivery.
  */
@@ -212,7 +364,7 @@ export async function activatePatientTreatmentPlan(
         clinicId: tenant.clinicId,
         coupleId: couple.id,
         carePlanId: newPlan.id,
-        kind: template.type === "IVF" ? "IVF" : "EVALUATION",
+        kind: template.type === "IUI" ? "IUI" : "IVF",
         label: `${template.name} - ${couple.primaryPatient.firstName}`,
         status: "ACTIVE",
         stageIndex: 0,
@@ -276,6 +428,21 @@ export async function activatePatientTreatmentPlan(
             dueDate: isFirstStage ? due : null,
             dueTime: tplTask.dueTimingHours ? `${String(tplTask.dueTimingHours).padStart(2, "0")}:00` : "10:00",
             triggerEvent: tplTask.triggerEvent,
+            communicationChannel:
+              ((tplTask.communicationConfig as Record<string, unknown>)?.["channel"] as string) ?? "WHATSAPP",
+            attempts: 0,
+            escalationLevel: 0,
+            lastAction: isFirstStage ? "Task initialized in Care Loop" : "Waiting for stage entry",
+            nextAction: isFirstStage
+              ? computeNextActionForTask({
+                  title,
+                  taskType: tplTask.taskType,
+                  status: initialStatus,
+                  stageName: tplStep.name,
+                  dueTime: tplTask.dueTimingHours ? `${String(tplTask.dueTimingHours).padStart(2, "0")}:00` : "10:00",
+                  priority: tplTask.priority,
+                })
+              : "Stage not yet active",
             communicationConfig: (tplTask.communicationConfig ?? {}) as object,
             reminderConfig: (tplTask.reminderConfig ?? {}) as object,
             escalationConfig: (tplTask.escalationConfig ?? {}) as object,
@@ -301,7 +468,7 @@ export async function activatePatientTreatmentPlan(
     }
 
     return newPlan;
-  });
+  }, { timeout: 60000, maxWait: 15000 });
 
   // Audit plan activation
   await audit(tenant, "treatment_plan.activate", "CarePlan", plan.id, {
@@ -405,7 +572,19 @@ export async function evaluateStageProgress(tenant: TenantContext, carePlanId: s
           const due = new Date(Date.now() + 86_400_000); // Activate with fresh relative offset
           await tx.careTask.update({
             where: { id: t.id },
-            data: { status: "WAITING", dueDate: due },
+            data: {
+              status: "WAITING",
+              dueDate: due,
+              lastAction: "Stage entered: task activated in Care Loop",
+              nextAction: computeNextActionForTask({
+                title: t.title,
+                taskType: t.taskType,
+                status: "WAITING",
+                stageName: nextStep.name,
+                dueTime: t.dueTime,
+                priority: t.priority,
+              }),
+            },
           });
         }
       }
@@ -426,7 +605,7 @@ export async function evaluateStageProgress(tenant: TenantContext, carePlanId: s
         data: { status: "COMPLETED" },
       });
     }
-  });
+  }, { timeout: 30000, maxWait: 10000 });
 
   await audit(tenant, "care_loop.advance_stage", "CarePlan", plan.id, {
     fromStage: currentStep.name,
@@ -480,6 +659,8 @@ export async function completeCareTask(
       completedAt: new Date(),
       completedBy: tenant.userId ?? "PATIENT",
       completionEvidence: (evidence ?? { source: "MANUAL" }) as object,
+      lastAction: `Task completed via ${evidence?.source ?? "MANUAL"}${evidence?.replyText ? `: "${evidence.replyText}"` : ""}`,
+      nextAction: "Task completed — stage progress evaluated",
     },
   });
 
@@ -538,38 +719,80 @@ export async function handlePatientResponse(
   );
 
   const cleanText = text.trim().toLowerCase();
-  const isPositive =
-    cleanText === "done" ||
-    cleanText === "yes" ||
-    cleanText === "completed" ||
-    cleanText === "taken" ||
-    cleanText.includes("done") ||
-    cleanText.includes("i have taken");
+
+  // 1. Record incoming patient response on the task record
+  await prisma.careTask.update({
+    where: { id: taskId },
+    data: { patientResponse: text.trim() },
+  });
+
+  const taskTitleLower = task.title.toLowerCase();
+  const isPaymentTask = task.category === "PAYMENT" || taskTitleLower.includes("payment");
+  const isTriggerTask = taskTitleLower.includes("trigger");
+
+  // 2. PAYMENT SECURITY GUARDRAIL (PDF Page 7):
+  // "Do not mark payment complete because the patient says: 'I paid'. The gateway/webhook should determine payment status."
+  const isPaymentClaim =
+    cleanText === "i paid" ||
+    cleanText === "i have paid" ||
+    cleanText.includes("paid") ||
+    cleanText.includes("payment done") ||
+    cleanText.includes("transferred money");
+
+  if (isPaymentTask && isPaymentClaim) {
+    await prisma.careTask.update({
+      where: { id: taskId },
+      data: {
+        lastAction: `Patient reported payment via WhatsApp: "${text.trim()}"`,
+        nextAction: "Awaiting payment gateway webhook confirmation (manual claim unverified)",
+      },
+    });
+
+    return {
+      status: task.status,
+      action: "PAYMENT_CLAIM_RECORDED_PENDING_GATEWAY",
+      aiReply:
+        "Thank you for letting us know. Our billing system verifies payments directly with our secure payment gateway. Your care task will automatically clear as soon as the transaction confirmation is received.",
+      task,
+    };
+  }
+
+  // 3. CLINICAL CONCERN & MEDICAL SAFETY GUARDRAILS (PDF Pages 5, 10, 17):
+  // Dose mistakes, missed injections, double-dose queries, symptoms (pain, bleeding, vomiting, fever).
+  // "This should stop normal automation and create a clinical escalation. The AI shouldn't invent a clinical answer."
+  const isMedicationTask =
+    task.category === "MEDICATION" ||
+    task.category === "INJECTION" ||
+    task.taskType === "MEDICATION_TASK" ||
+    taskTitleLower.includes("injection") ||
+    taskTitleLower.includes("medication") ||
+    taskTitleLower.includes("dose") ||
+    taskTitleLower.includes("trigger");
+
+  const isClinicalConcern =
+    cleanText.includes("wrong dose") ||
+    cleanText.includes("took wrong") ||
+    cleanText.includes("should i take double") ||
+    cleanText.includes("take double") ||
+    cleanText.includes("double dose") ||
+    cleanText.includes("pain") ||
+    cleanText.includes("bleeding") ||
+    cleanText.includes("cramp") ||
+    cleanText.includes("fever") ||
+    cleanText.includes("vomit") ||
+    cleanText.includes("severe") ||
+    cleanText.includes("i have a concern") ||
+    (isMedicationTask &&
+      (cleanText.includes("missed") || cleanText.includes("forgot") || cleanText.includes("what should i do")));
 
   const isMissedOrHelp =
+    isClinicalConcern ||
     cleanText.includes("missed") ||
     cleanText.includes("forgot") ||
     cleanText.includes("help") ||
     cleanText.includes("delay") ||
     cleanText.includes("skip") ||
-    cleanText.includes("pain") ||
-    cleanText.includes("bleeding") ||
     cleanText.includes("problem");
-
-  if (isPositive) {
-    const outcome = await completeCareTask(tenant, taskId, {
-      replyText: text,
-      source: "WHATSAPP_RESPONSE",
-      notes: "Patient confirmed via WhatsApp message",
-    });
-    return {
-      status: "COMPLETED",
-      action: "TASK_COMPLETED",
-      aiReply: "Thank you for confirming. Your care team has been updated.",
-      task: outcome.task,
-      stageAdvancement: outcome.stageAdvancement,
-    };
-  }
 
   if (isMissedOrHelp) {
     // 1. Mark task as BLOCKED / NEEDS_HELP
@@ -577,20 +800,18 @@ export async function handlePatientResponse(
       where: { id: taskId },
       data: {
         status: "BLOCKED",
+        lastAction: isClinicalConcern
+          ? `Clinical alert: patient reported symptom/dose query: "${text.trim()}"`
+          : `Patient reported issue with task: "${text.trim()}"`,
+        nextAction: isClinicalConcern
+          ? "CLINICAL ESCALATION: Paused for doctor/nurse intervention"
+          : "Coordinator follow-up required",
         metadata: {
           patientReportedIssue: text,
           reportedAt: new Date().toISOString(),
         },
       },
     });
-
-    const isClinicalConcern =
-      cleanText.includes("pain") ||
-      cleanText.includes("bleeding") ||
-      cleanText.includes("missed") ||
-      cleanText.includes("vomit") ||
-      cleanText.includes("severe") ||
-      cleanText.includes("injection");
 
     const reason = isClinicalConcern
       ? `Patient reported clinical concern: "${text}"`
@@ -617,8 +838,15 @@ export async function handlePatientResponse(
     });
 
     // 3. Strict AI Guardrail: empathetic disclaimer refusing clinical advice
-    const guardrailedAiReply =
-      "I understand. I don't want to give you the wrong medical information. I have recorded this for your care team so they can guide you promptly.";
+    const isDoseQuery =
+      cleanText.includes("wrong dose") ||
+      cleanText.includes("took wrong") ||
+      cleanText.includes("take double") ||
+      cleanText.includes("double dose");
+
+    const guardrailedAiReply = isDoseQuery
+      ? "I understand your concern. I don't want to give you incorrect medical advice. I have paused automated messages for this issue and immediately alerted your doctor and clinical care team so they can guide you directly."
+      : "I understand. I don't want to give you the wrong medical information. I have paused automated messages for this issue and recorded this for your care team so they can guide you promptly.";
 
     await audit(tenant, "care_loop.patient_exception", "CareTask", task.id, {
       text,
@@ -635,11 +863,448 @@ export async function handlePatientResponse(
     };
   }
 
+  // 4. ARRIVAL CHECK-IN (PDF Pages 13, 15):
+  // "[I've Arrived]", "I have arrived", "at the clinic"
+  const isArrival =
+    cleanText === "i've arrived" ||
+    cleanText === "i have arrived" ||
+    cleanText.includes("arrived") ||
+    cleanText.includes("i am at the clinic") ||
+    cleanText.includes("im here");
+
+  if (isArrival) {
+    const outcome = await completeCareTask(tenant, taskId, {
+      replyText: text,
+      source: "PATIENT_ARRIVAL",
+      notes: "Patient checked in: arrived at clinic on procedure day",
+    });
+
+    await prisma.careTask.update({
+      where: { id: taskId },
+      data: {
+        lastAction: "Patient arrived at clinic",
+        nextAction: "Staff check-in & procedure suite readiness confirmed",
+      },
+    });
+
+    return {
+      status: "COMPLETED",
+      action: "PATIENT_ARRIVED",
+      aiReply: "Welcome to the clinic! Your arrival has been confirmed and our clinical staff has been notified to receive you.",
+      task: outcome.task,
+      stageAdvancement: outcome.stageAdvancement,
+    };
+  }
+
+  // 5. TEST COMPLETED / WAITING FOR REPORT (PDF Page 18):
+  // "[I've Done the Test]", "test completed"
+  const isTestDone =
+    cleanText === "i've done the test" ||
+    cleanText === "i have done the test" ||
+    cleanText.includes("done the test") ||
+    cleanText.includes("test done");
+
+  if (isTestDone) {
+    await prisma.careTask.update({
+      where: { id: taskId },
+      data: {
+        lastAction: "Patient confirmed test completed",
+        nextAction: "Upload lab report document for doctor clinical review [Upload Report]",
+      },
+    });
+
+    return {
+      status: task.status,
+      action: "TEST_COMPLETED_AWAITING_REPORT",
+      aiReply: "Great! Once your lab report is available, please upload it here so your doctor can review it.",
+      task,
+    };
+  }
+
+  // 6. POST-TRANSFER WELLNESS CHECK-IN (PDF Page 16):
+  // "[I'm Feeling Fine]", "feeling fine", "all good"
+  const isFeelingFine =
+    cleanText === "i'm feeling fine" ||
+    cleanText === "im feeling fine" ||
+    cleanText.includes("feeling fine") ||
+    cleanText.includes("all good") ||
+    cleanText.includes("feeling well");
+
+  if (isFeelingFine) {
+    const outcome = await completeCareTask(tenant, taskId, {
+      replyText: text,
+      source: "PATIENT_WELLNESS_CONFIRMATION",
+      notes: "Patient reported feeling fine during post-transfer check-in",
+    });
+
+    await prisma.careTask.update({
+      where: { id: taskId },
+      data: {
+        lastAction: "Patient confirmed feeling fine",
+        nextAction: "Next post-transfer milestone: scheduled check-in or Beta-hCG test",
+      },
+    });
+
+    return {
+      status: "COMPLETED",
+      action: "WELLNESS_CONFIRMED",
+      aiReply: "We are glad to hear you are feeling well. Please rest comfortably and message us if any question arises.",
+      task: outcome.task,
+      stageAdvancement: outcome.stageAdvancement,
+    };
+  }
+
+  // 7. POSITIVE CONFIRMATION / MEDICATION TAKEN / TRIGGER ADMINISTERED:
+  // "done", "yes", "completed", "taken", "[I've Taken It]", "[I'm Ready]"
+  const isPositive =
+    cleanText === "done" ||
+    cleanText === "yes" ||
+    cleanText === "completed" ||
+    cleanText === "taken" ||
+    cleanText.includes("done") ||
+    cleanText.includes("taken") ||
+    cleanText.includes("i've taken it") ||
+    cleanText.includes("i have taken") ||
+    cleanText.includes("i'm ready") ||
+    cleanText.includes("im ready");
+
+  if (isPositive) {
+    const nowIso = new Date().toISOString();
+    const evidence: Record<string, unknown> = {
+      replyText: text,
+      source: "WHATSAPP_RESPONSE",
+      notes: isTriggerTask
+        ? `Trigger injection confirmed at ${nowIso}`
+        : "Patient confirmed via WhatsApp message",
+      ...(isTriggerTask ? { confirmedTriggerMinute: nowIso } : {}),
+    };
+
+    const outcome = await completeCareTask(tenant, taskId, evidence);
+
+    await prisma.careTask.update({
+      where: { id: taskId },
+      data: {
+        lastAction: isTriggerTask
+          ? `Trigger injection administered & verified at ${nowIso}`
+          : "Patient confirmed task completed",
+        nextAction: isTriggerTask
+          ? "OPU readiness updated — proceed to egg retrieval scheduling"
+          : "Task complete — awaiting stage evaluation",
+      },
+    });
+
+    const aiReply = isTriggerTask
+      ? "Your trigger administration timestamp has been recorded. Your care team and embryology have confirmed your OPU procedure schedule."
+      : "Thank you for confirming. Your care team has been updated.";
+
+    return {
+      status: "COMPLETED",
+      action: "TASK_COMPLETED",
+      aiReply,
+      task: outcome.task,
+      stageAdvancement: outcome.stageAdvancement,
+    };
+  }
+
   // Unrecognized text - keep waiting and log interaction
+  await prisma.careTask.update({
+    where: { id: taskId },
+    data: {
+      lastAction: `Patient replied: "${text.slice(0, 80)}"`,
+    },
+  });
+
   return {
     status: task.status,
     action: "RECORDED",
     aiReply: "Thank you for your message. Your care coordinator will follow up if needed.",
+  };
+}
+
+/**
+ * Executes a single step along the 4-tiered escalation ladder:
+ * WhatsApp Reminder → 2nd WhatsApp Reminder → AI Voice Call → Staff Escalation
+ */
+export async function executeEscalationStep(
+  tenant: TenantContext,
+  taskId: string,
+  customReason?: string,
+) {
+  const task = await requireClinicOwned(
+    tenant,
+    await prisma.careTask.findUnique({
+      where: { id: taskId },
+      include: {
+        couple: { include: { primaryPatient: true, assignedDoctor: true, assignedCoordinator: true } },
+        carePlan: true,
+      },
+    }),
+  );
+
+  const newAttempts = (task.attempts ?? 0) + 1;
+  const nextLevel = Math.min((task.escalationLevel ?? 0) + 1, 4);
+
+  let lastAction = "";
+  let nextAction = "";
+  let status: CareTaskStatus = task.status;
+  let escalationId: string | undefined = undefined;
+
+  switch (nextLevel) {
+    case 1:
+      lastAction = `WhatsApp reminder sent (Attempt ${newAttempts})`;
+      nextAction = "Second WhatsApp reminder in 2 hours if no response";
+      break;
+    case 2:
+      lastAction = `Second WhatsApp reminder sent (Attempt ${newAttempts})`;
+      nextAction = "AI Voice Call escalation in 1 hour if no response";
+      break;
+    case 3:
+      lastAction = `AI Voice Call dispatched (Attempt ${newAttempts})`;
+      nextAction = "Staff escalation if no patient answer";
+      break;
+    case 4:
+    default:
+      status = "ESCALATED";
+      lastAction = `Care team escalation triggered (Attempt ${newAttempts})`;
+      nextAction = "Care Coordinator direct human intervention required";
+
+      const escalation = await prisma.escalation.create({
+        data: {
+          clinicId: tenant.clinicId,
+          coupleId: task.coupleId,
+          patientId: task.couple?.primaryPatientId ?? null,
+          careTaskId: task.id,
+          type: "TASK_OVERDUE",
+          severity: task.priority === "CLINICAL" ? "HIGH" : "MEDIUM",
+          reason: customReason ?? `Task '${task.title}' reached maximum automated outreach (${newAttempts} attempts).`,
+          assignedToId: task.carePlan?.assignedCoordinatorId ?? task.couple?.assignedCoordinatorId ?? null,
+          status: "OPEN",
+        },
+      });
+      escalationId = escalation.id;
+      break;
+  }
+
+  const updated = await prisma.careTask.update({
+    where: { id: taskId },
+    data: {
+      attempts: newAttempts,
+      escalationLevel: nextLevel,
+      lastAction,
+      nextAction,
+      status,
+    },
+  });
+
+  await audit(tenant, "care_task.escalation_step", "CareTask", taskId, {
+    attempts: newAttempts,
+    escalationLevel: nextLevel,
+    lastAction,
+    nextAction,
+    escalationId: escalationId ?? null,
+  });
+
+  return { task: updated, escalationId };
+}
+
+/**
+ * Verified payment gateway completion handler.
+ * Enforces rule: only verified gateway webhooks mark payment tasks complete.
+ */
+export async function verifyTaskPayment(
+  tenant: TenantContext,
+  taskId: string,
+  gatewayEvidence: {
+    transactionId: string;
+    amount: number;
+    gateway: string;
+    webhookEventId?: string | undefined;
+  },
+) {
+  const task = await requireClinicOwned(tenant, await prisma.careTask.findUnique({ where: { id: taskId } }));
+
+  const completed = await prisma.careTask.update({
+    where: { id: taskId },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      completedBy: `GATEWAY_WEBHOOK:${gatewayEvidence.gateway}`,
+      completionEvidence: gatewayEvidence as object,
+      lastAction: `Payment verified via ${gatewayEvidence.gateway} (TXN: ${gatewayEvidence.transactionId})`,
+      nextAction: "Financial clearance confirmed — Proceeding with cycle preparation",
+    },
+  });
+
+  await audit(tenant, "care_task.payment_verified", "CareTask", taskId, {
+    transactionId: gatewayEvidence.transactionId,
+    amount: gatewayEvidence.amount,
+    gateway: gatewayEvidence.gateway,
+    webhookEventId: gatewayEvidence.webhookEventId ?? null,
+  });
+
+  let stageAdvancement = null;
+  if (task.carePlanId) {
+    stageAdvancement = await evaluateStageProgress(tenant, task.carePlanId);
+  }
+
+  return { task: completed, stageAdvancement };
+}
+
+/**
+ * Handles doctor Stage 3 IVF Decision milestone.
+ * If patient is undecided, stops automated reminders and routes to human coordinator counseling.
+ */
+export async function handleIvfDecision(
+  tenant: TenantContext,
+  carePlanId: string,
+  decision: "IVF" | "IUI" | "FURTHER_INVESTIGATION" | "TREATMENT_DEFERRED" | "PATIENT_UNDECIDED",
+  notes?: string,
+) {
+  const plan = await requireClinicOwned(tenant, await prisma.carePlan.findUnique({ where: { id: carePlanId } }));
+
+  if (decision === "PATIENT_UNDECIDED") {
+    await prisma.carePlan.update({
+      where: { id: carePlanId },
+      data: {
+        approvalStatus: "PAUSED",
+        pauseReason: "Patient undecided on treatment pathway — automated reminders paused for human counseling",
+        outcomeNotes: notes ? `[Decision: Undecided]: ${notes}` : "[Decision: Undecided] Couple taking time to deliberate",
+      },
+    });
+
+    const counselingTask = await prisma.careTask.create({
+      data: {
+        clinicId: tenant.clinicId,
+        coupleId: plan.coupleId,
+        carePlanId: plan.id,
+        title: "Patient decision counseling & support",
+        description: "Couple is undecided regarding IVF treatment. Conduct empathetic human counseling session.",
+        taskType: "COORDINATOR_TASK",
+        ownerRole: "CARE_COORDINATOR",
+        priority: "NORMAL",
+        status: "WAITING",
+        dueDate: new Date(Date.now() + 86_400_000 * 2),
+        lastAction: "Automated IVF reminders paused — human counseling task assigned",
+        nextAction: "Care Coordinator human consultation call with couple",
+        createdById: tenant.userId,
+      },
+    });
+
+    await audit(tenant, "care_loop.ivf_decision", "CarePlan", plan.id, {
+      decision,
+      notes: notes ?? null,
+      counselingTaskId: counselingTask.id,
+    });
+
+    return {
+      decision,
+      status: "PAUSED_FOR_COUNSELING",
+      counselingTaskId: counselingTask.id,
+      message: "Automated IVF reminders paused. Care Coordinator assigned for human conversation.",
+    };
+  }
+
+  const updatedPlan = await prisma.carePlan.update({
+    where: { id: carePlanId },
+    data: {
+      selectedBranch: decision,
+      outcomeNotes: notes ? `[Decision ${decision}]: ${notes}` : `[Decision: ${decision}]`,
+    },
+  });
+
+  await audit(tenant, "care_loop.ivf_decision", "CarePlan", plan.id, {
+    decision,
+    notes: notes ?? null,
+  });
+
+  const stageOutcome = await evaluateStageProgress(tenant, carePlanId);
+  return { decision, plan: updatedPlan, stageOutcome };
+}
+
+/**
+ * Handles doctor Stage 14 Cycle Outcome milestone.
+ * For unsuccessful cycles: routes to compassionate counselor follow-up, never auto-pushes next cycle.
+ */
+export async function handleCycleOutcome(
+  tenant: TenantContext,
+  carePlanId: string,
+  outcome: "POSITIVE" | "UNSUCCESSFUL" | "OTHER",
+  notes?: string,
+) {
+  const plan = await requireClinicOwned(tenant, await prisma.carePlan.findUnique({ where: { id: carePlanId } }));
+
+  if (outcome === "UNSUCCESSFUL") {
+    const updated = await prisma.carePlan.update({
+      where: { id: carePlanId },
+      data: {
+        status: "COMPLETED",
+        selectedBranch: "UNSUCCESSFUL_CYCLE",
+        outcomeNotes: notes ? `[Outcome: Unsuccessful]: ${notes}` : "[Outcome: Unsuccessful]",
+      },
+    });
+
+    const followUpTask = await prisma.careTask.create({
+      data: {
+        clinicId: tenant.clinicId,
+        coupleId: plan.coupleId,
+        carePlanId: plan.id,
+        title: "Compassionate follow-up consultation with couple",
+        description: "Cycle outcome was negative. Doctor and counselor conduct dedicated review. Automated cycle re-prompts strictly disabled.",
+        taskType: "COORDINATOR_TASK",
+        ownerRole: "CARE_COORDINATOR",
+        priority: "HIGH",
+        status: "WAITING",
+        dueDate: new Date(Date.now() + 86_400_000),
+        lastAction: "Cycle outcome recorded: Unsuccessful. Automated re-prompts strictly blocked.",
+        nextAction: "Schedule compassionate clinical review call with Dr. & Coordinator",
+        createdById: tenant.userId,
+      },
+    });
+
+    await audit(tenant, "care_loop.cycle_outcome", "CarePlan", plan.id, { outcome, followUpTaskId: followUpTask.id });
+
+    return {
+      outcome,
+      status: "COMPLETED",
+      followUpTaskId: followUpTask.id,
+      patientMessage: "Your care team would like to speak with you about the result and discuss the next steps with you.",
+    };
+  }
+
+  const updated = await prisma.carePlan.update({
+    where: { id: carePlanId },
+    data: {
+      status: "COMPLETED",
+      selectedBranch: "PREGNANCY_CONFIRMED",
+      outcomeNotes: notes ? `[Outcome: Positive]: ${notes}` : "[Outcome: Positive — Clinical Pregnancy Confirmed]",
+    },
+  });
+
+  const viabilityTask = await prisma.careTask.create({
+    data: {
+      clinicId: tenant.clinicId,
+      coupleId: plan.coupleId,
+      carePlanId: plan.id,
+      title: "Viability ultrasound scan (6–7 weeks)",
+      description: "Transvaginal ultrasound to confirm intrauterine gestational sac, fetal cardiac activity, and crown-rump length (CRL).",
+      taskType: "APPOINTMENT_TASK",
+      ownerRole: "CARE_COORDINATOR",
+      priority: "HIGH",
+      status: "WAITING",
+      dueDate: new Date(Date.now() + 86_400_000 * 14),
+      lastAction: "Beta-hCG positive confirmed by doctor",
+      nextAction: "Schedule 6-7 week viability ultrasound scan",
+      createdById: tenant.userId,
+    },
+  });
+
+  await audit(tenant, "care_loop.cycle_outcome", "CarePlan", plan.id, { outcome, viabilityTaskId: viabilityTask.id });
+
+  return {
+    outcome,
+    status: "COMPLETED",
+    viabilityTaskId: viabilityTask.id,
+    patientMessage: "Your care team has reviewed your result and would like to guide you through the next steps.",
   };
 }
 
@@ -760,6 +1425,17 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
       status: "WAITING",
       dueDate,
       dueTime: input.dueTime ?? "10:00",
+      communicationChannel: "WHATSAPP",
+      attempts: 0,
+      escalationLevel: 0,
+      lastAction: "Ad-hoc task created by doctor",
+      nextAction: computeNextActionForTask({
+        title: input.title,
+        taskType: input.taskType ?? "PATIENT_TASK",
+        status: "WAITING",
+        dueTime: input.dueTime ?? "10:00",
+        priority: input.priority ?? "NORMAL",
+      }),
       communicationConfig: (input.communicationConfig ?? { whatsappEnabled: true }) as object,
       reminderConfig: (input.reminderConfig ?? {}) as object,
       escalationConfig: (input.escalationConfig ?? {}) as object,
@@ -943,6 +1619,7 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
   const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
   const allTasks = plan.steps.flatMap((s) => s.tasks);
   const currentTasks = currentStep ? currentStep.tasks : [];
+  const nextActionInfo = await computeNextAction(tenant, carePlanId);
 
   return {
     plan: {
@@ -962,6 +1639,8 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
       coordinator: plan.assignedCoordinator?.name ?? plan.couple.assignedCoordinator?.name ?? "Unassigned",
       approvedBy: plan.approvedBy?.name ?? "Dr. Clinical Lead",
     },
+    nextAction: nextActionInfo.nextAction,
+    nextActionUrgency: nextActionInfo.urgency,
     couple: {
       id: plan.couple.id,
       slug: plan.couple.slug,
@@ -994,6 +1673,12 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
         priority: t.priority,
         taskType: t.taskType,
         ownerRole: t.ownerRole,
+        communicationChannel: t.communicationChannel ?? "WHATSAPP",
+        attempts: t.attempts ?? 0,
+        escalationLevel: t.escalationLevel ?? 0,
+        lastAction: t.lastAction ?? null,
+        nextAction: t.nextAction ?? null,
+        patientResponse: t.patientResponse ?? null,
         due: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : "Unscheduled",
         dueTime: t.dueTime,
         assignedTo: t.assignments[0]?.user?.name ?? t.ownerRole,

@@ -10,10 +10,12 @@ export type SeedTaskDef = {
   dueTimingDays: number;
   dueTimingHours?: number;
   communicationConfig?: {
+    channel?: string;
     whatsapp?: {
       enabled: boolean;
       templateName: string;
       variables: string[];
+      buttons?: string[];
     };
   };
   reminderConfig?: {
@@ -26,7 +28,14 @@ export type SeedTaskDef = {
     escalationType?: string;
   };
   completionCondition?: {
-    type: "PATIENT_CONFIRMATION" | "DOCTOR_REVIEW" | "REPORT_UPLOADED" | "APPOINTMENT_COMPLETED" | "STAFF_VERIFICATION";
+    type:
+      | "PATIENT_CONFIRMATION"
+      | "DOCTOR_REVIEW"
+      | "REPORT_UPLOADED"
+      | "APPOINTMENT_COMPLETED"
+      | "STAFF_VERIFICATION"
+      | "GATEWAY_WEBHOOK"
+      | "ARRIVAL_CONFIRMATION";
   };
   requiredAction?: string;
 };
@@ -51,15 +60,24 @@ export type SeedTemplateDef = {
   stages: SeedStageDef[];
 };
 
-export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
-  name: "IVF — Standard Journey",
-  description: "Comprehensive 16-stage IVF care journey coordinating clinical decisions, coordinator exception handling, and patient task completion.",
+/**
+ * Standard 14-Stage Clinical IVF Care Loop Flow
+ * Dedicated clinical execution engine (untouched appointment booking flow)
+ */
+export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
+  name: "IVF — Care Loop Clinical Flow",
+  description: "Dedicated 14-stage IVF clinical execution companion from consultation completion through cycle outcome, featuring Next Action computing and strict medical guardrails.",
   specialty: "FERTILITY",
   type: "IVF",
-  version: 1,
+  version: 2,
   isSystem: true,
   config: {
     branches: [
+      {
+        stageIndex: 2,
+        name: "IVF Decision Milestone",
+        options: ["IVF_RECOMMENDED", "IUI_RECOMMENDED", "FURTHER_INVESTIGATION", "TREATMENT_DEFERRED", "PATIENT_UNDECIDED"],
+      },
       {
         stageIndex: 10,
         name: "Transfer Strategy Branch",
@@ -67,12 +85,13 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
       },
       {
         stageIndex: 13,
-        name: "Pregnancy Outcome Branch",
-        options: ["PREGNANCY_CONFIRMED", "UNSUCCESSFUL_CYCLE"],
+        name: "Cycle Outcome Branch",
+        options: ["POSITIVE", "UNSUCCESSFUL", "OTHER"],
       },
     ],
   },
   stages: [
+    // 1. Initial Consultation
     {
       name: "Fertility Consultation",
       description: "Initial clinical consultation, fertility history review, baseline orders, and care registration.",
@@ -107,10 +126,12 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "NORMAL",
           dueTimingDays: 1,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "patient_welcome_onboarding",
               variables: ["patient_name", "clinic_name", "portal_link"],
+              buttons: ["View My Tasks", "Talk to Team"],
             },
           },
           reminderConfig: { remindAtHours: 24, channel: "WHATSAPP" },
@@ -129,6 +150,8 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 2. Fertility Workup
     {
       name: "Investigation / Workup",
       description: "Blood tests, hormonal panels, pelvic ultrasound, semen analysis, and diagnostic review.",
@@ -143,10 +166,12 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "HIGH",
           dueTimingDays: 2,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "lab_investigation_reminder",
               variables: ["patient_name", "test_names", "lab_timings", "clinic_contact"],
+              buttons: ["View Appointment", "Upload Report"],
             },
           },
           reminderConfig: { remindAtHours: 24, channel: "WHATSAPP" },
@@ -161,6 +186,15 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           ownerRole: "PATIENT",
           priority: "NORMAL",
           dueTimingDays: 3,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "semen_analysis_instructions",
+              variables: ["patient_name", "clinic_contact"],
+              buttons: ["Upload Report", "Need Help"],
+            },
+          },
           completionCondition: { type: "REPORT_UPLOADED" },
           requiredAction: "UPLOAD_SEMEN_REPORT",
         },
@@ -185,9 +219,44 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 3. IVF Decision Milestone
+    {
+      name: "IVF Decision",
+      description: "Doctor clinical decision milestone evaluating workup results and defining treatment roadmap.",
+      stageType: "DECISION_MILESTONE",
+      completionStrategy: "DOCTOR_APPROVAL_REQUIRED",
+      config: {
+        isDecisionMilestone: true,
+        options: ["IVF", "IUI", "FURTHER_INVESTIGATION", "TREATMENT_DEFERRED", "PATIENT_UNDECIDED"],
+      },
+      tasks: [
+        {
+          title: "Doctor clinical pathway decision",
+          description: "Doctor determines whether couple proceeds to IVF, IUI, deferred treatment, or further workup.",
+          taskType: "DOCTOR_TASK",
+          ownerRole: "DOCTOR",
+          priority: "CLINICAL",
+          dueTimingDays: 0,
+          completionCondition: { type: "DOCTOR_REVIEW" },
+          requiredAction: "SELECT_IVF_DECISION",
+        },
+        {
+          title: "Coordinator counseling for undecided patients",
+          description: "If patient is undecided, Care Loop stops automated reminders and routes to human coordinator for compassionate conversation.",
+          taskType: "COORDINATOR_TASK",
+          ownerRole: "CARE_COORDINATOR",
+          priority: "NORMAL",
+          dueTimingDays: 1,
+          completionCondition: { type: "STAFF_VERIFICATION" },
+        },
+      ],
+    },
+
+    // 4. Treatment Planning & Consent
     {
       name: "IVF Treatment Planning & Consent",
-      description: "Doctor defines patient-specific stimulation protocol; coordinator collects informed consent.",
+      description: "Doctor specifies stimulation protocol; coordinator collects informed consent and validates package financial clearance.",
       stageType: "PLANNING_AND_CONSENT",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
@@ -219,21 +288,44 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "HIGH",
           dueTimingDays: 1,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "consent_signing_request",
               variables: ["patient_name", "consent_name", "doctor_name"],
+              buttons: ["Complete Consent", "Talk to Team"],
             },
           },
           reminderConfig: { remindAtHours: 24, channel: "WHATSAPP" },
           escalationConfig: { escalateAfterHours: 48, escalateTo: "COORDINATOR", escalationType: "NO_RESPONSE" },
           completionCondition: { type: "PATIENT_CONFIRMATION" },
         },
+        {
+          title: "Package payment verification via payment gateway",
+          description: "Financial clearance confirmed via gateway webhook. Patient saying 'I paid' does not mark this task completed.",
+          taskType: "PATIENT_TASK",
+          ownerRole: "CARE_COORDINATOR",
+          priority: "HIGH",
+          dueTimingDays: 2,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "package_payment_link",
+              variables: ["patient_name", "amount", "payment_link"],
+              buttons: ["Pay Now", "Talk to Team"],
+            },
+          },
+          completionCondition: { type: "GATEWAY_WEBHOOK" },
+          requiredAction: "VERIFY_PAYMENT_WEBHOOK",
+        },
       ],
     },
+
+    // 5. Cycle Preparation Checklist
     {
       name: "Cycle Preparation",
-      description: "Cycle Day 1 notification, baseline scan, estradiol assessment, and medication dispension.",
+      description: "Dynamic checklist: Day 1 notification, baseline scan, estradiol assessment, injection education, and medication clearance.",
       stageType: "CYCLE_PREPARATION",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
@@ -245,10 +337,12 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "HIGH",
           dueTimingDays: 0,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "cycle_day1_checkin",
               variables: ["patient_name", "clinic_contact"],
+              buttons: ["Confirm Day 1", "Need Help"],
             },
           },
           completionCondition: { type: "PATIENT_CONFIRMATION" },
@@ -262,6 +356,15 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "HIGH",
           dueTimingDays: 2,
           completionCondition: { type: "APPOINTMENT_COMPLETED" },
+        },
+        {
+          title: "Injection education & administration counseling",
+          description: "Nurse or coordinator provides in-clinic or video injection training for gonadotropin pens.",
+          taskType: "STAFF_TASK",
+          ownerRole: "STAFF",
+          priority: "HIGH",
+          dueTimingDays: 2,
+          completionCondition: { type: "STAFF_VERIFICATION" },
         },
         {
           title: "Verify stimulation medication availability",
@@ -284,24 +387,28 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 6. Ovarian Stimulation - Daily Companion
     {
       name: "Ovarian Stimulation",
-      description: "Daily gonadotropin injections, adherence tracking, and patient check-in.",
+      description: "Daily scheduled gonadotropin injections, adherence tracking, patient check-in, and dosage safety guardrails.",
       stageType: "STIMULATION",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
         {
-          title: "Stimulation injection acknowledgement",
+          title: "Daily stimulation injection confirmation",
           description: "Daily scheduled gonadotropin injection (dose, route, and time specified by doctor prescription).",
           taskType: "MEDICATION_TASK",
           ownerRole: "PATIENT",
           priority: "HIGH",
           dueTimingDays: 1,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "medication_reminder",
               variables: ["patient_name", "medication_name", "dose", "scheduled_time", "doctor_name"],
+              buttons: ["I've Taken It", "Need Help"],
             },
           },
           reminderConfig: { remindAtHours: 1, channel: "WHATSAPP" },
@@ -320,6 +427,8 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 7. Follicular Monitoring
     {
       name: "Follicular Monitoring",
       description: "Serial transvaginal follicular tracking, serum estradiol monitoring, and protocol adjustments.",
@@ -334,6 +443,15 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           ownerRole: "CARE_COORDINATOR",
           priority: "HIGH",
           dueTimingDays: 0,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "scan_appointment_reminder",
+              variables: ["patient_name", "scan_date", "scan_time", "doctor_name"],
+              buttons: ["View Appointment", "Reschedule"],
+            },
+          },
           completionCondition: { type: "APPOINTMENT_COMPLETED" },
         },
         {
@@ -358,15 +476,17 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 8. Trigger Injection - Highest Urgency
     {
       name: "Trigger",
-      description: "Critical final oocyte maturation injection (hCG / GnRH agonist) with exact timing.",
+      description: "Critical final oocyte maturation injection (hCG / GnRH agonist) with exact timing and stored confirmation minute.",
       stageType: "TRIGGER",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       config: { criticalMilestone: true },
       tasks: [
         {
-          title: "Doctor prescribes trigger injection & exact hour",
+          title: "Doctor prescribes trigger injection & exact minute",
           description: "Doctor specifies trigger drug, dose, and exact administration time (typically 34–36 hours prior to retrieval).",
           taskType: "DOCTOR_TASK",
           ownerRole: "DOCTOR",
@@ -376,7 +496,7 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           requiredAction: "PRESCRIBE_TRIGGER",
         },
         {
-          title: "Urgent trigger timing confirmation with patient",
+          title: "Urgent trigger timing confirmation with couple",
           description: "Coordinator contacts couple to reinforce strict adherence to the prescribed trigger minute.",
           taskType: "COORDINATOR_TASK",
           ownerRole: "CARE_COORDINATOR",
@@ -385,17 +505,19 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           completionCondition: { type: "STAFF_VERIFICATION" },
         },
         {
-          title: "Trigger injection administration & time verification",
-          description: "Patient administers trigger injection and confirms the exact minute taken.",
+          title: "Trigger injection administration & minute verification",
+          description: "Patient administers trigger injection and confirms exact minute taken. Timestamp stored for OPU readiness.",
           taskType: "MEDICATION_TASK",
           ownerRole: "PATIENT",
           priority: "CLINICAL",
           dueTimingDays: 0,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "trigger_injection_urgent",
               variables: ["patient_name", "medication_name", "exact_time", "retrieval_date", "clinic_emergency_number"],
+              buttons: ["I've Taken It", "Need Help", "I'm Ready"],
             },
           },
           reminderConfig: { remindAtHours: 1, channel: "WHATSAPP" },
@@ -405,9 +527,11 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 9. OPU / Egg Retrieval
     {
       name: "Egg Retrieval",
-      description: "Transvaginal ovum pickup procedure under conscious sedation / anesthesia.",
+      description: "Transvaginal ovum pickup procedure under conscious sedation / anesthesia with arrival check-in.",
       stageType: "RETRIEVAL",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
@@ -421,6 +545,25 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           completionCondition: { type: "STAFF_VERIFICATION" },
         },
         {
+          title: "Patient arrival check-in at clinic",
+          description: "Patient taps [I've Arrived] upon reaching the clinic on day of procedure.",
+          taskType: "PATIENT_TASK",
+          ownerRole: "PATIENT",
+          priority: "HIGH",
+          dueTimingDays: 0,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "opu_arrival_prompt",
+              variables: ["patient_name", "arrival_time", "clinic_address"],
+              buttons: ["I've Arrived", "Need Help"],
+            },
+          },
+          completionCondition: { type: "ARRIVAL_CONFIRMATION" },
+          requiredAction: "CONFIRM_ARRIVAL",
+        },
+        {
           title: "Perform egg retrieval procedure",
           description: "Doctor aspirates follicular fluid under ultrasound guidance and records oocyte recovery.",
           taskType: "DOCTOR_TASK",
@@ -431,8 +574,8 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           requiredAction: "RECORD_OPU_NOTES",
         },
         {
-          title: "Embryology handoff & semen sample collection",
-          description: "Folicular aspirates delivered to IVF lab; partner sample prepared for insemination.",
+          title: "Embryology handoff & partner semen collection",
+          description: "Follicular aspirates delivered to IVF lab; partner sample prepared for insemination.",
           taskType: "STAFF_TASK",
           ownerRole: "STAFF",
           priority: "HIGH",
@@ -441,14 +584,16 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 10. Embryology
     {
       name: "Fertilization / Embryology",
-      description: "Insemination / ICSI and Day 1 fertilization assessment.",
+      description: "IVF laboratory execution (kept internal). Patient receives only clinic-approved progress summaries.",
       stageType: "EMBRYOLOGY",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
         {
-          title: "Record oocyte count and maturity",
+          title: "Record oocyte count and maturity (Internal Lab)",
           description: "Embryology records total oocytes retrieved and MII / MI / GV distribution.",
           taskType: "REPORT_TASK",
           ownerRole: "STAFF",
@@ -457,7 +602,7 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           completionCondition: { type: "STAFF_VERIFICATION" },
         },
         {
-          title: "Day 1 fertilization check (2PN assessment)",
+          title: "Day 1 fertilization check 2PN (Internal Lab)",
           description: "Assessment of pronuclei at 16–18 hours post-insemination/ICSI.",
           taskType: "REPORT_TASK",
           ownerRole: "STAFF",
@@ -466,24 +611,25 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           completionCondition: { type: "STAFF_VERIFICATION" },
         },
         {
-          title: "Doctor review of fertilization report",
-          description: "Doctor reviews normal 2PN count and confirms extended culture plan.",
-          taskType: "DOCTOR_TASK",
-          ownerRole: "DOCTOR",
+          title: "Approved patient-facing embryology update",
+          description: "Care coordinator dispatches doctor-approved patient update via WhatsApp.",
+          taskType: "COORDINATOR_TASK",
+          ownerRole: "CARE_COORDINATOR",
           priority: "NORMAL",
           dueTimingDays: 1,
-          completionCondition: { type: "DOCTOR_REVIEW" },
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "embryology_patient_update",
+              variables: ["patient_name", "doctor_name"],
+              buttons: ["View Update", "Talk to Team"],
+            },
+          },
+          completionCondition: { type: "STAFF_VERIFICATION" },
         },
-      ],
-    },
-    {
-      name: "Embryo Development",
-      description: "Day 3 cleavage and Day 5/6 blastocyst culture and grading.",
-      stageType: "DEVELOPMENT",
-      completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
-      tasks: [
         {
-          title: "Record blastocyst development and grading",
+          title: "Day 5/6 blastocyst grading (Internal Lab)",
           description: "Gardner criteria grading (expansion, ICM, TE) on Day 5 and Day 6.",
           taskType: "REPORT_TASK",
           ownerRole: "STAFF",
@@ -491,28 +637,21 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           dueTimingDays: 5,
           completionCondition: { type: "STAFF_VERIFICATION" },
         },
-        {
-          title: "Doctor assessment of blastocyst cohort",
-          description: "Doctor reviews top-grade embryos available for transfer or cryopreservation.",
-          taskType: "DOCTOR_TASK",
-          ownerRole: "DOCTOR",
-          priority: "CLINICAL",
-          dueTimingDays: 5,
-          completionCondition: { type: "DOCTOR_REVIEW" },
-        },
       ],
     },
+
+    // 11. Embryo Transfer / FET
     {
-      name: "Fresh Transfer OR Freeze-All",
-      description: "Conditional clinical branch point: fresh embryo transfer or total cryopreservation.",
-      stageType: "BRANCH_POINT",
-      completionStrategy: "DOCTOR_APPROVAL_REQUIRED",
+      name: "Embryo Transfer / FET",
+      description: "Branching: Fresh Transfer vs Freeze-All / FET. Ultrasound-guided transfer procedure and arrival check-in.",
+      stageType: "TRANSFER",
+      completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       config: {
         isBranchPoint: true,
         branchVariable: "transferStrategy",
         options: [
-          { key: "FRESH_TRANSFER", label: "Fresh Embryo Transfer", nextStage: "Embryo Transfer / FET" },
-          { key: "FREEZE_ALL_FET", label: "Freeze-All Protocol (FET in subsequent cycle)", nextStage: "Embryo Transfer / FET" },
+          { key: "FRESH_TRANSFER", label: "Fresh Embryo Transfer" },
+          { key: "FREEZE_ALL_FET", label: "Freeze-All Protocol (FET subsequent cycle)" },
         ],
       },
       tasks: [
@@ -527,23 +666,6 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           requiredAction: "SELECT_TRANSFER_BRANCH",
         },
         {
-          title: "Execute cryopreservation workflow if Freeze-All chosen",
-          description: "Cryo straw documentation, tank storage location, and vitrification log if freezing all embryos.",
-          taskType: "STAFF_TASK",
-          ownerRole: "STAFF",
-          priority: "HIGH",
-          dueTimingDays: 0,
-          completionCondition: { type: "STAFF_VERIFICATION" },
-        },
-      ],
-    },
-    {
-      name: "Embryo Transfer / FET",
-      description: "Ultrasound-guided embryo transfer procedure and catheter verification.",
-      stageType: "TRANSFER",
-      completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
-      tasks: [
-        {
           title: "Schedule embryo transfer appointment",
           description: "Coordinator books procedure suite, coordinates bladder filling instructions, and confirms attendance.",
           taskType: "APPOINTMENT_TASK",
@@ -553,20 +675,22 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           completionCondition: { type: "APPOINTMENT_COMPLETED" },
         },
         {
-          title: "Pre-transfer bladder prep and instructions",
-          description: "Patient drinks prescribed water 45 minutes prior to scan-guided transfer.",
+          title: "Transfer day bladder prep and arrival check-in",
+          description: "Patient drinks prescribed water 45 min before transfer and taps [I've Arrived] at the clinic.",
           taskType: "PATIENT_TASK",
           ownerRole: "PATIENT",
           priority: "NORMAL",
           dueTimingDays: 0,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "transfer_day_instructions",
               variables: ["patient_name", "transfer_time", "clinic_address", "doctor_name"],
+              buttons: ["I've Arrived", "View Instructions"],
             },
           },
-          completionCondition: { type: "PATIENT_CONFIRMATION" },
+          completionCondition: { type: "ARRIVAL_CONFIRMATION" },
         },
         {
           title: "Perform embryo transfer procedure",
@@ -580,9 +704,11 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
+
+    // 12. Post-Transfer Support
     {
-      name: "Luteal Support / Waiting Period",
-      description: "Post-transfer progesterone support, rest guidelines, and two-week wait check-in.",
+      name: "Post-Transfer Support",
+      description: "Continuous 2-week support: luteal progesterone adherence, Day 1 & Day 3 well-being check-ins, and symptom alerts.",
       stageType: "LUTEAL_SUPPORT",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
@@ -594,10 +720,12 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "HIGH",
           dueTimingDays: 1,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "luteal_support_reminder",
               variables: ["patient_name", "medication_name", "doctor_name"],
+              buttons: ["I've Taken It", "Need Help"],
             },
           },
           reminderConfig: { remindAtHours: 24, channel: "WHATSAPP" },
@@ -605,19 +733,39 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           requiredAction: "CONFIRM_LUTEAL_MEDICATION",
         },
         {
-          title: "Mid-luteal patient wellness check-in",
-          description: "Coordinator contacts couple to address questions, alleviate two-week wait anxiety, and confirm Beta-hCG date.",
+          title: "Day 1 post-transfer well-being check-in",
+          description: "WhatsApp interactive prompt checking in on patient symptoms and comfort.",
+          taskType: "PATIENT_TASK",
+          ownerRole: "PATIENT",
+          priority: "NORMAL",
+          dueTimingDays: 1,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "post_transfer_day1_checkin",
+              variables: ["patient_name", "clinic_contact"],
+              buttons: ["I'm Feeling Fine", "I Have a Concern"],
+            },
+          },
+          completionCondition: { type: "PATIENT_CONFIRMATION" },
+        },
+        {
+          title: "Day 3 post-transfer coordination follow-up",
+          description: "Coordinator check-in to answer non-clinical questions and reinforce rest guidelines.",
           taskType: "COORDINATOR_TASK",
           ownerRole: "CARE_COORDINATOR",
           priority: "NORMAL",
-          dueTimingDays: 7,
+          dueTimingDays: 3,
           completionCondition: { type: "STAFF_VERIFICATION" },
         },
       ],
     },
+
+    // 13. Beta-hCG / Pregnancy Test
     {
       name: "Beta-hCG / Pregnancy Test",
-      description: "Quantitative serum Beta-hCG test, report review, and initial pregnancy outcome evaluation.",
+      description: "Quantitative serum Beta-hCG test drawn on Day 14. AI strictly gated from independent announcement.",
       stageType: "PREGNANCY_TEST",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
       tasks: [
@@ -629,10 +777,12 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           priority: "HIGH",
           dueTimingDays: 14,
           communicationConfig: {
+            channel: "WHATSAPP",
             whatsapp: {
               enabled: true,
               templateName: "betahcg_test_reminder",
               variables: ["patient_name", "test_date", "clinic_contact"],
+              buttons: ["I've Done the Test", "Upload Report"],
             },
           },
           reminderConfig: { remindAtHours: 24, channel: "WHATSAPP" },
@@ -651,42 +801,17 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
         },
       ],
     },
-    {
-      name: "Pregnancy Confirmation / Follow-up",
-      description: "Repeat Beta-hCG doubling check, early viability ultrasound at 6–7 weeks gestation.",
-      stageType: "PREGNANCY_FOLLOW_UP",
-      completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
-      tasks: [
-        {
-          title: "Viability scan appointment (6–7 weeks)",
-          description: "Transvaginal scan to confirm intrauterine gestational sac, yolk sac, and fetal cardiac activity.",
-          taskType: "APPOINTMENT_TASK",
-          ownerRole: "CARE_COORDINATOR",
-          priority: "HIGH",
-          dueTimingDays: 28,
-          completionCondition: { type: "APPOINTMENT_COMPLETED" },
-        },
-        {
-          title: "Doctor documentation of viability scan",
-          description: "Doctor documents fetal heart rate and crown-rump length (CRL).",
-          taskType: "DOCTOR_TASK",
-          ownerRole: "DOCTOR",
-          priority: "CLINICAL",
-          dueTimingDays: 28,
-          completionCondition: { type: "DOCTOR_REVIEW" },
-          requiredAction: "RECORD_VIABILITY_NOTES",
-        },
-      ],
-    },
+
+    // 14. Cycle Outcome
     {
       name: "Outcome / Closure",
-      description: "Final journey outcome documentation, antenatal care transition or follow-up consultation.",
+      description: "Doctor registers treatment outcome (Positive vs Unsuccessful). Empathetic human routing for negative cycles; never auto-push next cycle.",
       stageType: "OUTCOME_CLOSURE",
       completionStrategy: "DOCTOR_APPROVAL_REQUIRED",
       tasks: [
         {
           title: "Doctor records cycle outcome and care disposition",
-          description: "Doctor formally registers treatment outcome (Clinical Pregnancy Confirmed / Transition to OB-GYN / Negative outcome / Review consult scheduled).",
+          description: "Doctor formally registers treatment outcome (Positive / Unsuccessful / Other).",
           taskType: "DOCTOR_TASK",
           ownerRole: "DOCTOR",
           priority: "HIGH",
@@ -695,27 +820,48 @@ export const IVF_STANDARD_JOURNEY: SeedTemplateDef = {
           requiredAction: "RECORD_FINAL_OUTCOME",
         },
         {
-          title: "Complete care plan closure or transition",
-          description: "Coordinator completes discharge paperwork, schedules review consult if needed, or transitions to maternity.",
+          title: "Empathetic counselor follow-up if unsuccessful",
+          description: "If cycle is unsuccessful, coordinator or counselor schedules human consultation. System strictly blocked from automated cycle re-prompts.",
           taskType: "COORDINATOR_TASK",
           ownerRole: "CARE_COORDINATOR",
           priority: "NORMAL",
           dueTimingDays: 1,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "outcome_empathic_followup",
+              variables: ["patient_name", "doctor_name"],
+              buttons: ["Schedule a Call", "Talk to Care Team"],
+            },
+          },
           completionCondition: { type: "STAFF_VERIFICATION" },
+        },
+        {
+          title: "Early viability scan appointment if positive",
+          description: "Transvaginal scan at 6–7 weeks gestation confirming fetal heart rate and CRL for positive pregnancies.",
+          taskType: "APPOINTMENT_TASK",
+          ownerRole: "CARE_COORDINATOR",
+          priority: "HIGH",
+          dueTimingDays: 14,
+          completionCondition: { type: "APPOINTMENT_COMPLETED" },
         },
       ],
     },
   ],
 };
 
+// Aliases for compatibility with existing tests
+export const IVF_STANDARD_JOURNEY: SeedTemplateDef = IVF_CARE_LOOP_FLOW;
+
 export const IVF_FREEZE_ALL_PROTOCOL: SeedTemplateDef = {
   name: "IVF — Freeze-All Protocol",
   description: "Specialized protocol optimized for high responders, PCOS patients, or pre-implantation genetic testing (PGT-A) with elective cryopreservation.",
   specialty: "FERTILITY",
   type: "IVF",
-  version: 1,
+  version: 2,
   isSystem: true,
-  stages: IVF_STANDARD_JOURNEY.stages.slice(0, 11),
+  stages: IVF_CARE_LOOP_FLOW.stages.slice(0, 11),
 };
 
 export const IVF_BASIC_JOURNEY: SeedTemplateDef = {
@@ -723,16 +869,16 @@ export const IVF_BASIC_JOURNEY: SeedTemplateDef = {
   description: "Standard 8-stage streamlined IVF pathway for routine straightforward cycles.",
   specialty: "FERTILITY",
   type: "IVF",
-  version: 1,
+  version: 2,
   isSystem: true,
   stages: [
-    IVF_STANDARD_JOURNEY.stages[0]!,
-    IVF_STANDARD_JOURNEY.stages[1]!,
-    IVF_STANDARD_JOURNEY.stages[2]!,
-    IVF_STANDARD_JOURNEY.stages[4]!,
-    IVF_STANDARD_JOURNEY.stages[6]!,
-    IVF_STANDARD_JOURNEY.stages[7]!,
-    IVF_STANDARD_JOURNEY.stages[11]!,
-    IVF_STANDARD_JOURNEY.stages[13]!,
+    IVF_CARE_LOOP_FLOW.stages[0]!,
+    IVF_CARE_LOOP_FLOW.stages[1]!,
+    IVF_CARE_LOOP_FLOW.stages[2]!,
+    IVF_CARE_LOOP_FLOW.stages[4]!,
+    IVF_CARE_LOOP_FLOW.stages[5]!,
+    IVF_CARE_LOOP_FLOW.stages[6]!,
+    IVF_CARE_LOOP_FLOW.stages[10]!,
+    IVF_CARE_LOOP_FLOW.stages[12]!,
   ],
 };

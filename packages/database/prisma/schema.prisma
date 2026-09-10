@@ -840,6 +840,12 @@ model CareTask {
   exceptionId          String?
   targetPatientId      String?
   targetRole           String?
+  communicationChannel String?          @default("WHATSAPP")
+  patientResponse      String?
+  attempts             Int              @default(0)
+  escalationLevel      Int              @default(0)
+  lastAction           String?
+  nextAction           String?
 
   clinic                    Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Cascade)
   couple                    Couple?                   @relation(fields: [coupleId], references: [id], onDelete: Cascade)

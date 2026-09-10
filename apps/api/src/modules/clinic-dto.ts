@@ -61,6 +61,12 @@ export type TaskDto = {
   status: "completed" | "in_progress" | "waiting" | "overdue" | "escalated";
   note?: string;
   carePlanId: string | null;
+  communicationChannel?: string | null;
+  attempts?: number;
+  escalationLevel?: number;
+  lastAction?: string | null;
+  nextAction?: string | null;
+  patientResponse?: string | null;
 };
 
 export type AppointmentDto = {
@@ -251,6 +257,12 @@ export function serializeTask(
     category: task.category ?? "General",
     status: TASK_UI[task.status],
     carePlanId: task.carePlanId,
+    communicationChannel: task.communicationChannel ?? "WHATSAPP",
+    attempts: task.attempts ?? 0,
+    escalationLevel: task.escalationLevel ?? 0,
+    lastAction: task.lastAction ?? null,
+    nextAction: task.nextAction ?? null,
+    patientResponse: task.patientResponse ?? null,
     ...(task.description ? { note: task.description } : {}),
   };
 }
