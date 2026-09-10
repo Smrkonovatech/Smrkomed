@@ -36,8 +36,8 @@ async function main() {
       cookie: `authjs.session-token=${token}`,
     },
     body: JSON.stringify({
-      stageNumber: 7,
-      phoneNumber: "917795559724",
+      stageNumber: process.argv[2] ? parseInt(process.argv[2], 10) : 7,
+      phoneNumber: process.argv[3] || "917795559724",
       syncPlanStage: true,
     }),
   });
