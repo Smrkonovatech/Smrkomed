@@ -24,10 +24,14 @@ import { cn } from "@/lib/utils";
 const filters = [
   "All",
   "Active",
+  "Stimulation",
   "Monitoring",
-  "Procedure",
+  "Trigger",
+  "OPU",
+  "Embryology",
   "Transfer",
-  "Follow-up",
+  "Post-Transfer",
+  "Outcome",
   "Completed",
   "Needs Attention",
 ] as const;

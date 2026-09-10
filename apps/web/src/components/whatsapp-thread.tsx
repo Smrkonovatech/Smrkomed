@@ -21,6 +21,60 @@ export interface ChatMessage {
 }
 
 const threads: Record<string, ChatMessage[]> = {
+  cmtu9ejo9002zo9109nk9xthy: [
+    {
+      from: "loop",
+      text: "Hi Manideep & Mani 👋\n\nCare Loop Daily Medication Reminder: Please administer your Gonal-F 225 IU subcutaneous injection tonight at 8:00 PM.",
+      time: "19:45",
+      media: { kind: "video", title: "Injection technique — step by step", meta: "2:35 · Subcutaneous Injection Guide" },
+    },
+    {
+      from: "loop",
+      text: "Please select an option below once you have administered your dose:",
+      time: "20:00",
+      quickReplies: ["Injected Done", "Need Help", "Experiencing Pain"],
+    },
+    { from: "patient", text: "Injected Done", time: "20:04" },
+    {
+      from: "loop",
+      text: "✅ Dosage logged successfully! Great job staying on schedule. Remember to stay well hydrated with electrolyte fluids tonight. Your next Follicular scan is scheduled for tomorrow at 10:00 AM.",
+      time: "20:04",
+      media: { kind: "document", title: "Stimulation Protocol & Care Instructions.pdf", meta: "4 pages · Clinical Guidance" },
+    },
+    { from: "patient", text: "I have slight redness at the injection site, is that normal?", time: "20:16" },
+    {
+      from: "loop",
+      text: "Mild redness and slight tenderness at the injection site is very common and typically settles within 1–2 hours. Avoid rubbing the area. I have flagged this to Dr. Ananya Rao's clinical team for review. If you experience swelling or severe itching, please let us know immediately.",
+      time: "20:17",
+    },
+  ],
+  "manideep-mani": [
+    {
+      from: "loop",
+      text: "Hi Manideep & Mani 👋\n\nCare Loop Daily Medication Reminder: Please administer your Gonal-F 225 IU subcutaneous injection tonight at 8:00 PM.",
+      time: "19:45",
+      media: { kind: "video", title: "Injection technique — step by step", meta: "2:35 · Subcutaneous Injection Guide" },
+    },
+    {
+      from: "loop",
+      text: "Please select an option below once you have administered your dose:",
+      time: "20:00",
+      quickReplies: ["Injected Done", "Need Help", "Experiencing Pain"],
+    },
+    { from: "patient", text: "Injected Done", time: "20:04" },
+    {
+      from: "loop",
+      text: "✅ Dosage logged successfully! Great job staying on schedule. Remember to stay well hydrated with electrolyte fluids tonight. Your next Follicular scan is scheduled for tomorrow at 10:00 AM.",
+      time: "20:04",
+      media: { kind: "document", title: "Stimulation Protocol & Care Instructions.pdf", meta: "4 pages · Clinical Guidance" },
+    },
+    { from: "patient", text: "I have slight redness at the injection site, is that normal?", time: "20:16" },
+    {
+      from: "loop",
+      text: "Mild redness and slight tenderness at the injection site is very common and typically settles within 1–2 hours. Avoid rubbing the area. I have flagged this to Dr. Ananya Rao's clinical team for review. If you experience swelling or severe itching, please let us know immediately.",
+      time: "20:17",
+    },
+  ],
   c1: [
     {
       from: "loop",
@@ -62,14 +116,20 @@ const threads: Record<string, ChatMessage[]> = {
   c2: [
     {
       from: "loop",
-      text: "Hi Anjali 👋 Just checking in — were you able to take your Day 6 injection?",
-      time: "08:30",
-      quickReplies: ["Yes", "Not yet", "I need help"],
+      text: "🚨 URGENT: Hi Ananya 👋 Your hCG 10,000 IU Trigger Injection is scheduled for EXACTLY 09:30 PM tonight.",
+      time: "21:00",
+      media: { kind: "video", title: "Trigger Injection Protocol", meta: "1:30 · Precise Timing Required" },
     },
     {
       from: "loop",
-      text: "Following up gently — your care team would love a quick update.",
-      time: "14:10",
+      text: "Timing is critical for your Egg Retrieval (OPU) in 36 hours. Please tap below as soon as you have taken the shot:",
+      time: "21:30",
+      quickReplies: ["Injection Taken", "Need Help Now", "Delayed"],
+    },
+    {
+      from: "loop",
+      text: "Following up urgently — our clinical coordinator is on standby. Please confirm administration time.",
+      time: "21:45",
     },
   ],
   c3: [
@@ -89,7 +149,7 @@ const threads: Record<string, ChatMessage[]> = {
 };
 
 export function conversationFor(coupleId: string): ChatMessage[] {
-  return threads[coupleId] ?? threads["c1"]!;
+  return threads[coupleId] ?? threads["cmtu9ejo9002zo9109nk9xthy"] ?? threads["c1"]!;
 }
 
 function MediaCard({ media }: { media: ChatMedia }) {
