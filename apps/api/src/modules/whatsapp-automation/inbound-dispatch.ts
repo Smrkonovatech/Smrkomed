@@ -769,6 +769,40 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     }
   }
 
+  // 1.3. Check for dedicated IVF Care Loop button clicks or Care Loop queries
+  const isCareLoopTrigger =
+    cleanInboundText.startsWith("careloop_") ||
+    cleanInboundText === "menu_care_loop" ||
+    cleanInboundText === "btn_careloop" ||
+    /\b(ivf|stage|next\s*step|next\s*action|care\s*loop|careloop|my\s*protocol|my\s*journey|treatment\s*journey|current\s*stage|fertility\s*loop)\b/i.test(cleanInboundText) ||
+    ((cleanInboundText === "done" || cleanInboundText === "completed" || cleanInboundText === "mark done") && !cleanInboundText.startsWith("appt_"));
+
+  if (isCareLoopTrigger) {
+    const { handleMenuAction } = await import("../whatsapp-ai/menu");
+    const careResult: Awaited<ReturnType<typeof handleMenuAction>> = await handleMenuAction({
+      tenant,
+      conversationId: input.conversationId,
+      contactPhone: input.contactPhone || "",
+      actionIdOrText: input.messageText,
+    }).catch((err) => {
+      console.error("[WhatsApp inbound] care loop handler error:", err);
+      return { handled: false };
+    });
+
+    if (careResult.handled) {
+      console.log("[WhatsApp inbound] care loop action handled", {
+        conversationId: input.conversationId,
+        action: careResult.action,
+      });
+      return {
+        resumed,
+        dispatched: null,
+        menu: careResult,
+        ai: { skipped: true as const, reason: "care_loop_action_handled" },
+      };
+    }
+  }
+
   // 1.5. Check if contact is unregistered/unmatched and replying to registration
   if (input.unmatched || !input.patientId) {
     if (input.skipAi) {

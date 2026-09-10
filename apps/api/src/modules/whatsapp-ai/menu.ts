@@ -16,6 +16,7 @@ import {
 import { getClinicDoctors, getDoctorDaySlots, getUpcomingDates } from "../appointment-booking/slot-engine";
 
 export const MENU_ACTIONS = {
+  CARE_LOOP: "menu_care_loop",
   BOOK_APPOINTMENT: "menu_book_appt",
   MY_APPOINTMENTS: "menu_my_appts",
   DOCTOR_SLOTS: "menu_doc_slots",
@@ -51,15 +52,16 @@ export async function sendMainMenu(
   let sentAnyInteractive = false;
 
   // 1. Primary Message: Welcome + 3 Quick Reply Buttons (Namma Metro Top Buttons)
+  // Quick Button 1 is the dedicated IVF Care Loop button as requested!
   try {
     await sendWhatsAppInteractiveButtons(tenant, {
       conversationId,
       body: greetingBody,
       footer: `${clinicName} • Smart Care`,
       buttons: [
+        { id: MENU_ACTIONS.CARE_LOOP, title: "🧬 IVF Care Loop" },
         { id: MENU_ACTIONS.BOOK_APPOINTMENT, title: "📅 Book Appt" },
         { id: MENU_ACTIONS.DOCTOR_SLOTS, title: "👩‍⚕️ Doctor Slots" },
-        { id: MENU_ACTIONS.MY_APPOINTMENTS, title: "📋 My Appts" },
       ],
     });
     sentAnyInteractive = true;
@@ -69,6 +71,26 @@ export async function sendMainMenu(
 
   // 2. Secondary Message: "Please select below for more services:" + More Services Interactive List (Bottom sheet)
   const sections = [
+    {
+      title: "🧬 Care & Journey",
+      rows: [
+        {
+          id: MENU_ACTIONS.CARE_LOOP,
+          title: "🧬 IVF Care Journey",
+          description: "Active stage, next action & protocol",
+        },
+        {
+          id: MENU_ACTIONS.MY_APPOINTMENTS,
+          title: "📋 My Appointments",
+          description: "View scheduled visits & status",
+        },
+        {
+          id: MENU_ACTIONS.COORDINATOR,
+          title: "📞 Care Coordinator",
+          description: "Speak with clinic care team",
+        },
+      ],
+    },
     {
       title: "🏥 Clinic & Services",
       rows: [
@@ -87,20 +109,10 @@ export async function sendMainMenu(
           title: "📍 Location & Timings",
           description: "Clinic address & OPD hours",
         },
-      ],
-    },
-    {
-      title: "💬 Care & Profile",
-      rows: [
         {
           id: MENU_ACTIONS.REGISTER,
           title: "📝 Couple Registration",
           description: "Register or update profile",
-        },
-        {
-          id: MENU_ACTIONS.COORDINATOR,
-          title: "📞 Care Coordinator",
-          description: "Speak with clinic care team",
         },
         {
           id: MENU_ACTIONS.FAQS,
@@ -149,18 +161,18 @@ export function formatTextMenu(options: {
   const { clinicName, customHeader, customBody } = options;
   let text = customHeader ? `*${customHeader}*\n\n` : `🏥 *${clinicName} — Digital Care Desk*\n\n`;
   text += (customBody || "How can we assist you today? Reply with a number (1-9):") + "\n\n";
-  text += `*Appointments & Booking*\n`;
-  text += `1️⃣ 📅 *Book Consultation* (Schedule an appointment)\n`;
-  text += `2️⃣ 📋 *My Appointments* (View your scheduled visits)\n`;
-  text += `3️⃣ 👩‍⚕️ *Available Doctor Slots* (View open times this week)\n\n`;
+  text += `*Care Loop & Appointments*\n`;
+  text += `1️⃣ 🧬 *IVF Care Loop* (Active stage, next action & tasks)\n`;
+  text += `2️⃣ 📅 *Book Consultation* (Schedule an appointment)\n`;
+  text += `3️⃣ 📋 *My Appointments* (View your scheduled visits)\n`;
+  text += `4️⃣ 👩‍⚕️ *Available Doctor Slots* (View open times this week)\n\n`;
   text += `*Clinic & Services*\n`;
-  text += `4️⃣ 🔬 *Fertility Treatments* (IVF, ICSI, IUI & Assessment)\n`;
-  text += `5️⃣ 🩺 *Our Doctors* (Specialist bios & experience)\n`;
-  text += `6️⃣ 📍 *Location & Timings* (Address & OPD hours)\n\n`;
+  text += `5️⃣ 🔬 *Fertility Treatments* (IVF, ICSI, IUI & Assessment)\n`;
+  text += `6️⃣ 🩺 *Our Doctors* (Specialist bios & experience)\n`;
+  text += `7️⃣ 📍 *Location & Timings* (Address & OPD hours)\n\n`;
   text += `*Care Team & Account*\n`;
-  text += `7️⃣ 📞 *Speak with Care Coordinator*\n`;
-  text += `8️⃣ 📝 *Couple Registration / Update Profile*\n`;
-  text += `9️⃣ ❓ *Clinic FAQs & Patient Guide*\n\n`;
+  text += `8️⃣ 📞 *Speak with Care Coordinator*\n`;
+  text += `9️⃣ 📝 *Couple Registration / Update Profile*\n\n`;
   text += `_Reply with 1 to 9, or type your question anytime!_`;
   return text;
 }
@@ -215,9 +227,31 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "MAIN_MENU", responseText: res.fallbackText };
   }
 
+  // 0. Dedicated IVF Care Loop Journey & Next Action
+  if (
+    clean === MENU_ACTIONS.CARE_LOOP ||
+    clean === "menu_care_loop" ||
+    clean === "btn_careloop" ||
+    clean === "1" ||
+    clean.startsWith("careloop_") ||
+    clean === "careloop" ||
+    clean === "care loop" ||
+    clean === "ivf" ||
+    clean === "stage" ||
+    clean === "next step" ||
+    clean === "next action" ||
+    /\b(ivf|stage|next\s*step|next\s*action|care\s*loop|careloop|my\s*protocol|my\s*journey|treatment\s*journey|current\s*stage)\b/i.test(clean) ||
+    clean === "done" ||
+    clean === "completed" ||
+    clean === "mark done"
+  ) {
+    return handleCareLoopMenuAction(input);
+  }
+
   // 1. My Appointments
   if (
     clean === MENU_ACTIONS.MY_APPOINTMENTS ||
+    clean === "3" ||
     clean === "2" ||
     /\b(my\s*app(ointment)?s?|check\s*app(ointment)?s?|existing\s*app(ointment)?s?)\b/i.test(clean)
   ) {
@@ -605,4 +639,275 @@ export async function handleMenuAction(input: {
   }
 
   return { handled: false };
+}
+
+/**
+ * Handle dedicated IVF Care Loop actions from WhatsApp.
+ * Supports quick button clicks, task completion ("Mark Done"), task lists, and natural queries.
+ */
+export async function handleCareLoopMenuAction(input: {
+  tenant: TenantContext;
+  conversationId: string;
+  contactPhone: string;
+  actionIdOrText: string;
+}): Promise<MenuActionResult> {
+  const clean = input.actionIdOrText.trim().toLowerCase();
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: input.conversationId, clinicId: input.tenant.clinicId },
+    select: {
+      id: true,
+      patientId: true,
+      coupleId: true,
+      aiPausedAt: true,
+      handoffReason: true,
+    },
+  });
+  if (!conversation) return { handled: false };
+
+  // Clear stale AI pause or handoff if triggered accidentally
+  if (conversation.aiPausedAt || conversation.handoffReason === "UNSAFE_AI_OUTPUT") {
+    await prisma.conversation
+      .update({
+        where: { id: conversation.id },
+        data: { aiPausedAt: null, handoffAt: null, handoffReason: null, status: "WAITING_PATIENT" },
+      })
+      .catch(() => undefined);
+  }
+
+  const clinic = await prisma.clinic.findFirst({
+    where: { id: input.tenant.clinicId },
+    select: { name: true, phone: true },
+  });
+  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "ABC Fertility Centre";
+
+  // Resolve couple ID
+  let coupleId = conversation.coupleId;
+  if (!coupleId && conversation.patientId) {
+    const p = await prisma.patient.findFirst({
+      where: { id: conversation.patientId },
+      include: { primaryCouples: { select: { id: true } }, partnerCouples: { select: { id: true } } },
+    });
+    coupleId = p?.primaryCouples[0]?.id ?? p?.partnerCouples[0]?.id ?? null;
+  }
+  if (!coupleId && input.contactPhone) {
+    const normalizedPhone = input.contactPhone.replace(/\s+/g, "");
+    const p = await prisma.patient.findFirst({
+      where: { clinicId: input.tenant.clinicId, phone: normalizedPhone },
+      include: { primaryCouples: { select: { id: true } }, partnerCouples: { select: { id: true } } },
+    });
+    coupleId = p?.primaryCouples[0]?.id ?? p?.partnerCouples[0]?.id ?? null;
+  }
+
+  // Find active care plan
+  const plan = coupleId
+    ? await prisma.carePlan.findFirst({
+        where: { clinicId: input.tenant.clinicId, coupleId, status: "ACTIVE" },
+        include: {
+          steps: {
+            orderBy: { sortOrder: "asc" },
+            include: { tasks: { orderBy: { createdAt: "asc" } } },
+          },
+          couple: {
+            include: {
+              primaryPatient: { select: { firstName: true, lastName: true } },
+              partnerPatient: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+      })
+    : null;
+
+  if (!plan) {
+    const msg =
+      `🧬 *IVF Care Desk — ${clinicName}*\n\n` +
+      `You are currently not enrolled in an active IVF treatment protocol on this number.\n\n` +
+      `Would you like to start your fertility journey or consult our clinical team?\n` +
+      `• Tap *Book Appt* below to schedule your consultation.\n` +
+      `• Tap *Care Coordinator* to speak with our clinical care team.`;
+
+    await sendWhatsAppInteractiveButtons(input.tenant, {
+      conversationId: input.conversationId,
+      body: msg,
+      footer: `${clinicName} • Fertility Care`,
+      buttons: [
+        { id: MENU_ACTIONS.BOOK_APPOINTMENT, title: "📅 Book Appt" },
+        { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+        { id: "main_menu", title: "🏠 Main Menu" },
+      ],
+    }).catch(async () => {
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    });
+
+    return { handled: true, action: "CARE_LOOP_NO_PLAN", responseText: msg };
+  }
+
+  const { computeNextAction, completeCareTask } = await import("../care-loop/engine");
+
+  const coupleName =
+    [plan.couple.primaryPatient?.firstName, plan.couple.partnerPatient?.firstName].filter(Boolean).join(" & ") ||
+    "Patient";
+
+  // Case 1: User requested to mark current task as done
+  if (
+    clean === "careloop_mark_done" ||
+    clean === "done" ||
+    clean === "completed" ||
+    clean === "mark done"
+  ) {
+    const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
+    const pendingTask = currentStep?.tasks.find((t) => t.status === "WAITING" || t.status === "IN_PROGRESS");
+
+    if (pendingTask) {
+      await completeCareTask(input.tenant, pendingTask.id, {
+        notes: `Completed by patient via WhatsApp Care Loop`,
+        replyText: input.actionIdOrText,
+        source: "WHATSAPP",
+      }).catch((err) => {
+        console.error("[WhatsApp CareLoop] task completion error:", err);
+      });
+
+      // Refetch updated plan
+      const updatedPlan = await prisma.carePlan.findUnique({
+        where: { id: plan.id },
+        include: {
+          steps: { orderBy: { sortOrder: "asc" }, include: { tasks: { orderBy: { createdAt: "asc" } } } },
+        },
+      });
+
+      const nextActionInfo = await computeNextAction(input.tenant, plan.id).catch(() => ({
+        nextAction: "Continue with treatment protocol",
+      }));
+
+      const stageAdvanced = (updatedPlan?.currentStageIndex ?? 0) > plan.currentStageIndex;
+
+      let msg = "";
+      if (stageAdvanced) {
+        msg =
+          `🎉 *Stage Completed!* 🌟\n\n` +
+          `You have completed all requirements for:\n` +
+          `*Stage ${plan.currentStageIndex + 1}: ${plan.currentStageName}*\n\n` +
+          `🚀 *Advancing to Stage ${(updatedPlan?.currentStageIndex ?? 0) + 1}: ${updatedPlan?.currentStageName}*\n\n` +
+          `👉 *Next Action:*\n` +
+          `*${nextActionInfo.nextAction}*\n\n` +
+          `Our clinical team has been updated. Keep up the great work!`;
+
+        await sendWhatsAppInteractiveButtons(input.tenant, {
+          conversationId: input.conversationId,
+          body: msg,
+          footer: "IVF Care Loop • Stage Advanced",
+          buttons: [
+            { id: "careloop_mark_done", title: "✅ Mark Next Done" },
+            { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
+            { id: "main_menu", title: "🏠 Main Menu" },
+          ],
+        }).catch(async () => {
+          await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+        });
+      } else {
+        const curStepTasks = updatedPlan?.steps.find((s) => s.sortOrder === updatedPlan.currentStageIndex)?.tasks ?? [];
+        const remaining = curStepTasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS").length;
+
+        msg =
+          `✅ *Task Completed!*\n\n` +
+          `*${pendingTask.title}* has been marked as complete.\n\n` +
+          `📍 *Current Stage:* Stage ${(updatedPlan?.currentStageIndex ?? 0) + 1} — *${updatedPlan?.currentStageName}*\n` +
+          `⏳ *Remaining in Stage:* ${remaining} task(s)\n\n` +
+          `👉 *Next Action:*\n` +
+          `*${nextActionInfo.nextAction}*\n\n` +
+          `_Tap 'Mark Done' below when you complete this action._`;
+
+        await sendWhatsAppInteractiveButtons(input.tenant, {
+          conversationId: input.conversationId,
+          body: msg,
+          footer: "IVF Care Loop • Progress Saved",
+          buttons: [
+            { id: "careloop_mark_done", title: "✅ Mark Done" },
+            { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
+            { id: "main_menu", title: "🏠 Main Menu" },
+          ],
+        }).catch(async () => {
+          await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+        });
+      }
+
+      return { handled: true, action: "CARE_LOOP_TASK_COMPLETED", responseText: msg };
+    }
+  }
+
+  // Case 2: User requested to view all tasks in current stage
+  if (clean === "careloop_view_tasks" || clean === "tasks" || clean === "all tasks") {
+    const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
+    const stepTasks = currentStep?.tasks ?? [];
+    const nextActionInfo = await computeNextAction(input.tenant, plan.id).catch(() => ({
+      nextAction: "Continue with treatment protocol",
+    }));
+
+    let taskList = "";
+    for (const t of stepTasks) {
+      const icon = t.status === "COMPLETED" ? "✅" : t.status === "IN_PROGRESS" ? "🔄" : "⏳";
+      taskList += `${icon} *${t.title}*\n   _${t.status}_\n`;
+    }
+
+    const msg =
+      `📋 *Stage ${plan.currentStageIndex + 1}: ${plan.currentStageName}*\n` +
+      `Couple: *${coupleName}*\n\n` +
+      `*Tasks in this stage:*\n${taskList || "No tasks listed."}\n` +
+      `👉 *Next Action:*\n` +
+      `*${nextActionInfo.nextAction}*`;
+
+    await sendWhatsAppInteractiveButtons(input.tenant, {
+      conversationId: input.conversationId,
+      body: msg,
+      footer: "IVF Care Loop • Stage Tasks",
+      buttons: [
+        { id: "careloop_mark_done", title: "✅ Mark Done" },
+        { id: MENU_ACTIONS.CARE_LOOP, title: "🧬 IVF Care Loop" },
+        { id: "main_menu", title: "🏠 Main Menu" },
+      ],
+    }).catch(async () => {
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    });
+
+    return { handled: true, action: "CARE_LOOP_TASKS_VIEW", responseText: msg };
+  }
+
+  // Case 3: Default — IVF Care Loop Status & Next Action card
+  const nextActionInfo = await computeNextAction(input.tenant, plan.id).catch(() => ({
+    nextAction: "Continue with treatment protocol",
+  }));
+
+  const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
+  const stepTasks = currentStep?.tasks ?? [];
+  const pendingTasks = stepTasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS");
+  const completedCount = stepTasks.length - pendingTasks.length;
+
+  const msg =
+    `🧬 *IVF Care Loop — ${coupleName}*\n` +
+    `🏥 *${clinicName}*\n\n` +
+    `📍 *Current Stage:* Stage ${plan.currentStageIndex + 1} of ${plan.steps.length} — *${plan.currentStageName}*\n` +
+    `🏷️ *Protocol:* ${plan.name}\n\n` +
+    `👉 *Next Action:*\n` +
+    `*${nextActionInfo.nextAction}*\n\n` +
+    `📋 *Stage Progress:* ${completedCount}/${stepTasks.length} tasks completed\n` +
+    (pendingTasks.length > 0
+      ? pendingTasks.slice(0, 3).map((t) => `• ⏳ ${t.title}`).join("\n") + "\n\n"
+      : "• ✨ All stage tasks completed!\n\n") +
+    `💡 _Tap 'Mark Done' below when you complete this action._`;
+
+  await sendWhatsAppInteractiveButtons(input.tenant, {
+    conversationId: input.conversationId,
+    body: msg,
+    footer: `${clinicName} • IVF Care Desk`,
+    buttons: [
+      { id: "careloop_mark_done", title: "✅ Mark Done" },
+      { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+    ],
+  }).catch(async () => {
+    await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+  });
+
+  return { handled: true, action: "CARE_LOOP_STATUS", responseText: msg };
 }
