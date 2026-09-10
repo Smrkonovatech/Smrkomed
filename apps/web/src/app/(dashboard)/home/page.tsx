@@ -339,7 +339,17 @@ export default function Dashboard() {
           <DashCardHeader
             title="Care Loop Overview"
             subtitle="Journey health across active patients"
-            action={<ViewLink href="/care-loop" label="View Care Loop" />}
+            action={
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/care-loop"
+                  className="rounded-md bg-emerald-100 text-emerald-800 hover:bg-emerald-200 px-2.5 py-1 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                >
+                  <Sparkles className="size-3 text-emerald-600" /> 15-Stage Protocol
+                </Link>
+                <ViewLink href="/care-loop" label="View Care Loop" />
+              </div>
+            }
           />
           <CareLoopDonut
             total={careTotal}

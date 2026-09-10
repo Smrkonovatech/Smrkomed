@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Activity,
   ArrowRight,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { Clinical15StageFlowViewer } from "@/components/care-loop/clinical-15-stage-flow-viewer";
 import { ExceptionCard } from "@/components/care-loop/exception-card";
 import { SingleRecordDialog } from "@/components/care-loop/single-record-dialog";
 import { useCreateTask } from "@/components/create-task-drawer";
@@ -252,6 +254,12 @@ function InsightPanel() {
 }
 
 export default function CareLoopPage() {
+  const searchParams = useSearchParams();
+  const stageParam = searchParams.get("stage");
+  const parsedStage = stageParam ? parseInt(stageParam, 10) : 1;
+  const initialStage = isNaN(parsedStage) ? 1 : Math.max(1, Math.min(15, parsedStage));
+  const initialCoupleId = searchParams.get("coupleId") ?? undefined;
+
   const { exceptions, tasks, activity, couples, cycles, kpis } = useAppState();
   const { open: openTask } = useCreateTask();
   const [view, setView] = useState<View>("Attention");
@@ -260,6 +268,7 @@ export default function CareLoopPage() {
   const [storyDialogOpen, setStoryDialogOpen] = useState(false);
   const [selectedStoryTask, setSelectedStoryTask] = useState<CareTask | null>(null);
   const [selectedStoryCouple, setSelectedStoryCouple] = useState<Couple | null>(null);
+  const [careLoopMode, setCareLoopMode] = useState<"protocol" | "operations">("protocol");
 
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
@@ -322,7 +331,57 @@ export default function CareLoopPage() {
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/* Mode Switcher: 15-Stage Protocol vs Live Operations */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/70 pb-4">
+        <div className="flex items-center gap-2 rounded-2xl bg-muted/60 p-1.5 border border-border/60 shadow-xs">
+          <button
+            type="button"
+            onClick={() => setCareLoopMode("protocol")}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all duration-150",
+              careLoopMode === "protocol"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Sparkles className="size-4 text-emerald-400" />
+            15-Stage Protocol & WhatsApp Simulator (Images 1–15)
+          </button>
+          <button
+            type="button"
+            onClick={() => setCareLoopMode("operations")}
+            className={cn(
+              "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all duration-150",
+              careLoopMode === "operations"
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Activity className="size-4" />
+            Live Operations & Exceptions ({exceptions.length})
+          </button>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {careLoopMode === "protocol"
+            ? "Interactive simulator strictly matching specifications 1–15"
+            : "Monitor active clinic queue, delays and patient alerts"}
+        </p>
+      </div>
+
+      {careLoopMode === "protocol" ? (
+        <Clinical15StageFlowViewer
+          defaultStage={initialStage}
+          defaultCoupleId={initialCoupleId}
+          couples={couples.map((c) => ({
+            id: c.id,
+            name: coupleFullLabel(c),
+            phone: c.primary.phone,
+          }))}
+        />
+      ) : (
+        <div className="space-y-8">
+          <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Needs attention"
           value={exceptions.length}
@@ -593,6 +652,8 @@ export default function CareLoopPage() {
             })}
           </div>
         </section>
+      )}
+        </div>
       )}
 
       <SingleRecordDialog

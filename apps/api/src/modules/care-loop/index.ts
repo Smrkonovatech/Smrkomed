@@ -718,4 +718,69 @@ export const careLoopRoutes = new Hono<AppEnv>()
       resolvedExceptions,
       stageDistribution: stageCounts,
     });
+  })
+  .post("/dispatch-stage-whatsapp", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_LOOP_MANAGE);
+    const body = await c.req.json<{
+      stageNumber: number;
+      phoneNumber: string;
+      coupleId?: string;
+      syncPlanStage?: boolean;
+    }>();
+
+    const { dispatchStageToWhatsApp } = await import("./stage-dispatch");
+    const result = await dispatchStageToWhatsApp(tenant, {
+      stageNumber: Number(body.stageNumber) || 1,
+      phoneNumber: body.phoneNumber,
+      ...(body.coupleId ? { coupleId: body.coupleId } : {}),
+      ...(body.syncPlanStage !== undefined ? { syncPlanStage: body.syncPlanStage } : {}),
+    });
+
+    await audit(tenant, "care_loop.dispatch_whatsapp", "StageNotification", String(body.stageNumber), {
+      phone: body.phoneNumber,
+      stage: result.stageName,
+    });
+
+    return ok(c, result);
+  })
+  .post("/set-patient-stage", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_LOOP_MANAGE);
+    const body = await c.req.json<{
+      coupleId: string;
+      stageNumber: number;
+    }>();
+
+    const stageNum = Math.max(1, Math.min(15, Number(body.stageNumber) || 1));
+    const plan = await prisma.carePlan.findFirst({
+      where: { clinicId: tenant.clinicId, coupleId: body.coupleId, status: "ACTIVE" },
+      include: { steps: { orderBy: { sortOrder: "asc" } } },
+    });
+
+    if (!plan) {
+      throw notFound("No active care plan found for this couple");
+    }
+
+    const targetStep = plan.steps.find((s) => s.sortOrder === stageNum);
+    const updated = await prisma.carePlan.update({
+      where: { id: plan.id },
+      data: {
+        currentStageIndex: stageNum,
+        currentStep: stageNum,
+        currentStageName: targetStep?.name || `Stage ${stageNum}`,
+      },
+    });
+
+    for (const s of plan.steps) {
+      const newStatus = s.sortOrder < stageNum ? "DONE" : s.sortOrder === stageNum ? "CURRENT" : "PENDING";
+      if (s.status !== newStatus) {
+        await prisma.carePlanStep.update({
+          where: { id: s.id },
+          data: { status: newStatus },
+        });
+      }
+    }
+
+    await audit(tenant, "care_plan.set_stage", "CarePlan", plan.id, { stageNumber: stageNum });
+    return ok(c, { success: true, planId: plan.id, stageNumber: stageNum, stageName: updated.currentStageName });
   });
+

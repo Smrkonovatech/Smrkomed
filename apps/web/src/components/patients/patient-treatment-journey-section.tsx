@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
@@ -398,6 +399,14 @@ export function PatientTreatmentJourneySection({
             >
               <Workflow className="size-3.5" /> Change Plan
             </Button>
+            <Link href={`/care-loop?coupleId=${couple.id}&stage=${currentStageIndex + 1}`}>
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-sm"
+              >
+                <Sparkles className="size-3.5" /> 15-Stage Protocol (Images 1–15)
+              </Button>
+            </Link>
           </div>
         </div>
 

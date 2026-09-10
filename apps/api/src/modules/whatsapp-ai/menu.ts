@@ -719,13 +719,50 @@ export async function handleCareLoopMenuAction(input: {
       })
     : null;
 
+  // Check for explicit stage command: "stage 7", "step 9", "trigger", etc.
+  const stageMatch = clean.match(/(?:stage|step|test\s*stage)\s*(\d+)/i);
+  let explicitStageNum: number | null = stageMatch && stageMatch[1] ? parseInt(stageMatch[1], 10) : null;
+  if (!explicitStageNum) {
+    if (/\b(lead|appointment\s*booking)\b/i.test(clean)) explicitStageNum = 1;
+    else if (/\b(initial\s*consult|consultation)\b/i.test(clean)) explicitStageNum = 2;
+    else if (/\b(workup|investigation)\b/i.test(clean)) explicitStageNum = 3;
+    else if (/\b(ivf\s*decision|milestone)\b/i.test(clean)) explicitStageNum = 4;
+    else if (/\b(consent|treatment\s*plan)\b/i.test(clean)) explicitStageNum = 5;
+    else if (/\b(cycle\s*prep|preparation)\b/i.test(clean)) explicitStageNum = 6;
+    else if (/\b(stimulation|injection|gonal)\b/i.test(clean)) explicitStageNum = 7;
+    else if (/\b(monitoring|follicle\s*scan|scan\s*day)\b/i.test(clean)) explicitStageNum = 8;
+    else if (/\b(trigger|hcg\s*shot)\b/i.test(clean)) explicitStageNum = 9;
+    else if (/\b(opu|egg\s*retrieval|retrieval)\b/i.test(clean)) explicitStageNum = 10;
+    else if (/\b(embryology|fertilization|blastocyst)\b/i.test(clean)) explicitStageNum = 11;
+    else if (/\b(transfer|fet|embryo\s*transfer)\b/i.test(clean)) explicitStageNum = 12;
+    else if (/\b(post\s*transfer|two\s*week\s*wait|2ww)\b/i.test(clean)) explicitStageNum = 13;
+    else if (/\b(pregnancy\s*test|beta\s*hcg)\b/i.test(clean)) explicitStageNum = 14;
+    else if (/\b(outcome|positive\s*result)\b/i.test(clean)) explicitStageNum = 15;
+  }
+
+  if (explicitStageNum && explicitStageNum >= 1 && explicitStageNum <= 15) {
+    const { dispatchStageToWhatsApp } = await import("../care-loop/stage-dispatch");
+    const res = await dispatchStageToWhatsApp(input.tenant, {
+      stageNumber: explicitStageNum,
+      phoneNumber: input.contactPhone,
+      ...(coupleId ? { coupleId } : {}),
+      syncPlanStage: true,
+    });
+    return {
+      handled: true,
+      action: `CARE_LOOP_STAGE_${explicitStageNum}_DISPATCHED`,
+      responseText: res.sentText,
+    };
+  }
+
   if (!plan) {
     const msg =
       `🧬 *IVF Care Desk — ${clinicName}*\n\n` +
       `You are currently not enrolled in an active IVF treatment protocol on this number.\n\n` +
       `Would you like to start your fertility journey or consult our clinical team?\n` +
       `• Tap *Book Appt* below to schedule your consultation.\n` +
-      `• Tap *Care Coordinator* to speak with our clinical care team.`;
+      `• Tap *Care Coordinator* to speak with our clinical care team.\n\n` +
+      `💡 _Tip: You can test any IVF stage directly by replying *Step 1* through *Step 15*!_`;
 
     await sendWhatsAppInteractiveButtons(input.tenant, {
       conversationId: input.conversationId,
@@ -733,8 +770,8 @@ export async function handleCareLoopMenuAction(input: {
       footer: `${clinicName} • Fertility Care`,
       buttons: [
         { id: MENU_ACTIONS.BOOK_APPOINTMENT, title: "📅 Book Appt" },
+        { id: "stage_7_test", title: "💉 Test Step 7" },
         { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
-        { id: "main_menu", title: "🏠 Main Menu" },
       ],
     }).catch(async () => {
       await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
@@ -749,14 +786,57 @@ export async function handleCareLoopMenuAction(input: {
     [plan.couple.primaryPatient?.firstName, plan.couple.partnerPatient?.firstName].filter(Boolean).join(" & ") ||
     "Patient";
 
+  // Stage-specific button quick replies matching clinical images
+  if (clean === "careloop_trigger_done") {
+    const msg =
+      `🎉 *Thank you!* ✅\n\n` +
+      `Your trigger injection has been recorded at *9:32 PM*.\n\n` +
+      `Your OPU (egg retrieval) is scheduled in *36 hours* at *${clinicName}*.\n` +
+      `Strict fasting instructions: No food or fluids starting from midnight.\n\n` +
+      `Our OT care team will keep you updated every step of the way.`;
+
+    await sendWhatsAppInteractiveButtons(input.tenant, {
+      conversationId: input.conversationId,
+      body: msg,
+      footer: "Step 9 Trigger • Confirmed",
+      buttons: [
+        { id: "careloop_opu_ready", title: "🏥 OPU Details" },
+        { id: "menu_coordinator", title: "📞 Talk to Nurse" },
+        { id: "main_menu", title: "🏠 Main Menu" },
+      ],
+    }).catch(async () => {
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    });
+    return { handled: true, action: "TRIGGER_CONFIRMED", responseText: msg };
+  }
+
+  if (clean === "careloop_arrived") {
+    const msg =
+      `🏥 *Welcome to ${clinicName}!* 🌸\n\n` +
+      `You have checked in at reception for your clinical procedure.\n\n` +
+      `Our nurse will guide you through vital checks and pre-procedure preparation in Room 3.\n` +
+      `Please relax, we are with you!`;
+
+    await sendWhatsAppInteractiveButtons(input.tenant, {
+      conversationId: input.conversationId,
+      body: msg,
+      footer: "Clinic Check-in • Confirmed",
+      buttons: [
+        { id: "careloop_opu_ready", title: "✅ I'm Ready" },
+        { id: "menu_coordinator", title: "📞 Call Nurse" },
+      ],
+    }).catch(async () => {
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    });
+    return { handled: true, action: "CLINIC_ARRIVED", responseText: msg };
+  }
+
   // Case 1: User requested to mark current task as done / taken / confirmed / ready
   const isCompletionAction =
     clean === "careloop_mark_done" ||
     clean === "careloop_taken" ||
     clean === "careloop_confirmed" ||
-    clean === "careloop_trigger_done" ||
     clean === "careloop_opu_ready" ||
-    clean === "careloop_arrived" ||
     clean === "done" ||
     clean === "completed" ||
     clean === "mark done" ||
@@ -765,9 +845,7 @@ export async function handleCareLoopMenuAction(input: {
     clean === "injected" ||
     clean === "confirmed" ||
     clean === "i'm ready" ||
-    clean === "im ready" ||
-    clean === "i've arrived" ||
-    clean === "arrived";
+    clean === "im ready";
 
   if (isCompletionAction) {
     const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
