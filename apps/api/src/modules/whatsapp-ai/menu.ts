@@ -749,19 +749,33 @@ export async function handleCareLoopMenuAction(input: {
     [plan.couple.primaryPatient?.firstName, plan.couple.partnerPatient?.firstName].filter(Boolean).join(" & ") ||
     "Patient";
 
-  // Case 1: User requested to mark current task as done
-  if (
+  // Case 1: User requested to mark current task as done / taken / confirmed / ready
+  const isCompletionAction =
     clean === "careloop_mark_done" ||
+    clean === "careloop_taken" ||
+    clean === "careloop_confirmed" ||
+    clean === "careloop_trigger_done" ||
+    clean === "careloop_opu_ready" ||
+    clean === "careloop_arrived" ||
     clean === "done" ||
     clean === "completed" ||
-    clean === "mark done"
-  ) {
+    clean === "mark done" ||
+    clean === "taken" ||
+    clean === "i've taken it" ||
+    clean === "injected" ||
+    clean === "confirmed" ||
+    clean === "i'm ready" ||
+    clean === "im ready" ||
+    clean === "i've arrived" ||
+    clean === "arrived";
+
+  if (isCompletionAction) {
     const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
     const pendingTask = currentStep?.tasks.find((t) => t.status === "WAITING" || t.status === "IN_PROGRESS");
 
     if (pendingTask) {
       await completeCareTask(input.tenant, pendingTask.id, {
-        notes: `Completed by patient via WhatsApp Care Loop`,
+        notes: `Completed by patient via WhatsApp Care Loop (${input.actionIdOrText})`,
         replyText: input.actionIdOrText,
         source: "WHATSAPP",
       }).catch((err) => {
@@ -787,11 +801,12 @@ export async function handleCareLoopMenuAction(input: {
         msg =
           `🎉 *Stage Completed!* 🌟\n\n` +
           `You have completed all requirements for:\n` +
-          `*Stage ${plan.currentStageIndex + 1}: ${plan.currentStageName}*\n\n` +
-          `🚀 *Advancing to Stage ${(updatedPlan?.currentStageIndex ?? 0) + 1}: ${updatedPlan?.currentStageName}*\n\n` +
+          `*${plan.currentStageName}*\n\n` +
+          `🚀 *Advancing to Next Stage:*\n` +
+          `*${updatedPlan?.currentStageName}*\n\n` +
           `👉 *Next Action:*\n` +
           `*${nextActionInfo.nextAction}*\n\n` +
-          `Our clinical team has been updated. Keep up the great work!`;
+          `Our clinical team has been updated in real-time. Keep up the great work!`;
 
         await sendWhatsAppInteractiveButtons(input.tenant, {
           conversationId: input.conversationId,
@@ -810,13 +825,13 @@ export async function handleCareLoopMenuAction(input: {
         const remaining = curStepTasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS").length;
 
         msg =
-          `✅ *Task Completed!*\n\n` +
-          `*${pendingTask.title}* has been marked as complete.\n\n` +
-          `📍 *Current Stage:* Stage ${(updatedPlan?.currentStageIndex ?? 0) + 1} — *${updatedPlan?.currentStageName}*\n` +
-          `⏳ *Remaining in Stage:* ${remaining} task(s)\n\n` +
+          `✅ *Action Logged Successfully!*\n\n` +
+          `*${pendingTask.title}* has been confirmed.\n\n` +
+          `📍 *Current Stage:* *${updatedPlan?.currentStageName}*\n` +
+          `⏳ *Remaining in Stage:* ${remaining} item(s)\n\n` +
           `👉 *Next Action:*\n` +
           `*${nextActionInfo.nextAction}*\n\n` +
-          `_Tap 'Mark Done' below when you complete this action._`;
+          `_Tap below when you complete your next step._`;
 
         await sendWhatsAppInteractiveButtons(input.tenant, {
           conversationId: input.conversationId,
@@ -836,7 +851,67 @@ export async function handleCareLoopMenuAction(input: {
     }
   }
 
-  // Case 2: User requested to view all tasks in current stage
+  // Case 2: User logging symptoms or asking about side effects (Empathetic guardrail)
+  if (
+    clean === "careloop_symptoms" ||
+    /\b(symptom|cramp|cramping|spotting|bleeding|pain|fever|swelling|nausea)\b/i.test(clean)
+  ) {
+    const msg =
+      `🌸 *Care Team Clinical Check-in*\n\n` +
+      `We understand going through IVF brings noticeable bodily changes. Mild cramping or slight spotting can occur following injections or procedures.\n\n` +
+      `⚠️ *If you experience any of the following:*\n` +
+      `• Heavy bright red bleeding (soaking a pad in 1-2 hours)\n` +
+      `• Sharp or escalating pelvic pain\n` +
+      `• High fever (above 100.4°F / 38°C)\n` +
+      `• Sudden abdominal distension or severe vomiting\n\n` +
+      `Please contact our emergency clinic helpline directly at *${clinic?.phone ?? "+91 80 4000 1200"}*.\n\n` +
+      `Our care coordinator and clinical team have also been alerted to check on you.`;
+
+    await sendWhatsAppInteractiveButtons(input.tenant, {
+      conversationId: input.conversationId,
+      body: msg,
+      footer: `${clinicName} • Clinical Support`,
+      buttons: [
+        { id: MENU_ACTIONS.COORDINATOR, title: "📞 Call Coordinator" },
+        { id: MENU_ACTIONS.CARE_LOOP, title: "🧬 IVF Care Loop" },
+        { id: "main_menu", title: "🏠 Main Menu" },
+      ],
+    }).catch(async () => {
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    });
+
+    return { handled: true, action: "CARE_LOOP_SYMPTOMS", responseText: msg };
+  }
+
+  // Case 3: Upload Report / Lab Documents
+  if (
+    clean === "careloop_upload" ||
+    clean === "careloop_report" ||
+    /\b(upload|lab report|scan report|upload document)\b/i.test(clean)
+  ) {
+    const msg =
+      `📄 *Report & Document Ingestion*\n\n` +
+      `You can upload your test reports, ultrasound scans, or diagnostic documents directly here on WhatsApp! 📎\n\n` +
+      `Simply attach the PDF or send a clear photo of the report pages.\n` +
+      `Our clinical system will securely attach it to your medical records for Dr. review.`;
+
+    await sendWhatsAppInteractiveButtons(input.tenant, {
+      conversationId: input.conversationId,
+      body: msg,
+      footer: `${clinicName} • Document Desk`,
+      buttons: [
+        { id: MENU_ACTIONS.CARE_LOOP, title: "🧬 IVF Care Loop" },
+        { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+        { id: "main_menu", title: "🏠 Main Menu" },
+      ],
+    }).catch(async () => {
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    });
+
+    return { handled: true, action: "CARE_LOOP_UPLOAD_GUIDE", responseText: msg };
+  }
+
+  // Case 4: User requested to view all tasks in current stage
   if (clean === "careloop_view_tasks" || clean === "tasks" || clean === "all tasks") {
     const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
     const stepTasks = currentStep?.tasks ?? [];
@@ -851,9 +926,9 @@ export async function handleCareLoopMenuAction(input: {
     }
 
     const msg =
-      `📋 *Stage ${plan.currentStageIndex + 1}: ${plan.currentStageName}*\n` +
+      `📋 *${plan.currentStageName}*\n` +
       `Couple: *${coupleName}*\n\n` +
-      `*Tasks in this stage:*\n${taskList || "No tasks listed."}\n` +
+      `*Stage Requirements:*\n${taskList || "No pending tasks listed."}\n` +
       `👉 *Next Action:*\n` +
       `*${nextActionInfo.nextAction}*`;
 
@@ -873,7 +948,7 @@ export async function handleCareLoopMenuAction(input: {
     return { handled: true, action: "CARE_LOOP_TASKS_VIEW", responseText: msg };
   }
 
-  // Case 3: Default — IVF Care Loop Status & Next Action card
+  // Case 5: Default — IVF Care Loop Status Card with Stage-Tailored Interactive Buttons
   const nextActionInfo = await computeNextAction(input.tenant, plan.id).catch(() => ({
     nextAction: "Continue with treatment protocol",
   }));
@@ -883,28 +958,83 @@ export async function handleCareLoopMenuAction(input: {
   const pendingTasks = stepTasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS");
   const completedCount = stepTasks.length - pendingTasks.length;
 
+  const stageName = plan.currentStageName || "";
+
+  // Dynamic buttons tailored to the 15 specification stages
+  let stageButtons = [
+    { id: "careloop_mark_done", title: "✅ Mark Done" },
+    { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
+    { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+  ];
+
+  if (stageName.includes("Stimulation")) {
+    stageButtons = [
+      { id: "careloop_taken", title: "✅ Taken" },
+      { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "❓ Need Help" },
+    ];
+  } else if (stageName.includes("Trigger")) {
+    stageButtons = [
+      { id: "careloop_trigger_done", title: "✅ Injection Done" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "🚨 Emergency Call" },
+      { id: "careloop_view_tasks", title: "📋 Instructions" },
+    ];
+  } else if (stageName.includes("Egg Retrieval") || stageName.includes("OPU")) {
+    stageButtons = [
+      { id: "careloop_opu_ready", title: "✅ I'm Ready" },
+      { id: "careloop_arrived", title: "📍 I've Arrived" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+    ];
+  } else if (stageName.includes("Monitoring")) {
+    stageButtons = [
+      { id: "careloop_confirmed", title: "📅 Confirmed" },
+      { id: "careloop_upload", title: "📤 Upload Scan" },
+      { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
+    ];
+  } else if (stageName.includes("Embryology")) {
+    stageButtons = [
+      { id: "careloop_report", title: "📄 Lab Report" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "💬 Ask Doctor" },
+      { id: "careloop_view_tasks", title: "📋 Next Steps" },
+    ];
+  } else if (stageName.includes("Transfer")) {
+    stageButtons = [
+      { id: "careloop_confirmed", title: "✅ Confirmed" },
+      { id: "careloop_view_tasks", title: "📋 Guidelines" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "📞 Care Team" },
+    ];
+  } else if (stageName.includes("Post-Transfer") || stageName.includes("Luteal")) {
+    stageButtons = [
+      { id: "careloop_taken", title: "✅ Meds Taken" },
+      { id: "careloop_symptoms", title: "🤒 Log Symptoms" },
+      { id: "careloop_view_tasks", title: "📋 Care Guide" },
+    ];
+  } else if (stageName.includes("Pregnancy") || stageName.includes("Beta-hCG")) {
+    stageButtons = [
+      { id: "careloop_upload", title: "📤 Upload Beta-hCG" },
+      { id: MENU_ACTIONS.BOOK_APPOINTMENT, title: "🏥 Book Lab" },
+      { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+    ];
+  }
+
   const msg =
     `🧬 *IVF Care Loop — ${coupleName}*\n` +
     `🏥 *${clinicName}*\n\n` +
-    `📍 *Current Stage:* Stage ${plan.currentStageIndex + 1} of ${plan.steps.length} — *${plan.currentStageName}*\n` +
+    `📍 *Active Stage:* *${plan.currentStageName}*\n` +
     `🏷️ *Protocol:* ${plan.name}\n\n` +
     `👉 *Next Action:*\n` +
     `*${nextActionInfo.nextAction}*\n\n` +
-    `📋 *Stage Progress:* ${completedCount}/${stepTasks.length} tasks completed\n` +
+    `📋 *Stage Progress:* ${completedCount}/${stepTasks.length} completed\n` +
     (pendingTasks.length > 0
       ? pendingTasks.slice(0, 3).map((t) => `• ⏳ ${t.title}`).join("\n") + "\n\n"
       : "• ✨ All stage tasks completed!\n\n") +
-    `💡 _Tap 'Mark Done' below when you complete this action._`;
+    `💡 _Tap an action below to update your care team._`;
 
   await sendWhatsAppInteractiveButtons(input.tenant, {
     conversationId: input.conversationId,
     body: msg,
     footer: `${clinicName} • IVF Care Desk`,
-    buttons: [
-      { id: "careloop_mark_done", title: "✅ Mark Done" },
-      { id: "careloop_view_tasks", title: "📋 Stage Tasks" },
-      { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
-    ],
+    buttons: stageButtons,
   }).catch(async () => {
     await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
   });

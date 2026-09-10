@@ -177,9 +177,14 @@ export function PatientTreatmentJourneySection({
   const loadJourney = async () => {
     try {
       setLoading(true);
-      // Find care plans for clinic and locate couple's plan
+      // Find care plans for clinic and locate couple's most authoritative active plan
       const plans = await clinicApi.carePlans();
-      const couplePlan = plans.find((p) => p.coupleId === couple.id);
+      const couplePlans = plans.filter((p) => p.coupleId === couple.id);
+      const couplePlan = couplePlans.sort((a, b) => {
+        if (a.status === "ACTIVE" && b.status !== "ACTIVE") return -1;
+        if (b.status === "ACTIVE" && a.status !== "ACTIVE") return 1;
+        return (b.templateVersion ?? 0) - (a.templateVersion ?? 0);
+      })[0];
       if (couplePlan) {
         const data = await clinicApi.journey(couplePlan.id);
         setJourney(data);

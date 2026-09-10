@@ -681,12 +681,30 @@ export const carePlanSteps = [
   { id: "05", title: "Follow-up", state: "upcoming" as JourneyStageState, meta: "Upcoming", detail: "Plan next monitoring window and medication." },
 ];
 
+export const ivf15Stages = [
+  "Lead & Booking",
+  "Initial Consultation",
+  "Fertility Workup",
+  "IVF Decision",
+  "Treatment Planning",
+  "Cycle Preparation",
+  "Ovarian Stimulation",
+  "Follicular Monitoring",
+  "Trigger Injection",
+  "Egg Retrieval (OPU)",
+  "Embryology",
+  "Embryo Transfer",
+  "Post-Transfer Support",
+  "Pregnancy Test",
+  "Outcome & Transition",
+] as const;
+
 export const journeyTemplates = [
   {
     id: "tpl-eval",
-    name: "Fertility Evaluation",
-    accent: "teal" as const,
-    steps: ["Consultation", "Baseline", "Partner Investigation", "Review", "Plan"],
+    name: "Evaluation",
+    accent: "warning" as const,
+    steps: ["Consultation", "Workup", "Review", "Pathway Decision"],
   },
   {
     id: "tpl-iui",
@@ -698,7 +716,7 @@ export const journeyTemplates = [
     id: "tpl-ivf",
     name: "IVF",
     accent: "primary" as const,
-    steps: ["Consultation", "Baseline", "Monitoring", "Procedure", "Transfer", "Follow-up", "Pregnancy Test"],
+    steps: [...ivf15Stages],
   },
   {
     id: "tpl-fet",

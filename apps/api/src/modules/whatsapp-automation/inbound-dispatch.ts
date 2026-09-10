@@ -775,7 +775,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     cleanInboundText === "menu_care_loop" ||
     cleanInboundText === "btn_careloop" ||
     /\b(ivf|stage|next\s*step|next\s*action|care\s*loop|careloop|my\s*protocol|my\s*journey|treatment\s*journey|current\s*stage|fertility\s*loop)\b/i.test(cleanInboundText) ||
-    ((cleanInboundText === "done" || cleanInboundText === "completed" || cleanInboundText === "mark done") && !cleanInboundText.startsWith("appt_"));
+    ((cleanInboundText === "done" || cleanInboundText === "completed" || cleanInboundText === "mark done" || cleanInboundText === "taken" || cleanInboundText === "i've taken it" || cleanInboundText === "injected" || cleanInboundText === "confirmed" || cleanInboundText === "i'm ready" || cleanInboundText === "im ready" || cleanInboundText === "i've arrived" || cleanInboundText === "arrived") && !cleanInboundText.startsWith("appt_"));
 
   if (isCareLoopTrigger) {
     const { handleMenuAction } = await import("../whatsapp-ai/menu");

@@ -112,6 +112,9 @@ export type CarePlanDto = {
   status: string;
   startDate: string | null;
   currentStep: number;
+  templateVersion?: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type PatientRow = Patient;
@@ -314,6 +317,9 @@ export function serializeCarePlan(row: CarePlan): CarePlanDto {
     status: row.status,
     startDate: row.startDate ? row.startDate.toISOString() : null,
     currentStep: row.currentStep,
+    templateVersion: row.templateVersion,
+    createdAt: row.createdAt?.toISOString(),
+    updatedAt: row.updatedAt?.toISOString(),
   };
 }
 

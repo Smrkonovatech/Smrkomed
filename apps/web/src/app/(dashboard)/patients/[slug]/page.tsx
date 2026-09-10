@@ -31,7 +31,6 @@ import { toast } from "sonner";
 
 import { DeletePatientDialog } from "@/components/actions/delete-patient-dialog";
 import { AiPatientSummary } from "@/components/ai/ai-patient-summary";
-import { PatientJourneySummary } from "@/components/ai/patient-journey-summary";
 import { PrepareConsultation } from "@/components/ai/prepare-consultation";
 import { Patient360Panel } from "@/components/patients/patient-360-panel";
 import { PatientTreatmentJourneySection } from "@/components/patients/patient-treatment-journey-section";
@@ -379,13 +378,6 @@ export default function PatientProfile() {
               appointments={coupleAppointments}
               activity={recentActivity}
               noResponse={coupleAlerts.some((a) => a.kind === "no_response")}
-            />
-            <PatientJourneySummary
-              couple={couple}
-              tasks={coupleTasks}
-              appointments={coupleAppointments}
-              documents={coupleDocs}
-              activity={recentActivity}
             />
           </div>
           <div className="grid gap-4 xl:grid-cols-[1.05fr_.95fr]">

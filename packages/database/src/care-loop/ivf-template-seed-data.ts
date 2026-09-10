@@ -61,39 +61,78 @@ export type SeedTemplateDef = {
 };
 
 /**
- * Standard 14-Stage Clinical IVF Care Loop Flow
- * Dedicated clinical execution engine (untouched appointment booking flow)
+ * Standard 15-Stage Clinical IVF Care Loop Flow
+ * Dedicated clinical execution engine strictly aligned with the 15-step care architecture.
  */
 export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
   name: "IVF — Care Loop Clinical Flow",
-  description: "Dedicated 14-stage IVF clinical execution companion from consultation completion through cycle outcome, featuring Next Action computing and strict medical guardrails.",
+  description: "Comprehensive 15-stage IVF clinical execution companion from lead enquiry and consultation through cycle outcome, featuring Next Action computing and strict medical guardrails.",
   specialty: "FERTILITY",
   type: "IVF",
-  version: 2,
+  version: 3,
   isSystem: true,
   config: {
     branches: [
       {
-        stageIndex: 2,
+        stageIndex: 3,
         name: "IVF Decision Milestone",
         options: ["IVF_RECOMMENDED", "IUI_RECOMMENDED", "FURTHER_INVESTIGATION", "TREATMENT_DEFERRED", "PATIENT_UNDECIDED"],
       },
       {
-        stageIndex: 10,
+        stageIndex: 11,
         name: "Transfer Strategy Branch",
         options: ["FRESH_TRANSFER", "FREEZE_ALL_FET"],
       },
       {
-        stageIndex: 13,
+        stageIndex: 14,
         name: "Cycle Outcome Branch",
         options: ["POSITIVE", "UNSUCCESSFUL", "OTHER"],
       },
     ],
   },
   stages: [
-    // 1. Initial Consultation
+    // 01. Lead & Appointment Booking
     {
-      name: "Fertility Consultation",
+      name: "01. Lead & Appointment Booking",
+      description: "Initial patient enquiry, appointment booking, slot confirmation, and clinic guidelines.",
+      stageType: "LEAD_APPOINTMENT",
+      completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
+      tasks: [
+        {
+          title: "Book initial fertility appointment",
+          description: "Patient requests appointment via WhatsApp or portal; system books slot with specialist.",
+          taskType: "APPOINTMENT_TASK",
+          ownerRole: "PATIENT",
+          priority: "HIGH",
+          dueTimingDays: 0,
+          communicationConfig: {
+            channel: "WHATSAPP",
+            whatsapp: {
+              enabled: true,
+              templateName: "appointment_booking_request",
+              variables: ["patient_name", "clinic_name"],
+              buttons: ["📅 Book Slot", "📍 Clinic Info", "💬 Talk to Team"],
+            },
+          },
+          completionCondition: { type: "APPOINTMENT_COMPLETED" },
+          requiredAction: "BOOK_APPOINTMENT",
+        },
+        {
+          title: "Confirm appointment slot & send clinic guidelines",
+          description: "Care coordinator confirms doctor slot, patient KYC requirements, and sends clinic location pin.",
+          taskType: "COORDINATOR_TASK",
+          ownerRole: "CARE_COORDINATOR",
+          priority: "NORMAL",
+          dueTimingDays: 0,
+          completionCondition: { type: "STAFF_VERIFICATION" },
+          requiredAction: "CONFIRM_APPOINTMENT_SLOT",
+        },
+      ],
+    },
+
+    // 02. Initial Consultation
+    {
+      name: "02. Initial Fertility Consultation",
       description: "Initial clinical consultation, fertility history review, baseline orders, and care registration.",
       stageType: "CONSULTATION",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -151,9 +190,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 2. Fertility Workup
+    // 03. Fertility Investigation / Workup
     {
-      name: "Investigation / Workup",
+      name: "03. Fertility Investigation / Workup",
       description: "Blood tests, hormonal panels, pelvic ultrasound, semen analysis, and diagnostic review.",
       stageType: "INVESTIGATION",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -220,9 +259,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 3. IVF Decision Milestone
+    // 04. IVF Decision Milestone
     {
-      name: "IVF Decision",
+      name: "04. IVF Decision Milestone",
       description: "Doctor clinical decision milestone evaluating workup results and defining treatment roadmap.",
       stageType: "DECISION_MILESTONE",
       completionStrategy: "DOCTOR_APPROVAL_REQUIRED",
@@ -253,9 +292,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 4. Treatment Planning & Consent
+    // 05. Treatment Planning & Consent
     {
-      name: "IVF Treatment Planning & Consent",
+      name: "05. Treatment Planning & Consent",
       description: "Doctor specifies stimulation protocol; coordinator collects informed consent and validates package financial clearance.",
       stageType: "PLANNING_AND_CONSENT",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -322,9 +361,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 5. Cycle Preparation Checklist
+    // 06. Cycle Preparation Checklist
     {
-      name: "Cycle Preparation",
+      name: "06. Cycle Preparation",
       description: "Dynamic checklist: Day 1 notification, baseline scan, estradiol assessment, injection education, and medication clearance.",
       stageType: "CYCLE_PREPARATION",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -388,9 +427,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 6. Ovarian Stimulation - Daily Companion
+    // 07. Ovarian Stimulation - Daily Companion
     {
-      name: "Ovarian Stimulation",
+      name: "07. Ovarian Stimulation",
       description: "Daily scheduled gonadotropin injections, adherence tracking, patient check-in, and dosage safety guardrails.",
       stageType: "STIMULATION",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -428,9 +467,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 7. Follicular Monitoring
+    // 08. Follicular Monitoring
     {
-      name: "Follicular Monitoring",
+      name: "08. Follicular Monitoring",
       description: "Serial transvaginal follicular tracking, serum estradiol monitoring, and protocol adjustments.",
       stageType: "MONITORING",
       completionStrategy: "DOCTOR_APPROVAL_REQUIRED",
@@ -477,9 +516,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 8. Trigger Injection - Highest Urgency
+    // 09. Trigger Injection - Highest Urgency
     {
-      name: "Trigger",
+      name: "09. Trigger Injection",
       description: "Critical final oocyte maturation injection (hCG / GnRH agonist) with exact timing and stored confirmation minute.",
       stageType: "TRIGGER",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -528,9 +567,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 9. OPU / Egg Retrieval
+    // 10. OPU / Egg Retrieval
     {
-      name: "Egg Retrieval",
+      name: "10. OPU (Egg Retrieval)",
       description: "Transvaginal ovum pickup procedure under conscious sedation / anesthesia with arrival check-in.",
       stageType: "RETRIEVAL",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -585,9 +624,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 10. Embryology
+    // 11. Embryology & Fertilization
     {
-      name: "Fertilization / Embryology",
+      name: "11. Embryology & Fertilization",
       description: "IVF laboratory execution (kept internal). Patient receives only clinic-approved progress summaries.",
       stageType: "EMBRYOLOGY",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -640,9 +679,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 11. Embryo Transfer / FET
+    // 12. Embryo Transfer / FET
     {
-      name: "Embryo Transfer / FET",
+      name: "12. Embryo Transfer / FET",
       description: "Branching: Fresh Transfer vs Freeze-All / FET. Ultrasound-guided transfer procedure and arrival check-in.",
       stageType: "TRANSFER",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -705,9 +744,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 12. Post-Transfer Support
+    // 13. Post-Transfer Support
     {
-      name: "Post-Transfer Support",
+      name: "13. Post-Transfer Support",
       description: "Continuous 2-week support: luteal progesterone adherence, Day 1 & Day 3 well-being check-ins, and symptom alerts.",
       stageType: "LUTEAL_SUPPORT",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -762,9 +801,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 13. Beta-hCG / Pregnancy Test
+    // 14. Beta-hCG / Pregnancy Test
     {
-      name: "Beta-hCG / Pregnancy Test",
+      name: "14. Pregnancy Test (Beta-hCG)",
       description: "Quantitative serum Beta-hCG test drawn on Day 14. AI strictly gated from independent announcement.",
       stageType: "PREGNANCY_TEST",
       completionStrategy: "ALL_REQUIRED_TASKS_COMPLETE",
@@ -802,9 +841,9 @@ export const IVF_CARE_LOOP_FLOW: SeedTemplateDef = {
       ],
     },
 
-    // 14. Cycle Outcome
+    // 15. Cycle Outcome & Transition
     {
-      name: "Outcome / Closure",
+      name: "15. Outcome & Clinical Transition",
       description: "Doctor registers treatment outcome (Positive vs Unsuccessful). Empathetic human routing for negative cycles; never auto-push next cycle.",
       stageType: "OUTCOME_CLOSURE",
       completionStrategy: "DOCTOR_APPROVAL_REQUIRED",

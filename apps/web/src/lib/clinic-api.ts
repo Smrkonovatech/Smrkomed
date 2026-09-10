@@ -93,6 +93,9 @@ export type ClinicCarePlan = {
   name: string;
   type: string;
   status: string;
+  templateVersion?: number;
+  updatedAt?: string;
+  createdAt?: string;
 };
 
 export function clinicErrorMessage(error: unknown, fallback: string) {
