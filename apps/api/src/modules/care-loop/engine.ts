@@ -28,6 +28,7 @@ export type AddDoctorTaskInput = {
   carePlanId?: string | undefined;
   stageStepId?: string | undefined;
   title: string;
+  category?: string | undefined;
   description?: string | undefined;
   taskType?: string | undefined;
   ownerRole?: string | undefined;
@@ -35,6 +36,8 @@ export type AddDoctorTaskInput = {
   priority?: CareTaskPriority | undefined;
   dueDate?: string | undefined;
   dueTime?: string | undefined;
+  sendWhatsApp?: boolean | undefined;
+  phoneNumber?: string | undefined;
   communicationConfig?: {
     whatsappEnabled?: boolean | undefined;
     templateName?: string | undefined;
@@ -1410,6 +1413,17 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
     ? new Date(input.dueDate.includes("T") ? input.dueDate : `${input.dueDate}T00:00:00`)
     : new Date();
 
+  let validCreatedById: string | null = null;
+  if (tenant.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: tenant.userId },
+      select: { id: true },
+    });
+    if (user) {
+      validCreatedById = user.id;
+    }
+  }
+
   const task = await prisma.careTask.create({
     data: {
       clinicId: tenant.clinicId,
@@ -1418,6 +1432,7 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
       carePlanStepId: stepId ?? null,
       title: input.title,
       description: input.description ?? null,
+      category: input.category ?? "Medication",
       taskType: input.taskType ?? "PATIENT_TASK",
       ownerRole: input.ownerRole ?? "PATIENT",
       source: "DOCTOR_MANUAL",
@@ -1439,7 +1454,7 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
       communicationConfig: (input.communicationConfig ?? { whatsappEnabled: true }) as object,
       reminderConfig: (input.reminderConfig ?? {}) as object,
       escalationConfig: (input.escalationConfig ?? {}) as object,
-      createdById: tenant.userId,
+      createdById: validCreatedById,
       automationEnabled: true,
       aiFollowUpEnabled: true,
       escalationEnabled: true,
@@ -1458,6 +1473,17 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
     title: task.title,
     dueDate: dueDate.toISOString(),
   });
+
+  // Automatically dispatch WhatsApp notification to patient if enabled
+  if (input.sendWhatsApp !== false) {
+    const { dispatchTaskToWhatsApp } = await import("./stage-dispatch");
+    await dispatchTaskToWhatsApp(tenant, {
+      taskId: task.id,
+      ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
+    }).catch((err) => {
+      console.error("[addDoctorTask] Automatic WhatsApp dispatch error:", err);
+    });
+  }
 
   const patientId = couple.primaryPatientId;
   void dispatchCareLoopTrigger({
@@ -1616,8 +1642,23 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
 
   const waStatus = await checkClinicWhatsAppIntegration(tenant.clinicId);
 
+  const allDbTasks = await prisma.careTask.findMany({
+    where: {
+      clinicId: tenant.clinicId,
+      OR: [
+        { carePlanId: plan.id },
+        { coupleId: plan.coupleId },
+      ],
+    },
+    orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+    include: {
+      assignments: { include: { user: { select: { name: true } } } },
+      carePlanStep: { select: { id: true, name: true, sortOrder: true } },
+    },
+  });
+
   const currentStep = plan.steps.find((s) => s.sortOrder === plan.currentStageIndex) ?? plan.steps[0];
-  const allTasks = plan.steps.flatMap((s) => s.tasks);
+  const allTasks = allDbTasks.length > 0 ? allDbTasks : plan.steps.flatMap((s) => s.tasks);
   const currentTasks = currentStep ? currentStep.tasks : [];
   const nextActionInfo = await computeNextAction(tenant, carePlanId);
 
@@ -1692,6 +1733,28 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
       waiting: allTasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS").length,
       blockedOrOverdue: allTasks.filter((t) => t.status === "BLOCKED" || t.status === "OVERDUE" || t.status === "ESCALATED").length,
     },
+    allTasks: allDbTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      category: t.category,
+      status: t.status,
+      priority: t.priority,
+      taskType: t.taskType,
+      ownerRole: t.ownerRole,
+      communicationChannel: t.communicationChannel ?? "WHATSAPP",
+      attempts: t.attempts ?? 0,
+      escalationLevel: t.escalationLevel ?? 0,
+      lastAction: t.lastAction ?? null,
+      nextAction: t.nextAction ?? null,
+      patientResponse: t.patientResponse ?? null,
+      due: t.dueDate ? t.dueDate.toISOString().slice(0, 10) : "Unscheduled",
+      dueTime: t.dueTime,
+      assignedTo: t.assignments[0]?.user?.name ?? t.ownerRole,
+      stageName: t.carePlanStep?.name ?? null,
+      stageIndex: t.carePlanStep?.sortOrder ?? null,
+      isEscalated: t.status === "ESCALATED" || t.status === "BLOCKED",
+    })),
     exceptions: exceptions.map((e) => ({
       id: e.id,
       type: e.type,

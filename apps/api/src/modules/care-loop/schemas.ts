@@ -32,6 +32,8 @@ export const createCareTaskSchema = z
     dueDate: z.string().optional(),
     dueTime: z.string().trim().max(16).optional(),
     assignedUserId: z.string().min(1).optional(),
+    sendWhatsApp: z.boolean().optional(),
+    phoneNumber: z.string().optional(),
     communicationConfig: z.record(z.unknown()).optional(),
     reminderConfig: z.record(z.unknown()).optional(),
     escalationConfig: z.record(z.unknown()).optional(),

@@ -16,12 +16,15 @@ import {
   FileCheck,
   GitBranch,
   HeartPulse,
+  ListTodo,
   MessageCircle,
   Pause,
   Play,
   Plus,
+  RotateCcw,
   Send,
   ShieldCheck,
+  Smartphone,
   Sparkles,
   Stethoscope,
   UserCheck,
@@ -97,6 +100,7 @@ export type JourneyExecutionData = {
       id: string;
       title: string;
       description?: string | null;
+      category?: string | null;
       status: string;
       priority: string;
       taskType: string;
@@ -104,6 +108,7 @@ export type JourneyExecutionData = {
       due: string;
       dueTime?: string | null;
       assignedTo: string;
+      stageName?: string | null;
       isEscalated: boolean;
       completionEvidence?: Record<string, unknown> | null;
     }>;
@@ -114,6 +119,22 @@ export type JourneyExecutionData = {
     waiting: number;
     blockedOrOverdue: number;
   };
+  allTasks?: Array<{
+    id: string;
+    title: string;
+    description?: string | null;
+    category?: string | null;
+    status: string;
+    priority: string;
+    taskType: string;
+    ownerRole: string;
+    due: string;
+    dueTime?: string | null;
+    assignedTo: string;
+    stageName?: string | null;
+    stageIndex?: number | null;
+    isEscalated: boolean;
+  }>;
   exceptions: Array<{
     id: string;
     type: string;
@@ -134,6 +155,54 @@ export type JourneyExecutionData = {
     metadata?: Record<string, unknown> | null;
   }>;
 };
+
+const TASK_PRESETS = [
+  {
+    label: "Trigger Injection (hCG)",
+    title: "Administer hCG Trigger Injection",
+    category: "Medication",
+    role: "PATIENT",
+    priority: "CLINICAL" as const,
+    time: "21:30",
+    desc: "Administer subcutaneous trigger injection exactly at specified time. Crucial for 36-hour egg retrieval timing.",
+  },
+  {
+    label: "Ultrasound Follicle Scan",
+    title: "Transvaginal Ultrasound (Follicle Monitoring)",
+    category: "Ultrasound",
+    role: "DOCTOR",
+    priority: "HIGH" as const,
+    time: "09:30",
+    desc: "Measure bilateral follicle count and diameter. Assess endometrial thickness and triple-line pattern.",
+  },
+  {
+    label: "Fasting Bloods (E2 & P4)",
+    title: "Fasting Blood Draw: Serum Estradiol & Progesterone",
+    category: "Blood Test",
+    role: "PATIENT",
+    priority: "HIGH" as const,
+    time: "08:00",
+    desc: "Arrive fasting by 8:00 AM for rapid hormonal baseline evaluation before stimulation adjustment.",
+  },
+  {
+    label: "ICSI & Genetic Consent",
+    title: "Sign ICSI & Embryo Cryopreservation Consent",
+    category: "Consent",
+    role: "CARE_COORDINATOR",
+    priority: "NORMAL" as const,
+    time: "11:00",
+    desc: "Both partners must review and sign ART consent documentation and cryopreservation storage agreement.",
+  },
+  {
+    label: "Semen Sample Submission",
+    title: "Sperm Collection for ICSI Insemination",
+    category: "Lab",
+    role: "PATIENT",
+    priority: "CLINICAL" as const,
+    time: "08:30",
+    desc: "Submit sample to Andrology Lab within 1 hour of collection with 2-5 days abstinence period.",
+  },
+];
 
 interface PatientTreatmentJourneySectionProps {
   couple: {
@@ -170,10 +239,16 @@ export function PatientTreatmentJourneySection({
   // Doctor Ad-Hoc Task Form
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
+  const [taskCategory, setTaskCategory] = useState("Medication");
   const [taskRole, setTaskRole] = useState("PATIENT");
   const [taskPriority, setTaskPriority] = useState<"NORMAL" | "HIGH" | "CLINICAL">("NORMAL");
   const [taskDate, setTaskDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [taskTime, setTaskTime] = useState("10:00");
+  const [sendWhatsApp, setSendWhatsApp] = useState(true);
+  const [taskFilter, setTaskFilter] = useState<"ALL" | "PENDING" | "COMPLETED">("ALL");
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [taskTitleError, setTaskTitleError] = useState(false);
+  const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 
   const loadJourney = async () => {
     try {
@@ -263,27 +338,77 @@ export function PatientTreatmentJourneySection({
     }
   };
 
-  const handleAddDoctorTask = async () => {
-    if (!taskTitle.trim() || !journey?.plan.id) return;
+  const handleCompleteTask = async (taskId: string) => {
     try {
+      setActionLoadingId(taskId);
+      await clinicApi.completeTask(taskId);
+      toast.success("Care task marked as completed!");
+      await loadJourney();
+      onRefresh?.();
+    } catch (err: unknown) {
+      toast.error(clinicErrorMessage(err, "Failed to complete task"));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleResendWhatsApp = async (taskId: string, title: string) => {
+    try {
+      setActionLoadingId(taskId);
+      const targetPhone = couple.primary.phone || couple.partner?.phone || undefined;
+      await clinicApi.dispatchTaskWhatsApp(taskId, targetPhone ?? undefined);
+      toast.success(`WhatsApp notification dispatched for "${title}"!`);
+    } catch (err: unknown) {
+      toast.error(clinicErrorMessage(err, "Failed to send WhatsApp message"));
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleAddDoctorTask = async () => {
+    if (!taskTitle.trim()) {
+      setTaskTitleError(true);
+      toast.error("Please enter a task title or click one of the presets above.");
+      return;
+    }
+
+    if (!journey?.plan?.id) {
+      toast.error("No active treatment plan found to attach this task to.");
+      return;
+    }
+
+    try {
+      setIsSubmittingTask(true);
+      const targetPhone = couple.primary.phone || couple.partner?.phone || undefined;
       await clinicApi.addDoctorTask({
         coupleId: couple.id,
         carePlanId: journey.plan.id,
         title: taskTitle.trim(),
+        category: taskCategory,
         description: taskDesc.trim() || undefined,
         ownerRole: taskRole,
         priority: taskPriority,
         dueDate: taskDate,
         dueTime: taskTime,
+        sendWhatsApp: sendWhatsApp,
+        phoneNumber: targetPhone,
       });
-      toast.success("Doctor Task Added to Care Loop!");
+      toast.success(
+        sendWhatsApp
+          ? `Doctor task created & WhatsApp alert sent to ${targetPhone || "patient"}!`
+          : "Doctor task added to Care Loop!",
+      );
       setAddDoctorTaskOpen(false);
       setTaskTitle("");
       setTaskDesc("");
+      setTaskCategory("Medication");
+      setTaskTitleError(false);
       await loadJourney();
       onRefresh?.();
     } catch (err: unknown) {
       toast.error(clinicErrorMessage(err, "Could not add doctor task."));
+    } finally {
+      setIsSubmittingTask(false);
     }
   };
 
@@ -340,6 +465,21 @@ export function PatientTreatmentJourneySection({
   // Active / pending tasks in the current stage
   const pendingTasks = journey?.currentStage.tasks.filter((t) => t.status !== "COMPLETED" && t.status !== "SKIPPED") ?? [];
   const primaryPendingTask = pendingTasks[0] ?? journey?.currentStage.tasks[0];
+
+  // All tasks across the patient journey
+  const rawTasks = (journey?.allTasks && journey.allTasks.length > 0)
+    ? journey.allTasks
+    : (journey?.currentStage.tasks ?? []);
+
+  const totalTasksCount = rawTasks.length;
+  const waitingTasksCount = rawTasks.filter((t) => t.status === "WAITING" || t.status === "IN_PROGRESS").length;
+  const completedTasksCount = rawTasks.filter((t) => t.status === "COMPLETED").length;
+
+  const filteredTasks = rawTasks.filter((t) => {
+    if (taskFilter === "PENDING") return t.status !== "COMPLETED" && t.status !== "SKIPPED";
+    if (taskFilter === "COMPLETED") return t.status === "COMPLETED";
+    return true;
+  });
 
   return (
     <div className="space-y-4">
@@ -543,6 +683,223 @@ export function PatientTreatmentJourneySection({
           )}
         </div>
 
+        {/* Clinical Care Tasks & WhatsApp Queue Section */}
+        <div className="rounded-xl border bg-card p-4 space-y-3 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-primary/10 p-1.5 text-primary">
+                <ListTodo className="size-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                  Clinical Care Tasks &amp; WhatsApp Queue
+                  <span className="rounded-full bg-primary/10 text-primary text-[10px] font-bold px-2 py-0.5">
+                    {totalTasksCount} Total
+                  </span>
+                  {waitingTasksCount > 0 && (
+                    <span className="rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5">
+                      {waitingTasksCount} Pending
+                    </span>
+                  )}
+                  {completedTasksCount > 0 && (
+                    <span className="rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-900 dark:text-emerald-300 text-[10px] font-bold px-2 py-0.5">
+                      {completedTasksCount} Done
+                    </span>
+                  )}
+                </h4>
+                <p className="text-xs text-muted-foreground">
+                  Prescribed actions and automated WhatsApp patient notifications for this cycle.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center rounded-lg border bg-muted/40 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setTaskFilter("ALL")}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
+                    taskFilter === "ALL" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  All ({totalTasksCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaskFilter("PENDING")}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
+                    taskFilter === "PENDING" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Pending ({waitingTasksCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTaskFilter("COMPLETED")}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-semibold transition-colors",
+                    taskFilter === "COMPLETED" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  Done ({completedTasksCount})
+                </button>
+              </div>
+
+              <Button
+                size="sm"
+                className="h-8 gap-1 text-xs bg-primary text-primary-foreground font-semibold shadow-sm"
+                onClick={() => setAddDoctorTaskOpen(true)}
+              >
+                <Plus className="size-3.5" />
+                Add Task
+              </Button>
+            </div>
+          </div>
+
+          {filteredTasks.length === 0 ? (
+            <div className="rounded-xl border border-dashed p-6 text-center text-xs text-muted-foreground space-y-2">
+              <p>No {taskFilter === "ALL" ? "" : taskFilter.toLowerCase()} tasks found for this patient.</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => setAddDoctorTaskOpen(true)}
+              >
+                <Plus className="size-3" />
+                Prescribe New Task &amp; WhatsApp Alert
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {filteredTasks.map((t) => (
+                <div
+                  key={t.id}
+                  className="rounded-xl border bg-background p-3.5 shadow-sm space-y-2.5 transition-colors hover:border-primary/40"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {t.category && (
+                          <span className="rounded-md bg-purple-100 dark:bg-purple-950/60 px-2 py-0.5 text-[10px] font-bold text-purple-800 dark:text-purple-300 uppercase">
+                            {t.category}
+                          </span>
+                        )}
+                        <span className="font-bold text-sm text-foreground">{t.title}</span>
+                        <span
+                          className={cn(
+                            "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase",
+                            t.priority === "CLINICAL"
+                              ? "bg-red-100 text-red-800 border border-red-200"
+                              : t.priority === "HIGH"
+                                ? "bg-amber-100 text-amber-800 border border-amber-200"
+                                : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {t.priority}
+                        </span>
+                        {t.stageName && (
+                          <span className="text-[10px] text-muted-foreground bg-muted/60 px-1.5 py-0.5 rounded">
+                            Stage: {t.stageName}
+                          </span>
+                        )}
+                      </div>
+                      {t.description && (
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {t.description}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={cn(
+                          "text-xs font-bold px-2.5 py-0.5 rounded-full border",
+                          t.status === "COMPLETED"
+                            ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                            : t.status === "WAITING"
+                              ? "bg-amber-50 text-amber-800 border-amber-300"
+                              : t.status === "IN_PROGRESS"
+                                ? "bg-blue-50 text-blue-800 border-blue-300"
+                                : "bg-red-50 text-red-800 border-red-300",
+                        )}
+                      >
+                        {t.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-3 text-muted-foreground">
+                      <span className="flex items-center gap-1 font-mono text-[11px]">
+                        <Clock className="size-3 text-primary" />
+                        {t.due} · {t.dueTime || "10:00"}
+                      </span>
+                      <span className="flex items-center gap-1 text-[11px]">
+                        <UserCheck className="size-3 text-muted-foreground" />
+                        {t.ownerRole} ({t.assignedTo})
+                      </span>
+                      <span className="rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1">
+                        <MessageCircle className="size-2.5 text-emerald-600" />
+                        WhatsApp Alert Sent
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {t.status !== "COMPLETED" && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={actionLoadingId === t.id}
+                          className="h-7 text-xs gap-1 border-emerald-300 text-emerald-800 hover:bg-emerald-50 font-semibold"
+                          onClick={() => handleCompleteTask(t.id)}
+                        >
+                          <CheckCircle2 className="size-3.5 text-emerald-600" />
+                          Mark Done
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={actionLoadingId === t.id}
+                        className="h-7 text-xs gap-1 text-primary hover:bg-primary/10"
+                        onClick={() => handleResendWhatsApp(t.id, t.title)}
+                        title="Resend WhatsApp alert to patient"
+                      >
+                        <Send className="size-3" />
+                        Resend WhatsApp
+                      </Button>
+                      {t.status !== "COMPLETED" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={simulating}
+                            className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleSimulateResponse(t.id, "Done")}
+                          >
+                            Simulate &quot;Done&quot;
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={simulating}
+                            className="h-7 text-[11px] gap-1 text-muted-foreground hover:text-foreground"
+                            onClick={() => handleSimulateResponse(t.id, "I need help with this.")}
+                          >
+                            Simulate &quot;Help&quot;
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* Clinical Branch Decision (Stage 11 / Transfer strategy) */}
         {(currentStageIndex >= 9 || journey?.plan.selectedBranch) && (
           <div className="rounded-xl border border-purple-200 bg-purple-50/50 p-4 space-y-3">
@@ -696,25 +1053,97 @@ export function PatientTreatmentJourneySection({
 
       {/* Dialog: Add Doctor Ad-Hoc Task */}
       <Dialog open={addDoctorTaskOpen} onOpenChange={setAddDoctorTaskOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+        <DialogContent className="max-w-md max-h-[90vh] flex flex-col p-0 overflow-hidden">
+          <DialogHeader className="p-5 pb-3 border-b">
             <DialogTitle>Add Patient-Specific Doctor Task</DialogTitle>
             <DialogDescription>
               Prescribe an ad-hoc clinical task or medication check directly into this couple&apos;s Care Loop.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 py-2 text-xs">
-            <div className="space-y-1">
-              <Label className="text-xs">Task Title</Label>
-              <Input
-                placeholder="e.g. Additional Estradiol Blood Check"
-                value={taskTitle}
-                onChange={(e) => setTaskTitle(e.target.value)}
-              />
+          <div className="flex-1 overflow-y-auto p-5 space-y-3.5 text-xs">
+            {/* Quick Clinical Presets */}
+            <div className="space-y-1.5">
+              <Label className="text-[11px] text-muted-foreground font-semibold">Quick Clinical Presets</Label>
+              <div className="flex flex-wrap gap-1.5">
+                {TASK_PRESETS.map((p) => {
+                  const isSelected = taskTitle === p.title;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => {
+                        setTaskTitle(p.title);
+                        setTaskCategory(p.category);
+                        setTaskRole(p.role);
+                        setTaskPriority(p.priority);
+                        setTaskTime(p.time);
+                        setTaskDesc(p.desc);
+                        setTaskTitleError(false);
+                      }}
+                      className={cn(
+                        "rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all",
+                        isSelected
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm ring-1 ring-primary/40 font-semibold"
+                          : "bg-muted/50 hover:bg-primary/10 hover:border-primary/50 text-foreground",
+                      )}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
+            {/* Task Title with Validation */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">
+                  Task Title <span className="text-red-500">*</span>
+                </Label>
+                {taskTitleError && (
+                  <span className="text-[11px] text-red-600 font-semibold">
+                    Title is required
+                  </span>
+                )}
+              </div>
+              <Input
+                placeholder="Type task title (e.g. Administer hCG Trigger Injection)..."
+                value={taskTitle}
+                onChange={(e) => {
+                  setTaskTitle(e.target.value);
+                  if (taskTitleError && e.target.value.trim()) {
+                    setTaskTitleError(false);
+                  }
+                }}
+                className={cn(
+                  taskTitleError && "border-red-500 focus-visible:ring-red-500 bg-red-50/20",
+                )}
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Click any preset above or enter custom clinical instructions.
+              </p>
+            </div>
+
+            {/* Category & Role */}
             <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select value={taskCategory} onValueChange={setTaskCategory}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Medication">Medication / Injection</SelectItem>
+                    <SelectItem value="Ultrasound">Ultrasound Scan</SelectItem>
+                    <SelectItem value="Blood Test">Blood / Lab Test</SelectItem>
+                    <SelectItem value="Consent">Consent / Documentation</SelectItem>
+                    <SelectItem value="Lab">Embryology / Andrology</SelectItem>
+                    <SelectItem value="Consultation">Clinical Consultation</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-1">
                 <Label className="text-xs">Owner Role</Label>
                 <Select value={taskRole} onValueChange={setTaskRole}>
@@ -728,7 +1157,10 @@ export function PatientTreatmentJourneySection({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
+            {/* Priority & Due Date */}
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Priority</Label>
                 <Select
@@ -740,14 +1172,12 @@ export function PatientTreatmentJourneySection({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="NORMAL">Normal</SelectItem>
-                    <SelectItem value="HIGH">High</SelectItem>
-                    <SelectItem value="CLINICAL">Clinical Priority</SelectItem>
+                    <SelectItem value="HIGH">High Priority</SelectItem>
+                    <SelectItem value="CLINICAL">Clinical Priority (Alert)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Due Date</Label>
                 <Input
@@ -757,7 +1187,10 @@ export function PatientTreatmentJourneySection({
                   onChange={(e) => setTaskDate(e.target.value)}
                 />
               </div>
+            </div>
 
+            {/* Due Time */}
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Due Time</Label>
                 <Input
@@ -769,8 +1202,9 @@ export function PatientTreatmentJourneySection({
               </div>
             </div>
 
+            {/* Instructions */}
             <div className="space-y-1">
-              <Label className="text-xs">Instructions & Prescriptions</Label>
+              <Label className="text-xs">Instructions &amp; Prescriptions</Label>
               <Textarea
                 placeholder="Specific dosage, timing, or report upload guidelines..."
                 rows={2}
@@ -778,14 +1212,62 @@ export function PatientTreatmentJourneySection({
                 onChange={(e) => setTaskDesc(e.target.value)}
               />
             </div>
+
+            {/* Immediate WhatsApp Alert Banner */}
+            <div className="rounded-xl border border-emerald-300/80 bg-emerald-50/70 dark:bg-emerald-950/25 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="sendWhatsAppCheckModal" className="flex items-center gap-2 cursor-pointer">
+                  <Smartphone className="size-4 text-emerald-600" />
+                  <span className="font-bold text-xs text-emerald-950 dark:text-emerald-300">
+                    Send WhatsApp Alert Immediately
+                  </span>
+                </label>
+                <input
+                  id="sendWhatsAppCheckModal"
+                  type="checkbox"
+                  checked={sendWhatsApp}
+                  onChange={(e) => setSendWhatsApp(e.target.checked)}
+                  className="size-4 rounded accent-emerald-600 cursor-pointer"
+                />
+              </div>
+              {sendWhatsApp && (
+                <div className="text-[11px] text-emerald-900/90 dark:text-emerald-300/90 space-y-1">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <MessageCircle className="size-3 text-emerald-600 shrink-0" />
+                    <span>Recipient: {primaryName} ({couple.primary.phone || couple.partner?.phone || "No phone configured"})</span>
+                  </p>
+                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                    Patient receives an immediate WhatsApp notification with interactive buttons: [✅ Done], [❓ Need Help], and [📞 Call Me].
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setAddDoctorTaskOpen(false)}>
+          <DialogFooter className="p-4 border-t bg-muted/20 flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setAddDoctorTaskOpen(false);
+                setTaskTitleError(false);
+              }}
+            >
               Cancel
             </Button>
-            <Button size="sm" onClick={handleAddDoctorTask}>
-              Add to Care Loop
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleAddDoctorTask}
+              disabled={isSubmittingTask}
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-sm px-4"
+            >
+              <Send className="size-3.5" />
+              {isSubmittingTask
+                ? "Creating & Sending..."
+                : sendWhatsApp
+                  ? "Add Task & Send WhatsApp"
+                  : "Add to Care Loop"}
             </Button>
           </DialogFooter>
         </DialogContent>

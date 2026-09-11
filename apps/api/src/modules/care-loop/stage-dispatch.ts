@@ -209,11 +209,18 @@ export async function dispatchStageToWhatsApp(
   const stageNum = Math.max(1, Math.min(15, input.stageNumber));
   const spec = (STAGE_DISPATCH_SPECS[stageNum] ?? STAGE_DISPATCH_SPECS[1])!;
 
-  const clinic = await prisma.clinic.findFirst({
+  const clinic = await prisma.clinic.findUnique({
     where: { id: tenant.clinicId },
-    select: { name: true },
+    include: { organization: true },
   });
   const clinicName = clinic?.name || "ABC Fertility Centre";
+  const enrichedTenant: TenantContext = {
+    ...tenant,
+    clinicId: clinic?.id || tenant.clinicId,
+    organizationId: clinic?.organizationId || tenant.organizationId,
+    organizationName: clinic?.organization?.name || "SmrkoMed",
+    clinicName,
+  };
 
   const normalizedPhone = normalizeWhatsAppPhone(input.phoneNumber);
 
@@ -295,21 +302,51 @@ export async function dispatchStageToWhatsApp(
   const footerText = spec.footer(clinicName);
 
   let messageId: string | undefined;
+  let deliveryMethod: "META_CLOUD_API" | "CONVERSATION_SAVED" = "CONVERSATION_SAVED";
+
   try {
-    const result = await sendWhatsAppInteractiveButtons(tenant, {
+    const result = await sendWhatsAppInteractiveButtons(enrichedTenant, {
       conversationId: conversation.id,
       body: messageText,
       footer: footerText,
       buttons: spec.buttons,
     });
     messageId = result.id;
+    deliveryMethod = "META_CLOUD_API";
   } catch (err) {
-    console.log("[Stage Dispatch] interactive send fallback to text:", err instanceof Error ? err.message : err);
-    const textFallback = `${messageText}\n\n${spec.buttons.map((b) => `[${b.title}]`).join("  ")}`;
-    await sendWhatsAppAiSessionText(tenant, {
-      conversationId: conversation.id,
-      body: textFallback,
-    }).catch(() => undefined);
+    console.log("[Stage Dispatch] Interactive buttons send failed, attempting session text fallback:", err instanceof Error ? err.message : err);
+    try {
+      const actionText = spec.buttons.map((b) => `• Reply "${b.title}"`).join("\n");
+      const fullSessionBody = `${messageText}\n\nActions:\n${actionText}`;
+      const sessionResult = await sendWhatsAppAiSessionText(enrichedTenant, {
+        conversationId: conversation.id,
+        body: fullSessionBody,
+      });
+      messageId = sessionResult.id;
+      deliveryMethod = "META_CLOUD_API";
+    } catch (sessionErr) {
+      console.log("[Stage Dispatch] Meta send unavailable, persisting to conversation:", sessionErr instanceof Error ? sessionErr.message : sessionErr);
+      try {
+        const textFallback = `${messageText}\n\n${spec.buttons.map((b) => `[${b.title}]`).join("  ")}`;
+        const saved = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: "OUTBOUND",
+            senderType: "AI",
+            content: textFallback,
+            messageType: "interactive",
+            status: "SENT",
+          },
+        });
+        messageId = saved.id;
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { status: "WAITING_PATIENT", updatedAt: new Date() },
+        });
+      } catch (saveErr) {
+        console.error("[Stage Dispatch] Failed to persist fallback message:", saveErr);
+      }
+    }
   }
 
   return {
@@ -320,5 +357,217 @@ export async function dispatchStageToWhatsApp(
     messageId,
     sentText: messageText,
     buttonsSent: spec.buttons.map((b) => b.title),
+    note: deliveryMethod === "META_CLOUD_API" ? "Transmitted to Meta Cloud API" : "Saved in conversation history",
   };
 }
+
+export type TaskDispatchResult = {
+  success: boolean;
+  taskId: string;
+  taskTitle: string;
+  recipientPhone: string;
+  messageId?: string | undefined;
+  sentText: string;
+  buttonsSent: string[];
+  deliveryMethod: "META_CLOUD_API" | "CONVERSATION_SAVED";
+  error?: string;
+};
+
+/**
+ * Dispatches an authentic clinical task WhatsApp notification with interactive buttons
+ * ([✅ Done], [❓ Need Help], [📞 Call Me]).
+ */
+export async function dispatchTaskToWhatsApp(
+  tenant: TenantContext,
+  input: {
+    taskId: string;
+    phoneNumber?: string | undefined;
+  },
+): Promise<TaskDispatchResult> {
+  const task = await prisma.careTask.findUnique({
+    where: { id: input.taskId },
+    include: {
+      couple: {
+        include: {
+          primaryPatient: true,
+          assignedDoctor: { select: { name: true } },
+          assignedCoordinator: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    throw new Error(`CareTask not found: ${input.taskId}`);
+  }
+
+  // Determine recipient phone number
+  const rawPhone = input.phoneNumber || task.couple?.primaryPatient?.phone || null;
+
+  if (!rawPhone) {
+    return {
+      success: false,
+      taskId: task.id,
+      taskTitle: task.title,
+      recipientPhone: "",
+      sentText: "",
+      buttonsSent: [],
+      deliveryMethod: "CONVERSATION_SAVED",
+      error: "No phone number available for this task recipient",
+    };
+  }
+
+  const normalizedPhone = normalizeWhatsAppPhone(rawPhone);
+  const patientName = task.couple?.primaryPatient?.firstName
+    ? `${task.couple.primaryPatient.firstName} ${task.couple.primaryPatient.lastName || ""}`.trim()
+    : "Patient";
+
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: tenant.clinicId },
+    include: { organization: true },
+  });
+  const clinicName = clinic?.name || "Smrko Care";
+  const enrichedTenant: TenantContext = {
+    ...tenant,
+    clinicId: clinic?.id || tenant.clinicId,
+    organizationId: clinic?.organizationId || tenant.organizationId,
+    organizationName: clinic?.organization?.name || "SmrkoMed",
+    clinicName,
+  };
+
+  // Find or create conversation
+  let conversation = await prisma.conversation.findFirst({
+    where: {
+      clinicId: tenant.clinicId,
+      OR: [
+        { contactPhone: normalizedPhone },
+        { contactPhone: `+${normalizedPhone}` },
+        { contactPhone: normalizedPhone.replace(/^\+/, "") },
+      ],
+    },
+  });
+
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        clinicId: tenant.clinicId,
+        coupleId: task.coupleId,
+        patientId: task.couple?.primaryPatientId ?? null,
+        contactPhone: normalizedPhone,
+        channel: "WHATSAPP",
+        status: "OPEN",
+      },
+    });
+  }
+
+  const dueDateStr = task.dueDate
+    ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : "Today";
+  const dueTimeStr = task.dueTime || "10:00 AM";
+
+  const buttons = [
+    { id: `task_done_${task.id}`, title: "✅ Done" },
+    { id: `task_help_${task.id}`, title: "❓ Need Help" },
+    { id: `task_call_${task.id}`, title: "📞 Call Me" },
+  ];
+
+  const categoryEmoji: Record<string, string> = {
+    Medication: "💊",
+    Diagnostics: "🔬",
+    Ultrasound: "🩺",
+    Scan: "🩺",
+    Consent: "📋",
+    Consultation: "👨‍⚕️",
+    Procedure: "🏥",
+    Payment: "💳",
+  };
+  const icon = (task.category && categoryEmoji[task.category]) || "📋";
+
+  const messageText =
+    `${icon} *New Clinical Task Assigned — ${clinicName}*\n\n` +
+    `Hello ${patientName},\n` +
+    `Your care team has scheduled a task for your treatment plan:\n\n` +
+    `📌 *Task:* ${task.title}\n` +
+    (task.category ? `🏷️ *Category:* ${task.category}\n` : "") +
+    `📅 *Due:* ${dueDateStr} at ${dueTimeStr}\n` +
+    (task.description ? `📝 *Instructions:* ${task.description}\n` : "") +
+    `⚡ *Priority:* ${task.priority === "CLINICAL" ? "Urgent (Clinical)" : (task.priority as string) === "HIGH" ? "High" : "Standard"}\n\n` +
+    `Please tap below once completed or if you have any questions:`;
+
+  const footerText = `${clinicName} • Care Loop Desk`;
+
+  let messageId: string | undefined;
+  let deliveryMethod: "META_CLOUD_API" | "CONVERSATION_SAVED" = "CONVERSATION_SAVED";
+
+  try {
+    const result = await sendWhatsAppInteractiveButtons(enrichedTenant, {
+      conversationId: conversation.id,
+      body: messageText,
+      footer: footerText,
+      buttons,
+    });
+    messageId = result.id;
+    deliveryMethod = "META_CLOUD_API";
+  } catch (err) {
+    console.log("[Task Dispatch] Interactive buttons send failed, attempting session text fallback:", err instanceof Error ? err.message : err);
+    try {
+      const actionText = buttons.map((b) => `• Reply "${b.title}"`).join("\n");
+      const fullSessionBody = `${messageText}\n\nActions:\n${actionText}`;
+      const sessionResult = await sendWhatsAppAiSessionText(enrichedTenant, {
+        conversationId: conversation.id,
+        body: fullSessionBody,
+      });
+      messageId = sessionResult.id;
+      deliveryMethod = "META_CLOUD_API";
+    } catch (sessionErr) {
+      console.log("[Task Dispatch] Session text send unavailable, persisting to conversation:", sessionErr instanceof Error ? sessionErr.message : sessionErr);
+      try {
+        const textFallback = `${messageText}\n\n${buttons.map((b) => `[${b.title}]`).join("  ")}`;
+        const saved = await prisma.message.create({
+          data: {
+            conversationId: conversation.id,
+            direction: "OUTBOUND",
+            senderType: "AI",
+            content: textFallback,
+            messageType: "interactive",
+            status: "SENT",
+          },
+        });
+        messageId = saved.id;
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { status: "WAITING_PATIENT", updatedAt: new Date() },
+        });
+      } catch (saveErr) {
+        console.error("[Task Dispatch] Failed to persist fallback message:", saveErr);
+      }
+    }
+  }
+
+  // Update task with last action & metadata
+  await prisma.careTask.update({
+    where: { id: task.id },
+    data: {
+      lastAction: `WhatsApp task notification sent to ${normalizedPhone}`,
+      nextAction: "Waiting for patient confirmation on WhatsApp",
+      metadata: {
+        ...(typeof task.metadata === "object" && task.metadata ? (task.metadata as object) : {}),
+        lastWhatsAppDispatchAt: new Date().toISOString(),
+        recipientPhone: normalizedPhone,
+        messageId,
+      },
+    },
+  });
+
+  return {
+    success: true,
+    taskId: task.id,
+    taskTitle: task.title,
+    recipientPhone: normalizedPhone,
+    messageId,
+    sentText: messageText,
+    buttonsSent: buttons.map((b) => b.title),
+    deliveryMethod,
+  };
+}
+

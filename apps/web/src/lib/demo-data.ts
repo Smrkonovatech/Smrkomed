@@ -71,20 +71,21 @@ export interface CareTask {
   due: string;
   category: string;
   status: TaskStatus;
-  note?: string;
-  taskType?: string;
-  triggerEvent?: string;
-  role?: string;
-  dueDate?: string;
-  dueTime?: string;
-  priority?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-  communicationChannel?: "WHATSAPP" | "VOICE_CALL" | "SMS" | "STAFF_TASK";
-  patientResponse?: string;
-  attempts?: number;
-  escalationLevel?: number;
-  lastAction?: string;
-  nextAction?: string;
-  stageName?: string;
+  note?: string | undefined;
+  taskType?: string | undefined;
+  triggerEvent?: string | undefined;
+  role?: string | undefined;
+  dueDate?: string | undefined;
+  dueTime?: string | undefined;
+  priority?: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "NORMAL" | "CLINICAL" | undefined;
+  sendWhatsApp?: boolean | undefined;
+  communicationChannel?: "WHATSAPP" | "VOICE_CALL" | "SMS" | "STAFF_TASK" | undefined;
+  patientResponse?: string | undefined;
+  attempts?: number | undefined;
+  escalationLevel?: number | undefined;
+  lastAction?: string | undefined;
+  nextAction?: string | undefined;
+  stageName?: string | undefined;
 }
 
 export interface Appointment {

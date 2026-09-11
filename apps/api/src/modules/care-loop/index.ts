@@ -555,6 +555,7 @@ export const careTaskRoutes = new Hono<AppEnv>()
       carePlanId: body.carePlanId,
       stageStepId: body.stageStepId,
       title: body.title,
+      category: body.category,
       description: body.description,
       taskType: body.taskType,
       ownerRole: body.ownerRole,
@@ -562,6 +563,8 @@ export const careTaskRoutes = new Hono<AppEnv>()
       priority: body.priority,
       dueDate: body.dueDate,
       dueTime: body.dueTime,
+      sendWhatsApp: body.sendWhatsApp,
+      phoneNumber: body.phoneNumber,
       communicationConfig: body.communicationConfig as { whatsappEnabled?: boolean; templateName?: string } | undefined,
       reminderConfig: body.reminderConfig as { remindAtHours?: number } | undefined,
       escalationConfig: body.escalationConfig as { escalateAfterHours?: number; escalateTo?: string } | undefined,
@@ -569,6 +572,17 @@ export const careTaskRoutes = new Hono<AppEnv>()
 
     const refreshed = await prisma.careTask.findUnique({ where: { id: task.id }, include: taskInclude });
     return ok(c, serializeTask(refreshed!, refreshed!.couple ?? undefined), 201);
+  })
+  .post("/:id/dispatch-whatsapp", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_TASKS_WRITE);
+    const { id } = c.req.valid("param");
+    const body = (await c.req.json().catch(() => ({}))) as { phoneNumber?: string };
+    const { dispatchTaskToWhatsApp } = await import("./stage-dispatch");
+    const result = await dispatchTaskToWhatsApp(tenant, {
+      taskId: id,
+      phoneNumber: body.phoneNumber,
+    });
+    return ok(c, result);
   })
   .patch("/:id", validate("param", idParam), validate("json", updateCareTaskSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.CARE_TASKS_WRITE);

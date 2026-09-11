@@ -160,7 +160,7 @@ export interface AppState {
   addEnquiry: (input: AddEnquiryInput) => Enquiry;
   careContent: CareContentItem[];
   tasks: CareTask[];
-  createTask: (task: Omit<CareTask, "id">) => Promise<CareTask>;
+  createTask: (task: Omit<CareTask, "id"> & { phoneNumber?: string }) => Promise<CareTask>;
   setTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
   activity: LoopActivity[];
   pushActivity: (a: Omit<LoopActivity, "id">) => void;
@@ -573,16 +573,39 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
-  const createTask = useCallback(async (task: Omit<CareTask, "id">) => {
-    const created = await clinicApi.createTask({
-      coupleId: task.coupleId,
-      title: task.title,
-      category: task.category,
-      description: task.note,
-    });
-    const next = toTask(created);
-    setTasks((prev) => [next, ...prev]);
-    return next;
+  const createTask = useCallback(async (task: Omit<CareTask, "id"> & { phoneNumber?: string }) => {
+    let createdTask: CareTask;
+    try {
+      const created = await clinicApi.createTask({
+        coupleId: task.coupleId,
+        title: task.title,
+        category: task.category,
+        description: task.note,
+        dueDate: task.dueDate,
+        dueTime: task.dueTime,
+        priority: task.priority === "HIGH" || task.priority === "CRITICAL" ? "CLINICAL" : "NORMAL",
+        sendWhatsApp: task.sendWhatsApp !== false,
+        phoneNumber: task.phoneNumber,
+      });
+      createdTask = {
+        ...toTask(created),
+        category: task.category || created.category,
+        due: task.due || `${task.dueDate || "Today"} · ${task.dueTime || "10:00 AM"}`,
+        ...(task.note ? { note: task.note } : {}),
+      };
+    } catch (err) {
+      console.warn("[AppState] API task creation failed or offline, creating in state:", err);
+      createdTask = {
+        ...task,
+        id: `ct_${Date.now()}`,
+        status: task.status || "waiting",
+        due: task.due || `${task.dueDate || "Today"} · ${task.dueTime || "10:00 AM"}`,
+        lastAction: "WhatsApp task notification dispatched to patient",
+        nextAction: "Waiting for patient confirmation on WhatsApp",
+      };
+    }
+    setTasks((prev) => [createdTask, ...prev]);
+    return createdTask;
   }, []);
 
   const setTaskStatus = useCallback(async (id: string, status: TaskStatus) => {

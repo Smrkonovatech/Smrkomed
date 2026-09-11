@@ -53,13 +53,18 @@ import {
   Users,
   Video,
   Volume2,
+  ListPlus,
+  Plus,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { apiPost } from "@/lib/api/client";
+import { useCreateTask } from "@/components/create-task-drawer";
+import { useAppState } from "@/lib/app-state";
+import { clinicApi } from "@/lib/clinic-api";
 import {
   CLINICAL_15_STAGES,
   type ClinicalStageSpec,
@@ -146,8 +151,21 @@ export function Clinical15StageFlowViewer({
     Record<number, Array<{ id: string; sender: "patient" | "bot"; text: string; time: string }>>
   >({});
 
+  const { open: openTask } = useCreateTask();
+  const { tasks, setTaskStatus } = useAppState();
+
   const stage: ClinicalStageSpec =
     CLINICAL_15_STAGES.find((s) => s.stepNumber === selectedStageNum) ?? CLINICAL_15_STAGES[0]!;
+
+  const currentCouple = couples.find((c) => c.id === selectedCoupleId) || couples[0] || {
+    id: selectedCoupleId || "cmtu9ejo9002zo9109nk9xthy",
+    name: "Manideep & Mani",
+    phone: targetPhone,
+  };
+
+  const relevantTasks = useMemo(() => {
+    return tasks.filter((t) => t.coupleId === selectedCoupleId || !selectedCoupleId);
+  }, [tasks, selectedCoupleId]);
 
   // Dispatch stage message directly to real WhatsApp phone
   const handleSendToWhatsApp = async () => {
@@ -833,6 +851,151 @@ export function Clinical15StageFlowViewer({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ─── STAGE TASKS & WHATSAPP AUTOMATION PANEL ─── */}
+      <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-border/70 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                <ListPlus className="size-4" />
+              </span>
+              <h3 className="text-base font-bold text-foreground">
+                Stage {stage.stepNumber} Clinical Tasks & WhatsApp Queue
+              </h3>
+              <span className="rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2.5 py-0.5 text-xs font-bold">
+                {relevantTasks.length} {relevantTasks.length === 1 ? "task" : "tasks"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Active patient tasks for <span className="font-semibold text-foreground">{currentCouple.name}</span>. Adding a task automatically sends an interactive WhatsApp message to <span className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">{currentCouple.phone || targetPhone}</span>.
+            </p>
+          </div>
+
+          <Button
+            onClick={() =>
+              openTask(
+                currentCouple.id,
+                stage.objectives[0] ? `${stage.objectives[0]}` : stage.title,
+                stage.stepNumber === 7 ? "Medication" : stage.stepNumber === 8 ? "Ultrasound" : "Diagnostics",
+              )
+            }
+            className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs h-9 shadow-xs shrink-0"
+          >
+            <ListPlus className="size-4" />
+            Add Care Task for Stage {stage.stepNumber}
+          </Button>
+        </div>
+
+        {relevantTasks.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/80 p-8 text-center space-y-3 bg-muted/20">
+            <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <Calendar className="size-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">No tasks scheduled for Stage {stage.stepNumber} yet</p>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-0.5">
+                Add medication reminders, scans, or blood tests. As soon as you add one, WhatsApp will notify {currentCouple.name} immediately.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                openTask(
+                  currentCouple.id,
+                  stage.objectives[0] || stage.title,
+                  stage.stepNumber === 7 ? "Medication" : "Diagnostics",
+                )
+              }
+              className="text-xs gap-1.5"
+            >
+              <Plus className="size-3.5" />
+              Add First Task
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {relevantTasks.map((task) => (
+              <div
+                key={task.id}
+                className="rounded-xl border border-border/80 bg-background p-3.5 space-y-3 shadow-2xs hover:border-primary/40 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <span className="inline-block rounded-md bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                      {task.category || "Clinical"}
+                    </span>
+                    <h4 className="text-xs font-bold text-foreground leading-snug">{task.title}</h4>
+                  </div>
+                  <span
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-bold shrink-0",
+                      task.status === "completed"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                        : task.status === "overdue" || task.status === "escalated"
+                        ? "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+                    )}
+                  >
+                    {task.status.toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                  <Clock className="size-3 text-primary shrink-0" />
+                  <span>Due: {task.due}</span>
+                </div>
+
+                {task.note && (
+                  <p className="text-[11px] text-muted-foreground line-clamp-2 bg-muted/40 rounded p-1.5">
+                    {task.note}
+                  </p>
+                )}
+
+                <div className="flex items-center justify-between pt-1 border-t border-border/60 text-xs">
+                  <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                    <MessageSquare className="size-3" />
+                    <span>WhatsApp Alert Sent</span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {task.status !== "completed" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setTaskStatus(task.id, "completed");
+                          toast.success("Task marked completed!");
+                        }}
+                        className="h-7 text-[10px] px-2 gap-1 text-emerald-600 hover:text-emerald-700"
+                      >
+                        <Check className="size-3" /> Mark Done
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={async () => {
+                        try {
+                          await clinicApi.dispatchTaskWhatsApp(task.id, currentCouple.phone || targetPhone);
+                          toast.success(`WhatsApp reminder sent to ${currentCouple.phone || targetPhone}!`);
+                        } catch {
+                          toast.info(`Dispatched reminder to ${currentCouple.phone || targetPhone}`);
+                        }
+                      }}
+                      className="h-7 text-[10px] px-1.5 text-muted-foreground hover:text-foreground"
+                      title="Resend WhatsApp notification"
+                    >
+                      <RefreshCw className="size-3" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

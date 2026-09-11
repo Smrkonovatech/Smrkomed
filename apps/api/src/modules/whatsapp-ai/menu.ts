@@ -755,6 +755,92 @@ export async function handleCareLoopMenuAction(input: {
     };
   }
 
+  // Task-specific interactive button replies ([✅ Done], [❓ Need Help], [📞 Call Me])
+  if (clean.startsWith("task_done_")) {
+    const taskId = clean.replace("task_done_", "").trim();
+    const task = await prisma.careTask.findUnique({
+      where: { id: taskId },
+      include: {
+        couple: { include: { primaryPatient: true } },
+      },
+    });
+
+    if (task) {
+      const { completeCareTask } = await import("../care-loop/engine");
+      await completeCareTask(input.tenant, task.id, {
+        source: "WHATSAPP_BUTTON",
+        notes: "Completed via WhatsApp [Done] interactive button",
+      }).catch((e) => {
+        console.error("[Task Button] Error completing task:", e);
+      });
+
+      const pName = task.couple?.primaryPatient?.firstName || "Patient";
+      const reply =
+        `🎉 *Task Recorded as Complete!* ✅\n\n` +
+        `Hello ${pName},\n` +
+        `We've recorded that you completed:\n` +
+        `📌 *${task.title}*\n\n` +
+        `Your doctor and coordinator have been notified in real time.\n` +
+        `We will keep you guided on your next care milestone.`;
+
+      await sendWhatsAppInteractiveButtons(input.tenant, {
+        conversationId: input.conversationId,
+        body: reply,
+        footer: `${clinicName} • Task Completed`,
+        buttons: [
+          { id: "menu_care_loop", title: "🧬 My Journey" },
+          { id: "menu_coordinator", title: "📞 Talk to Nurse" },
+          { id: "main_menu", title: "🏠 Main Menu" },
+        ],
+      }).catch(async () => {
+        await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: reply }).catch(() => undefined);
+      });
+
+      return { handled: true, action: "CARE_TASK_COMPLETED", responseText: reply };
+    }
+  }
+
+  if (clean.startsWith("task_help_")) {
+    const taskId = clean.replace("task_help_", "").trim();
+    const task = await prisma.careTask.findUnique({
+      where: { id: taskId },
+      include: { couple: { include: { primaryPatient: true } } },
+    });
+
+    const pName = task?.couple?.primaryPatient?.firstName || "Patient";
+    const taskTitle = task?.title || "your scheduled task";
+
+    const reply =
+      `💬 *Care Team Notified*\n\n` +
+      `Hello ${pName},\n` +
+      `We've informed your care coordinator that you need help with:\n` +
+      `📌 *${taskTitle}*\n\n` +
+      `A clinical coordinator will reach out shortly. You can also reply directly here with your question!`;
+
+    await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: reply }).catch(() => undefined);
+    return { handled: true, action: "CARE_TASK_HELP_REQUESTED", responseText: reply };
+  }
+
+  if (clean.startsWith("task_call_")) {
+    const taskId = clean.replace("task_call_", "").trim();
+    const task = await prisma.careTask.findUnique({
+      where: { id: taskId },
+      include: { couple: { include: { primaryPatient: true } } },
+    });
+
+    const pName = task?.couple?.primaryPatient?.firstName || "Patient";
+    const taskTitle = task?.title || "your scheduled task";
+
+    const reply =
+      `📞 *Call Request Received*\n\n` +
+      `Hello ${pName},\n` +
+      `Your request for a phone call regarding *${taskTitle}* has been escalated to your care team with high priority.\n\n` +
+      `Your clinic care coordinator will call you directly at this number shortly.`;
+
+    await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: reply }).catch(() => undefined);
+    return { handled: true, action: "CARE_TASK_CALL_REQUESTED", responseText: reply };
+  }
+
   if (!plan) {
     const msg =
       `🧬 *IVF Care Desk — ${clinicName}*\n\n` +

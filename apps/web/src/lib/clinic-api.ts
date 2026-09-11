@@ -146,6 +146,8 @@ export const clinicApi = {
   completeTask: (id: string, body?: unknown) => apiPost<any>(`/api/v1/care-tasks/${id}/complete`, body ?? {}),
   simulateTaskResponse: (id: string, text: string) => apiPost<any>(`/api/v1/care-tasks/${id}/simulate-response`, { text }),
   addDoctorTask: (body: unknown) => apiPost<any>("/api/v1/care-tasks", body),
+  dispatchTaskWhatsApp: (id: string, phoneNumber?: string) =>
+    apiPost<any>(`/api/v1/care-tasks/${id}/dispatch-whatsapp`, { phoneNumber }),
   exceptions: () => apiGet<any[]>("/api/v1/care-loop/exceptions"),
   resolveException: (id: string, notes?: string) => apiPost<any>(`/api/v1/care-loop/exceptions/${id}/resolve`, { notes }),
   careLoopAnalytics: () => apiGet<any>("/api/v1/care-loop/analytics"),

@@ -772,6 +772,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
   // 1.3. Check for dedicated IVF Care Loop button clicks, stage commands, or Care Loop queries
   const isCareLoopTrigger =
     cleanInboundText.startsWith("careloop_") ||
+    cleanInboundText.startsWith("task_") ||
     cleanInboundText === "menu_care_loop" ||
     cleanInboundText === "btn_careloop" ||
     /\b(ivf|stage|step|next\s*step|next\s*action|care\s*loop|careloop|my\s*protocol|my\s*journey|treatment\s*journey|current\s*stage|fertility\s*loop)\b/i.test(cleanInboundText) ||
