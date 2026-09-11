@@ -67,6 +67,8 @@ export type TaskDto = {
   lastAction?: string | null;
   nextAction?: string | null;
   patientResponse?: string | null;
+  targetRole?: string | null;
+  targetPatientId?: string | null;
 };
 
 export type AppointmentDto = {
@@ -266,6 +268,8 @@ export function serializeTask(
     lastAction: task.lastAction ?? null,
     nextAction: task.nextAction ?? null,
     patientResponse: task.patientResponse ?? null,
+    targetRole: task.targetRole ?? null,
+    targetPatientId: task.targetPatientId ?? null,
     ...(task.description ? { note: task.description } : {}),
   };
 }

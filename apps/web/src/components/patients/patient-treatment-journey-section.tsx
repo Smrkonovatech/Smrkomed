@@ -27,7 +27,9 @@ import {
   Smartphone,
   Sparkles,
   Stethoscope,
+  User,
   UserCheck,
+  Users,
   Workflow,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -111,6 +113,8 @@ export type JourneyExecutionData = {
       stageName?: string | null;
       isEscalated: boolean;
       completionEvidence?: Record<string, unknown> | null;
+      targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | string | null;
+      targetPatientId?: string | null;
     }>;
   };
   allTasksSummary: {
@@ -134,6 +138,8 @@ export type JourneyExecutionData = {
     stageName?: string | null;
     stageIndex?: number | null;
     isEscalated: boolean;
+    targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | string | null;
+    targetPatientId?: string | null;
   }>;
   exceptions: Array<{
     id: string;
@@ -241,6 +247,7 @@ export function PatientTreatmentJourneySection({
   const [taskDesc, setTaskDesc] = useState("");
   const [taskCategory, setTaskCategory] = useState("Medication");
   const [taskRole, setTaskRole] = useState("PATIENT");
+  const [taskTargetRole, setTaskTargetRole] = useState<"PRIMARY" | "PARTNER" | "COUPLE">("PRIMARY");
   const [taskPriority, setTaskPriority] = useState<"NORMAL" | "HIGH" | "CLINICAL">("NORMAL");
   const [taskDate, setTaskDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [taskTime, setTaskTime] = useState("10:00");
@@ -352,12 +359,32 @@ export function PatientTreatmentJourneySection({
     }
   };
 
-  const handleResendWhatsApp = async (taskId: string, title: string) => {
+  const handleResendWhatsApp = async (
+    taskId: string,
+    title: string,
+    targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | string | null,
+  ) => {
     try {
       setActionLoadingId(taskId);
-      const targetPhone = couple.primary.phone || couple.partner?.phone || undefined;
-      await clinicApi.dispatchTaskWhatsApp(taskId, targetPhone ?? undefined);
-      toast.success(`WhatsApp notification dispatched for "${title}"!`);
+      const isPartner = targetRole === "PARTNER";
+      const isCouple = targetRole === "COUPLE";
+      const targetPhone = isPartner
+        ? (couple.partner?.phone || couple.primary.phone || undefined)
+        : (couple.primary.phone || undefined);
+
+      await clinicApi.dispatchTaskWhatsApp(taskId, {
+        phoneNumber: targetPhone,
+        partnerPhoneNumber: couple.partner?.phone || undefined,
+        targetRole: (targetRole as "PRIMARY" | "PARTNER" | "COUPLE") || "PRIMARY",
+        broadcastToBoth: isCouple,
+      });
+      if (isCouple) {
+        toast.success(`WhatsApp alerts resent to BOTH partners for "${title}"! 👥📱`);
+      } else if (isPartner) {
+        toast.success(`WhatsApp alert resent to partner ${partnerName || "Partner"} for "${title}"! 👨📱`);
+      } else {
+        toast.success(`WhatsApp notification resent to ${primaryName} for "${title}"! 👩📱`);
+      }
     } catch (err: unknown) {
       toast.error(clinicErrorMessage(err, "Failed to send WhatsApp message"));
     } finally {
@@ -379,7 +406,18 @@ export function PatientTreatmentJourneySection({
 
     try {
       setIsSubmittingTask(true);
-      const targetPhone = couple.primary.phone || couple.partner?.phone || undefined;
+      const isPartner = taskTargetRole === "PARTNER";
+      const isCouple = taskTargetRole === "COUPLE";
+      const resolvedTargetPhone = isPartner
+        ? (couple.partner?.phone || couple.primary.phone || undefined)
+        : (couple.primary.phone || undefined);
+      const partnerPhone = couple.partner?.phone || undefined;
+      const targetName = isPartner
+        ? (partnerName || "Partner")
+        : isCouple
+        ? (partnerName ? `${primaryName} & ${partnerName}` : primaryName)
+        : primaryName;
+
       await clinicApi.addDoctorTask({
         coupleId: couple.id,
         carePlanId: journey.plan.id,
@@ -391,17 +429,24 @@ export function PatientTreatmentJourneySection({
         dueDate: taskDate,
         dueTime: taskTime,
         sendWhatsApp: sendWhatsApp,
-        phoneNumber: targetPhone,
+        phoneNumber: resolvedTargetPhone,
+        targetRole: taskTargetRole,
+        targetName,
+        broadcastToBoth: isCouple,
+        partnerPhoneNumber: partnerPhone,
       });
       toast.success(
         sendWhatsApp
-          ? `Doctor task created & WhatsApp alert sent to ${targetPhone || "patient"}!`
+          ? isCouple
+            ? `Doctor task created & WhatsApp alerts sent to BOTH partners! 👥📱`
+            : `Doctor task created & WhatsApp alert sent to ${targetName} (${resolvedTargetPhone || "patient"})! 📱`
           : "Doctor task added to Care Loop!",
       );
       setAddDoctorTaskOpen(false);
       setTaskTitle("");
       setTaskDesc("");
       setTaskCategory("Medication");
+      setTaskTargetRole("PRIMARY");
       setTaskTitleError(false);
       await loadJourney();
       onRefresh?.();
@@ -787,6 +832,22 @@ export function PatientTreatmentJourneySection({
                           </span>
                         )}
                         <span className="font-bold text-sm text-foreground">{t.title}</span>
+                        {t.targetRole === "PARTNER" ? (
+                          <span className="rounded-md bg-blue-100 dark:bg-blue-950/60 px-1.5 py-0.5 text-[10px] font-bold text-blue-800 dark:text-blue-300 border border-blue-200 flex items-center gap-1">
+                            <User className="size-2.5" />
+                            For {partnerName || "Partner"}
+                          </span>
+                        ) : t.targetRole === "COUPLE" ? (
+                          <span className="rounded-md bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300 border border-emerald-200 flex items-center gap-1">
+                            <Users className="size-2.5" />
+                            For Both Partners
+                          </span>
+                        ) : (
+                          <span className="rounded-md bg-purple-50 dark:bg-purple-950/40 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 border border-purple-200 flex items-center gap-1">
+                            <User className="size-2.5" />
+                            For {primaryName}
+                          </span>
+                        )}
                         <span
                           className={cn(
                             "text-[10px] font-bold px-1.5 py-0.5 rounded uppercase",
@@ -842,7 +903,11 @@ export function PatientTreatmentJourneySection({
                       </span>
                       <span className="rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold flex items-center gap-1">
                         <MessageCircle className="size-2.5 text-emerald-600" />
-                        WhatsApp Alert Sent
+                        {t.targetRole === "COUPLE"
+                          ? "Couple WhatsApp Dispatched"
+                          : t.targetRole === "PARTNER"
+                          ? "Partner WhatsApp Sent"
+                          : "WhatsApp Alert Sent"}
                       </span>
                     </div>
 
@@ -864,8 +929,8 @@ export function PatientTreatmentJourneySection({
                         variant="ghost"
                         disabled={actionLoadingId === t.id}
                         className="h-7 text-xs gap-1 text-primary hover:bg-primary/10"
-                        onClick={() => handleResendWhatsApp(t.id, t.title)}
-                        title="Resend WhatsApp alert to patient"
+                        onClick={() => handleResendWhatsApp(t.id, t.title, t.targetRole)}
+                        title="Resend WhatsApp alert to recipient"
                       >
                         <Send className="size-3" />
                         Resend WhatsApp
@@ -1080,6 +1145,13 @@ export function PatientTreatmentJourneySection({
                         setTaskTime(p.time);
                         setTaskDesc(p.desc);
                         setTaskTitleError(false);
+                        if (p.label.toLowerCase().includes("semen") || p.title.toLowerCase().includes("sperm")) {
+                          setTaskTargetRole("PARTNER");
+                        } else if (p.label.toLowerCase().includes("consent") || p.title.toLowerCase().includes("consent")) {
+                          setTaskTargetRole("COUPLE");
+                        } else {
+                          setTaskTargetRole("PRIMARY");
+                        }
                       }}
                       className={cn(
                         "rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-all",
@@ -1123,6 +1195,64 @@ export function PatientTreatmentJourneySection({
               <p className="text-[10px] text-muted-foreground">
                 Click any preset above or enter custom clinical instructions.
               </p>
+            </div>
+
+            {/* Recipient Targeting: Primary, Partner, or Both (Couple Broadcast) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold flex items-center gap-1.5">
+                  <Users className="size-3.5 text-primary" />
+                  Target Recipient (Couple / Individual)
+                </Label>
+                <span className="text-[10px] text-muted-foreground font-mono">
+                  {taskTargetRole === "COUPLE" ? "Couple Broadcast (Both)" : "Individual Alert"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTaskTargetRole("PRIMARY")}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-all",
+                    taskTargetRole === "PRIMARY"
+                      ? "border-primary bg-primary/10 text-primary font-bold shadow-2xs"
+                      : "border-border/70 hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <span className="text-xs truncate max-w-full font-semibold">👩 {primaryName}</span>
+                  <span className="text-[9px] uppercase tracking-wider opacity-75">Primary</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTaskTargetRole("PARTNER")}
+                  disabled={!partnerName}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-all",
+                    taskTargetRole === "PARTNER"
+                      ? "border-primary bg-primary/10 text-primary font-bold shadow-2xs"
+                      : "border-border/70 hover:bg-muted/50 text-muted-foreground",
+                    !partnerName && "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <span className="text-xs truncate max-w-full font-semibold">👨 {partnerName || "No Partner"}</span>
+                  <span className="text-[9px] uppercase tracking-wider opacity-75">Partner</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setTaskTargetRole("COUPLE")}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2 rounded-lg border text-center transition-all",
+                    taskTargetRole === "COUPLE"
+                      ? "border-emerald-600 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold shadow-2xs"
+                      : "border-border/70 hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <span className="text-xs truncate max-w-full font-semibold">👥 Both</span>
+                  <span className="text-[9px] uppercase tracking-wider opacity-75">Broadcast</span>
+                </button>
+              </div>
             </div>
 
             {/* Category & Role */}
@@ -1231,13 +1361,32 @@ export function PatientTreatmentJourneySection({
                 />
               </div>
               {sendWhatsApp && (
-                <div className="text-[11px] text-emerald-900/90 dark:text-emerald-300/90 space-y-1">
-                  <p className="font-semibold flex items-center gap-1.5">
-                    <MessageCircle className="size-3 text-emerald-600 shrink-0" />
-                    <span>Recipient: {primaryName} ({couple.primary.phone || couple.partner?.phone || "No phone configured"})</span>
-                  </p>
+                <div className="text-[11px] text-emerald-900/90 dark:text-emerald-300/90 space-y-1.5 pt-1 border-t border-emerald-300/40">
+                  <div className="flex items-center justify-between font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <MessageCircle className="size-3 text-emerald-600 shrink-0" />
+                      Recipient Preview:
+                    </span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-300">
+                      {taskTargetRole === "COUPLE" ? "👥 Couple Broadcast" : taskTargetRole === "PARTNER" ? "👨 Partner" : "👩 Primary"}
+                    </span>
+                  </div>
+                  {taskTargetRole === "COUPLE" ? (
+                    <div className="space-y-1 text-[11px] pl-4">
+                      <div>1. 👩 {primaryName}: <span className="font-mono text-emerald-700 dark:text-emerald-300">{couple.primary.phone || "No phone"}</span></div>
+                      <div>2. 👨 {partnerName || "Partner"}: <span className="font-mono text-emerald-700 dark:text-emerald-300">{couple.partner?.phone || "(on file)"}</span></div>
+                    </div>
+                  ) : taskTargetRole === "PARTNER" ? (
+                    <p className="pl-4 font-semibold">
+                      👨 {partnerName || "Partner"} (<span className="font-mono text-emerald-700 dark:text-emerald-300">{couple.partner?.phone || couple.primary.phone || "No phone"}</span>)
+                    </p>
+                  ) : (
+                    <p className="pl-4 font-semibold">
+                      👩 {primaryName} (<span className="font-mono text-emerald-700 dark:text-emerald-300">{couple.primary.phone || "No phone"}</span>)
+                    </p>
+                  )}
                   <p className="text-[10px] text-muted-foreground leading-relaxed">
-                    Patient receives an immediate WhatsApp notification with interactive buttons: [✅ Done], [❓ Need Help], and [📞 Call Me].
+                    Interactive buttons ([✅ Done], [❓ Need Help], and [📞 Call Me]) will be included.
                   </p>
                 </div>
               )}

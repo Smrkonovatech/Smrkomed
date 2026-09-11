@@ -86,6 +86,10 @@ export interface CareTask {
   lastAction?: string | undefined;
   nextAction?: string | undefined;
   stageName?: string | undefined;
+  targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | "BOTH" | string | undefined;
+  targetPatientId?: string | undefined;
+  targetName?: string | undefined;
+  broadcastToBoth?: boolean | undefined;
 }
 
 export interface Appointment {

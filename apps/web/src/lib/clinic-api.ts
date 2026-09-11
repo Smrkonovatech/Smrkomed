@@ -42,6 +42,8 @@ export type ClinicTask = {
   category: string;
   status: "completed" | "in_progress" | "waiting" | "overdue" | "escalated";
   note?: string;
+  targetRole?: string | null;
+  targetPatientId?: string | null;
 };
 
 export type ClinicAppointment = {
@@ -146,8 +148,21 @@ export const clinicApi = {
   completeTask: (id: string, body?: unknown) => apiPost<any>(`/api/v1/care-tasks/${id}/complete`, body ?? {}),
   simulateTaskResponse: (id: string, text: string) => apiPost<any>(`/api/v1/care-tasks/${id}/simulate-response`, { text }),
   addDoctorTask: (body: unknown) => apiPost<any>("/api/v1/care-tasks", body),
-  dispatchTaskWhatsApp: (id: string, phoneNumber?: string) =>
-    apiPost<any>(`/api/v1/care-tasks/${id}/dispatch-whatsapp`, { phoneNumber }),
+  dispatchTaskWhatsApp: (
+    id: string,
+    options?:
+      | {
+          phoneNumber?: string | undefined;
+          partnerPhoneNumber?: string | undefined;
+          targetRole?: string | undefined;
+          broadcastToBoth?: boolean | undefined;
+        }
+      | string
+      | undefined,
+  ) => {
+    const payload = typeof options === "string" ? { phoneNumber: options } : (options ?? {});
+    return apiPost<any>(`/api/v1/care-tasks/${id}/dispatch-whatsapp`, payload);
+  },
   exceptions: () => apiGet<any[]>("/api/v1/care-loop/exceptions"),
   resolveException: (id: string, notes?: string) => apiPost<any>(`/api/v1/care-loop/exceptions/${id}/resolve`, { notes }),
   careLoopAnalytics: () => apiGet<any>("/api/v1/care-loop/analytics"),

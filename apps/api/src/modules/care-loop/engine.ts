@@ -38,6 +38,11 @@ export type AddDoctorTaskInput = {
   dueTime?: string | undefined;
   sendWhatsApp?: boolean | undefined;
   phoneNumber?: string | undefined;
+  partnerPhoneNumber?: string | undefined;
+  targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | "BOTH" | string | undefined;
+  targetPatientId?: string | undefined;
+  targetName?: string | undefined;
+  broadcastToBoth?: boolean | undefined;
   communicationConfig?: {
     whatsappEnabled?: boolean | undefined;
     templateName?: string | undefined;
@@ -1386,8 +1391,25 @@ export async function resumeCarePlan(tenant: TenantContext, carePlanId: string) 
 export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskInput) {
   const couple = await requireClinicOwned(
     tenant,
-    await prisma.couple.findUnique({ where: { id: input.coupleId } }),
+    await prisma.couple.findUnique({
+      where: { id: input.coupleId },
+      include: { primaryPatient: true, partnerPatient: true },
+    }),
   );
+
+  let targetRole = input.targetRole || "PRIMARY";
+  let targetPatientId: string | null = input.targetPatientId ?? null;
+  if (!targetPatientId) {
+    if (targetRole === "PARTNER" && couple.partnerPatientId) {
+      targetPatientId = couple.partnerPatientId;
+    } else if (targetRole === "COUPLE" || targetRole === "BOTH" || input.broadcastToBoth) {
+      targetPatientId = null;
+      targetRole = "COUPLE";
+    } else {
+      targetPatientId = couple.primaryPatientId;
+      targetRole = "PRIMARY";
+    }
+  }
 
   let planId = input.carePlanId;
   let stepId = input.stageStepId;
@@ -1440,10 +1462,12 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
       status: "WAITING",
       dueDate,
       dueTime: input.dueTime ?? "10:00",
+      targetRole,
+      targetPatientId,
       communicationChannel: "WHATSAPP",
       attempts: 0,
       escalationLevel: 0,
-      lastAction: "Ad-hoc task created by doctor",
+      lastAction: `Ad-hoc task created for ${targetRole === "COUPLE" ? "both partners" : targetRole === "PARTNER" ? "partner" : "primary patient"}`,
       nextAction: computeNextActionForTask({
         title: input.title,
         taskType: input.taskType ?? "PATIENT_TASK",
@@ -1471,15 +1495,20 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
   await audit(tenant, "doctor.add_task", "CareTask", task.id, {
     coupleId: couple.id,
     title: task.title,
+    targetRole,
+    targetPatientId,
     dueDate: dueDate.toISOString(),
   });
 
-  // Automatically dispatch WhatsApp notification to patient if enabled
+  // Automatically dispatch WhatsApp notification to patient / partner / couple if enabled
   if (input.sendWhatsApp !== false) {
     const { dispatchTaskToWhatsApp } = await import("./stage-dispatch");
     await dispatchTaskToWhatsApp(tenant, {
       taskId: task.id,
       ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
+      ...(input.partnerPhoneNumber ? { partnerPhoneNumber: input.partnerPhoneNumber } : {}),
+      targetRole,
+      broadcastToBoth: input.broadcastToBoth || targetRole === "COUPLE" || targetRole === "BOTH",
     }).catch((err) => {
       console.error("[addDoctorTask] Automatic WhatsApp dispatch error:", err);
     });
@@ -1725,6 +1754,8 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
         assignedTo: t.assignments[0]?.user?.name ?? t.ownerRole,
         completionEvidence: t.completionEvidence,
         isEscalated: t.status === "ESCALATED" || t.status === "BLOCKED",
+        targetRole: t.targetRole ?? null,
+        targetPatientId: t.targetPatientId ?? null,
       })),
     },
     allTasksSummary: {
@@ -1754,6 +1785,8 @@ export async function getJourneyExecution(tenant: TenantContext, carePlanId: str
       stageName: t.carePlanStep?.name ?? null,
       stageIndex: t.carePlanStep?.sortOrder ?? null,
       isEscalated: t.status === "ESCALATED" || t.status === "BLOCKED",
+      targetRole: t.targetRole ?? null,
+      targetPatientId: t.targetPatientId ?? null,
     })),
     exceptions: exceptions.map((e) => ({
       id: e.id,

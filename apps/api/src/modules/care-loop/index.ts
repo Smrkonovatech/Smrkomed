@@ -576,11 +576,19 @@ export const careTaskRoutes = new Hono<AppEnv>()
   .post("/:id/dispatch-whatsapp", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.CARE_TASKS_WRITE);
     const { id } = c.req.valid("param");
-    const body = (await c.req.json().catch(() => ({}))) as { phoneNumber?: string };
+    const body = (await c.req.json().catch(() => ({}))) as {
+      phoneNumber?: string;
+      partnerPhoneNumber?: string;
+      targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | "BOTH";
+      broadcastToBoth?: boolean;
+    };
     const { dispatchTaskToWhatsApp } = await import("./stage-dispatch");
     const result = await dispatchTaskToWhatsApp(tenant, {
       taskId: id,
       phoneNumber: body.phoneNumber,
+      partnerPhoneNumber: body.partnerPhoneNumber,
+      targetRole: body.targetRole,
+      broadcastToBoth: body.broadcastToBoth,
     });
     return ok(c, result);
   })
@@ -739,6 +747,8 @@ export const careLoopRoutes = new Hono<AppEnv>()
       stageNumber: number;
       phoneNumber: string;
       coupleId?: string;
+      targetRole?: "PRIMARY" | "PARTNER" | "BOTH";
+      partnerPhoneNumber?: string;
       syncPlanStage?: boolean;
     }>();
 
@@ -747,12 +757,15 @@ export const careLoopRoutes = new Hono<AppEnv>()
       stageNumber: Number(body.stageNumber) || 1,
       phoneNumber: body.phoneNumber,
       ...(body.coupleId ? { coupleId: body.coupleId } : {}),
+      ...(body.targetRole ? { targetRole: body.targetRole } : {}),
+      ...(body.partnerPhoneNumber ? { partnerPhoneNumber: body.partnerPhoneNumber } : {}),
       ...(body.syncPlanStage !== undefined ? { syncPlanStage: body.syncPlanStage } : {}),
     });
 
     await audit(tenant, "care_loop.dispatch_whatsapp", "StageNotification", String(body.stageNumber), {
       phone: body.phoneNumber,
       stage: result.stageName,
+      targetRole: body.targetRole || "PRIMARY",
     });
 
     return ok(c, result);

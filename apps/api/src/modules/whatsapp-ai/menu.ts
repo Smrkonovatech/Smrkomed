@@ -761,20 +761,30 @@ export async function handleCareLoopMenuAction(input: {
     const task = await prisma.careTask.findUnique({
       where: { id: taskId },
       include: {
-        couple: { include: { primaryPatient: true } },
+        couple: { include: { primaryPatient: true, partnerPatient: true } },
       },
     });
 
     if (task) {
+      // Determine if responder is partner or primary
+      const senderPhoneNorm = input.contactPhone ? input.contactPhone.replace(/\D/g, "") : "";
+      const partnerPhoneNorm = task.couple?.partnerPatient?.phone ? task.couple.partnerPatient.phone.replace(/\D/g, "") : "";
+      const isPartner =
+        task.targetRole === "PARTNER" ||
+        (partnerPhoneNorm && senderPhoneNorm && senderPhoneNorm.endsWith(partnerPhoneNorm.slice(-10)));
+
+      const pName = isPartner
+        ? (task.couple?.partnerPatient?.firstName || "Partner")
+        : (task.couple?.primaryPatient?.firstName || "Patient");
+
       const { completeCareTask } = await import("../care-loop/engine");
       await completeCareTask(input.tenant, task.id, {
         source: "WHATSAPP_BUTTON",
-        notes: "Completed via WhatsApp [Done] interactive button",
+        notes: `Completed via WhatsApp [Done] by ${pName} (${isPartner ? "Partner" : "Primary"})`,
       }).catch((e) => {
         console.error("[Task Button] Error completing task:", e);
       });
 
-      const pName = task.couple?.primaryPatient?.firstName || "Patient";
       const reply =
         `🎉 *Task Recorded as Complete!* ✅\n\n` +
         `Hello ${pName},\n` +
@@ -804,10 +814,18 @@ export async function handleCareLoopMenuAction(input: {
     const taskId = clean.replace("task_help_", "").trim();
     const task = await prisma.careTask.findUnique({
       where: { id: taskId },
-      include: { couple: { include: { primaryPatient: true } } },
+      include: { couple: { include: { primaryPatient: true, partnerPatient: true } } },
     });
 
-    const pName = task?.couple?.primaryPatient?.firstName || "Patient";
+    const senderPhoneNorm = input.contactPhone ? input.contactPhone.replace(/\D/g, "") : "";
+    const partnerPhoneNorm = task?.couple?.partnerPatient?.phone ? task.couple.partnerPatient.phone.replace(/\D/g, "") : "";
+    const isPartner =
+      task?.targetRole === "PARTNER" ||
+      Boolean(partnerPhoneNorm && senderPhoneNorm && senderPhoneNorm.endsWith(partnerPhoneNorm.slice(-10)));
+
+    const pName = isPartner
+      ? (task?.couple?.partnerPatient?.firstName || "Partner")
+      : (task?.couple?.primaryPatient?.firstName || "Patient");
     const taskTitle = task?.title || "your scheduled task";
 
     const reply =
@@ -825,10 +843,18 @@ export async function handleCareLoopMenuAction(input: {
     const taskId = clean.replace("task_call_", "").trim();
     const task = await prisma.careTask.findUnique({
       where: { id: taskId },
-      include: { couple: { include: { primaryPatient: true } } },
+      include: { couple: { include: { primaryPatient: true, partnerPatient: true } } },
     });
 
-    const pName = task?.couple?.primaryPatient?.firstName || "Patient";
+    const senderPhoneNorm = input.contactPhone ? input.contactPhone.replace(/\D/g, "") : "";
+    const partnerPhoneNorm = task?.couple?.partnerPatient?.phone ? task.couple.partnerPatient.phone.replace(/\D/g, "") : "";
+    const isPartner =
+      task?.targetRole === "PARTNER" ||
+      Boolean(partnerPhoneNorm && senderPhoneNorm && senderPhoneNorm.endsWith(partnerPhoneNorm.slice(-10)));
+
+    const pName = isPartner
+      ? (task?.couple?.partnerPatient?.firstName || "Partner")
+      : (task?.couple?.primaryPatient?.firstName || "Patient");
     const taskTitle = task?.title || "your scheduled task";
 
     const reply =

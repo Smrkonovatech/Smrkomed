@@ -10,6 +10,8 @@ import {
   Settings2,
   Sparkles,
   TriangleAlert,
+  User,
+  Users,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -64,14 +66,25 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
     return couples.map((couple) => ({
       id: couple.id,
       label: couple.partner ? `${couple.primary.name} + ${couple.partner.name}` : couple.primary.name,
+      primary: {
+        id: couple.primary.id,
+        name: couple.primary.name,
+        phone: couple.primary.phone || "+91 77955 59724",
+      },
+      partner: couple.partner
+        ? {
+            id: couple.partner.id,
+            name: couple.partner.name,
+            phone: couple.partner.phone || "",
+          }
+        : null,
       people: [couple.primary.name, couple.partner?.name].filter(Boolean) as string[],
-      phone: couple.primary.phone || "+91 77955 59724",
-      primaryName: couple.primary.name,
     }));
   }, [couples]);
 
   const [isOpen, setIsOpen] = useState(false);
   const [coupleId, setCoupleId] = useState(options[0]?.id ?? "");
+  const [targetRole, setTargetRole] = useState<"PRIMARY" | "PARTNER" | "COUPLE">("PRIMARY");
   const [title, setTitle] = useState("Take Decapeptyl 0.1mg Injection");
   const [assignee, setAssignee] = useState(options[0]?.people[0] ?? "");
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -91,7 +104,8 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
       const match = options.find((p) => p.id === id || p.id === (id ?? options[0]?.id));
       if (match) {
         setCoupleId(match.id);
-        setAssignee(match.people[0] || "Patient");
+        setAssignee(match.primary.name);
+        setTargetRole("PRIMARY");
       }
       if (defaultTitle) {
         setTitle(defaultTitle);
@@ -107,13 +121,40 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
 
   const currentCouple = options.find((p) => p.id === coupleId);
   const people = currentCouple?.people ?? [];
-  const patientPhone = currentCouple?.phone || "+91 77955 59724";
-  const patientName = currentCouple?.primaryName || assignee || "Patient";
+  const primaryName = currentCouple?.primary.name || "Patient";
+  const primaryPhone = currentCouple?.primary.phone || "+91 77955 59724";
+  const partnerName = currentCouple?.partner?.name || null;
+  const partnerPhone = currentCouple?.partner?.phone || "";
+
+  const resolvedTargetPhone =
+    targetRole === "PARTNER" ? (partnerPhone || primaryPhone) : primaryPhone;
+  const resolvedTargetName =
+    targetRole === "PARTNER"
+      ? (partnerName || "Partner")
+      : targetRole === "COUPLE"
+      ? (partnerName ? `${primaryName} & ${partnerName}` : primaryName)
+      : primaryName;
+
+  const handleRoleChange = (role: "PRIMARY" | "PARTNER" | "COUPLE") => {
+    setTargetRole(role);
+    if (role === "PRIMARY") {
+      setAssignee(primaryName);
+    } else if (role === "PARTNER" && partnerName) {
+      setAssignee(partnerName);
+    } else if (role === "COUPLE") {
+      setAssignee(partnerName ? `${primaryName} & ${partnerName}` : primaryName);
+    }
+  };
 
   const applyPreset = (preset: typeof PRESET_TASKS[number]) => {
     setTitle(preset.title);
     setCategory(preset.category);
     if (preset.note) setDescription(preset.note);
+    if (preset.title.toLowerCase().includes("semen")) {
+      handleRoleChange("PARTNER");
+    } else if (preset.title.toLowerCase().includes("consent")) {
+      handleRoleChange("COUPLE");
+    }
   };
 
   const submit = async () => {
@@ -133,10 +174,14 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
         month: "short",
       });
 
+      const isPartner = targetRole === "PARTNER";
+      const isCouple = targetRole === "COUPLE";
+      const targetPatientId = isPartner ? currentCouple?.partner?.id : currentCouple?.primary.id;
+
       await createTask({
         title: title.trim(),
         coupleId,
-        assignedTo: assignee,
+        assignedTo: assignee || resolvedTargetName,
         dueDate: date,
         dueTime: time,
         due: `${dueDateFormatted} · ${time}`,
@@ -144,19 +189,34 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
         priority,
         note: description.trim() || undefined,
         sendWhatsApp,
-        phoneNumber: patientPhone,
+        phoneNumber: resolvedTargetPhone,
+        targetRole,
+        targetPatientId,
+        targetName: resolvedTargetName,
+        broadcastToBoth: isCouple,
+        partnerPhoneNumber: partnerPhone || undefined,
         status: "waiting",
       });
 
       setIsOpen(false);
 
       if (sendWhatsApp) {
-        toast.success("Task Created & WhatsApp Dispatched! 📱", {
-          description: `Interactive notification sent to ${patientName} at ${patientPhone}.`,
-        });
+        if (isCouple) {
+          toast.success("Task Created & Couple Broadcast Dispatched! 👥📱", {
+            description: `Sent to both ${primaryName} (${primaryPhone}) and ${partnerName || "Partner"} (${partnerPhone || "Registered on file"}).`,
+          });
+        } else if (isPartner) {
+          toast.success("Task Created & Partner WhatsApp Dispatched! 👨📱", {
+            description: `Interactive alert sent to partner ${partnerName || "Partner"} at ${resolvedTargetPhone}.`,
+          });
+        } else {
+          toast.success("Task Created & WhatsApp Dispatched! 👩📱", {
+            description: `Interactive notification sent to ${primaryName} at ${primaryPhone}.`,
+          });
+        }
       } else {
         toast.success("Task created successfully", {
-          description: `Added to the clinical care plan for ${patientName}.`,
+          description: `Added to the clinical care plan for ${resolvedTargetName}.`,
         });
       }
     } catch (error) {
@@ -251,21 +311,77 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
               </Select>
             </div>
 
-            {/* Assigned to person */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold">Assigned To</Label>
-              <Select value={assignee} onValueChange={setAssignee}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {people.map((p) => (
-                    <SelectItem key={p} value={p}>
-                      {p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Recipient Targeting: Primary, Partner, or Both (Couple Broadcast) */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold flex items-center gap-1.5">
+                  <Users className="size-3.5 text-primary" />
+                  Target Recipient (Couple / Individual)
+                </Label>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {targetRole === "COUPLE" ? "Couple Broadcast" : "Individual Alert"}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleRoleChange("PRIMARY")}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all",
+                    targetRole === "PRIMARY"
+                      ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
+                      : "border-border/70 hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <User className="size-4 mb-1" />
+                  <span className="text-xs font-semibold truncate max-w-full">
+                    {primaryName}
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wider opacity-75">
+                    Primary
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRoleChange("PARTNER")}
+                  disabled={!partnerName}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all",
+                    targetRole === "PARTNER"
+                      ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
+                      : "border-border/70 hover:bg-muted/50 text-muted-foreground",
+                    !partnerName && "opacity-40 cursor-not-allowed",
+                  )}
+                >
+                  <User className="size-4 mb-1 text-blue-500" />
+                  <span className="text-xs font-semibold truncate max-w-full">
+                    {partnerName || "No Partner"}
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wider opacity-75">
+                    Partner
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleRoleChange("COUPLE")}
+                  className={cn(
+                    "flex flex-col items-center justify-center p-2 rounded-xl border text-center transition-all",
+                    targetRole === "COUPLE"
+                      ? "border-emerald-600 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold shadow-xs"
+                      : "border-border/70 hover:bg-muted/50 text-muted-foreground",
+                  )}
+                >
+                  <Users className="size-4 mb-1 text-emerald-600" />
+                  <span className="text-xs font-semibold truncate max-w-full">
+                    Both
+                  </span>
+                  <span className="text-[9px] uppercase tracking-wider opacity-75">
+                    Broadcast
+                  </span>
+                </button>
+              </div>
             </div>
 
             {/* Date & Time */}
@@ -361,14 +477,34 @@ export function CreateTaskProvider({ children }: { children: ReactNode }) {
               </div>
 
               {sendWhatsApp && (
-                <div className="rounded-lg bg-background/90 p-2 text-xs border border-emerald-500/30 flex items-center justify-between">
-                  <span className="text-muted-foreground">Recipient:</span>
-                  <span className="font-semibold text-foreground flex items-center gap-1">
-                    <span>{patientName}</span>
-                    <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                      ({patientPhone})
+                <div className="rounded-lg bg-background/90 p-2.5 text-xs border border-emerald-500/30 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground text-[11px] font-medium">
+                      WhatsApp Dispatch Preview:
                     </span>
-                  </span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-800 dark:text-emerald-300">
+                      {targetRole === "COUPLE" ? "👥 2 Recipients (Broadcast)" : targetRole === "PARTNER" ? "👨 Partner" : "👩 Primary"}
+                    </span>
+                  </div>
+                  {targetRole === "COUPLE" ? (
+                    <div className="space-y-1 pt-1 border-t border-border/50 text-[11px]">
+                      <div className="flex items-center justify-between text-foreground">
+                        <span>1. {primaryName} (Primary)</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400">{primaryPhone}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-foreground">
+                        <span>2. {partnerName || "Partner"} (Partner)</span>
+                        <span className="font-mono text-emerald-600 dark:text-emerald-400">{partnerPhone || "(on file)"}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between font-semibold text-foreground pt-0.5">
+                      <span>{resolvedTargetName}</span>
+                      <span className="font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                        {resolvedTargetPhone}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

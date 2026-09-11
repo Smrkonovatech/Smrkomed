@@ -193,6 +193,80 @@ export const STAGE_DISPATCH_SPECS: Record<
   },
 };
 
+export const PARTNER_STAGE_DISPATCH_SPECS: Record<
+  number,
+  {
+    name: string;
+    body: (clinicName: string, patientName: string) => string;
+    buttons: Array<{ id: string; title: string }>;
+    footer: (clinicName: string) => string;
+  }
+> = {
+  3: {
+    name: "03. Fertility Investigation / Partner Workup",
+    body: (clinic, patient) =>
+      `📋 *Fertility Investigation Plan — Partner Workup*\n\nHi ${patient || "there"},\nAs part of the couple fertility workup at *${clinic}*, please note the following required tests:\n\n✅ Semen analysis at Andrology lab\n✅ Infectious disease blood screen\n\n📌 *Important:* Strict 2-5 days abstinence is required prior to sample collection. Tap below to upload reports or book a lab slot.`,
+    buttons: [
+      { id: "careloop_upload", title: "📤 Upload Report" },
+      { id: "careloop_confirmed", title: "📅 Book Lab Slot" },
+      { id: "menu_coordinator", title: "❓ Need Help" },
+    ],
+    footer: (clinic) => `${clinic} • Step 3 Partner Workup`,
+  },
+  5: {
+    name: "05. Treatment Planning & Partner Consent",
+    body: (clinic, patient) =>
+      `📝 *Treatment Planning & E-Consent — Partner Signature*\n\nHi ${patient || "there"},\nYour care team at *${clinic}* has prepared the treatment plan agreement. Both partners must review and digitally sign the consents:\n\n1. IVF Treatment Agreement\n2. Embryo Freezing & Cryopreservation\n3. Anesthesia Consent\n\nPlease review and sign digitally below.`,
+    buttons: [
+      { id: "careloop_mark_done", title: "✍️ Review & Sign" },
+      { id: "careloop_view_tasks", title: "📄 View Summary" },
+      { id: "menu_coordinator", title: "📞 Coordinator" },
+    ],
+    footer: (clinic) => `${clinic} • Step 5 Consent`,
+  },
+  8: {
+    name: "08. Trigger Injection — Partner Support",
+    body: (clinic, patient) =>
+      `💉 *Trigger Injection Milestone — Partner Support*\n\nHi ${patient || "there"},\nYour partner's trigger injection is scheduled for tonight at the exact prescribed time! Egg retrieval (OPU) will take place in 34-36 hours.\n\n📌 *Abstinence Notice:* Please ensure strict abstinence starts now in preparation for your fresh semen sample collection on retrieval morning.`,
+    buttons: [
+      { id: "careloop_taken", title: "✅ Understood" },
+      { id: "menu_coordinator", title: "📞 Call Coordinator" },
+    ],
+    footer: (clinic) => `${clinic} • Step 8 Partner Support`,
+  },
+  9: {
+    name: "09. Egg Retrieval — Partner Sample Collection",
+    body: (clinic, patient) =>
+      `🏥 *Egg Retrieval Day — Partner Sample Collection*\n\nHi ${patient || "there"},\nEgg retrieval (OPU) is scheduled today at *${clinic}*.\n\n• Please accompany your partner to the clinic\n• Report to the Andrology Lab at *08:30 AM* for fresh semen sample collection\n• Ensure government photo ID is brought along`,
+    buttons: [
+      { id: "careloop_taken", title: "✅ Sample Given" },
+      { id: "careloop_view_tasks", title: "📋 Instructions" },
+      { id: "menu_coordinator", title: "📞 Coordinator" },
+    ],
+    footer: (clinic) => `${clinic} • Step 9 Partner Action`,
+  },
+  11: {
+    name: "11. Embryo Development Update",
+    body: (clinic, patient) =>
+      `🔬 *Embryo Development Update — ${clinic}*\n\nHi ${patient || "there"},\nGood news! Your embryology report update:\n\n• Eggs retrieved & fertilized successfully\n• Embryos progressing well in incubators\n\nOur embryology team will provide the final Blastocyst count tomorrow.`,
+    buttons: [
+      { id: "careloop_mark_done", title: "🔬 View Lab Report" },
+      { id: "menu_coordinator", title: "💬 Ask Embryologist" },
+    ],
+    footer: (clinic) => `${clinic} • Step 11 Embryo Progress`,
+  },
+  12: {
+    name: "12. Embryo Transfer Day — Partner Support",
+    body: (clinic, patient) =>
+      `🌸 *Embryo Transfer Day — Partner Support*\n\nHi ${patient || "there"},\nToday is Embryo Transfer day at *${clinic}*! Please accompany your partner to the procedure suite. No fasting required today. Full bladder protocol applies for ultrasound guidance.`,
+    buttons: [
+      { id: "careloop_mark_done", title: "✅ Arrived at Clinic" },
+      { id: "menu_coordinator", title: "📞 Coordinator" },
+    ],
+    footer: (clinic) => `${clinic} • Step 12 Partner Support`,
+  },
+};
+
 /**
  * Dispatch an authentic WhatsApp message and interactive buttons corresponding
  * to any of the 15 specification stages directly to a mobile number.
@@ -203,11 +277,16 @@ export async function dispatchStageToWhatsApp(
     stageNumber: number;
     phoneNumber: string;
     coupleId?: string;
+    targetRole?: "PRIMARY" | "PARTNER" | "BOTH" | string;
+    partnerPhoneNumber?: string;
     syncPlanStage?: boolean;
   },
 ): Promise<StageDispatchResult> {
   const stageNum = Math.max(1, Math.min(15, input.stageNumber));
-  const spec = (STAGE_DISPATCH_SPECS[stageNum] ?? STAGE_DISPATCH_SPECS[1])!;
+  const isPartner = input.targetRole === "PARTNER";
+  const spec = isPartner && PARTNER_STAGE_DISPATCH_SPECS[stageNum]
+    ? PARTNER_STAGE_DISPATCH_SPECS[stageNum]!
+    : (STAGE_DISPATCH_SPECS[stageNum] ?? STAGE_DISPATCH_SPECS[1])!;
 
   const clinic = await prisma.clinic.findUnique({
     where: { id: tenant.clinicId },
@@ -221,6 +300,30 @@ export async function dispatchStageToWhatsApp(
     organizationName: clinic?.organization?.name || "SmrkoMed",
     clinicName,
   };
+
+  // Check if couple has partner and target is BOTH
+  if (input.targetRole === "BOTH" && input.coupleId) {
+    const couple = await prisma.couple.findUnique({
+      where: { id: input.coupleId },
+      include: { primaryPatient: true, partnerPatient: true },
+    });
+    if (couple && (couple.partnerPatient?.phone || input.partnerPhoneNumber)) {
+      const partnerPhone = input.partnerPhoneNumber || couple.partnerPatient?.phone;
+      if (partnerPhone && partnerPhone !== input.phoneNumber) {
+        // Fire secondary partner dispatch asynchronously
+        const partnerSpec = PARTNER_STAGE_DISPATCH_SPECS[stageNum] ?? (STAGE_DISPATCH_SPECS[stageNum] ?? STAGE_DISPATCH_SPECS[1])!;
+        void dispatchSingleStage(enrichedTenant, {
+          stageNum,
+          spec: partnerSpec,
+          phoneNumber: partnerPhone,
+          clinicName,
+          patientName: couple.partnerPatient?.firstName || "Partner",
+          coupleId: couple.id,
+          patientId: couple.partnerPatientId ?? null,
+        }).catch((err) => console.error("[dispatchStageToWhatsApp] Partner dispatch error:", err));
+      }
+    }
+  }
 
   const normalizedPhone = normalizeWhatsAppPhone(input.phoneNumber);
 
@@ -240,6 +343,7 @@ export async function dispatchStageToWhatsApp(
     conversation = await prisma.conversation.create({
       data: {
         clinicId: tenant.clinicId,
+        coupleId: input.coupleId ?? null,
         contactPhone: normalizedPhone,
         channel: "WHATSAPP",
         status: "OPEN",
@@ -248,13 +352,23 @@ export async function dispatchStageToWhatsApp(
   }
 
   // Resolve patient name
-  let patientName = "Patient";
+  let patientName = isPartner ? "Partner" : "Patient";
   if (conversation.patientId) {
     const p = await prisma.patient.findUnique({
       where: { id: conversation.patientId },
       select: { firstName: true, lastName: true },
     });
     if (p?.firstName) patientName = p.firstName;
+  } else if (input.coupleId) {
+    const couple = await prisma.couple.findUnique({
+      where: { id: input.coupleId },
+      include: { primaryPatient: true, partnerPatient: true },
+    });
+    if (isPartner && couple?.partnerPatient?.firstName) {
+      patientName = couple.partnerPatient.firstName;
+    } else if (couple?.primaryPatient?.firstName) {
+      patientName = couple.primaryPatient.firstName;
+    }
   }
 
   // If syncPlanStage requested, update the couple's active care plan
@@ -373,72 +487,92 @@ export type TaskDispatchResult = {
   error?: string;
 };
 
-/**
- * Dispatches an authentic clinical task WhatsApp notification with interactive buttons
- * ([✅ Done], [❓ Need Help], [📞 Call Me]).
- */
-export async function dispatchTaskToWhatsApp(
+async function dispatchSingleStage(
   tenant: TenantContext,
-  input: {
-    taskId: string;
-    phoneNumber?: string | undefined;
+  params: {
+    stageNum: number;
+    spec: { name: string; body: (c: string, p: string) => string; buttons: Array<{ id: string; title: string }>; footer: (c: string) => string };
+    phoneNumber: string;
+    clinicName: string;
+    patientName: string;
+    coupleId?: string | null;
+    patientId?: string | null;
   },
-): Promise<TaskDispatchResult> {
-  const task = await prisma.careTask.findUnique({
-    where: { id: input.taskId },
-    include: {
-      couple: {
-        include: {
-          primaryPatient: true,
-          assignedDoctor: { select: { name: true } },
-          assignedCoordinator: { select: { name: true } },
-        },
-      },
-    },
-  });
-
-  if (!task) {
-    throw new Error(`CareTask not found: ${input.taskId}`);
-  }
-
-  // Determine recipient phone number
-  const rawPhone = input.phoneNumber || task.couple?.primaryPatient?.phone || null;
-
-  if (!rawPhone) {
-    return {
-      success: false,
-      taskId: task.id,
-      taskTitle: task.title,
-      recipientPhone: "",
-      sentText: "",
-      buttonsSent: [],
-      deliveryMethod: "CONVERSATION_SAVED",
-      error: "No phone number available for this task recipient",
-    };
-  }
-
-  const normalizedPhone = normalizeWhatsAppPhone(rawPhone);
-  const patientName = task.couple?.primaryPatient?.firstName
-    ? `${task.couple.primaryPatient.firstName} ${task.couple.primaryPatient.lastName || ""}`.trim()
-    : "Patient";
-
-  const clinic = await prisma.clinic.findUnique({
-    where: { id: tenant.clinicId },
-    include: { organization: true },
-  });
-  const clinicName = clinic?.name || "Smrko Care";
-  const enrichedTenant: TenantContext = {
-    ...tenant,
-    clinicId: clinic?.id || tenant.clinicId,
-    organizationId: clinic?.organizationId || tenant.organizationId,
-    organizationName: clinic?.organization?.name || "SmrkoMed",
-    clinicName,
-  };
-
-  // Find or create conversation
+) {
+  const normalizedPhone = normalizeWhatsAppPhone(params.phoneNumber);
   let conversation = await prisma.conversation.findFirst({
     where: {
       clinicId: tenant.clinicId,
+      OR: [
+        { contactPhone: normalizedPhone },
+        { contactPhone: `+${normalizedPhone}` },
+        { contactPhone: normalizedPhone.replace(/^\+/, "") },
+      ],
+    },
+  });
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        clinicId: tenant.clinicId,
+        coupleId: params.coupleId ?? null,
+        patientId: params.patientId ?? null,
+        contactPhone: normalizedPhone,
+        channel: "WHATSAPP",
+        status: "OPEN",
+      },
+    });
+  }
+
+  const messageText = params.spec.body(params.clinicName, params.patientName);
+  const footerText = params.spec.footer(params.clinicName);
+
+  try {
+    await sendWhatsAppInteractiveButtons(tenant, {
+      conversationId: conversation.id,
+      body: messageText,
+      footer: footerText,
+      buttons: params.spec.buttons,
+    });
+  } catch (err) {
+    console.log("[dispatchSingleStage] Fallback to session text:", err instanceof Error ? err.message : err);
+    try {
+      const actionText = params.spec.buttons.map((b) => `• Reply "${b.title}"`).join("\n");
+      await sendWhatsAppAiSessionText(tenant, {
+        conversationId: conversation.id,
+        body: `${messageText}\n\nActions:\n${actionText}`,
+      });
+    } catch (sessionErr) {
+      console.log("[dispatchSingleStage] Persisting message in conversation history:", sessionErr instanceof Error ? sessionErr.message : sessionErr);
+      await prisma.message.create({
+        data: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType: "AI",
+          content: `${messageText}\n\n${params.spec.buttons.map((b) => `[${b.title}]`).join("  ")}`,
+          messageType: "interactive",
+          status: "SENT",
+        },
+      }).catch(() => undefined);
+    }
+  }
+}
+
+async function sendSingleTaskWhatsApp(
+  enrichedTenant: TenantContext,
+  params: {
+    task: any;
+    clinicName: string;
+    recipientPhone: string;
+    patientName: string;
+    roleLabel: "Primary" | "Partner" | "Couple";
+    coupleId?: string | null | undefined;
+    patientId?: string | null | undefined;
+  },
+): Promise<{ messageId?: string | undefined; deliveryMethod: "META_CLOUD_API" | "CONVERSATION_SAVED"; sentText: string }> {
+  const normalizedPhone = normalizeWhatsAppPhone(params.recipientPhone);
+  let conversation = await prisma.conversation.findFirst({
+    where: {
+      clinicId: enrichedTenant.clinicId,
       OR: [
         { contactPhone: normalizedPhone },
         { contactPhone: `+${normalizedPhone}` },
@@ -450,9 +584,9 @@ export async function dispatchTaskToWhatsApp(
   if (!conversation) {
     conversation = await prisma.conversation.create({
       data: {
-        clinicId: tenant.clinicId,
-        coupleId: task.coupleId,
-        patientId: task.couple?.primaryPatientId ?? null,
+        clinicId: enrichedTenant.clinicId,
+        coupleId: params.coupleId ?? null,
+        patientId: params.patientId ?? null,
         contactPhone: normalizedPhone,
         channel: "WHATSAPP",
         status: "OPEN",
@@ -460,15 +594,15 @@ export async function dispatchTaskToWhatsApp(
     });
   }
 
-  const dueDateStr = task.dueDate
-    ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+  const dueDateStr = params.task.dueDate
+    ? new Date(params.task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
     : "Today";
-  const dueTimeStr = task.dueTime || "10:00 AM";
+  const dueTimeStr = params.task.dueTime || "10:00 AM";
 
   const buttons = [
-    { id: `task_done_${task.id}`, title: "✅ Done" },
-    { id: `task_help_${task.id}`, title: "❓ Need Help" },
-    { id: `task_call_${task.id}`, title: "📞 Call Me" },
+    { id: `task_done_${params.task.id}`, title: "✅ Done" },
+    { id: `task_help_${params.task.id}`, title: "❓ Need Help" },
+    { id: `task_call_${params.task.id}`, title: "📞 Call Me" },
   ];
 
   const categoryEmoji: Record<string, string> = {
@@ -481,20 +615,27 @@ export async function dispatchTaskToWhatsApp(
     Procedure: "🏥",
     Payment: "💳",
   };
-  const icon = (task.category && categoryEmoji[task.category]) || "📋";
+  const icon = (params.task.category && categoryEmoji[params.task.category]) || "📋";
+
+  const headerTitle =
+    params.roleLabel === "Partner"
+      ? `${icon} *New Clinical Task for Partner (${params.patientName}) — ${params.clinicName}*`
+      : params.roleLabel === "Couple"
+        ? `🧬 *New Couple Care Task — ${params.clinicName}*`
+        : `${icon} *New Clinical Task Assigned — ${params.clinicName}*`;
 
   const messageText =
-    `${icon} *New Clinical Task Assigned — ${clinicName}*\n\n` +
-    `Hello ${patientName},\n` +
+    `${headerTitle}\n\n` +
+    `Hello ${params.patientName},\n` +
     `Your care team has scheduled a task for your treatment plan:\n\n` +
-    `📌 *Task:* ${task.title}\n` +
-    (task.category ? `🏷️ *Category:* ${task.category}\n` : "") +
+    `📌 *Task:* ${params.task.title}\n` +
+    (params.task.category ? `🏷️ *Category:* ${params.task.category}\n` : "") +
     `📅 *Due:* ${dueDateStr} at ${dueTimeStr}\n` +
-    (task.description ? `📝 *Instructions:* ${task.description}\n` : "") +
-    `⚡ *Priority:* ${task.priority === "CLINICAL" ? "Urgent (Clinical)" : (task.priority as string) === "HIGH" ? "High" : "Standard"}\n\n` +
+    (params.task.description ? `📝 *Instructions:* ${params.task.description}\n` : "") +
+    `⚡ *Priority:* ${params.task.priority === "CLINICAL" ? "Urgent (Clinical)" : (params.task.priority as string) === "HIGH" ? "High" : "Standard"}\n\n` +
     `Please tap below once completed or if you have any questions:`;
 
-  const footerText = `${clinicName} • Care Loop Desk`;
+  const footerText = `${params.clinicName} • Care Loop Desk`;
 
   let messageId: string | undefined;
   let deliveryMethod: "META_CLOUD_API" | "CONVERSATION_SAVED" = "CONVERSATION_SAVED";
@@ -544,17 +685,223 @@ export async function dispatchTaskToWhatsApp(
     }
   }
 
-  // Update task with last action & metadata
+  return {
+    ...(messageId ? { messageId } : {}),
+    deliveryMethod,
+    sentText: messageText,
+  };
+}
+
+/**
+ * Dispatches an authentic clinical task WhatsApp notification with interactive buttons
+ * ([✅ Done], [❓ Need Help], [📞 Call Me]) to primary patient, partner, or both.
+ */
+export async function dispatchTaskToWhatsApp(
+  tenant: TenantContext,
+  input: {
+    taskId: string;
+    phoneNumber?: string | undefined;
+    partnerPhoneNumber?: string | undefined;
+    targetRole?: "PRIMARY" | "PARTNER" | "COUPLE" | "BOTH" | string | undefined;
+    broadcastToBoth?: boolean | undefined;
+  },
+): Promise<TaskDispatchResult> {
+  const task = await prisma.careTask.findUnique({
+    where: { id: input.taskId },
+    include: {
+      couple: {
+        include: {
+          primaryPatient: true,
+          partnerPatient: true,
+          assignedDoctor: { select: { name: true } },
+          assignedCoordinator: { select: { name: true } },
+        },
+      },
+    },
+  });
+
+  if (!task) {
+    throw new Error(`CareTask not found: ${input.taskId}`);
+  }
+
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: tenant.clinicId },
+    include: { organization: true },
+  });
+  const clinicName = clinic?.name || "Smrko Care";
+  const enrichedTenant: TenantContext = {
+    ...tenant,
+    clinicId: clinic?.id || tenant.clinicId,
+    organizationId: clinic?.organizationId || tenant.organizationId,
+    organizationName: clinic?.organization?.name || "SmrkoMed",
+    clinicName,
+  };
+
+  const targetRole = input.targetRole || task.targetRole || "PRIMARY";
+  const broadcastToBoth = Boolean(input.broadcastToBoth || targetRole === "COUPLE" || targetRole === "BOTH");
+
+  const primaryPhone = input.phoneNumber || task.couple?.primaryPatient?.phone || null;
+  const partnerPhone = input.partnerPhoneNumber || task.couple?.partnerPatient?.phone || null;
+
+  const primaryName = task.couple?.primaryPatient?.firstName
+    ? `${task.couple.primaryPatient.firstName} ${task.couple.primaryPatient.lastName || ""}`.trim()
+    : "Patient";
+  const partnerName = task.couple?.partnerPatient?.firstName
+    ? `${task.couple.partnerPatient.firstName} ${task.couple.partnerPatient.lastName || ""}`.trim()
+    : "Partner";
+
+  // Case 1: Broadcast to both partners in couple
+  if (broadcastToBoth && primaryPhone) {
+    const primaryRes = await sendSingleTaskWhatsApp(enrichedTenant, {
+      task,
+      clinicName,
+      recipientPhone: primaryPhone,
+      patientName: primaryName,
+      roleLabel: "Couple",
+      coupleId: task.coupleId,
+      patientId: task.couple?.primaryPatientId,
+    });
+
+    let partnerRes: Awaited<ReturnType<typeof sendSingleTaskWhatsApp>> | undefined;
+    if (partnerPhone && partnerPhone !== primaryPhone) {
+      partnerRes = await sendSingleTaskWhatsApp(enrichedTenant, {
+        task,
+        clinicName,
+        recipientPhone: partnerPhone,
+        patientName: partnerName,
+        roleLabel: "Couple",
+        coupleId: task.coupleId,
+        patientId: task.couple?.partnerPatientId,
+      }).catch((err) => {
+        console.error("[dispatchTaskToWhatsApp] Partner dispatch error:", err);
+        return undefined;
+      });
+    }
+
+    const recipientSummary = partnerRes
+      ? `${primaryPhone} (${primaryName}) & ${partnerPhone} (${partnerName})`
+      : `${primaryPhone} (${primaryName})`;
+
+    await prisma.careTask.update({
+      where: { id: task.id },
+      data: {
+        lastAction: `WhatsApp task broadcast sent to couple: ${recipientSummary}`,
+        nextAction: "Waiting for patient or partner confirmation on WhatsApp",
+        metadata: {
+          ...(typeof task.metadata === "object" && task.metadata ? (task.metadata as object) : {}),
+          lastWhatsAppDispatchAt: new Date().toISOString(),
+          recipientPhone: primaryPhone,
+          partnerPhone: partnerPhone ?? undefined,
+          targetRole: "COUPLE",
+          messageId: primaryRes.messageId,
+          partnerMessageId: partnerRes?.messageId,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      taskId: task.id,
+      taskTitle: task.title,
+      recipientPhone: recipientSummary,
+      messageId: primaryRes.messageId,
+      sentText: primaryRes.sentText,
+      buttonsSent: ["✅ Done", "❓ Need Help", "📞 Call Me"],
+      deliveryMethod: primaryRes.deliveryMethod,
+    };
+  }
+
+  // Case 2: Dedicated Partner Task
+  if (targetRole === "PARTNER") {
+    const rawPartnerPhone = input.phoneNumber || partnerPhone || primaryPhone;
+    if (!rawPartnerPhone) {
+      return {
+        success: false,
+        taskId: task.id,
+        taskTitle: task.title,
+        recipientPhone: "",
+        sentText: "",
+        buttonsSent: [],
+        deliveryMethod: "CONVERSATION_SAVED",
+        error: "No phone number available for partner recipient",
+      };
+    }
+
+    const partnerRes = await sendSingleTaskWhatsApp(enrichedTenant, {
+      task,
+      clinicName,
+      recipientPhone: rawPartnerPhone,
+      patientName: partnerName,
+      roleLabel: "Partner",
+      coupleId: task.coupleId,
+      patientId: task.couple?.partnerPatientId,
+    });
+
+    const normPhone = normalizeWhatsAppPhone(rawPartnerPhone);
+    await prisma.careTask.update({
+      where: { id: task.id },
+      data: {
+        lastAction: `WhatsApp task notification sent to partner ${normPhone} (${partnerName})`,
+        nextAction: `Waiting for ${partnerName} confirmation on WhatsApp`,
+        metadata: {
+          ...(typeof task.metadata === "object" && task.metadata ? (task.metadata as object) : {}),
+          lastWhatsAppDispatchAt: new Date().toISOString(),
+          recipientPhone: normPhone,
+          targetRole: "PARTNER",
+          messageId: partnerRes.messageId,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      taskId: task.id,
+      taskTitle: task.title,
+      recipientPhone: normPhone,
+      messageId: partnerRes.messageId,
+      sentText: partnerRes.sentText,
+      buttonsSent: ["✅ Done", "❓ Need Help", "📞 Call Me"],
+      deliveryMethod: partnerRes.deliveryMethod,
+    };
+  }
+
+  // Case 3: Primary Patient Task (Standard)
+  const rawPrimaryPhone = input.phoneNumber || primaryPhone;
+  if (!rawPrimaryPhone) {
+    return {
+      success: false,
+      taskId: task.id,
+      taskTitle: task.title,
+      recipientPhone: "",
+      sentText: "",
+      buttonsSent: [],
+      deliveryMethod: "CONVERSATION_SAVED",
+      error: "No phone number available for primary patient recipient",
+    };
+  }
+
+  const primaryRes = await sendSingleTaskWhatsApp(enrichedTenant, {
+    task,
+    clinicName,
+    recipientPhone: rawPrimaryPhone,
+    patientName: primaryName,
+    roleLabel: "Primary",
+    coupleId: task.coupleId,
+    patientId: task.couple?.primaryPatientId,
+  });
+
+  const normPhone = normalizeWhatsAppPhone(rawPrimaryPhone);
   await prisma.careTask.update({
     where: { id: task.id },
     data: {
-      lastAction: `WhatsApp task notification sent to ${normalizedPhone}`,
-      nextAction: "Waiting for patient confirmation on WhatsApp",
+      lastAction: `WhatsApp task notification sent to ${normPhone} (${primaryName})`,
+      nextAction: `Waiting for ${primaryName} confirmation on WhatsApp`,
       metadata: {
         ...(typeof task.metadata === "object" && task.metadata ? (task.metadata as object) : {}),
         lastWhatsAppDispatchAt: new Date().toISOString(),
-        recipientPhone: normalizedPhone,
-        messageId,
+        recipientPhone: normPhone,
+        targetRole: "PRIMARY",
+        messageId: primaryRes.messageId,
       },
     },
   });
@@ -563,11 +910,11 @@ export async function dispatchTaskToWhatsApp(
     success: true,
     taskId: task.id,
     taskTitle: task.title,
-    recipientPhone: normalizedPhone,
-    messageId,
-    sentText: messageText,
-    buttonsSent: buttons.map((b) => b.title),
-    deliveryMethod,
+    recipientPhone: normPhone,
+    messageId: primaryRes.messageId,
+    sentText: primaryRes.sentText,
+    buttonsSent: ["✅ Done", "❓ Need Help", "📞 Call Me"],
+    deliveryMethod: primaryRes.deliveryMethod,
   };
 }
 

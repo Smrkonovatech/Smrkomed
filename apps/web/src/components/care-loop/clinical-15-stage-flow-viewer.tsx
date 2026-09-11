@@ -48,6 +48,7 @@ import {
   Target,
   TestTube2,
   UploadCloud,
+  User,
   UserCheck,
   UserPlus,
   Users,
@@ -130,17 +131,23 @@ function DynamicIcon({ name, className }: { name: string; className?: string }) 
 }
 
 export function Clinical15StageFlowViewer({
+  couples = [],
   defaultStage = 1,
   defaultCoupleId,
-  couples = [],
 }: {
-  defaultStage?: number;
+  couples?: Array<{
+    id: string;
+    name: string;
+    phone?: string | null | undefined;
+    partner?: { name?: string | undefined; phone?: string | undefined } | undefined;
+  }> | undefined;
+  defaultStage?: number | undefined;
   defaultCoupleId?: string | undefined;
-  couples?: Array<{ id: string; name: string; phone?: string | null }>;
 }) {
   const [selectedStageNum, setSelectedStageNum] = useState<number>(defaultStage);
   const [selectedCoupleId, setSelectedCoupleId] = useState<string>(() => defaultCoupleId || couples[0]?.id || "");
   const [targetPhone, setTargetPhone] = useState<string>("+917795559724");
+  const [stageTargetRole, setStageTargetRole] = useState<"PRIMARY" | "PARTNER" | "BOTH">("PRIMARY");
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "hi" | "te">("en");
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
@@ -175,6 +182,8 @@ export function Clinical15StageFlowViewer({
     }
     setIsSendingWhatsApp(true);
     try {
+      const isBoth = stageTargetRole === "BOTH";
+      const partnerPhone = (currentCouple as any)?.partner?.phone || "+917892265880";
       const res = await apiPost<{
         success: boolean;
         stageName: string;
@@ -183,13 +192,26 @@ export function Clinical15StageFlowViewer({
       }>("/api/v1/care-loop/dispatch-stage-whatsapp", {
         stageNumber: stage.stepNumber,
         phoneNumber: targetPhone.trim(),
+        targetRole: stageTargetRole,
+        broadcastToBoth: isBoth,
+        partnerPhoneNumber: isBoth ? partnerPhone : undefined,
         ...(selectedCoupleId ? { coupleId: selectedCoupleId } : {}),
         syncPlanStage: true,
       });
 
-      toast.success(`Sent Stage ${stage.stepNumber} to WhatsApp!`, {
-        description: `Delivered to ${targetPhone}: "${res.buttonsSent?.join(", ")}"`,
-      });
+      if (isBoth) {
+        toast.success(`Sent Stage ${stage.stepNumber} Couple Broadcast! 👥📱`, {
+          description: `Dispatched to both partners (${targetPhone} & ${partnerPhone})`,
+        });
+      } else if (stageTargetRole === "PARTNER") {
+        toast.success(`Sent Stage ${stage.stepNumber} to Partner! 👨📱`, {
+          description: `Delivered to partner: ${targetPhone}`,
+        });
+      } else {
+        toast.success(`Sent Stage ${stage.stepNumber} to Primary Patient! 👩📱`, {
+          description: `Delivered to ${targetPhone}: "${res.buttonsSent?.join(", ")}"`,
+        });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to dispatch WhatsApp message";
       toast.error("WhatsApp Dispatch Notice", { description: msg });
@@ -395,13 +417,69 @@ export function Clinical15StageFlowViewer({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-lg border bg-muted/40 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setStageTargetRole("PRIMARY");
+                  setTargetPhone("+917795559724");
+                }}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all",
+                  stageTargetRole === "PRIMARY"
+                    ? "bg-primary text-primary-foreground shadow-2xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <User className="size-3" />
+                Primary
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStageTargetRole("PARTNER");
+                  setTargetPhone("+917892265880");
+                }}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all",
+                  stageTargetRole === "PARTNER"
+                    ? "bg-primary text-primary-foreground shadow-2xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <User className="size-3" />
+                Partner
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStageTargetRole("BOTH");
+                }}
+                className={cn(
+                  "flex items-center gap-1 rounded-md px-2 py-1 font-medium transition-all",
+                  stageTargetRole === "BOTH"
+                    ? "bg-emerald-600 text-white shadow-2xs font-semibold"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Users className="size-3" />
+                Both
+              </button>
+            </div>
+
             <Button
               onClick={handleSendToWhatsApp}
               disabled={isSendingWhatsApp}
               className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm font-semibold"
             >
               <Send className={cn("size-4", isSendingWhatsApp && "animate-spin")} />
-              {isSendingWhatsApp ? "Sending to Phone..." : `📲 Send Step ${stage.stepNumber} to My WhatsApp`}
+              {isSendingWhatsApp
+                ? "Sending to Phone..."
+                : stageTargetRole === "BOTH"
+                ? `👥 Broadcast Step ${stage.stepNumber} to Both`
+                : stageTargetRole === "PARTNER"
+                ? `👨 Send Step ${stage.stepNumber} to Partner`
+                : `📲 Send Step ${stage.stepNumber} to Primary`}
             </Button>
             <Button
               variant="outline"

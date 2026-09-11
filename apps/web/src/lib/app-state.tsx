@@ -160,7 +160,12 @@ export interface AppState {
   addEnquiry: (input: AddEnquiryInput) => Enquiry;
   careContent: CareContentItem[];
   tasks: CareTask[];
-  createTask: (task: Omit<CareTask, "id"> & { phoneNumber?: string }) => Promise<CareTask>;
+  createTask: (
+    task: Omit<CareTask, "id"> & {
+      phoneNumber?: string | undefined;
+      partnerPhoneNumber?: string | undefined;
+    },
+  ) => Promise<CareTask>;
   setTaskStatus: (id: string, status: TaskStatus) => Promise<void>;
   activity: LoopActivity[];
   pushActivity: (a: Omit<LoopActivity, "id">) => void;
@@ -221,6 +226,8 @@ function toTask(row: ClinicTask): CareTask {
     due: row.due,
     category: row.category,
     status: row.status,
+    ...(row.targetRole ? { targetRole: row.targetRole } : {}),
+    ...(row.targetPatientId ? { targetPatientId: row.targetPatientId } : {}),
     ...(row.note ? { note: row.note } : {}),
   };
 }
@@ -573,7 +580,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     return created;
   }, []);
 
-  const createTask = useCallback(async (task: Omit<CareTask, "id"> & { phoneNumber?: string }) => {
+  const createTask = useCallback(
+    async (
+      task: Omit<CareTask, "id"> & {
+        phoneNumber?: string | undefined;
+        partnerPhoneNumber?: string | undefined;
+      },
+    ) => {
     let createdTask: CareTask;
     try {
       const created = await clinicApi.createTask({
@@ -586,11 +599,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         priority: task.priority === "HIGH" || task.priority === "CRITICAL" ? "CLINICAL" : "NORMAL",
         sendWhatsApp: task.sendWhatsApp !== false,
         phoneNumber: task.phoneNumber,
+        partnerPhoneNumber: task.partnerPhoneNumber,
+        targetRole: task.targetRole,
+        targetPatientId: task.targetPatientId,
+        targetName: task.targetName,
+        broadcastToBoth: task.broadcastToBoth,
       });
       createdTask = {
         ...toTask(created),
         category: task.category || created.category,
         due: task.due || `${task.dueDate || "Today"} · ${task.dueTime || "10:00 AM"}`,
+        targetRole: (task.targetRole || created.targetRole) ?? undefined,
+        targetPatientId: (task.targetPatientId || created.targetPatientId) ?? undefined,
+        targetName: task.targetName,
+        broadcastToBoth: task.broadcastToBoth,
         ...(task.note ? { note: task.note } : {}),
       };
     } catch (err) {
@@ -600,8 +622,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         id: `ct_${Date.now()}`,
         status: task.status || "waiting",
         due: task.due || `${task.dueDate || "Today"} · ${task.dueTime || "10:00 AM"}`,
-        lastAction: "WhatsApp task notification dispatched to patient",
-        nextAction: "Waiting for patient confirmation on WhatsApp",
+        lastAction: `WhatsApp task notification dispatched to ${task.targetRole === "PARTNER" ? "partner" : task.targetRole === "COUPLE" ? "both partners" : "primary patient"}`,
+        nextAction: "Waiting for confirmation on WhatsApp",
       };
     }
     setTasks((prev) => [createdTask, ...prev]);
