@@ -24,7 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                 <main
                   id="app-main"
-                  className="h-full overflow-y-auto overscroll-contain px-5 pt-[calc(var(--app-header-height)+0.85rem)] pb-[calc(var(--app-dock-height)+1.25rem)] sm:px-8 lg:px-[80px]"
+                  className="h-full overflow-y-auto overscroll-contain px-5 pt-[calc(var(--app-header-height)+0.85rem)] pb-[calc(var(--app-dock-height)+1.25rem)] sm:px-8 lg:px-[16px] 2xl:px-[80px]"
                 >
                   <div className="mx-auto w-full max-w-[1500px] animate-in fade-in-0 duration-200">
                     {children}
