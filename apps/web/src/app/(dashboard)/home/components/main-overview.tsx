@@ -1,10 +1,46 @@
+"use client";
+
 import Image from "next/image";
+import { useSession } from "next-auth/react";
+import { useAppState } from "@/lib/app-state";
+import { currentUser, findCouple } from "@/lib/demo-data";
 
 export function MainOverview() {
+   const { data: session } = useSession();
+   const { kpis, tasks, exceptions, appointments, couples } = useAppState();
+
+   const firstName = (session?.user?.name ?? currentUser.name).split(" ")[0] ?? "Dr.";
+   const hour = new Date().getHours();
+   const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
+
+   const activeJourneys = kpis.active || 38;
+   
+   const dueTodayTasks = tasks.filter((t) => t.status === "waiting" || t.status === "in_progress").length;
+   const exceptionsCount = exceptions.length;
+   const awaitingReview = exceptions.filter((e) => e.kind === 'clinical_review' || e.kind === 'missing_report').length;
+   const onTrack = Math.max(0, activeJourneys - exceptionsCount);
+
+   const getOrbitData = (index: number) => {
+      const app = appointments[index];
+      if (!app) return null;
+      const couple = findCouple(app.coupleId, couples ?? []);
+      return {
+         initial: couple?.primary?.name?.[0] || 'P',
+         name: couple?.primary?.name || 'Patient',
+         desc: `${app.type} - ${app.time}`
+      };
+   };
+
+   const orbit1 = getOrbitData(0) || { initial: 'V', name: 'Veena', desc: 'HSG scan - 9.30 AM' };
+   const orbit2 = getOrbitData(1) || { initial: 'K', name: 'Kavya', desc: 'Follow up - 10.15 AM' };
+   const orbit3 = getOrbitData(2) || { initial: 'G', name: 'Geethu', desc: 'Consultation - 11.00 AM' };
+   const orbit4 = getOrbitData(3) || { initial: 'S', name: 'Sneha', desc: 'Report review - 12.30 PM' };
+   const orbit5 = getOrbitData(4) || { initial: 'P', name: 'Priya', desc: 'Routine checkup - 2.00 PM' };
+
    return (
       <div className="flex flex-col h-full">
          <div className="mb-[clamp(0.5rem,1.5vh,1rem)]">
-            <h1 className="text-[clamp(1.25rem,2.5vw,2rem)] font-semibold text-gray-800 tracking-tight">Good Morning Dr. Shreya</h1>
+            <h1 className="text-[clamp(1.25rem,2.5vw,2rem)] font-semibold text-gray-800 tracking-tight">{greeting} Dr. {firstName}</h1>
             <p className="text-gray-500 mt-1 text-[clamp(0.75rem,1.2vw,1rem)]">Here's what needs your attention today</p>
          </div>
 
@@ -20,7 +56,7 @@ export function MainOverview() {
 
                {/* Center Text - perfectly centered, no offset */}
                <div className="relative z-10 flex flex-col items-center justify-center left-[33px]">
-                  <span className="font-medium text-[#7F73E6] leading-none tracking-tight text-[clamp(2.5rem,4vw,5.5rem)]">38</span>
+                  <span className="font-medium text-[#7F73E6] leading-none tracking-tight text-[clamp(2.5rem,4vw,5.5rem)]">{activeJourneys}</span>
                   <span className="text-gray-500 mt-1 font-medium text-[clamp(0.625rem,1.5vw,1.1rem)]">Active Journeys</span>
                   <button className="text-[clamp(9px,1vw,14px)] text-gray-400 underline mt-1 hover:text-indigo-500">View all</button>
                </div>
@@ -31,12 +67,12 @@ export function MainOverview() {
                      {/* V (Outer, Top-Left) */}
                      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_40s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-35s' }}>
                         <div className="animate-[spin_40s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-35s' }}>
-                           <div className="w-8 h-8 rounded-full bg-[#866BE3] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">V</div>
+                           <div className="w-8 h-8 rounded-full bg-[#866BE3] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit1.initial}</div>
 
                            {/* Tooltip */}
                            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 bg-white/60 backdrop-blur-md border border-white rounded-2xl p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none w-max">
-                              <div className="text-[#866BE3] text-sm font-medium">Veena</div>
-                              <div className="text-gray-500 text-xs mt-1">HSG scan - 9.30 AM</div>
+                              <div className="text-[#866BE3] text-sm font-medium">{orbit1.name}</div>
+                              <div className="text-gray-500 text-xs mt-1">{orbit1.desc}</div>
                            </div>
                         </div>
                      </div>
@@ -44,12 +80,12 @@ export function MainOverview() {
                      {/* K (Outer, Top-Right) */}
                      <div className="absolute top-[70px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_150px] animate-[spin_35s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-4.4s' }}>
                         <div className="animate-[spin_35s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-4.4s' }}>
-                           <div className="w-8 h-8 rounded-full bg-[#C178F5] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">K</div>
+                           <div className="w-8 h-8 rounded-full bg-[#C178F5] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit2.initial}</div>
 
                            {/* Tooltip */}
                            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 bg-white/60 backdrop-blur-md border border-white rounded-2xl p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none w-max">
-                              <div className="text-[#C178F5] text-sm font-medium">Kavya</div>
-                              <div className="text-gray-500 text-xs mt-1">Follow up - 10.15 AM</div>
+                              <div className="text-[#C178F5] text-sm font-medium">{orbit2.name}</div>
+                              <div className="text-gray-500 text-xs mt-1">{orbit2.desc}</div>
                            </div>
                         </div>
                      </div>
@@ -57,12 +93,12 @@ export function MainOverview() {
                      {/* G (Inner, Top) */}
                      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_25s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '0s' }}>
                         <div className="animate-[spin_25s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '0s' }}>
-                           <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">G</div>
+                           <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit3.initial}</div>
 
                            {/* Tooltip */}
                            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 bg-white/60 backdrop-blur-md border border-white rounded-2xl p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none w-max">
-                              <div className="text-[#00A89D] text-sm font-medium">Geethu</div>
-                              <div className="text-gray-500 text-xs mt-1">Consultation - 11.00 AM</div>
+                              <div className="text-[#00A89D] text-sm font-medium">{orbit3.name}</div>
+                              <div className="text-gray-500 text-xs mt-1">{orbit3.desc}</div>
                            </div>
                         </div>
                      </div>
@@ -70,12 +106,12 @@ export function MainOverview() {
                      {/* S (Inner, Right) */}
                      <div className="absolute top-[90px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_130px] animate-[spin_20s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-5s' }}>
                         <div className="animate-[spin_20s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-5s' }}>
-                           <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">S</div>
+                           <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit4.initial}</div>
 
                            {/* Tooltip */}
                            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 bg-white/60 backdrop-blur-md border border-white rounded-2xl p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none w-max">
-                              <div className="text-[#00A89D] text-sm font-medium">Sneha</div>
-                              <div className="text-gray-500 text-xs mt-1">Report review - 12.30 PM</div>
+                              <div className="text-[#00A89D] text-sm font-medium">{orbit4.name}</div>
+                              <div className="text-gray-500 text-xs mt-1">{orbit4.desc}</div>
                            </div>
                         </div>
                      </div>
@@ -83,12 +119,12 @@ export function MainOverview() {
                      {/* P (Inner, Bottom) */}
                      <div className="absolute top-[100px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_120px] animate-[spin_22s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-11s' }}>
                         <div className="animate-[spin_22s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-11s' }}>
-                           <div className="w-8 h-8 rounded-full bg-[#F39C12] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">P</div>
+                           <div className="w-8 h-8 rounded-full bg-[#F39C12] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit5.initial}</div>
 
                            {/* Tooltip */}
                            <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 bg-white/60 backdrop-blur-md border border-white rounded-2xl p-3 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none w-max">
-                              <div className="text-[#F39C12] text-sm font-medium">Priya</div>
-                              <div className="text-gray-500 text-xs mt-1">Routine checkup - 2.00 PM</div>
+                              <div className="text-[#F39C12] text-sm font-medium">{orbit5.name}</div>
+                              <div className="text-gray-500 text-xs mt-1">{orbit5.desc}</div>
                            </div>
                         </div>
                      </div>
@@ -98,31 +134,31 @@ export function MainOverview() {
 
             {/* Right-side Vertical Stat Bubbles */}
             <div className="lg:absolute lg:right-4 lg:top-1/2 lg:-translate-y-1/2 flex flex-row flex-wrap lg:flex-nowrap lg:flex-col gap-2 z-10 origin-right justify-center mt-6 lg:mt-0 px-2 lg:px-0">
-               {/* 31 On track */}
+               {/* On track */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">31</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">{String(onTrack).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">On track</span>
                </div>
 
-               {/* 04 Due today */}
+               {/* Due today */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">04</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">{String(dueTodayTasks).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Tasks Due Today</span>
                </div>
 
-               {/* 03 Exceptions */}
+               {/* Exceptions */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">03</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">{String(exceptionsCount).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Exceptions</span>
                </div>
 
-               {/* 04 Awaiting Review */}
+               {/* Awaiting Review */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">04</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">{String(awaitingReview).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Awaiting Review</span>
                </div>
             </div>

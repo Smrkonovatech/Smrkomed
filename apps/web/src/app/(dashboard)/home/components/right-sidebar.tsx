@@ -1,15 +1,57 @@
+"use client";
+
 import Image from "next/image";
-import { Mic, Clock, ArrowRight } from "lucide-react";
+import { Mic, Clock, ArrowRight, Square } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useAppState } from "@/lib/app-state";
+import { coupleLabel, findCouple, type Couple } from "@/lib/demo-data";
+import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
 
 export function RightSidebar() {
+  const appState = useAppState() as ReturnType<typeof useAppState> & { couples?: Couple[] };
+  const { exceptions, appointments } = appState;
+  const couples = appState.couples ?? [];
+  const { ask } = useSmrkoAiBuddy();
+
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordTime, setRecordTime] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordTime((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setRecordTime(0);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const clinicalEscalations = exceptions.filter(e => e.kind === 'clinical_review' || e.kind === 'ai_escalation').length;
+  const reportsReview = exceptions.filter(e => e.kind === 'missing_report').length;
+  const careLoopExceptions = exceptions.filter(e => e.kind === 'appointment_issue' || e.kind === 'no_response').length;
+
+  const nextAppointment = appointments[0];
+  const nextCouple = nextAppointment ? findCouple(nextAppointment.coupleId, couples) : null;
+  const patientName = nextCouple ? coupleLabel(nextCouple) : "No Upcoming Patients";
+  const appointmentDetails = nextAppointment ? `${nextAppointment.type} • ${nextAppointment.time}` : "—";
+  const todayVisits = appointments.length;
+
   return (
     <div className="flex flex-col gap-2.5 h-full">
       {/* Alerts List */}
       <div className="flex flex-col gap-1.5">
         {[
-          { label: 'Clinical Escalations', count: 2, badgeColor: 'bg-[#F48484]' },
-          { label: 'Reports Awaiting Review', count: 2, badgeColor: 'bg-[#F48484]' },
-          { label: 'Care Loop Exceptions', count: 3, badgeColor: 'bg-[#F5B575]' },
+          { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]' },
+          { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]' },
+          { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]' },
           { label: 'Patient Questions', count: 2, badgeColor: 'bg-[#71A021]' }
         ].map((alert, i) => (
           <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
@@ -52,22 +94,34 @@ export function RightSidebar() {
           </div>
 
           <div className="text-center">
-            <h3 className="text-[clamp(0.875rem,1.4vw,1.1rem)] font-bold text-[#1f1830] leading-tight">Geethu & Arjun</h3>
-            <p className="text-[clamp(0.6rem,0.9vw,0.7rem)] text-gray-400 font-medium mt-0.5 tracking-wide">IVF Consultation • 11:00 AM - 11:30 AM</p>
+            <h3 className="text-[clamp(0.875rem,1.4vw,1.1rem)] font-bold text-[#1f1830] leading-tight">{patientName}</h3>
+            <p className="text-[clamp(0.6rem,0.9vw,0.7rem)] text-gray-400 font-medium mt-0.5 tracking-wide">{appointmentDetails}</p>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 w-full z-10">
-          <button className="bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white rounded-full p-1 flex items-center justify-between flex-[65%] shadow-[0_12px_24px_rgb(134,107,227,0.35)] relative overflow-hidden group">
-            <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
-              <Mic className="w-3.5 h-3.5 text-white" />
-            </div>
-            <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Start Consultation</span>
-            <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/20 transition-colors">
-              <ArrowRight className="w-3.5 h-3.5 text-white" />
-            </div>
-          </button>
+          {!isRecording ? (
+            <button onClick={() => setIsRecording(true)} className="bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white rounded-full p-1 flex items-center justify-between flex-[65%] shadow-[0_12px_24px_rgb(134,107,227,0.35)] relative overflow-hidden group">
+              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
+                <Mic className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Start Consultation</span>
+              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/20 transition-colors">
+                <ArrowRight className="w-3.5 h-3.5 text-white" />
+              </div>
+            </button>
+          ) : (
+            <button onClick={() => setIsRecording(false)} className="bg-red-50 border border-red-200 text-red-600 rounded-full p-1 flex items-center justify-between flex-[65%] shadow-sm relative overflow-hidden group">
+              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></div>
+              </div>
+              <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Recording {formatTime(recordTime)}</span>
+              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-red-100 flex items-center justify-center shrink-0 group-hover:bg-red-200 transition-colors">
+                <Square className="w-3.5 h-3.5 text-red-500" fill="currentColor" />
+              </div>
+            </button>
+          )}
 
           <button className="bg-gradient-to-r from-[#FBF9FF] to-[#F3EEFC] text-[#866BE3] rounded-full p-1 pl-2.5 flex items-center justify-between flex-[35%] shadow-[0_8px_16px_rgb(134,107,227,0.08)] border border-white relative overflow-hidden group hover:shadow-[0_8px_20px_rgb(134,107,227,0.12)] transition-shadow">
             <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap mx-auto">View</span>
@@ -81,14 +135,17 @@ export function RightSidebar() {
 
       {/* AI Prep Card */}
       <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] text-white text-center flex flex-col items-center justify-center relative z-0 overflow-hidden shadow-sm flex-1 min-h-[clamp(8rem,14vh,10rem)] mt-auto">
-         <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill className="object-cover z-0" />
+        <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill className="object-cover z-0" />
 
         <p className="text-[clamp(0.7rem,1.1vw,0.9rem)] leading-[1.3] relative z-10">
-          <span className="font-semibold drop-shadow-sm">You have 8 patient visits today</span><br />
-          <span className="font-medium opacity-90 drop-shadow-sm text-[clamp(0.65rem,1vw,0.8rem)]">and 1 of them reported emergency</span>
+          <span className="font-semibold drop-shadow-sm">You have {todayVisits} patient visits today</span><br />
+          <span className="font-medium opacity-90 drop-shadow-sm text-[clamp(0.65rem,1vw,0.8rem)]">and {clinicalEscalations} of them reported emergency</span>
         </p>
 
-        <button className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[clamp(0.6rem,0.9vw,0.75rem)] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm">
+        <button
+          onClick={() => ask("Prepare my day: summarize overdue Care Loop tasks, appointments needing confirmation, and patients needing attention.")}
+          className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[clamp(0.6rem,0.9vw,0.75rem)] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm"
+        >
           <Image src="/images/dashboard/bot.svg" alt="Bot Icon" width={14} height={14} />
           Prepare my day
         </button>

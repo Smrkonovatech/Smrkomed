@@ -1,43 +1,48 @@
+"use client";
+
 import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
-
-const cards = [
-  {
-    title: "Today's",
-    subtitle: "Appointments",
-    icon: "/images/dashboard/calender.svg",
-    value: "08",
-    color: "indigo",
-    bgClass: "bg-indigo-100/50 hover:bg-indigo-100",
-    textClass: "text-indigo-800",
-    valueClass: "text-indigo-500",
-    btnClass: "bg-indigo-500 hover:bg-indigo-600",
-  },
-  {
-    title: "Patients",
-    subtitle: "under care",
-    icon: "/images/dashboard/heart.svg",
-    value: "42",
-    color: "purple",
-    bgClass: "bg-purple-100/50 hover:bg-purple-100",
-    textClass: "text-purple-800",
-    valueClass: "text-purple-400",
-    btnClass: "bg-purple-400 hover:bg-purple-500",
-  },
-  {
-    title: "Needs",
-    subtitle: "Attention",
-    icon: "/images/dashboard/info.svg",
-    value: "18",
-    color: "blue",
-    bgClass: "bg-blue-100/50 hover:bg-blue-100",
-    textClass: "text-blue-800",
-    valueClass: "text-blue-500",
-    btnClass: "bg-blue-500 hover:bg-blue-600",
-  },
-];
+import { useAppState } from "@/lib/app-state";
 
 export function LeftSidebar() {
+  const { appointments, kpis, exceptions } = useAppState();
+
+  const cards = [
+    {
+      title: "Today's",
+      subtitle: "Appointments",
+      icon: "/images/dashboard/calender.svg",
+      value: String(appointments.length).padStart(2, '0'),
+      color: "indigo",
+      bgClass: "bg-indigo-100/50 hover:bg-indigo-100",
+      textClass: "text-indigo-800",
+      valueClass: "text-indigo-500",
+      btnClass: "bg-indigo-500 hover:bg-indigo-600",
+    },
+    {
+      title: "Patients",
+      subtitle: "under care",
+      icon: "/images/dashboard/heart.svg",
+      value: String(kpis.active).padStart(2, '0'),
+      color: "purple",
+      bgClass: "bg-purple-100/50 hover:bg-purple-100",
+      textClass: "text-purple-800",
+      valueClass: "text-purple-400",
+      btnClass: "bg-purple-400 hover:bg-purple-500",
+    },
+    {
+      title: "Needs",
+      subtitle: "Attention",
+      icon: "/images/dashboard/info.svg",
+      value: String(exceptions.length).padStart(2, '0'),
+      color: "blue",
+      bgClass: "bg-blue-100/50 hover:bg-blue-100",
+      textClass: "text-blue-800",
+      valueClass: "text-blue-500",
+      btnClass: "bg-blue-500 hover:bg-blue-600",
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-2.5 h-full">
       {cards.map((card, index) => (
