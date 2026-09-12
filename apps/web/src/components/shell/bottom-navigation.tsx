@@ -211,7 +211,7 @@ export function BottomNavigation() {
       aria-label="Primary application navigation"
       className="fixed inset-x-0 bottom-0 z-40 h-[var(--app-dock-height)] bg-[#1a1a1a] shadow-[0_-10px_40px_rgba(0,0,0,0.28)]"
     >
-      <div className="relative mx-auto flex h-full w-full max-w-[1600px] items-center px-4 sm:px-5 lg:px-6">
+      <div className="relative mx-auto flex h-full w-full max-w-[1920px] items-center px-4 sm:px-5 lg:px-6">
         <Link
           href="/home"
           className="absolute left-4 z-10 flex items-center outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:left-5 lg:left-6"

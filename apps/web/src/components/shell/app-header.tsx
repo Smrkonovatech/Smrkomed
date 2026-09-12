@@ -128,7 +128,7 @@ export function AppHeader() {
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-40 py-4 border-b border-border/60 bg-white/90 backdrop-blur-md">
-        <div className="relative mx-auto flex h-full w-full max-w-[1600px] items-center gap-3 px-4 sm:px-5 lg:px-6">
+        <div className="relative mx-auto flex h-full w-full max-w-[1920px] items-center gap-3 px-4 sm:px-5 lg:px-6">
         <Link
           href="/home"
           className="flex min-w-0 shrink-0 items-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
