@@ -3,14 +3,14 @@ import Image from "next/image";
 export function MainOverview() {
    return (
       <div className="flex flex-col h-full">
-         <div className="mb-2 lg:mb-4 2xl:mb-8">
+         <div className="mb-2 lg:mb-3 2xl:mb-4">
             <h1 className="text-2xl 2xl:text-3xl font-semibold text-gray-800 tracking-tight">Good Morning Dr. Shreya</h1>
             <p className="text-gray-500 mt-1 text-sm 2xl:text-base">Here's what needs your attention today</p>
          </div>
 
-         <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center min-h-[300px] xl:min-h-[380px] mt-8 lg:mt-0">
+         <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center min-h-[250px] xl:min-h-[320px] mt-4 lg:mt-0">
             {/* Center Wrapper for Image, Text, and Orbits to ensure perfect alignment */}
-            <div className="relative w-[300px] h-[300px] lg:w-[360px] lg:h-[360px] xl:w-[400px] xl:h-[400px] 2xl:w-[480px] 2xl:h-[480px] flex items-center justify-center shrink-0">
+            <div className="relative w-[280px] h-[280px] lg:w-[320px] lg:h-[320px] xl:w-[360px] xl:h-[360px] 2xl:w-[400px] 2xl:h-[400px] flex items-center justify-center shrink-0">
 
                {/* Glowing Gradient Donut (Image) */}
                <div className="absolute inset-0 z-0 pointer-events-none">
@@ -25,7 +25,7 @@ export function MainOverview() {
                </div>
 
                {/* Orbiting Badges Container */}
-               <div className="absolute inset-0 z-30 pointer-events-none scale-[0.85] lg:scale-100 2xl:scale-[1.15] flex items-center justify-center">
+               <div className="absolute inset-0 z-30 pointer-events-none scale-[0.75] lg:scale-[0.85] xl:scale-[0.95] 2xl:scale-100 flex items-center justify-center">
                   <div className="relative w-[440px] h-[440px]">
                      {/* V (Outer, Top-Left) */}
                      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_40s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-35s' }}>

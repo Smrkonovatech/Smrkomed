@@ -18,15 +18,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         <CreateTaskProvider>
           <GlobalActionProvider>
             <SmrkoAiBuddyProvider>
-              <div className="relative h-[100dvh] w-[100vw] overflow-hidden bg-background">
+              <div className="relative h-full w-full overflow-hidden bg-background">
                 <AppHeader />
                 <FullscreenAfterLogin />
 
                 <main
                   id="app-main"
-                  className="h-full overflow-y-auto overscroll-contain px-5 pt-[calc(var(--app-header-height)+0.85rem)] pb-[calc(var(--app-dock-height)+1.25rem)] sm:px-8 lg:px-[16px] 2xl:px-[80px]"
+                  className="h-full overflow-y-auto overscroll-contain pt-[calc(var(--app-header-height)+0.85rem)] pb-[calc(var(--app-dock-height)+1.25rem)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 >
-                  <div className="mx-auto w-full max-w-[1500px] animate-in fade-in-0 duration-200">
+                  <div className="relative mx-auto w-full h-full max-w-[1600px] px-4 sm:px-5 lg:px-6 animate-in fade-in-0 duration-200">
                     {children}
                   </div>
                 </main>

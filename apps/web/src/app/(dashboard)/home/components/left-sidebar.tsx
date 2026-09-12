@@ -39,12 +39,12 @@ const cards = [
 
 export function LeftSidebar() {
   return (
-    <div className="flex flex-col gap-2 xl:gap-4">
+    <div className="flex flex-col gap-2.5 h-full">
       {cards.map((card, index) => (
-        <div key={index} className="relative group">
+        <div key={index} className="relative group flex-1">
           {/* Card background with polygon clip-path to create the bottom-right cutout */}
           <div
-            className={`rounded-3xl p-4 xl:p-5 transition-colors ${card.bgClass} h-full min-h-[100px] xl:min-h-[130px]`}
+            className={`rounded-3xl p-3 xl:p-4 transition-colors ${card.bgClass} h-full min-h-[120px] xl:min-h-[140px]`}
           // style={{
           //   width: "222px",
           //   clipPath:

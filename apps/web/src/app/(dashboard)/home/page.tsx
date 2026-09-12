@@ -5,29 +5,31 @@ import { AppointmentsTimeline } from "./components/appointments-timeline";
 
 export default function Dashboard() {
   return (
-    <div className="flex flex-col gap-3 lg:gap-4 2xl:gap-6 p-3 lg:p-4 2xl:p-6 min-h-screen bg-gray-50/50">
+    <div className="flex flex-col gap-2 lg:gap-3 2xl:gap-4 pt-6 lg:pt-8 2xl:pt-10 pb-2 lg:pb-3 2xl:pb-4 h-full">
 
       {/* Top Main Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:gap-4 2xl:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-2 lg:gap-3 2xl:gap-4 flex-1">
 
-        {/* Left: 3 Boxes (3 cols out of 12 on lg, 2 on xl) */}
-        <div className="lg:col-span-3 xl:col-span-2">
+        {/* Left: 3 Boxes (3 cols out of 12 on md, 2 on xl) */}
+        <div className="md:col-span-3 xl:col-span-2 h-full">
           <LeftSidebar />
         </div>
 
-        {/* Middle: Main Content (5 cols out of 12 on lg, 7 on xl) */}
-        <div className="lg:col-span-5 xl:col-span-7">
+        {/* Middle: Main Content (5 cols out of 12 on md, 7 on xl) */}
+        <div className="md:col-span-5 xl:col-span-7 h-full">
           <MainOverview />
         </div>
 
-        {/* Right: Actions and Alerts (4 cols out of 12 on lg, 3 on xl) */}
-        <div className="lg:col-span-4 xl:col-span-3">
+        {/* Right: Actions and Alerts (4 cols out of 12 on md, 3 on xl) */}
+        <div className="md:col-span-4 xl:col-span-3 h-full">
           <RightSidebar />
         </div>
       </div>
 
       {/* Bottom Section: Appointments Timeline */}
-      <AppointmentsTimeline />
+      <div className="pt-2 border-t border-border/40 shrink-0">
+        <AppointmentsTimeline />
+      </div>
 
     </div>
   );

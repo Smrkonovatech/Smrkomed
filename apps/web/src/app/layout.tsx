@@ -28,6 +28,8 @@ export const metadata: Metadata = {
   },
 };
 
+import { DesktopScaler } from "@/components/ui/desktop-scaler";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
@@ -39,8 +41,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body className="min-h-screen font-sans antialiased">
-        <AuthSessionProvider>{children}</AuthSessionProvider>
+      <body className="h-[100dvh] w-[100vw] overflow-hidden font-sans antialiased bg-background text-foreground">
+        <DesktopScaler desktopWidth={1440} bgColor="transparent">
+          <AuthSessionProvider>{children}</AuthSessionProvider>
+        </DesktopScaler>
       </body>
     </html>
   );
