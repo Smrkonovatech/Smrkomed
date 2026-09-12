@@ -7,6 +7,8 @@ import { useAppState } from "@/lib/app-state";
 export function LeftSidebar() {
   const { appointments, kpis, exceptions } = useAppState();
 
+  console.log("check", appointments)
+
   const cards = [
     {
       title: "Today's",
