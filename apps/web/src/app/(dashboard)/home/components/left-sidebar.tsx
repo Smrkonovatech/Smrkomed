@@ -42,35 +42,28 @@ export function LeftSidebar() {
     <div className="flex flex-col gap-2.5 h-full">
       {cards.map((card, index) => (
         <div key={index} className="relative group flex-1">
-          {/* Card background with polygon clip-path to create the bottom-right cutout */}
+          {/* Card background */}
           <div
-            className={`rounded-3xl p-3 xl:p-4 transition-colors ${card.bgClass} h-full min-h-[120px] xl:min-h-[140px]`}
-          // style={{
-          //   width: "222px",
-          //   clipPath:
-          //     "polygon(0 0, 100% 0, 100% calc(100% - 56px), calc(100% - 56px) 100%, 0 100%)",
-          // }}
+            className={`rounded-3xl transition-colors ${card.bgClass} h-full p-[clamp(0.75rem,1.5vw,1.25rem)] min-h-[clamp(7rem,12vh,10rem)]`}
           >
             <div className="flex justify-between items-start">
-              <span className={`${card.textClass} font-medium text-sm leading-snug`}>
+              <span className={`${card.textClass} font-medium leading-snug text-[clamp(0.7rem,1.1vw,0.9rem)]`}>
                 {card.title}<br />{card.subtitle}
               </span>
-              <div className="w-5 h-5 relative opacity-70 mt-0.5">
+              <div className="relative opacity-70 mt-0.5 shrink-0 w-[clamp(1rem,1.5vw,1.4rem)] h-[clamp(1rem,1.5vw,1.4rem)]">
                 <Image src={card.icon} alt={card.title} fill className="object-contain" />
               </div>
             </div>
-            <div className={`text-[48px] xl:text-[56px] font-medium tracking-tight ${card.valueClass} mt-2 mb-1 leading-none`}>
+            <div className={`font-medium tracking-tight ${card.valueClass} leading-none text-[clamp(2rem,4vw,3.5rem)] mt-[clamp(0.5rem,1vh,1rem)]`}>
               {card.value}
             </div>
           </div>
 
-          {/* Floating Action Button positioned in the cutout space */}
+          {/* Floating Action Button */}
           <button
-            className={`absolute bottom-0 right-0 ${card.btnClass} text-white 
-    w-14 h-14 flex items-center justify-center rounded-full 
-    transition-transform group-hover:scale-105 shadow-sm`}
+            className={`absolute bottom-0 right-0 ${card.btnClass} text-white flex items-center justify-center rounded-full transition-transform group-hover:scale-105 shadow-sm w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)]`}
           >
-            <ArrowUpRight className="w-6 h-6" />
+            <ArrowUpRight className="w-[clamp(1rem,1.5vw,1.5rem)] h-[clamp(1rem,1.5vw,1.5rem)]" />
           </button>
         </div>
       ))}

@@ -3,30 +3,31 @@ import Image from "next/image";
 export function MainOverview() {
    return (
       <div className="flex flex-col h-full">
-         <div className="mb-2 lg:mb-3 2xl:mb-4">
-            <h1 className="text-2xl 2xl:text-3xl font-semibold text-gray-800 tracking-tight">Good Morning Dr. Shreya</h1>
-            <p className="text-gray-500 mt-1 text-sm 2xl:text-base">Here's what needs your attention today</p>
+         <div className="mb-[clamp(0.5rem,1.5vh,1rem)]">
+            <h1 className="text-[clamp(1.25rem,2.5vw,2rem)] font-semibold text-gray-800 tracking-tight">Good Morning Dr. Shreya</h1>
+            <p className="text-gray-500 mt-1 text-[clamp(0.75rem,1.2vw,1rem)]">Here's what needs your attention today</p>
          </div>
 
-         <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center min-h-[250px] xl:min-h-[320px] mt-4 lg:mt-0">
+         <div className="flex-1 relative flex flex-col lg:flex-row items-center justify-center min-h-[clamp(8rem,18vh,16rem)] mt-1 lg:mt-0">
             {/* Center Wrapper for Image, Text, and Orbits to ensure perfect alignment */}
-            <div className="relative w-[280px] h-[280px] lg:w-[320px] lg:h-[320px] xl:w-[360px] xl:h-[360px] 2xl:w-[400px] 2xl:h-[400px] flex items-center justify-center shrink-0">
+            <div className="relative w-[clamp(160px,18vw,200px)] h-[clamp(160px,18vw,200px)] flex items-center justify-center shrink-0 overflow-visible">
 
-               {/* Glowing Gradient Donut (Image) */}
-               <div className="absolute inset-0 z-0 pointer-events-none">
-                  <Image src="/images/dashboard/circle-glow.png" alt="Active Journeys" fill className="object-contain" priority />
+               {/* Glowing Gradient Donut (Image) - oversized so it bleeds out; centered via transform */}
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-0 pointer-events-none w-[clamp(260px,32vw,500px)] h-[clamp(260px,32vw,500px)]">
+                  <Image src="/images/dashboard/circle-glow.png"
+                     alt="Active Journeys" fill className="object-contain" priority />
                </div>
 
-               {/* Center Text */}
-               <div className="relative z-10 flex flex-col items-center justify-center -mt-2 xl:-mt-4 left-[20px] 2xl:left-[30px]">
+               {/* Center Text - perfectly centered, no offset */}
+               <div className="relative z-10 flex flex-col items-center justify-center left-[33px]">
                   <span className="font-medium text-[#7F73E6] leading-none tracking-tight text-[clamp(2.5rem,4vw,5.5rem)]">38</span>
-                  <span className="text-gray-500 mt-1 xl:mt-2 font-medium text-[clamp(0.625rem,1.5vw,1.1rem)]">Active Journeys</span>
-                  <button className="text-[clamp(9px,1vw,14px)] text-gray-400 underline mt-1 2xl:mt-2 hover:text-indigo-500">View all</button>
+                  <span className="text-gray-500 mt-1 font-medium text-[clamp(0.625rem,1.5vw,1.1rem)]">Active Journeys</span>
+                  <button className="text-[clamp(9px,1vw,14px)] text-gray-400 underline mt-1 hover:text-indigo-500">View all</button>
                </div>
 
-               {/* Orbiting Badges Container */}
-               <div className="absolute inset-0 z-30 pointer-events-none scale-[0.75] lg:scale-[0.85] xl:scale-[0.95] 2xl:scale-100 flex items-center justify-center">
-                  <div className="relative w-[440px] h-[440px]">
+               {/* Orbiting Badges Container - same center/size as the glow image */}
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none w-[clamp(260px,32vw,440px)] h-[clamp(260px,32vw,440px)] flex items-center justify-center">
+                  <div className="relative w-full h-full">
                      {/* V (Outer, Top-Left) */}
                      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_40s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-35s' }}>
                         <div className="animate-[spin_40s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-35s' }}>
@@ -54,7 +55,7 @@ export function MainOverview() {
                      </div>
 
                      {/* G (Inner, Top) */}
-                     <div className="absolute top-[140px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_80px] animate-[spin_25s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '0s' }}>
+                     <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_25s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '0s' }}>
                         <div className="animate-[spin_25s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '0s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">G</div>
 
@@ -67,7 +68,7 @@ export function MainOverview() {
                      </div>
 
                      {/* S (Inner, Right) */}
-                     <div className="absolute top-[120px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_100px] animate-[spin_20s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-5s' }}>
+                     <div className="absolute top-[90px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_130px] animate-[spin_20s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-5s' }}>
                         <div className="animate-[spin_20s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-5s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">S</div>
 
@@ -80,7 +81,7 @@ export function MainOverview() {
                      </div>
 
                      {/* P (Inner, Bottom) */}
-                     <div className="absolute top-[130px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_90px] animate-[spin_22s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-11s' }}>
+                     <div className="absolute top-[100px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_120px] animate-[spin_22s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-11s' }}>
                         <div className="animate-[spin_22s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-11s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#F39C12] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">P</div>
 
@@ -98,36 +99,36 @@ export function MainOverview() {
             {/* Right-side Vertical Stat Bubbles */}
             <div className="lg:absolute lg:right-4 lg:top-1/2 lg:-translate-y-1/2 flex flex-row flex-wrap lg:flex-nowrap lg:flex-col gap-2 z-10 origin-right justify-center mt-6 lg:mt-0 px-2 lg:px-0">
                {/* 31 On track */}
-               <div className="relative flex flex-col items-center justify-center w-[90px] h-[60px] lg:w-[100px] lg:h-[65px] xl:w-[120px] xl:h-[80px]">
+               <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[18px] lg:text-[20px] xl:text-[28px] text-[#C178F5] leading-none mb-0 xl:mb-1">31</span>
-                  <span className="text-[7.5px] lg:text-[8px] xl:text-[9px] text-gray-500">On track</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">31</span>
+                  <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">On track</span>
                </div>
 
                {/* 04 Due today */}
-               <div className="relative flex flex-col items-center justify-center w-[90px] h-[60px] lg:w-[100px] lg:h-[65px] xl:w-[120px] xl:h-[80px]">
+               <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[18px] lg:text-[20px] xl:text-[28px] text-[#7F73E6] leading-none mb-0 xl:mb-1">04</span>
-                  <span className="text-[7.5px] lg:text-[8px] xl:text-[9px] text-gray-500">Tasks Due Today</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">04</span>
+                  <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Tasks Due Today</span>
                </div>
 
                {/* 03 Exceptions */}
-               <div className="relative flex flex-col items-center justify-center w-[90px] h-[60px] lg:w-[100px] lg:h-[65px] xl:w-[120px] xl:h-[80px]">
+               <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[18px] lg:text-[20px] xl:text-[28px] text-[#7F73E6] leading-none mb-0 xl:mb-1">03</span>
-                  <span className="text-[7.5px] lg:text-[8px] xl:text-[9px] text-gray-500">Exceptions</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">03</span>
+                  <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Exceptions</span>
                </div>
 
                {/* 04 Awaiting Review */}
-               <div className="relative flex flex-col items-center justify-center w-[90px] h-[60px] lg:w-[100px] lg:h-[65px] xl:w-[120px] xl:h-[80px]">
+               <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
                   <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
-                  <span className="text-[18px] lg:text-[20px] xl:text-[28px] text-[#C178F5] leading-none mb-0 xl:mb-1">04</span>
-                  <span className="text-[7.5px] lg:text-[8px] xl:text-[9px] text-gray-500">Awaiting Review</span>
+                  <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">04</span>
+                  <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Awaiting Review</span>
                </div>
             </div>
 
             {/* Patient & Doctor Illustration */}
-            <div className="absolute bottom-0 left-[0px] w-[300px] h-[300px] z-20 pointer-events-none scale-[0.75] 2xl:scale-100 origin-bottom-left hidden xl:block">
+            <div className="absolute -bottom-[20%] -left-[5%] w-[clamp(160px,22vw,340px)] h-[clamp(160px,22vw,340px)] z-20 pointer-events-none origin-bottom-left hidden xl:block">
                <Image
                   src="/images/dashboard/patient.png"
                   alt="Patient and Doctor"
@@ -137,8 +138,8 @@ export function MainOverview() {
             </div>
          </div>
 
-         <div className="flex justify-end mt-4">
-            <button className="bg-[#866BE3] text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-[#7254d1] transition-colors shadow-md flex items-center gap-2">
+         <div className="flex justify-end mt-[clamp(0.5rem,1.5vh,1rem)]">
+            <button className="bg-[#866BE3] text-white px-[clamp(1rem,2vw,1.5rem)] py-[clamp(0.3rem,0.8vh,0.5rem)] rounded-full text-[clamp(0.7rem,1.1vw,0.9rem)] font-medium hover:bg-[#7254d1] transition-colors shadow-md flex items-center gap-2">
                <Image src="/images/dashboard/med-icon.svg" alt="Med Icon" width={16} height={16} />
                <span>Open care loop</span>
             </button>

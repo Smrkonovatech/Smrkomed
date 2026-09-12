@@ -5,13 +5,13 @@ import { AppointmentsTimeline } from "./components/appointments-timeline";
 
 export default function Dashboard() {
   return (
-    <div className="flex flex-col gap-2 lg:gap-3 2xl:gap-4 pt-6 lg:pt-8 2xl:pt-10 pb-2 lg:pb-3 2xl:pb-4 h-full">
+    <div className="flex flex-col gap-2 lg:gap-3 2xl:gap-4 h-full">
 
       {/* Top Main Section */}
       <div className="grid grid-cols-1 md:grid-cols-12 gap-2 lg:gap-3 2xl:gap-4 flex-1">
 
         {/* Left: 3 Boxes (3 cols out of 12 on md, 2 on xl) */}
-        <div className="md:col-span-3 xl:col-span-2 h-full">
+        <div className="md:col-span-3 xl:col-span-2 h-full lg:pr-10">
           <LeftSidebar />
         </div>
 
@@ -21,13 +21,13 @@ export default function Dashboard() {
         </div>
 
         {/* Right: Actions and Alerts (4 cols out of 12 on md, 3 on xl) */}
-        <div className="md:col-span-4 xl:col-span-3 h-full">
+        <div className="md:col-span-4 xl:col-span-3 h-full lg:pl-10">
           <RightSidebar />
         </div>
       </div>
 
       {/* Bottom Section: Appointments Timeline */}
-      <div className="pt-2 border-t border-border/40 shrink-0">
+      <div className="pt-2 shrink-0">
         <AppointmentsTimeline />
       </div>
 

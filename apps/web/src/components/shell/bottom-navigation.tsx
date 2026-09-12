@@ -217,7 +217,7 @@ export function BottomNavigation() {
           className="absolute left-4 z-10 flex items-center outline-none focus-visible:ring-2 focus-visible:ring-white/40 sm:left-5 lg:left-6"
           aria-label="SmrkoMed home"
         >
-          <img src="/images/bottom-logo.svg" alt="SmrkoMed Logo" className="h-8 w-auto object-contain" />
+          <img src="/images/bottom-logo.svg" alt="SmrkoMed Logo" className="h-6 w-auto object-contain" />
         </Link>
 
         <div className="mx-auto flex h-full items-center justify-center gap-0.5 sm:gap-1">

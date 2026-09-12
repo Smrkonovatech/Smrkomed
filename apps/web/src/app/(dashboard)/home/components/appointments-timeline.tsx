@@ -93,72 +93,79 @@ const TooltipCard = () => (
 
 export function AppointmentsTimeline() {
    return (
-      <div className="p-4">
+      <div className="px-4 pt-4 pb-0">
          <h3 className="text-[#866BE3] font-medium mb-6">Todays Appointments</h3>
 
          {/* Horizontal scroll wrapper for mobile, with top padding/margin to prevent tooltip clipping */}
-         <div className="overflow-x-auto pb-4 -mt-[350px] pt-[350px]">
+         <div className="overflow-x-auto pb-0 -mt-[350px] pt-[350px]">
             <div className="relative min-w-[800px] lg:min-w-full">
 
-            {/* Timeline intervals */}
-            <div className="flex justify-between relative z-0">
-               {['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'].map((time, i) => (
-                  <div key={i} className="flex flex-col items-center">
-                     <span className="text-[11px] text-gray-400 mb-8">{time}</span>
-                     <div className="w-px h-12 bg-gray-200"></div>
+               {/* Timeline intervals */}
+               <div className="flex justify-between relative z-0">
+                  {Array.from({ length: 21 }, (_, i) => {
+                     const totalMins = 9 * 60 + i * 30;
+                     const h = Math.floor(totalMins / 60);
+                     const m = totalMins % 60;
+                     const isHour = m === 0;
+                     const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+                     return (
+                        <div key={i} className="flex flex-col items-center">
+                           <span className={`mb-8 text-gray-400 ${isHour ? 'text-[11px]' : 'text-[11px]'}`}>{label}</span>
+                           <div className={`rounded-full bg-gray-300 ${isHour ? 'w-[2px] h-16' : 'w-[2px] h-16'}`}></div>
+                        </div>
+                     );
+                  })}
+               </div>
+
+
+               {/* Appointment Pills */}
+               <div className="absolute top-10 left-[10%] z-20 cursor-pointer">
+                  {/* Pill itself (No Tooltip) */}
+                  <div className="relative bg-[#F4ECFF] rounded-full px-5 py-2 flex items-center gap-3 shadow-sm border border-white min-w-[160px]">
+                     {/* Up Next Badge */}
+                     <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[#00A89D] text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                        Up - Next
+                     </div>
+                     <div className="flex flex-col">
+                        <span className="text-[13px] text-[#866BE3] font-semibold leading-tight">Geethu & Arjun</span>
+                        <span className="text-[10px] text-gray-500 leading-tight">Follow-up</span>
+                     </div>
+                     <div className="w-6 h-6 rounded-full bg-[#C178F5] text-white text-[11px] flex items-center justify-center font-bold ml-auto">G</div>
                   </div>
-               ))}
-            </div>
+               </div>
 
-
-            {/* Appointment Pills */}
-            <div className="absolute top-10 left-[10%] z-20 cursor-pointer">
-               {/* Pill itself (No Tooltip) */}
-               <div className="relative bg-[#F4ECFF] rounded-full px-5 py-2 flex items-center gap-3 shadow-sm border border-white min-w-[160px]">
-                  {/* Up Next Badge */}
-                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-[#00A89D] text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-                     Up - Next
+               <div className="absolute top-12 left-[28%] z-20 group cursor-pointer">
+                  <TooltipCard />
+                  <div className="bg-[#F8F5FF] rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white">
+                     <span className="text-[13px] text-[#866BE3] font-medium">Geethu</span>
+                     <div className="w-6 h-6 rounded-full bg-[#866BE3] text-white text-[11px] flex items-center justify-center font-bold">G</div>
                   </div>
-                  <div className="flex flex-col">
-                     <span className="text-[13px] text-[#866BE3] font-semibold leading-tight">Geethu & Arjun</span>
-                     <span className="text-[10px] text-gray-500 leading-tight">Follow-up</span>
+               </div>
+
+               <div className="absolute top-12 left-[45%] z-20 group cursor-pointer">
+                  <TooltipCard />
+                  <div className="bg-[#FBF5FF] rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white">
+                     <span className="text-[13px] text-[#C178F5] font-medium">Geethu</span>
+                     <div className="w-6 h-6 rounded-full bg-[#C178F5] text-white text-[11px] flex items-center justify-center font-bold">G</div>
                   </div>
-                  <div className="w-6 h-6 rounded-full bg-[#C178F5] text-white text-[11px] flex items-center justify-center font-bold ml-auto">G</div>
                </div>
-            </div>
 
-            <div className="absolute top-12 left-[28%] z-20 group cursor-pointer">
-               <TooltipCard />
-               <div className="bg-[#F8F5FF] rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white">
-                  <span className="text-[13px] text-[#866BE3] font-medium">Geethu</span>
-                  <div className="w-6 h-6 rounded-full bg-[#866BE3] text-white text-[11px] flex items-center justify-center font-bold">G</div>
+               <div className="absolute top-12 left-[58%] z-20 group cursor-pointer">
+                  <TooltipCard />
+                  <div className="bg-[#E8F8F9] rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white">
+                     <span className="text-[13px] text-[#00A89D] font-medium">Geethu</span>
+                     <div className="w-6 h-6 rounded-full bg-[#00A89D] text-white text-[11px] flex items-center justify-center font-bold">G</div>
+                  </div>
                </div>
-            </div>
 
-            <div className="absolute top-12 left-[45%] z-20 group cursor-pointer">
-               <TooltipCard />
-               <div className="bg-[#FBF5FF] rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white">
-                  <span className="text-[13px] text-[#C178F5] font-medium">Geethu</span>
-                  <div className="w-6 h-6 rounded-full bg-[#C178F5] text-white text-[11px] flex items-center justify-center font-bold">G</div>
+               <div className="absolute top-10 left-[72%] z-20 group cursor-pointer">
+                  <TooltipCard />
+                  <div className="bg-white rounded-full px-4 py-2 flex items-center gap-3 shadow-[0_2px_10px_rgb(0,0,0,0.04)] border border-gray-100">
+                     <span className="text-[13px] text-[#00A89D] font-medium">Geethu</span>
+                     <div className="w-6 h-6 rounded-full bg-[#00A89D] text-white text-[11px] flex items-center justify-center font-bold">G</div>
+                  </div>
                </div>
             </div>
-
-            <div className="absolute top-12 left-[58%] z-20 group cursor-pointer">
-               <TooltipCard />
-               <div className="bg-[#E8F8F9] rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white">
-                  <span className="text-[13px] text-[#00A89D] font-medium">Geethu</span>
-                  <div className="w-6 h-6 rounded-full bg-[#00A89D] text-white text-[11px] flex items-center justify-center font-bold">G</div>
-               </div>
-            </div>
-
-            <div className="absolute top-10 left-[72%] z-20 group cursor-pointer">
-               <TooltipCard />
-               <div className="bg-white rounded-full px-4 py-2 flex items-center gap-3 shadow-[0_2px_10px_rgb(0,0,0,0.04)] border border-gray-100">
-                  <span className="text-[13px] text-[#00A89D] font-medium">Geethu</span>
-                  <div className="w-6 h-6 rounded-full bg-[#00A89D] text-white text-[11px] flex items-center justify-center font-bold">G</div>
-               </div>
-            </div>
-         </div>
          </div>
       </div>
    );

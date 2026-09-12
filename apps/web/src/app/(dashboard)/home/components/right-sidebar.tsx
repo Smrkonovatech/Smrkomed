@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { Mic, Clock, Users, Leaf, Calendar, ArrowRight, User } from "lucide-react";
+import { Mic, Clock, ArrowRight } from "lucide-react";
 
 export function RightSidebar() {
   return (
@@ -14,22 +14,22 @@ export function RightSidebar() {
         ].map((alert, i) => (
           <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
             <div className="flex items-center gap-2">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[11px] font-medium ${alert.badgeColor}`}>
+              <span className={`w-[clamp(1.25rem,2vw,1.5rem)] h-[clamp(1.25rem,2vw,1.5rem)] rounded-full flex items-center justify-center text-white text-[clamp(0.6rem,0.9vw,0.75rem)] font-medium ${alert.badgeColor}`}>
                 {alert.count}
               </span>
-              <span className="text-[13px] text-[#866BE3]">{alert.label}</span>
+              <span className="text-[clamp(0.7rem,1.1vw,0.875rem)] text-[#866BE3]">{alert.label}</span>
             </div>
-            <button className="text-[11px] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</button>
+            <button className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</button>
           </div>
         ))}
       </div>
 
       {/* Voice Consultation Card */}
-      <div className="rounded-[24px] p-4 flex flex-col items-center justify-center gap-3 relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 isolate bg-white">
+      <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] flex flex-col items-center justify-center gap-3 relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 isolate bg-white">
 
         <div className="flex items-center justify-between w-full z-10">
-          <span className="text-[9px] font-bold tracking-[0.15em] text-[#A694E8] uppercase">Next Patient</span>
-          <div className="bg-[#F4F0FC] text-[#866BE3] px-2.5 py-1 rounded-full text-[9px] font-semibold flex items-center gap-1 shadow-sm">
+          <span className="text-[clamp(0.55rem,0.8vw,0.65rem)] font-bold tracking-[0.15em] text-[#A694E8] uppercase">Next Patient</span>
+          <div className="bg-[#F4F0FC] text-[#866BE3] px-2.5 py-1 rounded-full text-[clamp(0.55rem,0.8vw,0.65rem)] font-semibold flex items-center gap-1 shadow-sm">
             <Clock className="w-3 h-3" /> In 12 minutes
           </div>
         </div>
@@ -42,36 +42,36 @@ export function RightSidebar() {
 
             {/* Two Overlapping Avatars */}
             <div className="relative z-10 flex -space-x-3 items-center justify-center">
-              <div className="w-[48px] h-[48px] rounded-full border-2 border-white shadow-sm relative z-20 overflow-hidden bg-white">
+              <div className="w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)] rounded-full border-2 border-white shadow-sm relative z-20 overflow-hidden bg-white">
                 <Image src="/images/dashboard/patient.png" alt="Patient 1" fill className="object-cover" />
               </div>
-              <div className="w-[48px] h-[48px] rounded-full border-2 border-white shadow-sm relative z-10 overflow-hidden bg-white">
+              <div className="w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)] rounded-full border-2 border-white shadow-sm relative z-10 overflow-hidden bg-white">
                 <Image src="/images/dashboard/patient.png" alt="Patient 2" fill className="object-cover" />
               </div>
             </div>
           </div>
 
           <div className="text-center">
-            <h3 className="text-[16px] font-bold text-[#1f1830] leading-tight">Geethu & Arjun</h3>
-            <p className="text-[10px] text-gray-400 font-medium mt-0.5 tracking-wide">IVF Consultation • 11:00 AM - 11:30 AM</p>
+            <h3 className="text-[clamp(0.875rem,1.4vw,1.1rem)] font-bold text-[#1f1830] leading-tight">Geethu & Arjun</h3>
+            <p className="text-[clamp(0.6rem,0.9vw,0.7rem)] text-gray-400 font-medium mt-0.5 tracking-wide">IVF Consultation • 11:00 AM - 11:30 AM</p>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 w-full z-10">
           <button className="bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white rounded-full p-1 flex items-center justify-between flex-[65%] shadow-[0_12px_24px_rgb(134,107,227,0.35)] relative overflow-hidden group">
-            <div className="w-7 h-7 rounded-full border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
+            <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
               <Mic className="w-3.5 h-3.5 text-white" />
             </div>
-            <span className="font-medium text-[11px] whitespace-nowrap pl-1">Start Consultation</span>
-            <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/20 transition-colors">
+            <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Start Consultation</span>
+            <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/20 transition-colors">
               <ArrowRight className="w-3.5 h-3.5 text-white" />
             </div>
           </button>
 
           <button className="bg-gradient-to-r from-[#FBF9FF] to-[#F3EEFC] text-[#866BE3] rounded-full p-1 pl-2.5 flex items-center justify-between flex-[35%] shadow-[0_8px_16px_rgb(134,107,227,0.08)] border border-white relative overflow-hidden group hover:shadow-[0_8px_20px_rgb(134,107,227,0.12)] transition-shadow">
-            <span className="font-medium text-[11px] whitespace-nowrap mx-auto">View</span>
-            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0 group-hover:translate-x-1 transition-transform">
+            <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap mx-auto">View</span>
+            <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full flex items-center justify-center shrink-0 group-hover:translate-x-1 transition-transform">
               <ArrowRight className="w-3.5 h-3.5 text-[#866BE3]" />
             </div>
           </button>
@@ -80,15 +80,15 @@ export function RightSidebar() {
       </div>
 
       {/* AI Prep Card */}
-      <div className="rounded-[24px] p-4 text-white text-center flex flex-col items-center justify-center relative z-0 overflow-hidden shadow-sm flex-1 min-h-[140px] mt-auto">
+      <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] text-white text-center flex flex-col items-center justify-center relative z-0 overflow-hidden shadow-sm flex-1 min-h-[clamp(8rem,14vh,10rem)] mt-auto">
          <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill className="object-cover z-0" />
 
-        <p className="text-[13px] leading-[1.3] relative z-10">
+        <p className="text-[clamp(0.7rem,1.1vw,0.9rem)] leading-[1.3] relative z-10">
           <span className="font-semibold drop-shadow-sm">You have 8 patient visits today</span><br />
-          <span className="font-medium opacity-90 drop-shadow-sm text-[12px]">and 1 of them reported emergency</span>
+          <span className="font-medium opacity-90 drop-shadow-sm text-[clamp(0.65rem,1vw,0.8rem)]">and 1 of them reported emergency</span>
         </p>
 
-        <button className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[11px] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm">
+        <button className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[clamp(0.6rem,0.9vw,0.75rem)] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm">
           <Image src="/images/dashboard/bot.svg" alt="Bot Icon" width={14} height={14} />
           Prepare my day
         </button>
