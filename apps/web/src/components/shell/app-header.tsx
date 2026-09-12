@@ -137,66 +137,69 @@ export function AppHeader() {
           <img src="/images/logo.png" alt="SmrkoMed Logo" className="h-8 w-auto object-contain" />
         </Link>
 
-        <div className="mx-auto hidden min-w-0 max-w-xl flex-1 md:block lg:max-w-2xl">
-          <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-            <PopoverAnchor asChild>
-              <div className="relative">
-                <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-gray-400" />
-                <Input
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value);
-                    setSearchOpen(true);
-                  }}
-                  onFocus={() => setSearchOpen(true)}
-                  placeholder="Search patients, appointments, reports..."
-                  className="h-10 w-full max-w-[280px] xl:max-w-[320px] rounded-full border-gray-100 bg-gray-50/80 pl-10 pr-4 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
-                  aria-label="Global search"
-                />
-              </div>
-            </PopoverAnchor>
-            <PopoverContent
-              align="start"
-              className="w-[min(36rem,calc(100vw-2rem))] rounded-2xl p-1.5 shadow-lg"
-              onOpenAutoFocus={(e) => e.preventDefault()}
-            >
-              <p className="px-2.5 py-1.5 text-[10px] font-bold tracking-[0.12em] text-muted-foreground uppercase">
-                Search results
-              </p>
-              <ul className="max-h-72 overflow-y-auto">
-                {results.map((result) => (
-                  <li key={result.id}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-primary-soft/60"
-                      onClick={() => {
-                        setSearchOpen(false);
-                        setQuery("");
-                        router.push(result.href);
-                      }}
-                    >
-                      <span className="w-16 shrink-0 text-[10px] font-bold text-primary uppercase">
-                        {result.type}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate text-sm font-medium">{result.name}</span>
-                      <span className="truncate text-[11px] text-muted-foreground capitalize">{result.status}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </PopoverContent>
-          </Popover>
-        </div>
+        <div className="mx-auto flex-1"></div>
 
         <div className="ml-auto flex items-center gap-3 sm:gap-4">
           
+          {/* Search */}
+          <div className="hidden min-w-0 md:block">
+            <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+              <PopoverAnchor asChild>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-gray-400" />
+                  <Input
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setSearchOpen(true);
+                    }}
+                    onFocus={() => setSearchOpen(true)}
+                    placeholder="Search patients, appointments, reports..."
+                    className="h-9 w-full min-w-[280px] xl:min-w-[320px] rounded-full border-gray-100 bg-gray-50/80 pl-10 pr-4 text-[13px] shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
+                    aria-label="Global search"
+                  />
+                </div>
+              </PopoverAnchor>
+              <PopoverContent
+                align="start"
+                className="w-[min(36rem,calc(100vw-2rem))] rounded-2xl p-1.5 shadow-lg"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <p className="px-2.5 py-1.5 text-[10px] font-bold tracking-[0.12em] text-muted-foreground uppercase">
+                  Search results
+                </p>
+                <ul className="max-h-72 overflow-y-auto">
+                  {results.map((result) => (
+                    <li key={result.id}>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left hover:bg-primary-soft/60"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setQuery("");
+                          router.push(result.href);
+                        }}
+                      >
+                        <span className="w-16 shrink-0 text-[10px] font-bold text-primary uppercase">
+                          {result.type}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">{result.name}</span>
+                        <span className="truncate text-[11px] text-muted-foreground capitalize">{result.status}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </PopoverContent>
+            </Popover>
+          </div>
+
           {/* 1. Clinic Selector */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="h-9 max-w-[min(40vw,14rem)] rounded-full text-primary hover:bg-primary-soft/40 hover:text-primary px-3"
+                className="h-9 max-w-[min(40vw,14rem)] rounded-full border border-gray-200 bg-white text-primary hover:bg-primary-soft/40 hover:text-primary px-3"
                 aria-label="Clinic selector"
               >
                 <Building2 className="size-4 shrink-0" />
