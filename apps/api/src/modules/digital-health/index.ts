@@ -26,6 +26,7 @@ import {
   shareExchangeSchema,
 } from "./schemas";
 import { abdmV3Routes } from "./v3-routes";
+import { hprRoutes } from "./hpr-routes";
 
 async function recordAbdmTransaction(
   tenant: TenantContext,
@@ -426,6 +427,7 @@ async function buildTimeline(tenant: TenantContext, patientId: string) {
 
 export const digitalHealthRoutes = new Hono<AppEnv>()
   .route("/v3", abdmV3Routes)
+  .route("/hpr", hprRoutes)
   // ─── Clinic ABDM settings / dashboard ──────────────────────────────────────
   .get("/abdm/status", async (c) => {
     requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
@@ -1759,3 +1761,7 @@ export const digitalHealthRoutes = new Hono<AppEnv>()
       });
     },
   );
+
+export { abdmHprService, AbdmHprService } from "./abdm-hpr-service";
+export * from "./abdm-hpr-types";
+
