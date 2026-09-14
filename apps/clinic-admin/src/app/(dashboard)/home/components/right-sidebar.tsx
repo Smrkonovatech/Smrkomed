@@ -1,154 +1,115 @@
 "use client";
 
-import Image from "next/image";
-import { Mic, Clock, ArrowRight, Square } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useAppState } from "@/lib/app-state";
-import { coupleLabel, findCouple, type Couple } from "@/lib/demo-data";
-import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
+import { Zap, Check, AlertTriangle, PlusCircle, HeartPulse, Sparkles } from "lucide-react";
 
 export function RightSidebar() {
-  const appState = useAppState() as ReturnType<typeof useAppState> & { couples?: Couple[] };
-  const { exceptions, appointments } = appState;
-  const couples = appState.couples ?? [];
-  const { ask } = useSmrkoAiBuddy();
-
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordTime, setRecordTime] = useState(0);
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isRecording) {
-      interval = setInterval(() => {
-        setRecordTime((prev) => prev + 1);
-      }, 1000);
-    } else {
-      setRecordTime(0);
-    }
-    return () => clearInterval(interval);
-  }, [isRecording]);
-
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
-
-  const clinicalEscalations = exceptions.filter(e => e.kind === 'clinical_review' || e.kind === 'ai_escalation').length;
-  const reportsReview = exceptions.filter(e => e.kind === 'missing_report').length;
-  const careLoopExceptions = exceptions.filter(e => e.kind === 'appointment_issue' || e.kind === 'no_response').length;
-
-  const nextAppointment = appointments[0];
-  const nextCouple = nextAppointment ? findCouple(nextAppointment.coupleId, couples) : null;
-  const patientName = nextCouple ? coupleLabel(nextCouple) : "No Upcoming Patients";
-  const appointmentDetails = nextAppointment ? `${nextAppointment.type} • ${nextAppointment.time}` : "—";
-  const todayVisits = appointments.length;
+  const alerts = [
+    {
+      id: 1,
+      title: "Pre-auth approval received",
+      subtitle: (
+        <>
+          <span className="text-gray-400">Patient:</span> <span className="text-gray-600">Ananya Sharma</span>
+        </>
+      ),
+      time: "5 min ago",
+      icon: <Check className="w-4 h-4 text-emerald-500 stroke-[3]" />,
+      iconBg: "bg-emerald-50",
+    },
+    {
+      id: 2,
+      title: "Critical report requires review",
+      subtitle: (
+        <>
+          <span className="text-gray-400">Patient:</span> <span className="text-gray-600">Meera Iyer</span>
+        </>
+      ),
+      time: "12 min ago",
+      icon: <AlertTriangle className="w-4 h-4 text-rose-500 stroke-[2.5]" />,
+      iconBg: "bg-rose-50",
+    },
+    {
+      id: 3,
+      title: "Pharmacy stock low",
+      subtitle: <span className="text-blue-500 font-medium">Gonal-f 450 IU</span>,
+      time: "18 min ago",
+      icon: <PlusCircle className="w-4 h-4 text-blue-500 stroke-[2.5]" />,
+      iconBg: "bg-blue-100",
+    },
+    {
+      id: 4,
+      title: "Careloop Escalation",
+      subtitle: (
+        <>
+          <span className="text-gray-400">Patient:</span> <span className="text-orange-600 font-medium">Rahul & Priya</span>
+        </>
+      ),
+      time: "18 min ago",
+      icon: <HeartPulse className="w-4 h-4 text-orange-600 stroke-[2.5]" />,
+      iconBg: "bg-orange-50",
+    },
+  ];
 
   return (
-    <div className="flex flex-col gap-2.5 h-full">
-      {/* Alerts List */}
-      <div className="flex flex-col gap-1.5">
-        {[
-          { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]' },
-          { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]' },
-          { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]' },
-          { label: 'Patient Questions', count: 2, badgeColor: 'bg-[#71A021]' }
-        ].map((alert, i) => (
-          <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
-            <div className="flex items-center gap-2">
-              <span className={`w-[clamp(1.25rem,2vw,1.5rem)] h-[clamp(1.25rem,2vw,1.5rem)] rounded-full flex items-center justify-center text-white text-[clamp(0.6rem,0.9vw,0.75rem)] font-medium ${alert.badgeColor}`}>
-                {alert.count}
-              </span>
-              <span className="text-[clamp(0.7rem,1.1vw,0.875rem)] text-[#866BE3]">{alert.label}</span>
+    <div className="flex flex-col gap-4 h-full">
+      {/* Live Alerts & Actions Card */}
+      <div className="bg-white rounded-[24px] p-6 shadow-sm border border-gray-100 flex-1 flex flex-col">
+        <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#F0FDF4] flex items-center justify-center">
+              <Zap className="w-5 h-5 text-emerald-500 stroke-[2.5]" />
             </div>
-            <button className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</button>
+            <h2 className="text-[#1a1c29] font-bold text-[17px]">Live Alerts & Actions</h2>
           </div>
-        ))}
+          <button className="text-[#866BE3] font-semibold text-[13px] hover:underline">View all</button>
+        </div>
+
+        <div className="flex flex-col flex-1">
+          {alerts.map((alert, idx) => (
+            <div key={alert.id} className={`flex items-start gap-4 py-4 ${idx !== alerts.length - 1 ? 'border-b border-gray-50' : ''}`}>
+              <div className={`w-10 h-10 rounded-full ${alert.iconBg} flex items-center justify-center shrink-0 mt-0.5`}>
+                {alert.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-[#1a1c29] font-bold text-[15px] truncate">{alert.title}</h3>
+                <p className="text-[13px] mt-0.5 truncate">{alert.subtitle}</p>
+              </div>
+              <span className="text-[#A0ABC0] text-[12px] font-medium whitespace-nowrap pt-1">{alert.time}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Voice Consultation Card */}
-      <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] flex flex-col items-center justify-center gap-3 relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 isolate bg-white">
-
-        <div className="flex items-center justify-between w-full z-10">
-          <span className="text-[clamp(0.55rem,0.8vw,0.65rem)] font-bold tracking-[0.15em] text-[#A694E8] uppercase">Next Patient</span>
-          <div className="bg-[#F4F0FC] text-[#866BE3] px-2.5 py-1 rounded-full text-[clamp(0.55rem,0.8vw,0.65rem)] font-semibold flex items-center gap-1 shadow-sm">
-            <Clock className="w-3 h-3" /> In 12 minutes
-          </div>
-        </div>
-
-        {/* Avatar & Info */}
-        <div className="flex flex-col items-center gap-1.5 mt-0.5 z-10">
-          <div className="relative">
-            {/* Large purple glow behind avatar */}
-            <div className="absolute inset-0 bg-[#C178F5] opacity-25 blur-lg rounded-full scale-125"></div>
-
-            {/* Two Overlapping Avatars */}
-            <div className="relative z-10 flex -space-x-3 items-center justify-center">
-              <div className="w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)] rounded-full border-2 border-white shadow-sm relative z-20 overflow-hidden bg-white">
-                <Image src="/images/dashboard/patient.png" alt="Patient 1" fill className="object-cover" />
-              </div>
-              <div className="w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)] rounded-full border-2 border-white shadow-sm relative z-10 overflow-hidden bg-white">
-                <Image src="/images/dashboard/patient.png" alt="Patient 2" fill className="object-cover" />
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center">
-            <h3 className="text-[clamp(0.875rem,1.4vw,1.1rem)] font-bold text-[#1f1830] leading-tight">{patientName}</h3>
-            <p className="text-[clamp(0.6rem,0.9vw,0.7rem)] text-gray-400 font-medium mt-0.5 tracking-wide">{appointmentDetails}</p>
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 w-full z-10">
-          {!isRecording ? (
-            <button onClick={() => setIsRecording(true)} className="bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white rounded-full p-1 flex items-center justify-between flex-[65%] shadow-[0_12px_24px_rgb(134,107,227,0.35)] relative overflow-hidden group">
-              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
-                <Mic className="w-3.5 h-3.5 text-white" />
-              </div>
-              <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Start Consultation</span>
-              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-white/10 flex items-center justify-center shrink-0 group-hover:bg-white/20 transition-colors">
-                <ArrowRight className="w-3.5 h-3.5 text-white" />
-              </div>
-            </button>
-          ) : (
-            <button onClick={() => setIsRecording(false)} className="bg-red-50 border border-red-200 text-red-600 rounded-full p-1 flex items-center justify-between flex-[65%] shadow-sm relative overflow-hidden group">
-              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></div>
-              </div>
-              <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Recording {formatTime(recordTime)}</span>
-              <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-red-100 flex items-center justify-center shrink-0 group-hover:bg-red-200 transition-colors">
-                <Square className="w-3.5 h-3.5 text-red-500" fill="currentColor" />
-              </div>
-            </button>
-          )}
-
-          <button className="bg-gradient-to-r from-[#FBF9FF] to-[#F3EEFC] text-[#866BE3] rounded-full p-1 pl-2.5 flex items-center justify-between flex-[35%] shadow-[0_8px_16px_rgb(134,107,227,0.08)] border border-white relative overflow-hidden group hover:shadow-[0_8px_20px_rgb(134,107,227,0.12)] transition-shadow">
-            <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap mx-auto">View</span>
-            <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full flex items-center justify-center shrink-0 group-hover:translate-x-1 transition-transform">
-              <ArrowRight className="w-3.5 h-3.5 text-[#866BE3]" />
-            </div>
+      {/* Smork AI Assistant Card */}
+      <div className="bg-gradient-to-br from-[#866BE3] to-[#515CD3] rounded-[24px] p-7 text-white relative overflow-hidden flex flex-col justify-between shrink-0 min-h-[260px]">
+        <div className="relative z-10 w-[65%]">
+          <h2 className="text-[22px] font-semibold mb-3 tracking-wide">Smork AI Assistant</h2>
+          <p className="text-white/90 text-[14px] leading-relaxed mb-6 font-medium">
+            Get instant insights, drafts and recommendations across patient care and operations.
+          </p>
+          <button className="bg-white text-[#866BE3] px-6 py-2.5 rounded-full font-bold text-[14px] flex items-center gap-2 hover:bg-gray-50 transition-colors shadow-sm w-fit group">
+            Prepare my day 
+            <Sparkles className="w-4 h-4 text-[#866BE3] group-hover:scale-110 transition-transform" />
           </button>
         </div>
 
-      </div>
-
-      {/* AI Prep Card */}
-      <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] text-white text-center flex flex-col items-center justify-center relative z-0 overflow-hidden shadow-sm flex-1 min-h-[clamp(8rem,14vh,10rem)] mt-auto">
-        <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill className="object-cover z-0" />
-
-        <p className="text-[clamp(0.7rem,1.1vw,0.9rem)] leading-[1.3] relative z-10">
-          <span className="font-semibold drop-shadow-sm">You have {todayVisits} patient visits today</span><br />
-          <span className="font-medium opacity-90 drop-shadow-sm text-[clamp(0.65rem,1vw,0.8rem)]">and {clinicalEscalations} of them reported emergency</span>
-        </p>
-
-        <button
-          onClick={() => ask("Prepare my day: summarize overdue Care Loop tasks, appointments needing confirmation, and patients needing attention.")}
-          className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[clamp(0.6rem,0.9vw,0.75rem)] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm"
-        >
-          <Image src="/images/dashboard/bot.svg" alt="Bot Icon" width={14} height={14} />
-          Prepare my day
-        </button>
+        {/* CSS Robot Illustration */}
+        <div className="absolute -bottom-2 -right-2 w-[150px] h-[150px] pointer-events-none flex flex-col items-center justify-end">
+            <div className="w-[90px] h-[80px] bg-gradient-to-b from-[#344054] to-[#1D2939] rounded-[2rem] border-4 border-[#E2E8F0] shadow-lg relative z-20 flex flex-col items-center justify-center">
+                <div className="flex gap-4 mb-2">
+                    <div className="w-4 h-2 bg-[#22D3EE] rounded-full shadow-[0_0_8px_#22D3EE]"></div>
+                    <div className="w-4 h-2 bg-[#22D3EE] rounded-full shadow-[0_0_8px_#22D3EE]"></div>
+                </div>
+                <div className="w-3 h-1.5 bg-[#22D3EE] rounded-full opacity-80 mt-1"></div>
+            </div>
+            {/* Robot Body */}
+            <div className="w-[120px] h-[60px] bg-gradient-to-b from-[#F1F5F9] to-[#CBD5E1] rounded-t-[3rem] -mt-4 z-10 border-t-2 border-white/50 relative overflow-hidden">
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 w-16 h-8 bg-white/40 rounded-full blur-md"></div>
+            </div>
+            {/* Ears */}
+            <div className="absolute top-[40px] left-[15px] w-6 h-8 bg-[#94A3B8] rounded-l-full z-10"></div>
+            <div className="absolute top-[40px] right-[15px] w-6 h-8 bg-[#94A3B8] rounded-r-full z-10"></div>
+        </div>
       </div>
     </div>
   );

@@ -43,6 +43,17 @@ export function LeftSidebar() {
       valueClass: "text-blue-500",
       btnClass: "bg-blue-500 hover:bg-blue-600",
     },
+    {
+      title: "Needs",
+      subtitle: "Attention",
+      icon: "/images/dashboard/info.svg",
+      value: String(exceptions.length).padStart(2, '0'),
+      color: "blue",
+      bgClass: "bg-blue-100/50 hover:bg-blue-100",
+      textClass: "text-blue-800",
+      valueClass: "text-blue-500",
+      btnClass: "bg-blue-500 hover:bg-blue-600",
+    },
   ];
 
   return (
