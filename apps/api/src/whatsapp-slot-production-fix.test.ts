@@ -40,6 +40,18 @@ let testCoupleId: string;
 let testConvId: string;
 let tenant: TenantContext;
 
+const nowUtc = new Date();
+const utcDay = nowUtc.getUTCDay();
+const daysToNextMonday = ((1 - utcDay + 7) % 7 || 7) + 7;
+const mondayUtc = new Date(nowUtc.getTime() + daysToNextMonday * 86_400_000);
+const targetMondayStr = mondayUtc.toISOString().slice(0, 10);
+
+const tuesdayUtc = new Date(mondayUtc.getTime() + 86_400_000);
+const targetTuesdayStr = tuesdayUtc.toISOString().slice(0, 10);
+
+const sundayUtc = new Date(mondayUtc.getTime() + 6 * 86_400_000);
+const targetSundayStr = sundayUtc.toISOString().slice(0, 10);
+
 test.before(async () => {
   const org = await prisma.organization.create({
     data: { name: `${PREFIX}-org` },
@@ -96,6 +108,24 @@ test.before(async () => {
   const { ensureDirectWhatsAppConnection } = await import("./integrations/providers/whatsapp/service");
   await ensureDirectWhatsAppConnection(tenant);
 
+  const integration = await prisma.integration.create({
+    data: {
+      clinicId: clinic.id,
+      organizationId: org.id,
+      provider: "WHATSAPP_CLOUD",
+      status: "ACTIVE",
+    },
+  });
+  await prisma.whatsAppAccount.create({
+    data: {
+      clinicId: clinic.id,
+      integrationId: integration.id,
+      phoneNumberId: "1234567890",
+      displayPhoneNumber: "+919876543210",
+      isActive: true,
+    },
+  });
+
   const conv = await prisma.conversation.create({
     data: {
       clinicId: clinic.id,
@@ -131,27 +161,27 @@ test("Test A — Date selection: doctor selected -> date selected -> selectedDat
     conversationId: testConvId,
     messageId: `msg_${Date.now()}`,
     messageType: "interactive",
-    messageText: "appt_date_2026-09-07",
+    messageText: `appt_date_${targetMondayStr}`,
     timestampIso: new Date().toISOString(),
   });
 
-  assert.equal(vars["selectedDate"], "2026-09-07");
-  assert.equal(vars["selected_date"], "2026-09-07");
-  assert.equal(vars["appointment.date"], "2026-09-07");
+  assert.equal(vars["selectedDate"], targetMondayStr);
+  assert.equal(vars["selected_date"], targetMondayStr);
+  assert.equal(vars["appointment.date"], targetMondayStr);
 });
 
-// Test B — Slot lookup: 2026-09-07 -> 12 actual slots returned (Fix for days: 1 bug)
-test("Test B — Slot lookup: 2026-09-07 -> 12 actual slots returned", async () => {
+// Test B — Slot lookup: dynamic Monday -> 12 actual slots returned (Fix for days: 1 bug)
+test("Test B — Slot lookup: dynamic Monday -> 12 actual slots returned", async () => {
   const res = await getAvailableAppointmentSlots({
     clinicId: testClinicId,
     doctorName: "Dr. Ananya Rao",
-    preferredDate: "2026-09-07",
+    preferredDate: targetMondayStr,
     days: 1,
   });
 
-  assert.equal(res.available, true, "Availability should be true for 2026-09-07");
+  assert.equal(res.available, true, `Availability should be true for ${targetMondayStr}`);
   assert.equal(res.slots.length, 12, "Should return exactly 12 available slots for the day");
-  assert.ok(res.slots[0]?.startTime.includes("2026-09-07"), "Slots must belong to preferredDate 2026-09-07");
+  assert.ok(res.slots[0]?.startTime.includes(targetMondayStr), `Slots must belong to preferredDate ${targetMondayStr}`);
 });
 
 // Test C — Slot display: 12 slots -> WhatsApp interactive message segmentation
@@ -159,7 +189,7 @@ test("Test C — Slot display: 12 slots segmented into morning and afternoon wit
   const res = await getAvailableAppointmentSlots({
     clinicId: testClinicId,
     doctorName: "Dr. Ananya Rao",
-    preferredDate: "2026-09-07",
+    preferredDate: targetMondayStr,
     days: 1,
   });
 
@@ -175,7 +205,7 @@ test("Test C — Slot display: 12 slots segmented into morning and afternoon wit
 
 // Test D — Slot selection: slot selected -> decode slot start -> persist selectedSlotId & time
 test("Test D — Slot selection: slot selected -> decode slot start -> persist selectedSlotId & time", async () => {
-  const targetDate = new Date("2026-09-07T10:30:00.000Z");
+  const targetDate = new Date(`${targetMondayStr}T10:30:00.000Z`);
   const slotId = encodeSlotId({
     startMs: targetDate.getTime(),
     durationMin: 30,
@@ -199,7 +229,7 @@ test("Test D — Slot selection: slot selected -> decode slot start -> persist s
 
 // Test E — Booking: doctor + date + slot + confirmation -> appointment created in database
 test("Test E — Booking: doctor + date + slot + confirmation -> appointment created", async () => {
-  const targetDate = new Date("2026-09-07T11:00:00.000Z");
+  const targetDate = new Date(`${targetMondayStr}T11:00:00.000Z`);
   const slotId = encodeSlotId({
     startMs: targetDate.getTime(),
     durationMin: 30,
@@ -229,7 +259,7 @@ test("Test E — Booking: doctor + date + slot + confirmation -> appointment cre
 
 // Test F — Care Loop: appointment created -> CareTask created
 test("Test F — Care Loop: appointment created -> CareTask created", async () => {
-  const targetDate = new Date("2026-09-07T11:30:00.000Z");
+  const targetDate = new Date(`${targetMondayStr}T11:30:00.000Z`);
   const slotId = encodeSlotId({
     startMs: targetDate.getTime(),
     durationMin: 30,
@@ -264,7 +294,7 @@ test("Test G — No availability: zero slots returns clean reason without failur
   // Sunday is closed in DEFAULT_HOURS
   const res = await getAvailableAppointmentSlots({
     clinicId: testClinicId,
-    preferredDate: "2026-09-13", // Sunday
+    preferredDate: targetSundayStr, // Sunday
     days: 1,
   });
 
@@ -348,13 +378,13 @@ test("Test I — Webhook continuation: interactive reply ID resumes waiting exec
     },
   });
 
-  // Simulate patient tapping "Mon, 7 Sep" (appt_date_2026-09-07)
+  // Simulate patient tapping Monday date
   const vars = buildIncomingWhatsAppVars({
     clinicId: testClinicId,
     conversationId: testConvId,
     messageId: `msg_resume_${Date.now()}`,
     messageType: "interactive",
-    messageText: "appt_date_2026-09-07",
+    messageText: `appt_date_${targetMondayStr}`,
     timestampIso: new Date().toISOString(),
   });
 
@@ -371,7 +401,7 @@ test("Test I — Webhook continuation: interactive reply ID resumes waiting exec
   });
   assert.ok(updatedExec);
   const updatedCtx = parseExecutionContext(updatedExec!.context);
-  assert.equal(updatedCtx.vars?.["selectedDate"], "2026-09-07", "selectedDate must be persisted in execution state");
+  assert.equal(updatedCtx.vars?.["selectedDate"], targetMondayStr, "selectedDate must be persisted in execution state");
   assert.equal(updatedCtx.vars?.["doctor.name"], "Dr. Ananya Rao", "doctor.name must be preserved");
   assert.equal(updatedCtx.vars?.["availableSlotsCount"], "12", "Must calculate 12 available slots on resumed execution");
 });
@@ -615,7 +645,7 @@ test("Test M — Confirm Booking: patient without couple auto-creates couple and
     },
   });
 
-  const targetDate = new Date("2026-09-08T05:00:00.000Z");
+  const targetDate = new Date(`${targetTuesdayStr}T10:00:00.000Z`);
   const slotId = encodeSlotId({
     startMs: targetDate.getTime(),
     durationMin: 30,
@@ -657,7 +687,7 @@ test("Test M — Confirm Booking: patient without couple auto-creates couple and
 test("Test N — Existing Patient Second Appointment: reuses same patient, does not duplicate", async () => {
   const initialPatientCount = await prisma.patient.count({ where: { clinicId: testClinicId } });
 
-  const targetDate = new Date("2026-09-08T06:00:00.000Z");
+  const targetDate = new Date(`${targetTuesdayStr}T11:00:00.000Z`);
   const slotId = encodeSlotId({
     startMs: targetDate.getTime(),
     durationMin: 30,

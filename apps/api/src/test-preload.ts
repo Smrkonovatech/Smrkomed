@@ -4,5 +4,7 @@ process.env["INTEGRATION_ENCRYPTION_KEY"] ??= "ab".repeat(32);
 process.env["MOCK_INTEGRATIONS_ENABLED"] = "1";
 process.env["PAYMENTS_MOCK"] = "1";
 process.env["ABDM_DEMO_MODE"] ??= "0";
+process.env["WHATSAPP_ACCESS_TOKEN"] = "mock_token";
+process.env["WHATSAPP_PHONE_NUMBER_ID"] = "mock_phone";
 
 

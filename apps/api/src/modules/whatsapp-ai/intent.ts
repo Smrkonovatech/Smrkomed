@@ -97,7 +97,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   {
     // Transactional: Appointment booking
     intent: "APPOINTMENT_BOOKING",
-    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(to\s+book|an?\s+(appointment|doctor))|need\s+(to\s+book|an?\s+(appointment|doctor))|need\s+a\s+appointment|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?))\b/i,
+    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(to\s+book|an?\s+(appointment|doctor))|need\s+(to\s+book|an?\s+(appointment|doctor))|need\s+a\s+appointment|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?)|(available|show|list)\s+doctors?)\b/i,
     tools: ["getAvailableAppointmentSlots", "getAppointments"],
     confidence: "high",
   },

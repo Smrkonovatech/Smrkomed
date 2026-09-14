@@ -250,7 +250,7 @@ function scheduleSarvamPostCallSync(params: {
 }) {
   const delays = [45_000, 75_000, 110_000, 150_000];
   for (const delay of delays) {
-    setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const { prisma } = await import("@smrkomed/database");
         const now = new Date();
@@ -365,6 +365,7 @@ function scheduleSarvamPostCallSync(params: {
         console.error("[Sarvam Post-Call Sync Error]", e);
       }
     }, delay);
+    timer.unref?.();
   }
 }
 

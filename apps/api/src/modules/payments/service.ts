@@ -154,6 +154,22 @@ export async function applySuccessfulPayment(tx: Tx, payment: BillingPayment) {
     },
   });
   await syncPharmacySalePaymentStatus(tx, updatedInvoice.pharmacySaleId ?? payment.pharmacySaleId, updatedInvoice);
+
+  if (status === "PAID" && updatedInvoice.coupleId) {
+    await tx.careTask.updateMany({
+      where: {
+        clinicId: updatedInvoice.clinicId,
+        coupleId: updatedInvoice.coupleId,
+        category: "PAYMENT",
+        status: { notIn: ["COMPLETED", "CANCELLED"] },
+      },
+      data: {
+        status: "COMPLETED",
+        lastAction: "PAYMENT_RECEIVED",
+      },
+    });
+  }
+
   return { payment: updatedPayment, invoice: updatedInvoice };
 }
 

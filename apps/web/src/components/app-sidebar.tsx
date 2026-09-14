@@ -66,6 +66,7 @@ const baseGroups: NavGroup[] = [
       { to: "/tasks", label: "Tasks", icon: ListChecks },
       { to: "/documents", label: "Documents", icon: FolderOpen },
       { to: "/billing", label: "Billing", icon: Wallet },
+      { to: "/discharge", label: "Discharge", icon: ClipboardList },
     ],
   },
   {

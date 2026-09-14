@@ -704,7 +704,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         tx,
       });
       return { batch: updated, movement };
-    });
+    }, { maxWait: 10000, timeout: 25000 });
 
     await audit(tenant, "pharmacy.inventory.create", "PharmacyBatch", result.batch.id);
     const settings = await getPharmacySettings(tenant.clinicId);
@@ -872,7 +872,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
           items: { include: { product: true, batch: true } },
         },
       });
-    });
+    }, { maxWait: 10000, timeout: 25000 });
 
     await audit(tenant, "pharmacy.purchase_order.create", "PharmacyPurchaseOrder", order.id);
     return ok(c, serializePurchaseOrder(order), 201);
@@ -978,7 +978,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         data: { status: nextStatus },
         include: { supplier: true, items: { include: { product: true, batch: true } } },
       });
-    });
+    }, { maxWait: 10000, timeout: 25000 });
 
     await audit(tenant, "pharmacy.purchase_order.receive", "PharmacyPurchaseOrder", order.id);
     return ok(c, serializePurchaseOrder(order));
@@ -1116,7 +1116,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
       }
 
       return created;
-    });
+    }, { maxWait: 10000, timeout: 25000 });
 
     await audit(tenant, "pharmacy.sale.create", "PharmacySale", sale.id);
     return ok(c, serializeSale(sale), 201);
@@ -1156,6 +1156,53 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     const tenant = requirePharmacyView(c);
     const { id } = c.req.valid("param");
     return ok(c, serializePrescription(await loadPrescription(tenant, id)));
+  })
+  .get("/prescriptions/:id/availability", validate("param", idParam), async (c) => {
+    const tenant = requirePharmacyView(c);
+    const { id } = c.req.valid("param");
+    const rx = await loadPrescription(tenant, id);
+
+    const now = new Date();
+    const itemsAvailability = await Promise.all(
+      rx.items.map(async (item) => {
+        const remainingToDispense = Math.max(0, item.quantityPrescribed - item.quantityDispensed);
+        const batches = await prisma.pharmacyBatch.findMany({
+          where: {
+            clinicId: tenant.clinicId,
+            productId: item.productId,
+            availableQuantity: { gt: 0 },
+            expiryDate: { gt: now },
+          },
+          orderBy: { expiryDate: "asc" },
+        });
+        const totalAvailable = batches.reduce((sum, b) => sum + b.availableQuantity, 0);
+        return {
+          itemId: item.id,
+          productId: item.productId,
+          medicineName: item.medicineName,
+          quantityPrescribed: item.quantityPrescribed,
+          quantityDispensed: item.quantityDispensed,
+          quantityRemaining: remainingToDispense,
+          totalAvailable,
+          isAvailable: totalAvailable >= remainingToDispense,
+          batches: batches.map((b) => ({
+            id: b.id,
+            batchNumber: b.batchNumber,
+            availableQuantity: b.availableQuantity,
+            expiryDate: b.expiryDate?.toISOString() ?? null,
+          })),
+        };
+      }),
+    );
+
+    const allAvailable = itemsAvailability.every((i) => i.isAvailable);
+
+    return ok(c, {
+      prescriptionId: rx.id,
+      status: rx.status,
+      allAvailable,
+      items: itemsAvailability,
+    });
   })
   .post("/prescriptions", validate("json", createPrescriptionSchema), async (c) => {
     const tenant = requirePharmacyPrescriptions(c);
@@ -1348,7 +1395,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         },
         include: prescriptionListInclude,
       });
-    });
+    }, { maxWait: 10000, timeout: 25000 });
 
     await audit(tenant, "pharmacy.prescription.dispense", "PharmacyPrescription", rx.id);
 

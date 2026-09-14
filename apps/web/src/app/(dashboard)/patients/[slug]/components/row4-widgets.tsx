@@ -46,8 +46,8 @@ export function ViewConversationWidget({ messages }: { messages: ChatMessage[] }
   );
 }
 
-export function RecentActivitiesWidget({ activity }: { activity: LoopActivity[] }) {
-  const displayActivities = activity.slice(0, 5);
+export function RecentActivitiesWidget({ p360 }: { p360?: any }) {
+  const displayActivities = p360?.timeline?.items?.slice(0, 5) || [];
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col h-full">
@@ -64,16 +64,16 @@ export function RecentActivitiesWidget({ activity }: { activity: LoopActivity[] 
       </div>
 
       <div className="flex-1 space-y-5">
-        {displayActivities.length > 0 ? displayActivities.map((a, i) => {
+        {displayActivities.length > 0 ? displayActivities.map((a: any, i: number) => {
           return (
             <div key={a.id || i} className="flex items-center justify-between">
               <div className="flex items-center gap-3 w-3/4">
                 <div className="w-6 h-6 shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
                   <Activity className="w-3 h-3" />
                 </div>
-                <span className="font-medium text-sm text-gray-800 truncate">{a.activity}</span>
+                <span className="font-medium text-sm text-gray-800 truncate">{a.title}</span>
               </div>
-              <span className="text-xs text-gray-500">{a.time}</span>
+              <span className="text-xs text-gray-500">{a.date ? new Date(a.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ""}</span>
             </div>
           );
         }) : (

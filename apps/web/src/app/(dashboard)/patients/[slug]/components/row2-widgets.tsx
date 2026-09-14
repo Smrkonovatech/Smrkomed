@@ -1,12 +1,21 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { Calendar, RefreshCcw, FileText, Activity, ArrowRight, Play, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Couple, Appointment, CareTask } from "@/lib/demo-data";
+import { AbhaSetupWizard } from "@/components/digital-health/abha-setup-wizard";
 
 export function AbdmStatusWidget({ couple }: { couple: Couple }) {
   const primaryName = couple.primary.name?.split(" ")[0] || "Primary";
   const partnerName = couple.partner?.name?.split(" ")[0] || "Partner";
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [activePatientId, setActivePatientId] = useState("");
+
+  const handleOpenWizard = (patientId: string) => {
+    setActivePatientId(patientId);
+    setWizardOpen(true);
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col h-full">
@@ -18,21 +27,37 @@ export function AbdmStatusWidget({ couple }: { couple: Couple }) {
       </div>
 
       <div className="space-y-4 mb-6">
-        <div className="flex items-center gap-4">
-          <span className="text-[#866BE3] font-medium text-sm">{primaryName}</span>
-          <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            Connected
-          </span>
-          
-          {couple.partner && (
-            <>
-              <span className="text-[#866BE3] font-medium text-sm ml-4">{partnerName}</span>
+        <div className="flex flex-wrap items-center gap-y-3 gap-x-4">
+          <div className="flex items-center gap-3">
+            <span className="text-[#866BE3] font-medium text-sm">{primaryName}</span>
+            {couple.primary.abdmConnected !== false ? (
               <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 Connected
               </span>
-            </>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button onClick={() => handleOpenWizard(couple.id + "_primary")} className="bg-[#866BE3] hover:bg-[#7254d1] text-white text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors shadow-sm">Connect ABDM</button>
+                <button onClick={() => handleOpenWizard(couple.id + "_primary")} className="border border-[#866BE3] text-[#866BE3] hover:bg-[#866BE3]/5 text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors">Create ABHA</button>
+              </div>
+            )}
+          </div>
+          
+          {couple.partner && (
+            <div className="flex items-center gap-3">
+              <span className="text-[#866BE3] font-medium text-sm">{partnerName}</span>
+              {couple.partner.abdmConnected !== false ? (
+                <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  Connected
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleOpenWizard(couple.id + "_partner")} className="bg-[#866BE3] hover:bg-[#7254d1] text-white text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors shadow-sm">Connect ABDM</button>
+                  <button onClick={() => handleOpenWizard(couple.id + "_partner")} className="border border-[#866BE3] text-[#866BE3] hover:bg-[#866BE3]/5 text-[10px] font-semibold px-2.5 py-1 rounded-md transition-colors">Create ABHA</button>
+                </div>
+              )}
+            </div>
           )}
         </div>
         
@@ -49,12 +74,29 @@ export function AbdmStatusWidget({ couple }: { couple: Couple }) {
           <ArrowRight className="w-3 h-3" />
         </button>
       </div>
+
+      <AbhaSetupWizard
+        open={wizardOpen}
+        onOpenChange={setWizardOpen}
+        patientId={activePatientId}
+        connection={{
+          connected: true,
+          environment: "sandbox",
+          demoLinkAllowed: true,
+          message: "Connected to ABDM Sandbox",
+          authMethods: []
+        }}
+        onCompleted={() => {
+          setWizardOpen(false);
+          // In a real app we might trigger a refresh here
+        }}
+      />
     </div>
   );
 }
 
-export function UpcomingSessionWidget({ appointments }: { appointments: Appointment[] }) {
-  const upcoming = appointments.filter(a => a.status !== "Completed")[0];
+export function UpcomingSessionWidget({ p360 }: { p360?: any }) {
+  const upcoming = p360?.summaryCards?.nextAppointment;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col h-full">
@@ -67,7 +109,9 @@ export function UpcomingSessionWidget({ appointments }: { appointments: Appointm
 
       {upcoming ? (
         <div className="flex-1">
-          <p className="text-xs text-gray-500 mb-2">{upcoming.time || "Today"}</p>
+          <p className="text-xs text-gray-500 mb-2">
+            {upcoming.startsAt ? new Date(upcoming.startsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Today"}
+          </p>
           
           <div className="flex justify-between items-start mb-1">
             <h3 className="font-semibold text-gray-900">{upcoming.type}</h3>
@@ -76,7 +120,7 @@ export function UpcomingSessionWidget({ appointments }: { appointments: Appointm
             </span>
           </div>
           
-          <p className="text-xs text-gray-500">{upcoming.doctor}</p>
+          <p className="text-xs text-gray-500">{upcoming.doctorName}</p>
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center">
@@ -98,7 +142,19 @@ export function UpcomingSessionWidget({ appointments }: { appointments: Appointm
   );
 }
 
-export function UpcomingTasksWidget({ tasks }: { tasks: CareTask[] }) {
+import { clinicApi, type ClinicTask } from "@/lib/clinic-api";
+
+export function UpcomingTasksWidget({ p360 }: { p360?: any }) {
+  const [tasks, setTasks] = useState<ClinicTask[]>([]);
+  
+  useEffect(() => {
+    if (p360?.couple?.id) {
+      clinicApi.careCalendar(p360.couple.id)
+        .then((res) => setTasks(res.tasks?.filter((t: ClinicTask) => t.status !== "completed") || []))
+        .catch(console.error);
+    }
+  }, [p360?.couple?.id]);
+
   const displayTasks = tasks.slice(0, 4);
 
   return (

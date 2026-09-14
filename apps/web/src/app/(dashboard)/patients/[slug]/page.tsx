@@ -6,6 +6,8 @@ import { findCouple, type Couple } from "@/lib/demo-data";
 import { EmptyState } from "@/components/ui-kit";
 import { Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { clinicApi } from "@/lib/clinic-api";
+import { useEffect, useState } from "react";
 
 import { PatientHeader } from "./components/patient-header";
 import { PatientProfileCards } from "./components/patient-profile-cards";
@@ -15,6 +17,8 @@ import { AbdmStatusWidget, UpcomingSessionWidget, UpcomingTasksWidget } from "./
 import { LastSessionSummaryWidget, ConsultationHistoryWidget, MedicationsWidget } from "./components/row3-widgets";
 import { ViewConversationWidget, RecentActivitiesWidget } from "./components/row4-widgets";
 import { conversationFor } from "@/components/whatsapp-thread";
+import { CareCalendarWidget } from "./components/care-calendar/care-calendar";
+import { PatientDiagnosticsWidget } from "./components/diagnostics-widget";
 
 export default function PatientProfile() {
     const { slug } = useParams<{ slug: string }>();
@@ -42,30 +46,47 @@ export default function PatientProfile() {
 
     const couples = appState.couples ?? [];
     const couple = findCouple(slug, couples);
+
+    const [p360, setP360] = useState<any>(null);
+    const [loading360, setLoading360] = useState(true);
+
+    useEffect(() => {
+        if (couple) {
+            setLoading360(true);
+            clinicApi.patient360(couple.id)
+                .then(setP360)
+                .catch(console.error)
+                .finally(() => setLoading360(false));
+        }
+    }, [couple?.id]);
+
     if (!couple) notFound();
 
-    const coupleTasks = appState.tasks.filter((task) => task.coupleId === couple.id);
-    const coupleAppointments = appState.appointments.filter(
-        (appointment) => appointment.coupleId === couple.id,
-    );
-    const people = [couple.primary.name, couple.partner?.name].filter(Boolean) as string[];
-    const recentActivity = appState.activity.filter((item) => people.includes(item.patient));
+    if (loading360) {
+        return <p className="p-6 text-sm text-muted-foreground">Loading patient 360 profile...</p>;
+    }
+
     const messages = conversationFor(couple.id);
 
     return (
         <div className="space-y-6 pb-24">
-            <PatientHeader couple={couple} />
+            <PatientHeader couple={couple} p360={p360} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-12 gap-5 auto-rows-[minmax(250px,auto)]">
                 {/* Row 1 */}
                 <div className="xl:col-span-4">
-                    <PatientProfileCards couple={couple} />
+                    <PatientProfileCards couple={couple} p360={p360} />
                 </div>
                 <div className="xl:col-span-5">
-                    <IvfCycleWidget couple={couple} />
+                    <IvfCycleWidget couple={couple} p360={p360} />
                 </div>
                 <div className="xl:col-span-3">
                     <FertilityEstimateWidget />
+                </div>
+
+                {/* Row 1.5 - Care Calendar */}
+                <div className="xl:col-span-12">
+                    <CareCalendarWidget couple={couple} />
                 </div>
 
                 {/* Row 2 */}
@@ -73,21 +94,26 @@ export default function PatientProfile() {
                     <AbdmStatusWidget couple={couple} />
                 </div>
                 <div className="xl:col-span-4">
-                    <UpcomingSessionWidget appointments={coupleAppointments} />
+                    <UpcomingSessionWidget p360={p360} />
                 </div>
                 <div className="xl:col-span-4">
-                    <UpcomingTasksWidget tasks={coupleTasks} />
+                    <UpcomingTasksWidget p360={p360} />
                 </div>
 
                 {/* Row 3 */}
                 <div className="xl:col-span-4">
-                    <LastSessionSummaryWidget activity={recentActivity} />
+                    <LastSessionSummaryWidget p360={p360} />
                 </div>
                 <div className="xl:col-span-4">
-                    <ConsultationHistoryWidget appointments={coupleAppointments} />
+                    <ConsultationHistoryWidget p360={p360} />
                 </div>
                 <div className="xl:col-span-4">
-                    <MedicationsWidget coupleId={couple.id} />
+                    <MedicationsWidget coupleId={couple.id} p360={p360} />
+                </div>
+
+                {/* Diagnostics Row */}
+                <div className="xl:col-span-12">
+                    <PatientDiagnosticsWidget patientId={p360?.primaryPatient?.id ?? (couple as any).primary?.id} coupleId={couple.id} />
                 </div>
 
                 {/* Row 4 */}
@@ -95,7 +121,7 @@ export default function PatientProfile() {
                     <ViewConversationWidget messages={messages} />
                 </div>
                 <div className="xl:col-span-4">
-                    <RecentActivitiesWidget activity={recentActivity} />
+                    <RecentActivitiesWidget p360={p360} />
                 </div>
             </div>
         </div>

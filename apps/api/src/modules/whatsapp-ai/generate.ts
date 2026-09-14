@@ -98,6 +98,12 @@ function kbFallbackReply(input: {
     return ackReply(input.ctx);
   }
 
+  // Graceful unregistered visitor appointment intent fallback
+  if (input.ctx.isRegistered === false && /\b(book|appointment|consultation|schedule)\b/i.test(input.patientMessage)) {
+    const bookingUrl = input.ctx.registrationUrl || (input.ctx.clinicSlug ? `https://smrkomed.com/book/${input.ctx.clinicSlug}` : null);
+    return `✦ Smrko AI\n\nTo help you book an appointment at ${input.ctx.clinicName}, please reply with your full name, age, and gender to register, or book directly${bookingUrl ? ` at ${bookingUrl}` : ""}.`;
+  }
+
   const name = input.ctx.patientFirstName ? ` ${input.ctx.patientFirstName}` : "";
   const hit = input.knowledge.find((k) => k.score > 0) ?? input.knowledge[0];
   if (hit && hit.score > 0) {

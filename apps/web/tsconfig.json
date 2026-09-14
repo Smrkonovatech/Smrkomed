@@ -48,6 +48,7 @@
     "src/routes",
     "src/router.tsx",
     "src/server.ts",
-    "src/start.ts"
+    "src/start.ts",
+    "scripts"
   ]
 }

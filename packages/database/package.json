@@ -16,7 +16,7 @@
   "scripts": {
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
+    "db:generate": "tsx scripts/generate.ts",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "tsx scripts/migrate-deploy.ts",
     "db:push": "prisma db push",

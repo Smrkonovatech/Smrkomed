@@ -5,19 +5,19 @@ import { faqs } from "@/components/landing/faq-data";
 
 export const metadata: Metadata = {
   title: {
-    absolute: "Healthcare Management Software for Clinics & Hospitals | SMRKOMED",
+    absolute: "SmrkoMed — Healthcare Intelligence Platform",
   },
   description:
-    "SMRKOMED is healthcare management software for modern clinics and hospitals. Manage patients, care journeys, appointments, treatment plans, tasks, communication and follow-ups in one connected platform.",
+    "SmrkoMed connects clinical care, care teams, patient communication, workflows and intelligence in one connected healthcare platform.",
   alternates: {
     canonical: "https://www.smrkomed.com/",
   },
   openGraph: {
-    title: "Healthcare Management Software for Clinics & Hospitals | SMRKOMED",
+    title: "SmrkoMed — Healthcare Intelligence Platform",
     description:
-      "SMRKOMED is healthcare management software for modern clinics and hospitals. Manage patients, care journeys, appointments, treatment plans, tasks, communication and follow-ups in one connected platform.",
+      "SmrkoMed connects clinical care, care teams, patient communication, workflows and intelligence in one connected healthcare platform.",
     url: "https://www.smrkomed.com/",
-    siteName: "SMRKOMED",
+    siteName: "SmrkoMed",
     locale: "en_IN",
     type: "website",
     images: [
@@ -25,15 +25,15 @@ export const metadata: Metadata = {
         url: "https://www.smrkomed.com/branding/smrkomed-logo.png",
         width: 1200,
         height: 630,
-        alt: "SMRKOMED Healthcare Management Software",
+        alt: "SmrkoMed — Healthcare Intelligence Platform",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Healthcare Management Software for Clinics & Hospitals | SMRKOMED",
+    title: "SmrkoMed — Healthcare Intelligence Platform",
     description:
-      "SMRKOMED is healthcare management software for modern clinics and hospitals. Manage patients, care journeys, appointments, treatment plans, tasks, communication and follow-ups in one connected platform.",
+      "SmrkoMed connects clinical care, care teams, patient communication, workflows and intelligence in one connected healthcare platform.",
     images: ["https://www.smrkomed.com/branding/smrkomed-logo.png"],
   },
   robots: {
@@ -61,7 +61,7 @@ export default function MarketingHomePage() {
         url: "https://www.smrkomed.com/",
         logo: "https://www.smrkomed.com/branding/smrkomed-logo.png",
         description:
-          "Healthcare management software platform for modern clinics and hospitals in India.",
+          "Healthcare Intelligence Platform for modern clinics and hospitals in India.",
         sameAs: ["https://smrkonova.com/"],
       },
       {
@@ -69,7 +69,7 @@ export default function MarketingHomePage() {
         "@id": "https://www.smrkomed.com/#website",
         url: "https://www.smrkomed.com/",
         name: "SMRKOMED",
-        description: "Healthcare Management Software for Modern Clinics & Hospitals",
+        description: "Healthcare Intelligence Platform for Modern Clinics & Hospitals",
         publisher: {
           "@id": "https://www.smrkomed.com/#organization",
         },
@@ -79,11 +79,11 @@ export default function MarketingHomePage() {
         "@id": "https://www.smrkomed.com/#software",
         name: "SMRKOMED",
         applicationCategory: "BusinessApplication",
-        applicationSubCategory: "Healthcare Management Software",
+        applicationSubCategory: "Healthcare Intelligence Platform",
         operatingSystem: "Web",
         url: "https://www.smrkomed.com/",
         description:
-          "SMRKOMED is healthcare management software for modern clinics and hospitals. Manage patients, care journeys, appointments, treatment plans, tasks, communication and follow-ups in one connected platform.",
+          "SmrkoMed connects clinical care, care teams, patient communication, workflows and intelligence in one connected healthcare platform.",
         publisher: {
           "@id": "https://www.smrkomed.com/#organization",
         },

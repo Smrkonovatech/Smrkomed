@@ -772,3 +772,105 @@ test("Care Loop REST API: Endpoints for next-action, escalate, decision, and out
   });
   assert.equal(resOutcome.status, 200);
 });
+
+test("Phase 3 - Care Loop Worker Execution Engine", async () => {
+  const { processCareLoopExecutions } = await import("./modules/care-loop/worker");
+  
+  const task = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      carePlanId: null,
+      title: "Test Worker Task",
+      status: "WAITING",
+      dueDate: new Date(Date.now() - 3600000), // 1 hour ago
+      automationEnabled: true,
+      attempts: 0,
+    }
+  });
+
+  const testClinic = await prisma.clinic.findUnique({ where: { id: fx.clinicId } });
+  
+  await prisma.integration.create({
+    data: {
+      clinicId: fx.clinicId,
+      organizationId: testClinic?.organizationId ?? "",
+      provider: "WHATSAPP_CLOUD",
+      status: "ACTIVE",
+      config: { accessToken: "mock", phoneNumberId: "mock", wabaId: "mock" },
+      whatsappAccounts: {
+        create: {
+          businessAccountId: "mock",
+          phoneNumberId: "mock",
+          displayPhoneNumber: "919999999999",
+          isActive: true,
+          clinicId: fx.clinicId
+        }
+      }
+    }
+  });
+
+  // Test 02: Worker identifies due tasks
+  const executions = await processCareLoopExecutions(50, fx.clinicId);
+  const matchedExecution = executions.find((e: any) => e.taskId === task.id);
+  assert.ok(matchedExecution, "Worker should process due task");
+  assert.equal(matchedExecution.status, "ACTIVE");
+  assert.equal(matchedExecution.attempts, 1);
+
+  // Test 05: Idempotency (Should not process again immediately)
+  const executions2 = await processCareLoopExecutions(50, fx.clinicId);
+  const matchedExecution2 = executions2.find((e: any) => e.taskId === task.id);
+  assert.ok(!matchedExecution2, "Worker should not double-process task within cooldown");
+
+  const conversation = await prisma.conversation.create({
+    data: {
+      id: "conv_test",
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      patientId: task.coupleId ? ((await prisma.couple.findUnique({where:{id:task.coupleId}}))?.primaryPatientId ?? null) : null,
+      channel: "WHATSAPP",
+      status: "OPEN",
+    }
+  });
+
+  // Test 06 & 13: Patient Response Evaluation (via webhook simulator)
+  const { handleMenuAction } = await import("./modules/whatsapp-ai/menu");
+  const resDone = await handleMenuAction({
+    tenant: fx.ctx,
+    conversationId: conversation.id,
+    contactPhone: "919999999999",
+    actionIdOrText: `task_done_${task.id}`,
+  });
+  
+  assert.equal(resDone.handled, true);
+  const completedTask = await prisma.careTask.findUnique({ where: { id: task.id } });
+  assert.equal(completedTask?.status, "COMPLETED");
+
+  // Test 08 & 12: Care Loop Escalation
+  const helpTask = await prisma.careTask.create({
+    data: {
+      clinicId: fx.clinicId,
+      coupleId: fx.coupleId,
+      carePlanId: null,
+      title: "Test Help Escalation Task",
+      status: "ACTIVE",
+      dueDate: new Date(),
+      automationEnabled: true,
+    }
+  });
+
+  const resHelp = await handleMenuAction({
+    tenant: fx.ctx,
+    conversationId: "conv_test",
+    contactPhone: "919999999999",
+    actionIdOrText: `task_help_${helpTask.id}`,
+  });
+
+  assert.equal(resHelp.handled, true);
+  const escalatedTask = await prisma.careTask.findUnique({ where: { id: helpTask.id } });
+  assert.equal(escalatedTask?.status, "ESCALATED");
+  
+  const escalation = await prisma.escalation.findFirst({ where: { careTaskId: helpTask.id } });
+  assert.ok(escalation, "Escalation record should be generated");
+});
+

@@ -8,6 +8,7 @@ export const patientParam = z.object({ patientId: z.string().min(1) });
 export const coupleParam = z.object({ coupleId: z.string().min(1) });
 export const saleParam = z.object({ saleId: z.string().min(1) });
 export const paymentIdParam = z.object({ paymentId: z.string().min(1) });
+export const treatmentParam = z.object({ treatmentId: z.string().min(1) });
 
 export const listQuery = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
@@ -18,6 +19,8 @@ export const listQuery = z.object({
   coupleId: z.string().optional(),
   invoiceId: z.string().optional(),
   provider: z.string().optional(),
+  treatmentId: z.string().optional(),
+  appointmentId: z.string().optional(),
 });
 
 export const connectGatewaySchema = z.object({
@@ -53,6 +56,9 @@ export const createInvoiceSchema = z.object({
   patientId: z.string().optional().nullable(),
   coupleId: z.string().optional().nullable(),
   pharmacySaleId: z.string().optional().nullable(),
+  treatmentId: z.string().optional().nullable(),
+  appointmentId: z.string().optional().nullable(),
+  procedure: z.string().optional().nullable(),
   source: z.enum(["TREATMENT", "PHARMACY", "MANUAL", "OTHER"]).optional().default("MANUAL"),
   title: z.string().min(1).max(300),
   description: z.string().max(4000).optional().nullable(),

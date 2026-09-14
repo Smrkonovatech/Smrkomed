@@ -6,7 +6,7 @@ import { PERMISSIONS, prisma, roleHasPermission } from "@smrkomed/database";
 import { createApp } from "./app";
 import { encodeSessionToken } from "./middleware/auth";
 
-const PREFIX = "insurance-api";
+const PREFIX = `insurance-api-${Date.now()}`;
 const app = createApp();
 
 describe("insurance module", () => {

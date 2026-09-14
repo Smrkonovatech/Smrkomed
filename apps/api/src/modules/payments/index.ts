@@ -26,6 +26,7 @@ import {
   paymentLinkSchema,
   providerParam,
   saleParam,
+  treatmentParam,
   verifyPaymentSchema,
 } from "./schemas";
 import {
@@ -283,6 +284,22 @@ paymentRoutes.get("/invoices", validate("query", listQuery), async (c) => {
     ...(query.status ? { status: query.status as never } : {}),
     ...(query.patientId ? { patientId: query.patientId } : {}),
     ...(query.coupleId ? { coupleId: query.coupleId } : {}),
+    ...(query.treatmentId
+      ? {
+          OR: [
+            { notes: { contains: query.treatmentId } },
+            { description: { contains: query.treatmentId } },
+          ],
+        }
+      : {}),
+    ...(query.appointmentId
+      ? {
+          OR: [
+            { notes: { contains: query.appointmentId } },
+            { description: { contains: query.appointmentId } },
+          ],
+        }
+      : {}),
     ...(query.q
       ? {
           OR: [
@@ -309,17 +326,52 @@ paymentRoutes.post("/invoices", validate("json", createInvoiceSchema), async (c)
   const tenant = requireCreate(c);
   const body = c.req.valid("json");
 
-  if (body.patientId) {
+  let patientId = body.patientId ?? null;
+  let coupleId = body.coupleId ?? null;
+  let source = body.source ?? "MANUAL";
+
+  if (body.treatmentId) {
+    const treatment = await prisma.treatment.findFirst({
+      where: { id: body.treatmentId, clinicId: tenant.clinicId },
+      include: { couple: true },
+    });
+    await requireClinicOwned(tenant, treatment);
+    if (!treatment) throw new HttpError(404, "RESOURCE_NOT_FOUND", "Treatment not found");
+    if (!coupleId) coupleId = treatment.coupleId;
+    if (!patientId && treatment.couple?.primaryPatientId) patientId = treatment.couple.primaryPatientId;
+    if (source === "MANUAL") source = "TREATMENT";
+  }
+
+  if (body.appointmentId) {
+    const appointment = await prisma.appointment.findFirst({
+      where: { id: body.appointmentId, clinicId: tenant.clinicId },
+    });
+    await requireClinicOwned(tenant, appointment);
+    if (!appointment) throw new HttpError(404, "RESOURCE_NOT_FOUND", "Appointment not found");
+    if (!coupleId && appointment.coupleId) coupleId = appointment.coupleId;
+  }
+
+  if (patientId) {
     await requireClinicOwned(
       tenant,
-      await prisma.patient.findFirst({ where: { id: body.patientId, clinicId: tenant.clinicId } }),
+      await prisma.patient.findFirst({ where: { id: patientId, clinicId: tenant.clinicId } }),
     );
   }
-  if (body.coupleId) {
+  if (coupleId) {
     await requireClinicOwned(
       tenant,
-      await prisma.couple.findFirst({ where: { id: body.coupleId, clinicId: tenant.clinicId } }),
+      await prisma.couple.findFirst({ where: { id: coupleId, clinicId: tenant.clinicId } }),
     );
+  }
+
+  let notes = body.notes ?? null;
+  if (body.treatmentId || body.appointmentId || body.procedure) {
+    notes = JSON.stringify({
+      treatmentId: body.treatmentId ?? undefined,
+      appointmentId: body.appointmentId ?? undefined,
+      procedure: body.procedure ?? undefined,
+      text: body.notes ?? undefined,
+    });
   }
 
   const lines = body.lines.map((line) => ({
@@ -336,10 +388,10 @@ paymentRoutes.post("/invoices", validate("json", createInvoiceSchema), async (c)
       data: {
         clinicId: tenant.clinicId,
         invoiceNumber,
-        patientId: body.patientId ?? null,
-        coupleId: body.coupleId ?? null,
+        patientId,
+        coupleId,
         pharmacySaleId: body.pharmacySaleId ?? null,
-        source: body.source,
+        source,
         title: body.title,
         description: body.description ?? null,
         currency: body.currency,
@@ -347,7 +399,7 @@ paymentRoutes.post("/invoices", validate("json", createInvoiceSchema), async (c)
         paidAmount: money(0),
         status: "ISSUED",
         dueDate: body.dueDate ? new Date(body.dueDate) : null,
-        notes: body.notes ?? null,
+        notes,
         createdById: tenant.userId,
         lines: { create: lines },
       },
@@ -355,9 +407,27 @@ paymentRoutes.post("/invoices", validate("json", createInvoiceSchema), async (c)
     });
   });
 
+  if (coupleId) {
+    await prisma.careTask.create({
+      data: {
+        clinicId: tenant.clinicId,
+        coupleId,
+        title: `Payment pending: ${body.title} (${invoice.invoiceNumber})`,
+        description: `Amount due: ₹${totalAmount.toFixed(2)}. Due date: ${body.dueDate ? new Date(body.dueDate).toISOString().slice(0, 10) : "Immediate"}.`,
+        category: "PAYMENT",
+        status: "WAITING",
+        priority: "NORMAL",
+        dueDate: body.dueDate ? new Date(body.dueDate) : new Date(),
+        ...(tenant.userId && tenant.userId !== "system-worker" ? { createdById: tenant.userId } : {}),
+      },
+    }).catch(() => undefined);
+  }
+
   await audit(tenant, "BILLING_INVOICE_CREATE", "BillingInvoice", invoice.id, {
     invoiceNumber: invoice.invoiceNumber,
     totalAmount,
+    treatmentId: body.treatmentId ?? null,
+    appointmentId: body.appointmentId ?? null,
   });
 
   return ok(c, serializeInvoice(invoice), 201);
@@ -966,5 +1036,149 @@ paymentRoutes.get("/receipts/:paymentId", validate("param", paymentIdParam), asy
       invoice: payment.invoice,
       patientName,
     }),
+  });
+});
+
+paymentRoutes.get("/treatments/:treatmentId/package-summary", validate("param", treatmentParam), async (c) => {
+  const tenant = requireView(c);
+  const treatmentId = c.req.valid("param").treatmentId;
+  const treatment = await prisma.treatment.findFirst({
+    where: { id: treatmentId, clinicId: tenant.clinicId },
+    include: { couple: { include: { primaryPatient: true } } },
+  });
+  await requireClinicOwned(tenant, treatment);
+  if (!treatment) throw new HttpError(404, "RESOURCE_NOT_FOUND", "Treatment not found");
+
+  const invoices = await prisma.billingInvoice.findMany({
+    where: {
+      clinicId: tenant.clinicId,
+      OR: [
+        { notes: { contains: treatmentId } },
+        { coupleId: treatment.coupleId, source: "TREATMENT" },
+      ],
+    },
+    include: invoiceInclude,
+    orderBy: { issuedAt: "desc" },
+  });
+
+  const invoiceIds = invoices.map((inv) => inv.id);
+  const payments = await prisma.billingPayment.findMany({
+    where: {
+      clinicId: tenant.clinicId,
+      invoiceId: { in: invoiceIds },
+    },
+    include: { invoice: { select: { id: true, invoiceNumber: true, title: true } }, refunds: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const totalBilled = invoices.reduce((sum, inv) => sum + dec(inv.totalAmount), 0);
+  const totalPaid = invoices.reduce((sum, inv) => sum + dec(inv.paidAmount), 0);
+  const outstandingAmount = Math.max(0, Math.round((totalBilled - totalPaid) * 100) / 100);
+
+  const lines = invoices.flatMap((inv) => (inv.lines || []).map((l) => ({ ...l, invoiceNumber: inv.invoiceNumber })));
+
+  return ok(c, {
+    treatmentId: treatment.id,
+    treatmentLabel: treatment.label,
+    treatmentKind: treatment.kind,
+    treatmentStatus: treatment.status,
+    coupleId: treatment.coupleId,
+    patientId: treatment.couple?.primaryPatientId ?? null,
+    packageAmount: Math.round(totalBilled * 100) / 100,
+    paidAmount: Math.round(totalPaid * 100) / 100,
+    outstandingAmount,
+    paymentStatus:
+      totalBilled === 0
+        ? "NOT_BILLED"
+        : totalPaid >= totalBilled - 0.001
+          ? "PAID"
+          : totalPaid > 0
+            ? "PARTIALLY_PAID"
+            : "UNPAID",
+    utilisation: {
+      totalItems: lines.length,
+      lines: lines.map((line) => ({
+        id: line.id,
+        description: line.description,
+        quantity: line.quantity,
+        unitAmount: dec(line.unitAmount),
+        lineTotal: dec(line.lineTotal),
+        invoiceNumber: line.invoiceNumber,
+      })),
+    },
+    invoices: invoices.map(serializeInvoice),
+    payments: payments.map(serializePayment),
+  });
+});
+
+paymentRoutes.get("/treatments/:treatmentId/billing", validate("param", treatmentParam), async (c) => {
+  const tenant = requireView(c);
+  const treatmentId = c.req.valid("param").treatmentId;
+  const treatment = await prisma.treatment.findFirst({
+    where: { id: treatmentId, clinicId: tenant.clinicId },
+    include: { couple: { include: { primaryPatient: true } } },
+  });
+  await requireClinicOwned(tenant, treatment);
+  if (!treatment) throw new HttpError(404, "RESOURCE_NOT_FOUND", "Treatment not found");
+
+  const invoices = await prisma.billingInvoice.findMany({
+    where: {
+      clinicId: tenant.clinicId,
+      OR: [
+        { notes: { contains: treatmentId } },
+        { coupleId: treatment.coupleId, source: "TREATMENT" },
+      ],
+    },
+    include: invoiceInclude,
+    orderBy: { issuedAt: "desc" },
+  });
+
+  const invoiceIds = invoices.map((inv) => inv.id);
+  const payments = await prisma.billingPayment.findMany({
+    where: {
+      clinicId: tenant.clinicId,
+      invoiceId: { in: invoiceIds },
+    },
+    include: { invoice: { select: { id: true, invoiceNumber: true, title: true } }, refunds: true },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const totalBilled = invoices.reduce((sum, inv) => sum + dec(inv.totalAmount), 0);
+  const totalPaid = invoices.reduce((sum, inv) => sum + dec(inv.paidAmount), 0);
+  const outstandingAmount = Math.max(0, Math.round((totalBilled - totalPaid) * 100) / 100);
+
+  const lines = invoices.flatMap((inv) => (inv.lines || []).map((l) => ({ ...l, invoiceNumber: inv.invoiceNumber })));
+
+  return ok(c, {
+    treatmentId: treatment.id,
+    treatmentLabel: treatment.label,
+    treatmentKind: treatment.kind,
+    treatmentStatus: treatment.status,
+    coupleId: treatment.coupleId,
+    patientId: treatment.couple?.primaryPatientId ?? null,
+    packageAmount: Math.round(totalBilled * 100) / 100,
+    paidAmount: Math.round(totalPaid * 100) / 100,
+    outstandingAmount,
+    paymentStatus:
+      totalBilled === 0
+        ? "NOT_BILLED"
+        : totalPaid >= totalBilled - 0.001
+          ? "PAID"
+          : totalPaid > 0
+            ? "PARTIALLY_PAID"
+            : "UNPAID",
+    utilisation: {
+      totalItems: lines.length,
+      lines: lines.map((line) => ({
+        id: line.id,
+        description: line.description,
+        quantity: line.quantity,
+        unitAmount: dec(line.unitAmount),
+        lineTotal: dec(line.lineTotal),
+        invoiceNumber: line.invoiceNumber,
+      })),
+    },
+    invoices: invoices.map(serializeInvoice),
+    payments: payments.map(serializePayment),
   });
 });

@@ -4,7 +4,6 @@ import { useState } from "react";
 import Image from "next/image";
 import { ArrowRight, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Couple } from "@/lib/demo-data";
 import { IvfJourneyModal } from "./ivf-journey-modal";
 
 const carePlanSteps = [
@@ -22,11 +21,37 @@ const carePlanSteps = [
   "12. Beta HCG",
 ];
 
-export function IvfCycleWidget({ couple }: { couple: Couple }) {
+export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | any, p360?: any }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const currentStage = couple.stage;
-  const currentStepIdx = carePlanSteps.findIndex(s => s === currentStage);
-  const nextStage = currentStepIdx >= 0 && currentStepIdx < carePlanSteps.length - 1 ? carePlanSteps[currentStepIdx + 1] : "Complete";
+
+  let currentStageName = couple.stage || "";
+  let nextStageName = "Complete";
+  let carePlanStepsArr = carePlanSteps;
+
+  if (p360?.header?.currentCarePlan) {
+    const steps = p360.header.currentCarePlan.steps || [];
+    const sortedSteps = [...steps].sort((a: any, b: any) => a.sortOrder - b.sortOrder);
+    carePlanStepsArr = sortedSteps.map((s: any) => s.name);
+    
+    const currentIndex = sortedSteps.findIndex((s: any) => s.status === "IN_PROGRESS");
+    if (currentIndex !== -1) {
+      currentStageName = sortedSteps[currentIndex].name;
+      if (currentIndex + 1 < sortedSteps.length) {
+        nextStageName = sortedSteps[currentIndex + 1].name;
+      }
+    } else {
+      const pendingIndex = sortedSteps.findIndex((s: any) => s.status === "PENDING");
+      if (pendingIndex !== -1) {
+        currentStageName = sortedSteps[pendingIndex].name;
+        if (pendingIndex + 1 < sortedSteps.length) {
+          nextStageName = sortedSteps[pendingIndex + 1].name;
+        }
+      }
+    }
+  } else {
+    const currentStepIdx = carePlanSteps.findIndex(s => s === currentStageName);
+    nextStageName = currentStepIdx >= 0 && currentStepIdx < carePlanSteps.length - 1 ? (carePlanSteps[currentStepIdx + 1] || "Complete") : "Complete";
+  }
 
   return (
     <>
@@ -63,17 +88,17 @@ export function IvfCycleWidget({ couple }: { couple: Couple }) {
               Current:
             </div>
             <div className="text-center text-[13px] font-bold text-[#4B3F72] leading-tight max-w-[100px] truncate">
-              {currentStage.split('. ')[1] || currentStage}
+              {currentStageName.split('. ')[1] || currentStageName}
             </div>
           </div>
 
           {/* Nodes around the circle (Radius = 100, Center = 120,120) */}
-          <CycleNode label="Consultation" angle={-90} active={currentStage.includes("Consultation") || currentStage.includes("Initial")} labelPos="top" />
-          <CycleNode label="Baseline" angle={-30} active={currentStage.includes("Baseline")} />
-          <CycleNode label="Monitoring" angle={30} active={currentStage.includes("Monitoring")} />
-          <CycleNode label="Procedure" angle={90} active={currentStage.includes("OPU") || currentStage.includes("Retrieval")} labelPos="bottom" />
-          <CycleNode label="Transfer" angle={150} active={currentStage.includes("Transfer")} />
-          <CycleNode label="Follow up" angle={210} active={currentStage.includes("Beta HCG")} />
+          <CycleNode label="Consultation" angle={-90} active={currentStageName.includes("Consultation") || currentStageName.includes("Initial")} labelPos="top" />
+          <CycleNode label="Baseline" angle={-30} active={currentStageName.includes("Baseline")} />
+          <CycleNode label="Monitoring" angle={30} active={currentStageName.includes("Monitoring")} />
+          <CycleNode label="Procedure" angle={90} active={currentStageName.includes("OPU") || currentStageName.includes("Retrieval")} labelPos="bottom" />
+          <CycleNode label="Transfer" angle={150} active={currentStageName.includes("Transfer")} />
+          <CycleNode label="Follow up" angle={210} active={currentStageName.includes("Beta HCG")} />
         </div>
 
         {/* Right side info & Illustration */}
@@ -81,7 +106,7 @@ export function IvfCycleWidget({ couple }: { couple: Couple }) {
           <div className="text-left w-full z-20 pt-4 pl-4">
             <p className="text-xs text-gray-600 mb-1">Next Stage:</p>
             <p className="text-sm font-bold text-gray-900 truncate">
-              {nextStage?.split('. ')?.[1] || nextStage || "Complete"}
+              {nextStageName?.split('. ')?.[1] || nextStageName || "Complete"}
             </p>
           </div>
           
@@ -97,7 +122,7 @@ export function IvfCycleWidget({ couple }: { couple: Couple }) {
 
       </div>
     </div>
-    <IvfJourneyModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} currentStage={currentStage} />
+    <IvfJourneyModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} currentStage={currentStageName} steps={carePlanStepsArr} />
     </>
   );
 }

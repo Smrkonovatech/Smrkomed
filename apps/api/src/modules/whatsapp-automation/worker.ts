@@ -4,6 +4,7 @@ import { env } from "../../config/env";
 import { resumeDueExecutions } from "./engine";
 import { dispatchWhatsAppTrigger } from "./triggers";
 import { processDueCampaigns } from "./campaigns";
+import { processCareLoopExecutions } from "../care-loop/worker";
 import type { TenantContext } from "@smrkomed/database";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -105,46 +106,7 @@ export async function emitScheduledTriggers(limit = 50, clinicId?: string) {
     }
   }
 
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(now);
-  dayEnd.setHours(23, 59, 59, 999);
 
-  const dueTasks = await prisma.careTask.findMany({
-    where: {
-      ...clinicFilter,
-      dueDate: { gte: dayStart, lte: dayEnd },
-      status: { not: "COMPLETED" },
-    },
-    take: limit,
-  });
-
-  for (const task of dueTasks) {
-    const tenant = await clinicTenant(task.clinicId);
-    if (!tenant) continue;
-    const overdue = task.dueDate && task.dueDate.getTime() < now.getTime();
-    const triggerType = overdue ? "CARE_TASK_OVERDUE" : "CARE_TASK_DUE";
-    try {
-      const out = await dispatchWhatsAppTrigger({
-        tenant,
-        triggerType,
-        triggerEventId: `${triggerType.toLowerCase()}_${task.id}_${dayStart.toISOString().slice(0, 10)}`,
-        coupleId: task.coupleId,
-        vars: {
-          care_task_id: task.id,
-          care_task_title: task.title,
-          clinic_name: tenant.clinicName,
-        },
-      });
-      results.push({ type: triggerType, id: task.id, matched: out.matched });
-    } catch (err) {
-      results.push({
-        type: triggerType,
-        id: task.id,
-        error: err instanceof Error ? err.message : "failed",
-      });
-    }
-  }
 
   const overdueInvoices = await prisma.billingInvoice.findMany({
     where: {
@@ -173,7 +135,7 @@ export async function emitScheduledTriggers(limit = 50, clinicId?: string) {
       const out = await dispatchWhatsAppTrigger({
         tenant,
         triggerType: "PAYMENT_OVERDUE",
-        triggerEventId: `payment_overdue_${inv.id}_${dayStart.toISOString().slice(0, 10)}`,
+        triggerEventId: `payment_overdue_${inv.id}_${now.toISOString().slice(0, 10)}`,
         patientId: inv.patientId,
         coupleId: inv.coupleId,
         vars: {
@@ -376,6 +338,7 @@ export async function processAutomationTick(opts?: { clinicId?: string }) {
   try {
     const resumed = await resumeDueExecutions(25, opts?.clinicId);
     const scheduled = await emitScheduledTriggers(40, opts?.clinicId);
+    const careLoop = await processCareLoopExecutions(50, opts?.clinicId);
     const campaigns = opts?.clinicId
       ? []
       : await processDueCampaigns(5).catch(() => []);
@@ -385,6 +348,8 @@ export async function processAutomationTick(opts?: { clinicId?: string }) {
       resumeResults: resumed,
       scheduled: scheduled.length,
       scheduledResults: scheduled,
+      careLoop: careLoop.length,
+      careLoopResults: careLoop,
       campaigns,
       clinicScoped: Boolean(opts?.clinicId),
       at: new Date().toISOString(),

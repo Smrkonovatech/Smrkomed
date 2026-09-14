@@ -234,6 +234,7 @@ export async function handleMenuAction(input: {
     clean === "btn_careloop" ||
     clean === "1" ||
     clean.startsWith("careloop_") ||
+    clean.startsWith("task_") ||
     clean === "careloop" ||
     clean === "care loop" ||
     clean === "ivf" ||
@@ -827,6 +828,29 @@ export async function handleCareLoopMenuAction(input: {
       ? (task?.couple?.partnerPatient?.firstName || "Partner")
       : (task?.couple?.primaryPatient?.firstName || "Patient");
     const taskTitle = task?.title || "your scheduled task";
+
+    if (task && task.status !== "COMPLETED") {
+      await prisma.careTask.update({
+        where: { id: task.id },
+        data: {
+          status: "ESCALATED",
+          lastAction: `Escalated via WhatsApp [Need Help] by ${pName}`,
+        },
+      });
+
+      await prisma.escalation.create({
+        data: {
+          clinicId: task.clinicId,
+          type: "CLINICAL",
+          severity: "HIGH",
+          status: "OPEN",
+          reason: `Patient requested help via WhatsApp for task: ${task.title}`,
+          careTaskId: task.id,
+          patientId: task.targetPatientId ?? task.couple?.primaryPatientId ?? null,
+          coupleId: task.coupleId,
+        }
+      });
+    }
 
     const reply =
       `💬 *Care Team Notified*\n\n` +

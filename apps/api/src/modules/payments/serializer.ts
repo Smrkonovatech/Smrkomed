@@ -84,12 +84,33 @@ export function serializeInvoice(
 ) {
   const total = dec(invoice.totalAmount);
   const paid = dec(invoice.paidAmount);
+
+  let treatmentId: string | null = null;
+  let appointmentId: string | null = null;
+  let procedure: string | null = null;
+  let cleanNotes = invoice.notes;
+
+  if (invoice.notes && invoice.notes.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(invoice.notes);
+      treatmentId = parsed.treatmentId ?? null;
+      appointmentId = parsed.appointmentId ?? null;
+      procedure = parsed.procedure ?? null;
+      if ("text" in parsed) {
+        cleanNotes = parsed.text ?? null;
+      }
+    } catch {}
+  }
+
   return {
     id: invoice.id,
     clinicId: invoice.clinicId,
     invoiceNumber: invoice.invoiceNumber,
     patientId: invoice.patientId,
     coupleId: invoice.coupleId,
+    treatmentId,
+    appointmentId,
+    procedure,
     pharmacySaleId: invoice.pharmacySaleId,
     source: invoice.source,
     title: invoice.title,
@@ -102,7 +123,7 @@ export function serializeInvoice(
     dueDate: invoice.dueDate?.toISOString() ?? null,
     issuedAt: invoice.issuedAt.toISOString(),
     paidAt: invoice.paidAt?.toISOString() ?? null,
-    notes: invoice.notes,
+    notes: cleanNotes,
     createdById: invoice.createdById,
     patient: invoice.patient
       ? {

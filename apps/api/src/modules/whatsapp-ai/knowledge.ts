@@ -56,12 +56,17 @@ export async function retrieveKnowledgeArticles(input: {
   });
 
   const scored: KbHit[] = articles.map((a) => {
-    const hay = `${a.title} ${a.category} ${a.specialty ?? ""} ${a.keywords ?? ""} ${a.content}`.toLowerCase();
+    const title = a.title ?? "";
+    const category = a.category ?? "";
+    const specialty = a.specialty ?? "";
+    const keywords = a.keywords ?? "";
+    const content = a.content ?? "";
+    const hay = `${title} ${category} ${specialty} ${keywords} ${content}`.toLowerCase();
     let score = 0;
     for (const t of tokens) {
-      if (a.title.toLowerCase().includes(t)) score += 4;
-      if ((a.keywords ?? "").toLowerCase().includes(t)) score += 3;
-      if (a.category.toLowerCase().includes(t)) score += 2;
+      if (title.toLowerCase().includes(t)) score += 4;
+      if (keywords.toLowerCase().includes(t)) score += 3;
+      if (category.toLowerCase().includes(t)) score += 2;
       if (hay.includes(t)) score += 1;
     }
     if (input.specialtyHint && a.specialty === input.specialtyHint) score += 2;

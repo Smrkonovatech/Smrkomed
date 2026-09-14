@@ -42,6 +42,7 @@ export interface Person {
   name: string;
   age: number;
   phone: string;
+  abdmConnected?: boolean;
 }
 
 export interface Couple {
@@ -211,8 +212,8 @@ export const couples: Couple[] = [
   {
     id: "cmtu9ejo9002zo9109nk9xthy",
     slug: "manideep-mani",
-    primary: { name: "Manideep", age: 32, phone: "+91 77955 59724" },
-    partner: { name: "Mani", age: 29, phone: "+91 98450 11222" },
+    primary: { name: "Manideep", age: 32, phone: "+91 77955 59724", abdmConnected: true },
+    partner: { name: "Mani", age: 29, phone: "+91 98450 11222", abdmConnected: false },
     treatment: "IVF",
     cycleLabel: "IVF Cycle 01",
     stageIndex: 6,

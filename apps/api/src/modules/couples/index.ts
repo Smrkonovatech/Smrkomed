@@ -8,7 +8,7 @@ import { ok } from "../../lib/http";
 import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
-import { serializeCouple } from "../clinic-dto";
+import { serializeCouple, serializeAppointment, serializeTask } from "../clinic-dto";
 import { createCoupleSchema, idParam, updateCoupleSchema } from "./schemas";
 import { createCoupleRecord, deleteCoupleRecord, listCouples, loadCouple } from "./service";
 
@@ -24,6 +24,41 @@ export const coupleRoutes = new Hono<AppEnv>()
     const payload = await buildPatient360(tenant, id);
     if (!payload) throw notFound();
     return ok(c, payload);
+  })
+  .get("/:id/care-calendar", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const { id } = c.req.valid("param");
+    
+    // Ensure couple belongs to clinic
+    const couple = await prisma.couple.findFirst({
+      where: { id, clinicId: tenant.clinicId }
+    });
+    if (!couple) throw notFound();
+
+    const [appointments, tasks] = await Promise.all([
+      prisma.appointment.findMany({
+        where: { coupleId: id, clinicId: tenant.clinicId }
+      }),
+      prisma.careTask.findMany({
+        where: { coupleId: id, clinicId: tenant.clinicId },
+        include: {
+          assignments: { include: { user: { select: { name: true } } }, take: 1 },
+          couple: {
+            include: {
+              assignedCoordinator: { select: { name: true } },
+              assignedDoctor: { select: { name: true } },
+              primaryPatient: true,
+            },
+          },
+          carePlanStep: true,
+        }
+      })
+    ]);
+
+    return ok(c, {
+      appointments: appointments.map(serializeAppointment),
+      tasks: tasks.map(task => serializeTask(task as any, task.couple as any))
+    });
   })
   .get("/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);

@@ -117,6 +117,8 @@ export function clinicErrorMessage(error: unknown, fallback: string) {
 export const clinicApi = {
   couples: () => apiGet<ClinicCouple[]>("/api/v1/couples"),
   couple: (id: string) => apiGet<ClinicCouple>(`/api/v1/couples/${id}`),
+  patient360: (id: string) => apiGet<any>(`/api/v1/couples/${id}/360`),
+  careCalendar: (id: string) => apiGet<{ appointments: ClinicAppointment[], tasks: ClinicTask[] }>(`/api/v1/couples/${id}/care-calendar`),
   createCouple: (body: unknown) => apiPost<ClinicCouple>("/api/v1/couples", body),
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
@@ -146,6 +148,7 @@ export const clinicApi = {
   pauseCarePlan: (id: string, body: unknown) => apiPost<any>(`/api/v1/care-plans/${id}/pause`, body),
   resumeCarePlan: (id: string) => apiPost<any>(`/api/v1/care-plans/${id}/resume`, {}),
   completeTask: (id: string, body?: unknown) => apiPost<any>(`/api/v1/care-tasks/${id}/complete`, body ?? {}),
+  escalateTask: (id: string, reason: string) => apiPost<any>(`/api/v1/care-tasks/${id}/escalate`, { reason }),
   simulateTaskResponse: (id: string, text: string) => apiPost<any>(`/api/v1/care-tasks/${id}/simulate-response`, { text }),
   addDoctorTask: (body: unknown) => apiPost<any>("/api/v1/care-tasks", body),
   dispatchTaskWhatsApp: (
@@ -174,5 +177,66 @@ export const clinicApi = {
     apiDelete<{ deleted: boolean; mode: "permanent" | "archived"; id: string }>(
       `/api/v1/patients/${id}${options?.permanent ? "?permanent=1" : ""}`,
     ),
+  diagnostics: (query?: Record<string, string>) => {
+    const q = query ? "?" + new URLSearchParams(query).toString() : "";
+    return apiGet<any[]>(`/api/v1/diagnostics${q}`);
+  },
+  diagnosticReviewQueue: () => apiGet<any[]>("/api/v1/diagnostics/review-queue"),
+  diagnosticOrder: (id: string) => apiGet<any>(`/api/v1/diagnostics/${id}`),
+  createDiagnosticOrder: (body: unknown) => apiPost<any>("/api/v1/diagnostics", body),
+  recordDiagnosticSample: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/sample`, body),
+  enterDiagnosticResults: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/results`, body),
+  verifyDiagnosticResults: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/verify`, body),
+  reviewDiagnosticOrder: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/review`, body),
+  patientDiagnostics: (patientId: string) => apiGet<any>(`/api/v1/diagnostics/patient/${patientId}`),
+  // Doctor Workflow APIs
+  prepareMyDay: () => apiGet<any>("/api/v1/doctors/prepare-my-day"),
+  doctorSchedule: (params?: { date?: string; range?: string }) => {
+    const q = params ? "?" + new URLSearchParams(params as Record<string, string>).toString() : "";
+    return apiGet<any>(`/api/v1/doctors/schedule${q}`);
+  },
+  completeConsultation: (appointmentId: string, body: unknown) =>
+    apiPost<any>(`/api/v1/doctors/consultations/${appointmentId}`, body),
+  doctorReports: (filter?: string) =>
+    apiGet<any[]>(`/api/v1/doctors/reports${filter ? `?filter=${filter}` : ""}`),
+  doctorReviewReport: (orderId: string, body: unknown) =>
+    apiPost<any>(`/api/v1/doctors/reports/${orderId}/review`, body),
+  doctorCareLoopExceptions: () => apiGet<any[]>("/api/v1/doctors/care-loop-exceptions"),
+  doctorMessages: () => apiGet<any[]>("/api/v1/doctors/messages"),
+  // Analytics APIs
+  analyticsOverview: (params?: { dateRange?: string | undefined; dateFrom?: string | undefined; dateTo?: string | undefined; doctorId?: string | undefined; status?: string | undefined }) => {
+    const q = params ? "?" + new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as [string, string][]).toString() : "";
+    return apiGet<any>(`/api/v1/analytics/overview${q}`);
+  },
+  analyticsOrganization: () => apiGet<any>("/api/v1/analytics/organization"),
+  analyticsCareLoop: () => apiGet<any>("/api/v1/analytics/care-loop"),
+  analyticsPatientEngagement: () => apiGet<any>("/api/v1/analytics/patient-engagement"),
+  analyticsClinicalOperations: () => apiGet<any>("/api/v1/analytics/clinical-operations"),
+  analyticsFertility: () => apiGet<any>("/api/v1/analytics/fertility"),
+  analyticsBilling: () => apiGet<any>("/api/v1/analytics/billing"),
+  analyticsStaff: () => apiGet<any>("/api/v1/analytics/staff"),
+  // Smrko AI Clinical Intelligence APIs
+  aiStatus: () => apiGet<any>("/api/v1/ai/status"),
+  aiPrepareMyDay: () => apiPost<any>("/api/v1/ai/prepare-my-day", {}),
+  aiPatientSummary: (patientId: string) => apiPost<any>("/api/v1/ai/patient-summary", { patientId }),
+  aiConversationSummary: (conversationId: string) =>
+    apiPost<any>("/api/v1/ai/conversation-summary", { conversationId }),
+  aiTaskSummary: (filter?: { coupleId?: string; carePlanId?: string }) =>
+    apiPost<any>("/api/v1/ai/task-summary", filter ?? {}),
+  aiJourneySummary: (coupleId: string) => apiPost<any>("/api/v1/ai/journey-summary", { coupleId }),
+  aiReportSummary: (taskId: string) => apiPost<any>("/api/v1/ai/report-summary", { taskId }),
+  aiDraftMessage: (body: { patientId: string; intent: string; customContext?: string }) =>
+    apiPost<any>("/api/v1/ai/draft-message", body),
+  aiConsultationAssist: (body: { appointmentId: string; clinicalImpressionNotes: string; vitals?: Record<string, string> }) =>
+    apiPost<any>("/api/v1/ai/consultation-assist", body),
+  aiDraftDischarge: (body: { coupleId: string; treatmentId?: string; clinicalSummary: string }) =>
+    apiPost<any>("/api/v1/ai/draft-discharge", body),
+  aiKnowledgeRetrieve: (query: string, options?: { specialtyHint?: string; limit?: number }) =>
+    apiPost<any>("/api/v1/ai/knowledge-retrieve", { query, ...options }),
+  aiHandoff: (body: { conversationId: string; reason: string; patientId?: string; coupleId?: string }) =>
+    apiPost<any>("/api/v1/ai/handoff", body),
+  aiConditionalAutomation: (body: { taskId: string; event: string; responsePayload?: string }) =>
+    apiPost<any>("/api/v1/ai/conditional-automation", body),
 };
+
 

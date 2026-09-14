@@ -10,7 +10,7 @@ import {
 import { User, Activity, Calendar, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const carePlanSteps = [
+const fallbackSteps = [
   "01 Lead Appointment",
   "02 Initial Consultation",
   "03 Fertility Workup (Tests)",
@@ -32,13 +32,16 @@ interface IvfJourneyModalProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   currentStage?: string;
+  steps?: string[];
 }
 
-export function IvfJourneyModal({ isOpen, setIsOpen, currentStage }: IvfJourneyModalProps) {
+export function IvfJourneyModal({ isOpen, setIsOpen, currentStage, steps }: IvfJourneyModalProps) {
+  const activeSteps = steps && steps.length > 0 ? steps : fallbackSteps;
+  
   // Normalize and find the current step index
   const normalizedStage = (currentStage || "").replace(/^\d+\.\s*/, "");
-  let currentStepIdx = carePlanSteps.findIndex(s => s.includes(normalizedStage));
-  if (currentStepIdx === -1) currentStepIdx = 6; // Fallback to 6 if not found
+  let currentStepIdx = activeSteps.findIndex(s => s.includes(normalizedStage) || normalizedStage.includes(s));
+  if (currentStepIdx === -1) currentStepIdx = Math.min(6, activeSteps.length - 1); // Fallback
 
   const [selectedStepIdx, setSelectedStepIdx] = useState(currentStepIdx);
 
@@ -49,7 +52,7 @@ export function IvfJourneyModal({ isOpen, setIsOpen, currentStage }: IvfJourneyM
     }
   }, [isOpen, currentStepIdx]);
 
-  const selectedStepName = carePlanSteps[selectedStepIdx]?.replace(/^\d+\s*/, "") || "Unknown Stage";
+  const selectedStepName = activeSteps[selectedStepIdx]?.replace(/^\d+\s*/, "") || "Unknown Stage";
   const isSelectedCurrent = selectedStepIdx === currentStepIdx;
 
   return (
@@ -65,7 +68,7 @@ export function IvfJourneyModal({ isOpen, setIsOpen, currentStage }: IvfJourneyM
           {/* Left Column - Timeline List */}
           <div className="w-[360px] shrink-0 overflow-y-auto px-6 pb-6">
             <div className="flex flex-col gap-1.5 mt-2">
-              {carePlanSteps.map((step, idx) => {
+              {activeSteps.map((step, idx) => {
                 const isCompleted = idx < currentStepIdx;
                 const isCurrent = idx === currentStepIdx;
                 const isSelected = idx === selectedStepIdx;

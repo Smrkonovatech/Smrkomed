@@ -3,7 +3,7 @@
 import { Phone, Globe, ArrowRight } from "lucide-react";
 import type { Couple } from "@/lib/demo-data";
 
-export function PatientProfileCards({ couple }: { couple: Couple }) {
+export function PatientProfileCards({ couple, p360 }: { couple: { id: string, slug?: string } | any, p360?: any }) {
   const primary = couple.primary;
   const partner = couple.partner;
 
@@ -24,13 +24,13 @@ export function PatientProfileCards({ couple }: { couple: Couple }) {
         </div>
         
         <div className="pt-12 px-6 pb-6 flex-1 flex flex-col">
-          <h2 className="text-xl font-bold text-gray-900 leading-tight mb-1">{primary.name}</h2>
-          <p className="text-[13px] text-gray-500 mb-6">{primary.age} yrs, Female</p>
+          <h2 className="text-xl font-bold text-gray-900 leading-tight mb-1">{p360?.header?.patientName || primary.name}</h2>
+          <p className="text-[13px] text-gray-500 mb-6">{p360?.header?.age || primary.age} yrs, {p360?.header?.gender || "Female"}</p>
 
           <div className="space-y-3 mb-8 flex-1">
             <div className="flex items-center gap-3 text-[13px] text-gray-700">
               <Phone className="w-4 h-4 text-[#866BE3]" />
-              {primary.phone}
+              {p360?.header?.contact || primary.phone}
             </div>
             <div className="flex items-center gap-3 text-[13px] text-gray-700">
               <Globe className="w-4 h-4 text-[#866BE3]" />
@@ -40,7 +40,7 @@ export function PatientProfileCards({ couple }: { couple: Couple }) {
 
           <div className="mb-4">
             <p className="text-[13px] text-gray-500">
-              Patient ID: <span className="font-semibold text-gray-700">{couple.id}</span>
+              Patient ID: <span className="font-semibold text-gray-700">{p360?.header?.patientId || couple.id}</span>
             </p>
           </div>
           
@@ -63,7 +63,7 @@ export function PatientProfileCards({ couple }: { couple: Couple }) {
           </div>
           
           <div className="pt-12 px-6 pb-6 flex-1 flex flex-col">
-            <h2 className="text-xl font-bold text-gray-900 leading-tight mb-1">{partner.name}</h2>
+            <h2 className="text-xl font-bold text-gray-900 leading-tight mb-1">{p360?.header?.partnerName || partner.name}</h2>
             <p className="text-[13px] text-gray-500 mb-6">{partner.age} yrs, Male</p>
 
             <div className="space-y-3 mb-8 flex-1">
@@ -79,7 +79,7 @@ export function PatientProfileCards({ couple }: { couple: Couple }) {
 
             <div className="mb-4">
               <p className="text-[13px] text-gray-500">
-                Patient ID: <span className="font-semibold text-gray-700">{couple.id}</span>
+                Patient ID: <span className="font-semibold text-gray-700">{p360?.header?.partnerId || couple.id}</span>
               </p>
             </div>
             

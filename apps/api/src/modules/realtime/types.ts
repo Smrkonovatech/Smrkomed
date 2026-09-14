@@ -14,7 +14,12 @@ export type RealtimeEventType =
   | "FLOW_NODE_COMPLETED"
   | "FLOW_NODE_WAITING"
   | "FLOW_NODE_FAILED"
-  | "FLOW_EXECUTION_COMPLETED";
+  | "FLOW_EXECUTION_COMPLETED"
+  | "DIAGNOSTIC_ORDER_CREATED"
+  | "DIAGNOSTIC_SAMPLE_COLLECTED"
+  | "DIAGNOSTIC_RESULTS_ENTERED"
+  | "DIAGNOSTIC_VERIFIED"
+  | "DIAGNOSTIC_REVIEWED";
 
 
 export type BaseRealtimeEvent = {
@@ -151,6 +156,16 @@ export type FlowExecutionEvent = BaseRealtimeEvent & {
   error?: string | null;
 };
 
+export type DiagnosticEvent = BaseRealtimeEvent & {
+  type:
+    | "DIAGNOSTIC_ORDER_CREATED"
+    | "DIAGNOSTIC_SAMPLE_COLLECTED"
+    | "DIAGNOSTIC_RESULTS_ENTERED"
+    | "DIAGNOSTIC_VERIFIED"
+    | "DIAGNOSTIC_REVIEWED";
+  orderId: string;
+};
+
 export type RealtimeEvent =
   | MessageCreatedEvent
   | MessageStatusUpdatedEvent
@@ -161,7 +176,8 @@ export type RealtimeEvent =
   | ConnectionStatusEvent
   | AiHandoffEvent
   | CareLoopEscalationEvent
-  | FlowExecutionEvent;
+  | FlowExecutionEvent
+  | DiagnosticEvent;
 
 
 export type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;

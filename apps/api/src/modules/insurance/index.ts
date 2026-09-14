@@ -939,7 +939,7 @@ export const insuranceRoutes = new Hono<AppEnv>()
       });
 
       return created;
-    });
+    }, { maxWait: 10000, timeout: 25000 });
 
     await audit(tenant, "insurance.claim.create", "InsuranceClaim", claim.id, {
       claimNumber: claim.claimNumber,
@@ -1305,7 +1305,7 @@ export const insuranceRoutes = new Hono<AppEnv>()
         });
 
         return created;
-      });
+      }, { maxWait: 10000, timeout: 25000 });
 
       await audit(tenant, "insurance.payment.create", "InsurancePayment", payment.id, {
         claimId: claim.id,

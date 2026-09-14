@@ -1,117 +1,226 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Btn, Eyebrow, Section } from "./primitives";
+import { useState } from "react";
+import Image from "next/image";
+import { 
+  FileCheck2, 
+  ListChecks, 
+  MessageSquare, 
+  CheckCircle2, 
+  FastForward, 
+  AlertTriangle, 
+  PhoneCall, 
+  UserCheck, 
+  Stethoscope, 
+  ArrowRight,
+  TrendingUp,
+  Heart,
+  RefreshCw,
+  Sparkles
+} from "lucide-react";
 
-const stages = [
-  { t: "Consultation", d: "Doctor defines the care path" },
-  { t: "Treatment Plan", d: "Structured steps, timing and owners" },
-  { t: "Task Created", d: "Assigned to patient or clinic staff" },
-  { t: "Patient Follow-up", d: "Automated check-ins and communication" },
-  { t: "Appointment & Review", d: "Scheduled, confirmed and tracked" },
-  { t: "Next Consultation", d: "Doctor has full clinical context" },
-];
-
-export function CareLoopSection() {
-  const [active, setActive] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => setActive((a) => (a + 1) % stages.length), 1600);
-    return () => clearInterval(id);
-  }, []);
-
-  return (
-    <Section id="care-loop" className="gradient-veil border-y border-border">
-      <div className="glow-orb top-6 right-[8%] h-[380px] w-[380px] bg-brand-soft" />
-      <div className="relative max-w-[54ch]">
-        <Eyebrow>Care Loop</Eyebrow>
-        <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[48px]">
-          Care Loop: Healthcare Workflow Automation{" "}
-          <span className="font-semibold">That Keeps Patients Moving</span>
-        </h2>
-        <p className="mt-6 text-[17px] leading-relaxed text-muted-foreground">
-          SMRKOMED Care Loop connects treatment plans, tasks, reminders, follow-ups and patient communication so healthcare teams can see what needs attention and keep care journeys moving forward.
-        </p>
-      </div>
-
-      <div className="relative mt-14 grid items-start gap-12 lg:grid-cols-[0.95fr_1.05fr]">
-        <div className="space-y-5">
-          <div className="photo-frame">
-            <img
-              src="/branding/careloop-doctor.jpg"
-              alt="Doctor explaining a treatment plan using SMRKOMED Care Loop workflow automation"
-              width={1104}
-              height={1280}
-              loading="lazy"
-              className="h-full w-full object-cover"
-            />
-          </div>
-
-          <div className="surface-card border-primary/25 p-6">
-            <div className="text-[11px] tracking-[0.16em] text-primary uppercase">AI detected a follow-up</div>
-            <p className="mt-3 text-[15px] leading-relaxed text-foreground">
-              &quot;Patient has not completed the required test.&quot;
-            </p>
-            <div className="mt-5 flex items-center gap-3">
-              <Btn className="h-11 px-5 text-[14px]">Create Task →</Btn>
-              <span className="text-[13px] text-muted-foreground">Assigned to Care Coordinator</span>
-            </div>
-          </div>
-        </div>
-
-        <ol className="space-y-2">
-          {stages.map((s, i) => (
-            <li key={s.t}>
-              <div
-                className={`flex items-center justify-between gap-4 rounded-[22px] border px-6 py-5 transition-all duration-500 ${
-                  i === active
-                    ? "border-transparent gradient-brand text-primary-foreground shadow-[var(--shadow-soft)]"
-                    : "border-border bg-card"
-                }`}
-              >
-                <span className={`text-[17px] font-medium ${i === active ? "" : "text-foreground"}`}>{s.t}</span>
-                <span className={`text-[13px] ${i === active ? "opacity-80" : "text-muted-foreground"}`}>{s.d}</span>
-              </div>
-              {i < stages.length - 1 && <div className="mx-auto h-4 w-px bg-primary/30" />}
-            </li>
-          ))}
-        </ol>
-      </div>
-    </Section>
-  );
+interface CareLoopProps {
+  onOpenDemo?: ((interest?: string) => void) | undefined;
 }
 
-/* ---------------- Care Loop intelligence KPI strip ---------------- */
+export function CareLoop({ onOpenDemo }: CareLoopProps) {
+  const [activeBranch, setActiveBranch] = useState<"standard" | "exception">("standard");
 
-const intelligence = [
-  { label: "Needs Attention", value: "17", hint: "Follow-ups overdue" },
-  { label: "On Track", value: "64", hint: "Journeys progressing" },
-  { label: "Paused", value: "9", hint: "Awaiting patient input" },
-  { label: "Upcoming", value: "28", hint: "Due in 7 days" },
-];
+  const ringNodes = [
+    { label: "Doctor Approval", icon: FileCheck2, color: "text-blue-500 bg-blue-50 border-blue-200" },
+    { label: "Tasks Created", icon: ListChecks, color: "text-cyan-500 bg-cyan-50 border-cyan-200" },
+    { label: "Patient Engaged", icon: MessageSquare, color: "text-emerald-500 bg-emerald-50 border-emerald-200" },
+    { label: "Follow-ups Tracked", icon: RefreshCw, color: "text-pink-500 bg-pink-50 border-pink-200" },
+    { label: "Care Continues", icon: FastForward, color: "text-purple-500 bg-purple-50 border-purple-200" },
+    { label: "Insights for Care", icon: TrendingUp, color: "text-indigo-500 bg-indigo-50 border-indigo-200" },
+    { label: "Better Outcomes", icon: Heart, color: "text-rose-500 bg-rose-50 border-rose-200" },
+  ];
 
-export function CareLoopIntelligence() {
   return (
-    <Section>
-      <div className="mx-auto max-w-3xl text-center">
-        <Eyebrow>Intelligence</Eyebrow>
-        <h2 className="mt-6 text-[32px] leading-[1.12] font-light text-foreground md:text-[42px]">
-          Healthcare Teams See <span className="font-semibold">What Needs Attention</span>
-        </h2>
-        <p className="mx-auto mt-5 max-w-[58ch] text-[16px] leading-relaxed text-muted-foreground">
-          SMRKOMED helps clinics identify overdue follow-ups, upcoming tasks, patients waiting for action and journeys that may need attention.
-        </p>
-      </div>
+    <section id="care-loop" className="py-20 sm:py-28 bg-slate-950 text-white relative overflow-hidden">
+      {/* Dynamic Aura Gradient matching brochure */}
+      <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[750px] w-[750px] rounded-full bg-gradient-to-tr from-purple-600/30 via-cyan-500/25 to-blue-600/30 blur-[130px] -z-10" />
 
-      <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {intelligence.map((card) => (
-          <article key={card.label} className="lift-on-hover rounded-[24px] border border-border bg-card p-7">
-            <div className="text-[11px] font-semibold tracking-[0.16em] text-primary uppercase">{card.label}</div>
-            <div className="mt-4 text-[40px] leading-none font-semibold text-foreground">{card.value}</div>
-            <p className="mt-3 text-[14px] text-muted-foreground">{card.hint}</p>
-          </article>
-        ))}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 relative">
+        
+        {/* Section Header */}
+        <div className="text-center max-w-2xl mx-auto">
+          <div className="inline-flex items-center gap-2 rounded-full bg-cyan-950/80 border border-cyan-400/40 px-3.5 py-1 text-xs font-semibold text-cyan-300 mb-4">
+            <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+            <span>The Engine Behind Continuous Care</span>
+          </div>
+          
+          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+            Care Loop keeps care moving.
+          </h2>
+          
+          <p className="mt-4 text-base sm:text-lg text-slate-300 font-normal">
+            Turn a care plan into actions, follow-ups and timely escalation.
+          </p>
+        </div>
+
+        {/* Central Circular Radial Donut Ring (Visual Hero inspired by brochure) */}
+        <div className="mt-14 relative mx-auto flex max-w-3xl items-center justify-center p-8">
+          
+          {/* Glowing Radial Halo */}
+          <div className="relative flex h-80 w-80 sm:h-96 sm:w-96 items-center justify-center rounded-full bg-gradient-to-tr from-purple-600/40 via-cyan-400/30 to-indigo-600/40 p-5 shadow-[0_0_100px_rgba(124,58,237,0.35)] backdrop-blur-2xl border border-white/10">
+            {/* Inner Ring */}
+            <div className="flex h-full w-full flex-col items-center justify-center rounded-full bg-slate-950/90 border border-white/10 text-center p-6">
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-purple-600 to-cyan-400 p-0.5 shadow-lg shadow-cyan-500/25">
+                <div className="flex h-full w-full items-center justify-center rounded-[14px] bg-slate-950">
+                  <Image
+                    src="/branding/smrkomed-mark.png"
+                    alt="SmrkoMed"
+                    width={32}
+                    height={32}
+                    className="object-contain invert"
+                  />
+                </div>
+              </div>
+              <div className="mt-3 text-3xl font-extrabold text-white tracking-tight">38</div>
+              <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">
+                Active Journeys
+              </div>
+              <div className="mt-1 text-[11px] text-slate-400 font-mono">Continuous Loop</div>
+            </div>
+          </div>
+
+          {/* Floating Orbiting Node Chips */}
+          <div className="absolute inset-0 pointer-events-none hidden sm:block">
+            {/* Top Node */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-blue-400/40 bg-slate-900/90 px-3.5 py-1.5 shadow-xl text-xs font-semibold text-blue-300">
+              <FileCheck2 className="h-3.5 w-3.5 text-blue-400" />
+              <span>Doctor Approval</span>
+            </div>
+
+            {/* Top Right */}
+            <div className="absolute top-16 right-4 sm:right-12 flex items-center gap-2 rounded-full border border-cyan-400/40 bg-slate-900/90 px-3.5 py-1.5 shadow-xl text-xs font-semibold text-cyan-300">
+              <ListChecks className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Tasks Created</span>
+            </div>
+
+            {/* Bottom Right */}
+            <div className="absolute bottom-16 right-4 sm:right-12 flex items-center gap-2 rounded-full border border-emerald-400/40 bg-slate-900/90 px-3.5 py-1.5 shadow-xl text-xs font-semibold text-emerald-300">
+              <MessageSquare className="h-3.5 w-3.5 text-emerald-400" />
+              <span>Patient Engaged</span>
+            </div>
+
+            {/* Bottom */}
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full border border-pink-400/40 bg-slate-900/90 px-3.5 py-1.5 shadow-xl text-xs font-semibold text-pink-300">
+              <RefreshCw className="h-3.5 w-3.5 text-pink-400" />
+              <span>Follow-ups Tracked</span>
+            </div>
+
+            {/* Bottom Left */}
+            <div className="absolute bottom-16 left-4 sm:left-12 flex items-center gap-2 rounded-full border border-purple-400/40 bg-slate-900/90 px-3.5 py-1.5 shadow-xl text-xs font-semibold text-purple-300">
+              <FastForward className="h-3.5 w-3.5 text-purple-400" />
+              <span>Care Continues</span>
+            </div>
+
+            {/* Top Left */}
+            <div className="absolute top-16 left-4 sm:left-12 flex items-center gap-2 rounded-full border border-rose-400/40 bg-slate-900/90 px-3.5 py-1.5 shadow-xl text-xs font-semibold text-rose-300">
+              <Heart className="h-3.5 w-3.5 text-rose-400" />
+              <span>Better Outcomes</span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Interactive Path Toggle: Standard Flow vs Exception Path */}
+        <div className="mt-8 flex justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveBranch("standard")}
+            className={`rounded-xl px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+              activeBranch === "standard"
+                ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30"
+                : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-white"
+            }`}
+          >
+            ✓ Standard Execution Flow
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveBranch("exception")}
+            className={`rounded-xl px-5 py-2.5 text-xs sm:text-sm font-semibold transition-all ${
+              activeBranch === "exception"
+                ? "bg-amber-600 text-white shadow-lg shadow-amber-600/30"
+                : "bg-slate-900 text-slate-400 border border-slate-800 hover:text-white"
+            }`}
+          >
+            ⚠ Exception & Escalation Flow
+          </button>
+        </div>
+
+        {/* Workflow Diagram Box */}
+        <div className="mt-8 rounded-3xl border border-slate-800 bg-slate-900/70 p-6 sm:p-8 backdrop-blur-xl">
+          {activeBranch === "standard" ? (
+            /* Standard Path */
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-400">
+                  Standard Automated Cycle
+                </span>
+                <span className="text-xs text-slate-400">When patient confirms action</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                {[
+                  { step: "01", label: "Doctor Plan", sub: "Approved in EMR", icon: FileCheck2 },
+                  { step: "02", label: "Care Task", sub: "Trigger created", icon: ListChecks },
+                  { step: "03", label: "Patient Chat", sub: "WhatsApp dispatched", icon: MessageSquare },
+                  { step: "04", label: "Response", sub: "Patient confirms", icon: CheckCircle2 },
+                  { step: "05", label: "Completed", sub: "State updated", icon: Sparkles },
+                  { step: "06", label: "Next Action", sub: "Next stage armed", icon: FastForward },
+                ].map((n) => {
+                  const Icon = n.icon;
+                  return (
+                    <div key={n.step} className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-center">
+                      <div className="text-[10px] font-mono text-purple-400 font-bold">{n.step}</div>
+                      <div className="mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-xl bg-purple-950/80 text-purple-300 border border-purple-800/60">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="mt-2.5 text-xs font-bold text-white">{n.label}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{n.sub}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* Exception Path */
+            <div>
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-6">
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                  Exception &amp; Human Handoff Loop
+                </span>
+                <span className="text-xs text-slate-400">When patient doesn&apos;t reply or reports pain</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                {[
+                  { step: "01", label: "No Response", sub: "Timeout reached", icon: AlertTriangle, color: "text-amber-400" },
+                  { step: "02", label: "Reminder", sub: "Smart retry sent", icon: RefreshCw, color: "text-cyan-400" },
+                  { step: "03", label: "Care Voice", sub: "AI calls patient", icon: PhoneCall, color: "text-purple-400" },
+                  { step: "04", label: "Coordinator", sub: "Operational task", icon: UserCheck, color: "text-indigo-400" },
+                  { step: "05", label: "Doctor", sub: "Clinical decision", icon: Stethoscope, color: "text-rose-400" },
+                ].map((n) => {
+                  const Icon = n.icon;
+                  return (
+                    <div key={n.step} className="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-center">
+                      <div className="text-[10px] font-mono text-amber-400 font-bold">{n.step}</div>
+                      <div className={`mx-auto mt-2 flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 border border-slate-800 ${n.color}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="mt-2.5 text-xs font-bold text-white">{n.label}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">{n.sub}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
       </div>
-    </Section>
+    </section>
   );
 }
