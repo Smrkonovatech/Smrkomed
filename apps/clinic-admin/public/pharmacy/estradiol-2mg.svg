@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Estradiol demo packaging">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F2EDFF"/>
+      <stop offset="100%" stop-color="#ffffff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="48" fill="url(#g)"/>
+  <rect x="36" y="36" width="440" height="440" rx="36" fill="#ffffff" stroke="#7550D8" stroke-width="4"/>
+  <rect x="36" y="36" width="440" height="96" rx="36" fill="#7550D8"/>
+  <rect x="36" y="100" width="440" height="32" fill="#7550D8"/>
+  <text x="256" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="700" fill="#ffffff">SMRKOMED DEMO</text>
+  <circle cx="256" cy="230" r="54" fill="#F2EDFF" stroke="#7550D8" stroke-width="3"/>
+  <path d="M236 230h40M256 210v40" stroke="#7550D8" stroke-width="8" stroke-linecap="round"/>
+  <text x="256" y="320" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" fill="#2D1B55">Estradiol</text>
+  <text x="256" y="360" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="24" fill="#5B4A82">2 mg · Tablet</text>
+  <rect x="150" y="390" width="212" height="40" rx="20" fill="#F2EDFF" stroke="#7550D8" stroke-width="2"/>
+  <text x="256" y="417" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="700" fill="#7550D8">DEMO SAMPLE</text>
+  <text x="256" y="460" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#8A7AA8">Not a real medicine pack · Demo only</text>
+</svg>

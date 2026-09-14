@@ -1,0 +1,242 @@
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+
+export type ClinicPerson = {
+  id: string;
+  name: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  phone: string;
+  email: string;
+  dob: string;
+  language: string;
+  status: string;
+};
+
+export type ClinicCouple = {
+  id: string;
+  slug: string;
+  clinicId: string;
+  status: "On Track" | "Needs Attention" | "Pending";
+  careLoop: "Active" | "Paused";
+  treatment: "IVF" | "IUI" | "Evaluation" | "FET";
+  cycleLabel: string;
+  stage: string;
+  stageIndex: number;
+  cycle: string;
+  doctor: string;
+  coordinator: string;
+  nextStep: string;
+  tags: string[];
+  since: string;
+  primary: ClinicPerson;
+  partner?: ClinicPerson;
+};
+
+export type ClinicTask = {
+  id: string;
+  title: string;
+  coupleId: string;
+  assignedTo: string;
+  due: string;
+  category: string;
+  status: "completed" | "in_progress" | "waiting" | "overdue" | "escalated";
+  note?: string;
+  targetRole?: string | null;
+  targetPatientId?: string | null;
+};
+
+export type ClinicAppointment = {
+  id: string;
+  coupleId: string;
+  type: string;
+  doctor: string;
+  room: string;
+  status: "Confirmed" | "Waiting" | "Completed" | "No-show";
+  time: string;
+  date: string;
+  duration: number;
+  notes: string;
+};
+
+export type ClinicDocument = {
+  id: string;
+  name: string;
+  category: string;
+  coupleId: string;
+  uploaded: string;
+  uploadedBy: string;
+  status: "Doctor Review" | "Reviewed" | "Awaiting Upload";
+  mimeType: string;
+  size: number;
+  taskId?: string;
+};
+
+export type ClinicActivity = {
+  id: string;
+  patient: string;
+  activity: string;
+  time: string;
+  tone: "success" | "warning" | "danger" | "info";
+};
+
+export type ClinicStaff = {
+  id: string;
+  name: string;
+  email?: string;
+  title?: string;
+  role: string;
+  roleName: string;
+};
+
+export type ClinicCarePlan = {
+  id: string;
+  coupleId: string;
+  name: string;
+  type: string;
+  status: string;
+  templateVersion?: number;
+  updatedAt?: string;
+  createdAt?: string;
+};
+
+export function clinicErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    const base = error.message || fallback;
+    const withRef =
+      error.requestId && !base.includes(error.requestId) ? `${base} Reference: ${error.requestId}` : base;
+    if (error.status > 0 && !withRef.includes(`(${error.status})`)) {
+      return `${withRef} (${error.status}${error.code ? ` ${error.code}` : ""})`;
+    }
+    return withRef;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
+export const clinicApi = {
+  couples: () => apiGet<ClinicCouple[]>("/api/v1/couples"),
+  couple: (id: string) => apiGet<ClinicCouple>(`/api/v1/couples/${id}`),
+  patient360: (id: string) => apiGet<any>(`/api/v1/couples/${id}/360`),
+  careCalendar: (id: string) => apiGet<{ appointments: ClinicAppointment[], tasks: ClinicTask[] }>(`/api/v1/couples/${id}/care-calendar`),
+  createCouple: (body: unknown) => apiPost<ClinicCouple>("/api/v1/couples", body),
+  tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
+  createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
+  patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),
+  appointments: () => apiGet<ClinicAppointment[]>("/api/v1/appointments"),
+  createAppointment: (body: unknown) => apiPost<ClinicAppointment>("/api/v1/appointments", body),
+  patchAppointment: (id: string, body: unknown) =>
+    apiPatch<ClinicAppointment>(`/api/v1/appointments/${id}`, body),
+  documents: () => apiGet<ClinicDocument[]>("/api/v1/documents"),
+  createDocument: (body: unknown) => apiPost<ClinicDocument>("/api/v1/documents", body),
+  activity: () => apiGet<ClinicActivity[]>("/api/v1/activity"),
+  staff: () => apiGet<ClinicStaff[]>("/api/v1/users/staff"),
+  me: () =>
+    apiGet<{ id: string; name: string; email: string; role: string; clinicName: string }>("/api/v1/users/me"),
+  carePlans: () => apiGet<ClinicCarePlan[]>("/api/v1/care-plans"),
+  createCarePlan: (body: unknown) => apiPost<ClinicCarePlan>("/api/v1/care-plans", body),
+  patchPatient: (id: string, body: unknown) => apiPatch(`/api/v1/patients/${id}`, body),
+  templates: () => apiGet<any[]>("/api/v1/treatment-plan-templates"),
+  template: (id: string) => apiGet<any>(`/api/v1/treatment-plan-templates/${id}`),
+  createTemplate: (body: unknown) => apiPost<any>("/api/v1/treatment-plan-templates", body),
+  patchTemplate: (id: string, body: unknown) => apiPatch<any>(`/api/v1/treatment-plan-templates/${id}`, body),
+  duplicateTemplate: (id: string) => apiPost<any>(`/api/v1/treatment-plan-templates/${id}/duplicate`, {}),
+  toggleTemplate: (id: string) => apiPost<any>(`/api/v1/treatment-plan-templates/${id}/toggle`, {}),
+  assignCarePlan: (body: unknown) => apiPost<any>("/api/v1/care-plans/assign", body),
+  journey: (carePlanId: string) => apiGet<any>(`/api/v1/care-plans/${carePlanId}/journey`),
+  branchCarePlan: (id: string, body: unknown) => apiPost<any>(`/api/v1/care-plans/${id}/branch`, body),
+  pauseCarePlan: (id: string, body: unknown) => apiPost<any>(`/api/v1/care-plans/${id}/pause`, body),
+  resumeCarePlan: (id: string) => apiPost<any>(`/api/v1/care-plans/${id}/resume`, {}),
+  completeTask: (id: string, body?: unknown) => apiPost<any>(`/api/v1/care-tasks/${id}/complete`, body ?? {}),
+  escalateTask: (id: string, reason: string) => apiPost<any>(`/api/v1/care-tasks/${id}/escalate`, { reason }),
+  simulateTaskResponse: (id: string, text: string) => apiPost<any>(`/api/v1/care-tasks/${id}/simulate-response`, { text }),
+  addDoctorTask: (body: unknown) => apiPost<any>("/api/v1/care-tasks", body),
+  dispatchTaskWhatsApp: (
+    id: string,
+    options?:
+      | {
+          phoneNumber?: string | undefined;
+          partnerPhoneNumber?: string | undefined;
+          targetRole?: string | undefined;
+          broadcastToBoth?: boolean | undefined;
+        }
+      | string
+      | undefined,
+  ) => {
+    const payload = typeof options === "string" ? { phoneNumber: options } : (options ?? {});
+    return apiPost<any>(`/api/v1/care-tasks/${id}/dispatch-whatsapp`, payload);
+  },
+  exceptions: () => apiGet<any[]>("/api/v1/care-loop/exceptions"),
+  resolveException: (id: string, notes?: string) => apiPost<any>(`/api/v1/care-loop/exceptions/${id}/resolve`, { notes }),
+  careLoopAnalytics: () => apiGet<any>("/api/v1/care-loop/analytics"),
+  deleteCouple: (id: string, options?: { permanent?: boolean }) =>
+    apiDelete<{ deleted: boolean; mode: "permanent" | "archived"; id: string }>(
+      `/api/v1/couples/${id}${options?.permanent ? "?permanent=1" : ""}`,
+    ),
+  deletePatient: (id: string, options?: { permanent?: boolean }) =>
+    apiDelete<{ deleted: boolean; mode: "permanent" | "archived"; id: string }>(
+      `/api/v1/patients/${id}${options?.permanent ? "?permanent=1" : ""}`,
+    ),
+  diagnostics: (query?: Record<string, string>) => {
+    const q = query ? "?" + new URLSearchParams(query).toString() : "";
+    return apiGet<any[]>(`/api/v1/diagnostics${q}`);
+  },
+  diagnosticReviewQueue: () => apiGet<any[]>("/api/v1/diagnostics/review-queue"),
+  diagnosticOrder: (id: string) => apiGet<any>(`/api/v1/diagnostics/${id}`),
+  createDiagnosticOrder: (body: unknown) => apiPost<any>("/api/v1/diagnostics", body),
+  recordDiagnosticSample: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/sample`, body),
+  enterDiagnosticResults: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/results`, body),
+  verifyDiagnosticResults: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/verify`, body),
+  reviewDiagnosticOrder: (id: string, body: unknown) => apiPost<any>(`/api/v1/diagnostics/${id}/review`, body),
+  patientDiagnostics: (patientId: string) => apiGet<any>(`/api/v1/diagnostics/patient/${patientId}`),
+  // Doctor Workflow APIs
+  prepareMyDay: () => apiGet<any>("/api/v1/doctors/prepare-my-day"),
+  doctorSchedule: (params?: { date?: string; range?: string }) => {
+    const q = params ? "?" + new URLSearchParams(params as Record<string, string>).toString() : "";
+    return apiGet<any>(`/api/v1/doctors/schedule${q}`);
+  },
+  completeConsultation: (appointmentId: string, body: unknown) =>
+    apiPost<any>(`/api/v1/doctors/consultations/${appointmentId}`, body),
+  doctorReports: (filter?: string) =>
+    apiGet<any[]>(`/api/v1/doctors/reports${filter ? `?filter=${filter}` : ""}`),
+  doctorReviewReport: (orderId: string, body: unknown) =>
+    apiPost<any>(`/api/v1/doctors/reports/${orderId}/review`, body),
+  doctorCareLoopExceptions: () => apiGet<any[]>("/api/v1/doctors/care-loop-exceptions"),
+  doctorMessages: () => apiGet<any[]>("/api/v1/doctors/messages"),
+  // Analytics APIs
+  analyticsOverview: (params?: { dateRange?: string | undefined; dateFrom?: string | undefined; dateTo?: string | undefined; doctorId?: string | undefined; status?: string | undefined }) => {
+    const q = params ? "?" + new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as [string, string][]).toString() : "";
+    return apiGet<any>(`/api/v1/analytics/overview${q}`);
+  },
+  analyticsOrganization: () => apiGet<any>("/api/v1/analytics/organization"),
+  analyticsCareLoop: () => apiGet<any>("/api/v1/analytics/care-loop"),
+  analyticsPatientEngagement: () => apiGet<any>("/api/v1/analytics/patient-engagement"),
+  analyticsClinicalOperations: () => apiGet<any>("/api/v1/analytics/clinical-operations"),
+  analyticsFertility: () => apiGet<any>("/api/v1/analytics/fertility"),
+  analyticsBilling: () => apiGet<any>("/api/v1/analytics/billing"),
+  analyticsStaff: () => apiGet<any>("/api/v1/analytics/staff"),
+  // Smrko AI Clinical Intelligence APIs
+  aiStatus: () => apiGet<any>("/api/v1/ai/status"),
+  aiPrepareMyDay: () => apiPost<any>("/api/v1/ai/prepare-my-day", {}),
+  aiPatientSummary: (patientId: string) => apiPost<any>("/api/v1/ai/patient-summary", { patientId }),
+  aiConversationSummary: (conversationId: string) =>
+    apiPost<any>("/api/v1/ai/conversation-summary", { conversationId }),
+  aiTaskSummary: (filter?: { coupleId?: string; carePlanId?: string }) =>
+    apiPost<any>("/api/v1/ai/task-summary", filter ?? {}),
+  aiJourneySummary: (coupleId: string) => apiPost<any>("/api/v1/ai/journey-summary", { coupleId }),
+  aiReportSummary: (taskId: string) => apiPost<any>("/api/v1/ai/report-summary", { taskId }),
+  aiDraftMessage: (body: { patientId: string; intent: string; customContext?: string }) =>
+    apiPost<any>("/api/v1/ai/draft-message", body),
+  aiConsultationAssist: (body: { appointmentId: string; clinicalImpressionNotes: string; vitals?: Record<string, string> }) =>
+    apiPost<any>("/api/v1/ai/consultation-assist", body),
+  aiDraftDischarge: (body: { coupleId: string; treatmentId?: string; clinicalSummary: string }) =>
+    apiPost<any>("/api/v1/ai/draft-discharge", body),
+  aiKnowledgeRetrieve: (query: string, options?: { specialtyHint?: string; limit?: number }) =>
+    apiPost<any>("/api/v1/ai/knowledge-retrieve", { query, ...options }),
+  aiHandoff: (body: { conversationId: string; reason: string; patientId?: string; coupleId?: string }) =>
+    apiPost<any>("/api/v1/ai/handoff", body),
+  aiConditionalAutomation: (body: { taskId: string; event: string; responsePayload?: string }) =>
+    apiPost<any>("/api/v1/ai/conditional-automation", body),
+};
+
+

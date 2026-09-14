@@ -1,0 +1,306 @@
+"use client";
+
+import Link from "next/link";
+import { Filter, Search, Trash2, UserPlus, Users } from "lucide-react";
+import { useMemo, useState } from "react";
+
+import { DeletePatientDialog } from "@/components/actions/delete-patient-dialog";
+import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { AiInsightCard } from "@/components/ai/ai-insight-card";
+import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
+import { EmptyState, PageHeader, StatusBadge, Avatar } from "@/components/ui-kit";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { useAppState } from "@/lib/app-state";
+import { coupleLabel, type Couple, type Treatment } from "@/lib/demo-data";
+import { patientStatusTone } from "@/lib/status";
+import { cn } from "@/lib/utils";
+
+const filters = [
+  "All",
+  "IVF",
+  "IUI",
+  "Evaluation",
+  "FET",
+  "Needs Attention",
+  "On Track",
+  "Paused",
+] as const;
+
+export default function PatientsPage() {
+  const [q, setQ] = useState("");
+  const [filter, setFilter] = useState<(typeof filters)[number]>("All");
+  const [targetCouple, setTargetCouple] = useState<{ id: string; name: string; slug?: string } | null>(
+    null,
+  );
+  const { openAction } = useGlobalActions();
+  const { couples, loadState, loadError, reload } = useAppState();
+  const inactiveHint = couples.filter((c) => c.careLoop === "Paused" || c.status === "Needs Attention")
+    .length;
+
+  const rows = useMemo(
+    () =>
+      couples.filter((c) => {
+        const query = q.trim().toLowerCase();
+        const matchQ =
+          !query ||
+          [
+            c.primary.name,
+            c.partner?.name ?? "",
+            c.treatment,
+            c.stage,
+            c.doctor,
+            c.coordinator,
+            c.nextStep,
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(query);
+        const matchF = matchesFilter(c, filter);
+        return matchQ && matchF;
+      }),
+    [couples, filter, q],
+  );
+
+  return (
+    <div className="mx-auto max-w-[1500px]">
+      <PageHeader
+        title="Patients"
+        subtitle="Manage every couple’s treatment journey, care owner, and next clinical step."
+        actions={
+          <Button className="rounded-lg" onClick={() => openAction("add-couple")}>
+            <UserPlus className="size-4" /> Add Couple
+          </Button>
+        }
+      />
+
+      {inactiveHint > 0 && (
+        <div className="mb-4">
+          <AiInsightCard
+            message={`${inactiveHint} patient${inactiveHint === 1 ? "" : "s"} may need follow-up (paused Care Loop or Needs Attention).`}
+            askPrompt="Which patients need follow-up?"
+          />
+        </div>
+      )}
+
+      <section className="overflow-hidden rounded-xl border bg-background">
+        <div className="grid gap-3 border-b p-3 lg:grid-cols-[minmax(280px,1fr)_auto] lg:items-center">
+          <div className="relative min-w-0">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search couples, stage, doctor, coordinator, or next step"
+              className="h-9 rounded-lg pl-9 shadow-none"
+              aria-label="Search patients"
+            />
+          </div>
+          <div className="flex max-w-full flex-wrap items-center gap-1.5 overflow-x-auto">
+            <Filter className="size-4 shrink-0 text-muted-foreground" />
+            {filters.map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  "min-h-11 shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors sm:min-h-0",
+                  filter === f
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-transparent text-muted-foreground hover:border-border hover:bg-accent",
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {loadState === "loading" ? (
+          <p className="p-6 text-sm text-muted-foreground">Loading patients...</p>
+        ) : loadState === "error" ? (
+          <EmptyState
+            title="Unable to load patients"
+            description={loadError ?? "Try again."}
+            icon={Users}
+            action={
+              <Button variant="outline" className="rounded-lg" onClick={() => void reload()}>
+                Try again
+              </Button>
+            }
+          />
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title={couples.length === 0 && !q && filter === "All" ? "No patients yet" : "No matching patients"}
+            description={
+              couples.length === 0 && !q && filter === "All"
+                ? "Create a couple to start storing clinic records in PostgreSQL."
+                : "Try a different search term or clear the filters."
+            }
+            icon={Users}
+            action={
+              couples.length === 0 && !q && filter === "All" ? (
+                <Button className="rounded-lg" onClick={() => openAction("add-couple")}>
+                  <UserPlus className="size-4" /> Add Couple
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  className="rounded-lg"
+                  onClick={() => {
+                    setQ("");
+                    setFilter("All");
+                  }}
+                >
+                  Clear filters
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <>
+          <MobileCards>
+            {rows.map((c) => (
+              <RecordCard key={c.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{coupleLabel(c)}</p>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {c.treatment} · {c.status}
+                    </p>
+                  </div>
+                  <StatusBadge label={c.status} tone={patientStatusTone[c.status] ?? "muted"} />
+                </div>
+                <p className="mt-2 text-sm">{c.stage}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {c.doctor} · Coordinator: {c.coordinator}
+                </p>
+                <p className="mt-2 text-sm">
+                  Next: <span className="font-medium">{c.nextStep}</span>
+                </p>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <Button asChild size="sm" className="w-full sm:w-auto">
+                    <Link href={`/patients/${c.slug}`}>Open</Link>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() =>
+                      setTargetCouple({
+                        id: c.id,
+                        name: coupleLabel(c),
+                        slug: c.slug,
+                      })
+                    }
+                  >
+                    <Trash2 className="mr-1.5 size-3.5" /> Delete
+                  </Button>
+                </div>
+              </RecordCard>
+            ))}
+          </MobileCards>
+          <MdTableWrap>
+            <table className="w-full min-w-[1080px] text-sm">
+              <thead>
+                <tr className="border-b bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
+                  <th className="px-4 py-2.5 font-medium">Couple</th>
+                  <th className="px-3 py-2.5 font-medium">Treatment</th>
+                  <th className="px-3 py-2.5 font-medium">Current stage</th>
+                  <th className="px-3 py-2.5 font-medium">Doctor</th>
+                  <th className="px-3 py-2.5 font-medium">Coordinator</th>
+                  <th className="px-3 py-2.5 font-medium">Next step</th>
+                  <th className="px-3 py-2.5 font-medium">Status</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((c) => (
+                  <tr
+                    key={c.id}
+                    className="group border-b transition-colors last:border-0 hover:bg-accent/45"
+                  >
+                    <td className="px-4 py-2.5">
+                      <Link
+                        href={`/patients/${c.slug}`}
+                        className="flex min-w-0 items-center gap-2.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Avatar
+                          initials={c.primary.name
+                            .split(" ")
+                            .map((p) => p[0])
+                            .join("")
+                            .slice(0, 2)}
+                          tone="primary"
+                          className="size-8"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate font-semibold group-hover:text-primary">
+                            {coupleLabel(c)}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {c.primary.name}
+                            {c.partner ? ` · ${c.partner.name}` : ""}
+                          </span>
+                        </span>
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2.5 font-medium">{c.treatment}</td>
+                    <td className="px-3 py-2.5">{c.stage}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{c.doctor}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{c.coordinator}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="font-medium">{c.nextStep}</span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <StatusBadge label={c.status} tone={patientStatusTone[c.status] ?? "muted"} />
+                      {c.careLoop === "Paused" && (
+                        <StatusBadge label="Paused" tone="warning" className="ml-1.5" />
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="size-8 p-0 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Delete Patient"
+                        aria-label={`Delete ${coupleLabel(c)}`}
+                        onClick={() =>
+                          setTargetCouple({
+                            id: c.id,
+                            name: coupleLabel(c),
+                            slug: c.slug,
+                          })
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </MdTableWrap>
+          </>
+        )}
+        <div className="border-t bg-muted/20 px-4 py-2 text-xs text-muted-foreground">
+          Showing {rows.length} of {couples.length} couples
+        </div>
+      </section>
+
+      <DeletePatientDialog
+        open={Boolean(targetCouple)}
+        onOpenChange={(open) => !open && setTargetCouple(null)}
+        couple={targetCouple}
+        onDeleted={() => {
+          setTargetCouple(null);
+        }}
+      />
+    </div>
+  );
+}
+
+function matchesFilter(couple: Couple, filter: (typeof filters)[number]) {
+  if (filter === "All") return true;
+  if (filter === "Needs Attention" || filter === "On Track") return couple.status === filter;
+  if (filter === "Paused") return couple.careLoop === "Paused";
+  return couple.treatment === (filter as Treatment);
+}
