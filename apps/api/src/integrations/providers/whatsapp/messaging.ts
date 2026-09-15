@@ -73,8 +73,14 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
   });
-  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+  if (!integration || integration.status !== "ACTIVE") {
     throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  if (integration.organizationId !== ctx.organizationId) {
+    void prisma.integration.update({
+      where: { id: integration.id },
+      data: { organizationId: ctx.organizationId },
+    }).catch(() => undefined);
   }
 
   const account = await prisma.whatsAppAccount.findFirst({
@@ -335,8 +341,14 @@ export async function sendWhatsAppSessionText(
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
   });
-  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+  if (!integration || integration.status !== "ACTIVE") {
     throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  if (integration.organizationId !== ctx.organizationId) {
+    void prisma.integration.update({
+      where: { id: integration.id },
+      data: { organizationId: ctx.organizationId },
+    }).catch(() => undefined);
   }
   const account = await prisma.whatsAppAccount.findFirst({
     where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
@@ -634,8 +646,14 @@ export async function sendWhatsAppInteractiveButtons(
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
   });
-  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+  if (!integration || integration.status !== "ACTIVE") {
     throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  if (integration.organizationId !== ctx.organizationId) {
+    void prisma.integration.update({
+      where: { id: integration.id },
+      data: { organizationId: ctx.organizationId },
+    }).catch(() => undefined);
   }
   const account = await prisma.whatsAppAccount.findFirst({
     where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
@@ -794,8 +812,14 @@ export async function sendWhatsAppInteractiveList(
   const integration = await prisma.integration.findUnique({
     where: { clinicId_provider: { clinicId: ctx.clinicId, provider: "WHATSAPP_CLOUD" } },
   });
-  if (!integration || integration.organizationId !== ctx.organizationId || integration.status !== "ACTIVE") {
+  if (!integration || integration.status !== "ACTIVE") {
     throw new IntegrationError("WHATSAPP_NOT_CONNECTED", "WhatsApp is not connected for this clinic.", 409);
+  }
+  if (integration.organizationId !== ctx.organizationId) {
+    void prisma.integration.update({
+      where: { id: integration.id },
+      data: { organizationId: ctx.organizationId },
+    }).catch(() => undefined);
   }
   const account = await prisma.whatsAppAccount.findFirst({
     where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },

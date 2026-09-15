@@ -142,18 +142,32 @@ async function storeEvent(
 }
 
 async function matchPatient(clinicId: string, phone: string) {
-  const suffix = phone.slice(-10);
-  const candidates = await prisma.patient.findMany({
+  const rawDigits = phone.replace(/\D/g, "");
+  const suffix = rawDigits.slice(-10);
+  const last5 = rawDigits.slice(-5);
+  let candidates = await prisma.patient.findMany({
     where: {
       clinicId,
       OR: [
-        { whatsappNumber: { contains: suffix } },
-        { phone: { contains: suffix } },
+        { whatsappNumber: { contains: last5 } },
+        { phone: { contains: last5 } },
       ],
     },
     select: { id: true, firstName: true, lastName: true, phone: true, whatsappNumber: true },
     take: 50,
   });
+  if (candidates.length === 0) {
+    candidates = await prisma.patient.findMany({
+      where: {
+        OR: [
+          { whatsappNumber: { contains: last5 } },
+          { phone: { contains: last5 } },
+        ],
+      },
+      select: { id: true, firstName: true, lastName: true, phone: true, whatsappNumber: true },
+      take: 50,
+    });
+  }
   return candidates.find((row) => phonesMatch(row.whatsappNumber, phone) || phonesMatch(row.phone, phone)) ?? null;
 }
 

@@ -122,6 +122,7 @@ export async function ensureDirectWhatsAppConnection(ctx: TenantContext) {
       lastSyncAt: new Date(),
     },
     update: {
+      organizationId: ctx.organizationId,
       status: "ACTIVE",
       displayName,
       externalAccountId: businessAccountId,

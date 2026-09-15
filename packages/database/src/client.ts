@@ -5,13 +5,16 @@ import { loadDatabaseEnv } from "./env";
 loadDatabaseEnv();
 
 function resolveDatabaseUrl() {
-  const url = process.env["DATABASE_URL"];
+  let url = process.env["DATABASE_URL"];
   if (!url) return url;
   const onVercel = process.env["VERCEL"] === "1";
-  if (!onVercel) return url;
-  if (/sslmode=/i.test(url)) return url;
-  if (/localhost|127\.0\.0\.1/i.test(url)) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}sslmode=require`;
+  if (onVercel && !/sslmode=/i.test(url) && !/localhost|127\.0\.0\.1/i.test(url)) {
+    url = `${url}${url.includes("?") ? "&" : "?"}sslmode=require`;
+  }
+  if (!/connect_timeout=/i.test(url) && !/localhost|127\.0\.0\.1/i.test(url)) {
+    url = `${url}${url.includes("?") ? "&" : "?"}connect_timeout=30&pool_timeout=30`;
+  }
+  return url;
 }
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
