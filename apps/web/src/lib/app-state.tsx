@@ -270,35 +270,21 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<ClinicStaff[]>([]);
   const [staffError, setStaffError] = useState<string | null>(null);
   const [staffLoading, setStaffLoading] = useState(false);
-  const [coupleList, setCoupleList] = useState<AppCouple[]>(() => seedCouples.map((c) => ({ ...c })));
-  const [appointmentList, setAppointmentList] = useState<AppAppointment[]>(() => seedAppointments.map((a) => ({ ...a })));
-  const [cycleList, setCycleList] = useState<AppCycle[]>(() => seedCycles.map((cycle) => ({ ...cycle })));
-  const [documentList, setDocumentList] = useState<AppDocument[]>(() => seedDocuments.map((d) => ({ ...d })));
-  const [invoiceList] = useState<Invoice[]>(() => seedInvoices.map((invoice) => ({ ...invoice })));
-  const [enquiryList, setEnquiryList] = useState<Enquiry[]>(() =>
-    seedLeads.map((lead) => ({
-      id: lead.id,
-      name: lead.name.split(" & ")[0] ?? lead.name,
-      partner: lead.name.split(" & ")[1] ?? "",
-      phone: "",
-      email: "",
-      source: lead.source,
-      treatment: lead.interest,
-      counselor: lead.counselor,
-      followUp: lead.nextAction,
-      notes: "",
-      stage: lead.stage,
-    })),
-  );
+  const [coupleList, setCoupleList] = useState<AppCouple[]>([]);
+  const [appointmentList, setAppointmentList] = useState<AppAppointment[]>([]);
+  const [cycleList, setCycleList] = useState<AppCycle[]>([]);
+  const [documentList, setDocumentList] = useState<AppDocument[]>([]);
+  const [invoiceList] = useState<Invoice[]>([]);
+  const [enquiryList, setEnquiryList] = useState<Enquiry[]>([]);
   const [careContentList] = useState<CareContentItem[]>(() => seedCareContent.map((item) => ({ ...item })));
-  const [tasks, setTasks] = useState<CareTask[]>(() => seedTasks.map((t) => ({ ...t })));
-  const [activity, setActivity] = useState<LoopActivity[]>(() => seedLoopActivity.map((a) => ({ ...a })));
-  const [exceptionList, setExceptionList] = useState<ExceptionItem[]>(seedExceptions);
+  const [tasks, setTasks] = useState<CareTask[]>([]);
+  const [activity, setActivity] = useState<LoopActivity[]>([]);
+  const [exceptionList, setExceptionList] = useState<ExceptionItem[]>([]);
   const [kpis, setKpis] = useState(() => ({
-    active: seedCouples.length,
-    completion: loopKpis.completion,
-    automatedToday: loopKpis.automatedToday,
-    needAttention: seedTasks.filter((t) => t.status === "overdue" || t.status === "escalated").length,
+    active: 0,
+    completion: 100,
+    automatedToday: 0,
+    needAttention: 0,
   }));
 
   const reloadStaff = useCallback(async () => {
@@ -339,45 +325,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
             })),
         ]);
 
-      // Merge DB couples with seed couples so all testing couples across all 15 stages are available
       const mappedCouples = couples.map(toCouple);
-      const mergedCouples = [...mappedCouples];
-      for (const sc of seedCouples) {
-        if (!mergedCouples.some((c) => c.id === sc.id || c.slug === sc.slug)) {
-          mergedCouples.push(sc);
-        }
-      }
-      setCoupleList(mergedCouples);
+      setCoupleList(mappedCouples);
 
       const mappedTasks = nextTasks.map(toTask);
-      const mergedTasks = [...mappedTasks];
-      for (const st of seedTasks) {
-        if (!mergedTasks.some((t) => t.id === st.id)) {
-          mergedTasks.push(st);
-        }
-      }
-      setTasks(mergedTasks);
+      setTasks(mappedTasks);
 
       const mappedAppointments = appointments.map(toAppointment);
-      const mergedAppointments = [...mappedAppointments];
-      for (const sa of seedAppointments) {
-        if (!mergedAppointments.some((a) => a.id === sa.id)) {
-          mergedAppointments.push(sa);
-        }
-      }
-      setAppointmentList(mergedAppointments);
+      setAppointmentList(mappedAppointments);
 
       const mappedDocuments = documents.map(toDocument);
-      const mergedDocuments = [...mappedDocuments];
-      for (const sd of seedDocuments) {
-        if (!mergedDocuments.some((d) => d.id === sd.id)) {
-          mergedDocuments.push(sd);
-        }
-      }
-      setDocumentList(mergedDocuments);
+      setDocumentList(mappedDocuments);
 
-      const mergedActivity = nextActivity.length > 0 ? nextActivity : seedLoopActivity;
-      setActivity(mergedActivity);
+      setActivity(nextActivity);
+      setExceptionList([]);
 
       if (staffOutcome.ok) {
         setStaff(staffOutcome.rows);
@@ -388,26 +349,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setStaff((previous) => previous);
       }
       setKpis({
-        active: mergedCouples.length,
+        active: mappedCouples.length,
         completion: loopKpis.completion,
-        automatedToday: loopKpis.automatedToday,
-        needAttention: mergedTasks.filter((task) => task.status === "overdue" || task.status === "escalated")
-          .length,
+        automatedToday: 0,
+        needAttention: mappedTasks.filter((task) => task.status === "overdue" || task.status === "escalated").length,
       });
       setLoadState("ready");
     } catch {
-      // Graceful fallback to rich test seed data so dashboard and detail pages work without breaking
-      setCoupleList(seedCouples);
-      setTasks(seedTasks);
-      setAppointmentList(seedAppointments);
-      setDocumentList(seedDocuments);
-      setActivity(seedLoopActivity);
+      setCoupleList([]);
+      setTasks([]);
+      setAppointmentList([]);
+      setDocumentList([]);
+      setActivity([]);
+      setExceptionList([]);
       setKpis({
-        active: seedCouples.length,
-        completion: loopKpis.completion,
-        automatedToday: loopKpis.automatedToday,
-        needAttention: seedTasks.filter((task) => task.status === "overdue" || task.status === "escalated")
-          .length,
+        active: 0,
+        completion: 100,
+        automatedToday: 0,
+        needAttention: 0,
       });
       setLoadError(null);
       setLoadState("ready");

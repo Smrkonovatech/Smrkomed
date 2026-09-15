@@ -13,7 +13,7 @@ export function MainOverview() {
    const hour = new Date().getHours();
    const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
 
-   const activeJourneys = kpis.active || 38;
+   const activeJourneys = kpis.active;
    
    const dueTodayTasks = tasks.filter((t) => t.status === "waiting" || t.status === "in_progress").length;
    const exceptionsCount = exceptions.length;
@@ -31,11 +31,11 @@ export function MainOverview() {
       };
    };
 
-   const orbit1 = getOrbitData(0) || { initial: 'V', name: 'Veena', desc: 'HSG scan - 9.30 AM' };
-   const orbit2 = getOrbitData(1) || { initial: 'K', name: 'Kavya', desc: 'Follow up - 10.15 AM' };
-   const orbit3 = getOrbitData(2) || { initial: 'G', name: 'Geethu', desc: 'Consultation - 11.00 AM' };
-   const orbit4 = getOrbitData(3) || { initial: 'S', name: 'Sneha', desc: 'Report review - 12.30 PM' };
-   const orbit5 = getOrbitData(4) || { initial: 'P', name: 'Priya', desc: 'Routine checkup - 2.00 PM' };
+   const orbit1 = getOrbitData(0);
+   const orbit2 = getOrbitData(1);
+   const orbit3 = getOrbitData(2);
+   const orbit4 = getOrbitData(3);
+   const orbit5 = getOrbitData(4);
 
    return (
       <div className="flex flex-col h-full">
@@ -61,10 +61,12 @@ export function MainOverview() {
                   <button className="text-[clamp(9px,1vw,14px)] text-gray-400 underline mt-1 hover:text-indigo-500">View all</button>
                </div>
 
-               {/* Orbiting Badges Container - same center/size as the glow image */}
+               {/* Orbiting Badges Container - only if real appointments exist */}
+               {(orbit1 || orbit2 || orbit3 || orbit4 || orbit5) && (
                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none w-[clamp(260px,32vw,440px)] h-[clamp(260px,32vw,440px)] flex items-center justify-center">
                   <div className="relative w-full h-full">
-                     {/* V (Outer, Top-Left) */}
+                     {/* Orbit 1 */}
+                     {orbit1 && (
                      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_40s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-35s' }}>
                         <div className="animate-[spin_40s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-35s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#866BE3] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit1.initial}</div>
@@ -76,8 +78,10 @@ export function MainOverview() {
                            </div>
                         </div>
                      </div>
+                     )}
 
-                     {/* K (Outer, Top-Right) */}
+                     {/* Orbit 2 */}
+                     {orbit2 && (
                      <div className="absolute top-[70px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_150px] animate-[spin_35s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-4.4s' }}>
                         <div className="animate-[spin_35s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-4.4s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#C178F5] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit2.initial}</div>
@@ -89,8 +93,10 @@ export function MainOverview() {
                            </div>
                         </div>
                      </div>
+                     )}
 
-                     {/* G (Inner, Top) */}
+                     {/* Orbit 3 */}
+                     {orbit3 && (
                      <div className="absolute top-[80px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_140px] animate-[spin_25s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '0s' }}>
                         <div className="animate-[spin_25s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '0s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit3.initial}</div>
@@ -102,8 +108,10 @@ export function MainOverview() {
                            </div>
                         </div>
                      </div>
+                     )}
 
-                     {/* S (Inner, Right) */}
+                     {/* Orbit 4 */}
+                     {orbit4 && (
                      <div className="absolute top-[90px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_130px] animate-[spin_20s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-5s' }}>
                         <div className="animate-[spin_20s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-5s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#00A89D] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit4.initial}</div>
@@ -115,8 +123,10 @@ export function MainOverview() {
                            </div>
                         </div>
                      </div>
+                     )}
 
-                     {/* P (Inner, Bottom) */}
+                     {/* Orbit 5 */}
+                     {orbit5 && (
                      <div className="absolute top-[100px] left-1/2 -translate-x-1/2 -translate-y-1/2 origin-[50%_120px] animate-[spin_22s_linear_infinite] hover:[animation-play-state:paused] pointer-events-auto group" style={{ animationDelay: '-11s' }}>
                         <div className="animate-[spin_22s_linear_infinite_reverse] group-hover:[animation-play-state:paused] relative" style={{ animationDelay: '-11s' }}>
                            <div className="w-8 h-8 rounded-full bg-[#F39C12] flex items-center justify-center text-white text-xs font-medium shadow-md cursor-pointer transition-transform hover:scale-110">{orbit5.initial}</div>
@@ -128,8 +138,10 @@ export function MainOverview() {
                            </div>
                         </div>
                      </div>
+                     )}
                   </div>
                </div>
+               )}
             </div>
 
             {/* Right-side Vertical Stat Bubbles */}

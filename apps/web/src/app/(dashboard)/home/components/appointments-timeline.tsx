@@ -172,6 +172,12 @@ export function AppointmentsTimeline() {
                      })}
                   </div>
 
+                  {appointments.length === 0 && (
+                     <div className="absolute top-16 left-1/2 -translate-x-1/2 text-xs text-muted-foreground bg-white/80 px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">
+                        No appointments scheduled for today
+                     </div>
+                  )}
+
                   {/* Appointment Pills */}
                   {appointments.map((app, index) => {
                      const couple = findCouple(app.coupleId, couples ?? []);

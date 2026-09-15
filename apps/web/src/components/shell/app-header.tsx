@@ -59,7 +59,7 @@ type SearchResult = {
 export function AppHeader() {
   const router = useRouter();
   const { openAction } = useGlobalActions();
-  const { clinicId, setClinicId, role, setRole } = useAppState();
+  const { clinicId, setClinicId, role, setRole, couples: stateCouples, tasks: stateTasks, documents: stateDocs } = useAppState();
   const { data: session } = useSession();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -79,7 +79,7 @@ export function AppHeader() {
 
   const results = useMemo<SearchResult[]>(() => {
     const pool: SearchResult[] = [
-      ...couples.map((couple) => ({
+      ...stateCouples.map((couple) => ({
         id: `couple-${couple.id}`,
         type: "Couple",
         name: coupleFullLabel(couple),
@@ -87,15 +87,7 @@ export function AppHeader() {
         href: `/patients/${couple.slug}`,
         searchable: `${coupleFullLabel(couple)} ${couple.treatment} ${couple.stage}`,
       })),
-      ...cycles.map((cycle) => ({
-        id: `cycle-${cycle.id}`,
-        type: "Journey",
-        name: cycle.cycleLabel,
-        status: cycle.status,
-        href: "/ivf-cycles",
-        searchable: `${cycle.cycleLabel} ${cycle.treatment} ${cycle.stage}`,
-      })),
-      ...tasks.map((task) => ({
+      ...stateTasks.map((task) => ({
         id: `task-${task.id}`,
         type: "Task",
         name: task.title,
@@ -103,7 +95,7 @@ export function AppHeader() {
         href: "/tasks",
         searchable: `${task.title} ${task.status}`,
       })),
-      ...documents.map((doc) => ({
+      ...stateDocs.map((doc) => ({
         id: `doc-${doc.id}`,
         type: "Document",
         name: doc.name,

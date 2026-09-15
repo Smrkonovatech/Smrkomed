@@ -62,67 +62,14 @@ type SearchResult = {
   searchable: string;
 };
 
-const searchResults: SearchResult[] = [
-  ...couples.map((couple) => ({
-    id: `couple-${couple.id}`,
-    type: "Couple" as const,
-    name: coupleFullLabel(couple),
-    status: couple.status,
-    action: "Open profile",
-    href: `/patients/${couple.slug}`,
-    searchable: `${coupleFullLabel(couple)} ${couple.treatment} ${couple.stage} ${couple.status}`,
-  })),
-  ...cycles.map((cycle) => {
-    const couple = couples.find((item) => item.id === cycle.coupleId);
-    return {
-      id: `cycle-${cycle.id}`,
-      type: "Cycle" as const,
-      name: `${cycle.cycleLabel}${couple ? ` · ${coupleFullLabel(couple)}` : ""}`,
-      status: cycle.status,
-      action: "View cycle",
-      href: `/ivf-cycles?cycle=${cycle.id}`,
-      searchable: `${cycle.cycleLabel} ${cycle.treatment} ${cycle.stage} ${cycle.status} ${
-        couple ? coupleFullLabel(couple) : ""
-      }`,
-    };
-  }),
-  ...tasks.map((task) => ({
-    id: `task-${task.id}`,
-    type: "Task" as const,
-    name: task.title,
-    status: task.status.replaceAll("_", " "),
-    action: "Open task",
-    href: `/tasks?task=${task.id}`,
-    searchable: `${task.title} ${task.assignedTo} ${task.category} ${task.status}`,
-  })),
-  ...documents.map((document) => ({
-    id: `document-${document.id}`,
-    type: "Document" as const,
-    name: document.name,
-    status: document.status,
-    action: "View document",
-    href: `/documents?document=${document.id}`,
-    searchable: `${document.name} ${document.category} ${document.uploadedBy} ${document.status}`,
-  })),
-  ...leads.map((lead) => ({
-    id: `enquiry-${lead.id}`,
-    type: "Enquiry" as const,
-    name: lead.name,
-    status: lead.stage,
-    action: "Open enquiry",
-    href: `/crm/leads/${lead.id}`,
-    searchable: `${lead.name} ${lead.source} ${lead.interest} ${lead.stage}`,
-  })),
-];
-
 export function Topbar() {
-  const { clinicId, setClinicId, role, setRole, kpis } = useAppState();
+  const { clinicId, setClinicId, role, setRole, kpis, couples, tasks, documents } = useAppState();
   const { data: session } = useSession();
   const { openAction } = useGlobalActions();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const sessionName = session?.user?.name ?? currentUser.name;
   const sessionInitials =
     session?.user?.name
@@ -136,10 +83,39 @@ export function Topbar() {
   const filteredResults = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     if (!normalizedQuery) return [];
-    return searchResults
+    const pool: SearchResult[] = [
+      ...couples.map((couple) => ({
+        id: `couple-${couple.id}`,
+        type: "Couple" as const,
+        name: coupleFullLabel(couple),
+        status: couple.status,
+        action: "Open profile",
+        href: `/patients/${couple.slug}`,
+        searchable: `${coupleFullLabel(couple)} ${couple.treatment} ${couple.stage} ${couple.status}`,
+      })),
+      ...tasks.map((task) => ({
+        id: `task-${task.id}`,
+        type: "Task" as const,
+        name: task.title,
+        status: task.status.replaceAll("_", " "),
+        action: "Open task",
+        href: `/tasks?task=${task.id}`,
+        searchable: `${task.title} ${task.assignedTo} ${task.category} ${task.status}`,
+      })),
+      ...documents.map((document) => ({
+        id: `document-${document.id}`,
+        type: "Document" as const,
+        name: document.name,
+        status: document.status,
+        action: "View document",
+        href: `/documents?document=${document.id}`,
+        searchable: `${document.name} ${document.category} ${document.uploadedBy} ${document.status}`,
+      })),
+    ];
+    return pool
       .filter((result) => result.searchable.toLocaleLowerCase().includes(normalizedQuery))
       .slice(0, 8);
-  }, [query]);
+  }, [couples, tasks, documents, query]);
 
   const selectSearchResult = (result: SearchResult) => {
     setSearchOpen(false);
