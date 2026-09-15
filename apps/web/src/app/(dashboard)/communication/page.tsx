@@ -1,8 +1,10 @@
 "use client";
 
-import { Bot, MessageCircle, Phone } from "lucide-react";
+import Link from "next/link";
+import { Bot, MessageCircle, Phone, PhoneCall } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { WhatsAppThread, VoiceCallPanel, conversationFor, type ChatMessage } from "@/components/whatsapp-thread";
 import { Avatar, PageHeader, SectionHeading, StatusBadge } from "@/components/ui-kit";
 import { couples, coupleLabel } from "@/lib/demo-data";
@@ -118,6 +120,12 @@ export default function CommunicationPage() {
         subtitle="WhatsApp conversations belong to this clinic. Unknown numbers stay unmatched until staff associate them."
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" asChild className="gap-1.5 text-xs h-8">
+              <Link href="/communication/calls">
+                <PhoneCall className="size-3.5 text-teal-600 dark:text-teal-400" />
+                AI Voice Calls & Transcripts
+              </Link>
+            </Button>
             {isConnected ? (
               <span
                 className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
@@ -203,7 +211,17 @@ export default function CommunicationPage() {
         />
 
         <div className="space-y-4">
-          <VoiceCallPanel patient={title} />
+          <div>
+            <VoiceCallPanel patient={title} />
+            <div className="mt-2 text-center">
+              <Button variant="outline" size="sm" asChild className="w-full gap-1.5 text-xs h-8 border-teal-200 bg-teal-50/50 hover:bg-teal-100 text-teal-800 dark:border-teal-800 dark:bg-teal-950/40 dark:text-teal-300">
+                <Link href="/communication/calls">
+                  <PhoneCall className="size-3.5" />
+                  View All Call Logs & Transcripts
+                </Link>
+              </Button>
+            </div>
+          </div>
           <section className="surface-card p-4">
             <SectionHeading title="Channel" subtitle="Conversation source" icon={Bot} tone="purple" />
             <div className="mt-3 flex flex-wrap gap-2">
@@ -217,6 +235,12 @@ export default function CommunicationPage() {
               <li className="flex items-center justify-between">
                 <span className="text-muted-foreground">WhatsApp</span>
                 <span className="font-semibold">Live</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span className="text-muted-foreground">AI Voice Calls</span>
+                <Link href="/communication/calls" className="font-semibold text-teal-600 hover:underline flex items-center gap-1">
+                  Sarvam AI Active
+                </Link>
               </li>
             </ul>
           </section>

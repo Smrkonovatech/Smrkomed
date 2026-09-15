@@ -17,6 +17,7 @@ import {
   ListChecks,
   MessageCircle,
   Package,
+  PhoneCall,
   Pill,
   Radio,
   RefreshCw,
@@ -115,6 +116,7 @@ export const APP_NAV_CATEGORIES: AppNavCategory[] = [
     href: "/whatsapp",
     columns: 1,
     items: [
+      { href: "/communication/calls", label: "AI Voice Calls", icon: PhoneCall },
       { href: "/whatsapp", label: "WhatsApp", icon: MessageCircle },
       { href: "/whatsapp/inbox", label: "Conversations", icon: MessageCircle },
       { href: "/whatsapp/templates", label: "Templates", icon: FileText },

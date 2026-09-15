@@ -213,3 +213,208 @@ async function dispatchTaskMessage(tenant: any, task: any, isFollowUp: boolean =
     }
   }
 }
+
+/**
+ * Processes pre-deadline task reminders ("Are you ready?").
+ * Finds unsent reminders whose remindAt timestamp has arrived.
+ */
+export async function processPreDeadlineReminders(limit = 50, clinicId?: string) {
+  const now = new Date();
+
+  // Find due unsent TaskReminder records
+  const dueReminders = await prisma.taskReminder.findMany({
+    where: {
+      remindAt: { lte: now },
+      sentAt: null,
+      careTask: {
+        ...(clinicId ? { clinicId } : {}),
+        status: { in: ["WAITING", "IN_PROGRESS", "ACTIVE", "PENDING"] },
+        automationEnabled: true,
+      },
+    },
+    take: limit,
+    include: {
+      careTask: {
+        include: {
+          couple: {
+            include: { primaryPatient: true, partnerPatient: true },
+          },
+        },
+      },
+    },
+  });
+
+  const results: any[] = [];
+
+  for (const reminder of dueReminders) {
+    const task = reminder.careTask;
+    if (!task) {
+      await prisma.taskReminder.update({
+        where: { id: reminder.id },
+        data: { sentAt: now },
+      });
+      continue;
+    }
+
+    try {
+      const clinic = await prisma.clinic.findUnique({
+        where: { id: task.clinicId },
+        include: { organization: true },
+      });
+      if (!clinic) continue;
+
+      const tenant = {
+        userId: "system-worker",
+        role: "CLINIC_ADMIN" as const,
+        clinicId: clinic.id,
+        organizationId: clinic.organizationId,
+        clinicName: clinic.name,
+        organizationName: clinic.organization?.name || "SmrkoMed",
+      };
+
+      await dispatchPreDeadlineReminderMessage(tenant, task);
+
+      await prisma.taskReminder.update({
+        where: { id: reminder.id },
+        data: { sentAt: now },
+      });
+
+      await prisma.careTask.update({
+        where: { id: task.id },
+        data: {
+          lastAction: `Pre-deadline reminder ("Are you ready?") sent to patient`,
+        },
+      });
+
+      await audit(tenant, "careloop.pre_deadline_reminder_sent", "CareTask", task.id, {
+        title: task.title,
+        remindAt: reminder.remindAt.toISOString(),
+      });
+
+      results.push({ reminderId: reminder.id, taskId: task.id, status: "REMINDER_SENT" });
+    } catch (err) {
+      console.error(`[CareLoop Worker] Failed to send pre-deadline reminder for task ${task.id}`, err);
+      results.push({ reminderId: reminder.id, taskId: task.id, error: err instanceof Error ? err.message : "Failed" });
+    }
+  }
+
+  return results;
+}
+
+async function dispatchPreDeadlineReminderMessage(tenant: any, task: any) {
+  if (process.env["MOCK_INTEGRATIONS_ENABLED"] === "1") {
+    console.log(`[CareLoop Worker Mock] Dispatching pre-deadline reminder for task ${task.id}`);
+    return;
+  }
+
+  if (task.communicationChannel !== "WHATSAPP") {
+    return;
+  }
+
+  const couple = task.couple;
+  if (!couple) return;
+
+  const targetRole = task.targetRole || "PRIMARY";
+  const broadcastToBoth = Boolean(targetRole === "COUPLE" || targetRole === "BOTH");
+
+  const phonesToSend: Array<{ phone: string; name: string }> = [];
+
+  if (broadcastToBoth) {
+    if (couple.primaryPatient?.phone) {
+      phonesToSend.push({
+        phone: couple.primaryPatient.phone,
+        name: couple.primaryPatient.firstName || "Patient",
+      });
+    }
+    if (couple.partnerPatient?.phone && couple.partnerPatient.phone !== couple.primaryPatient?.phone) {
+      phonesToSend.push({
+        phone: couple.partnerPatient.phone,
+        name: couple.partnerPatient.firstName || "Partner",
+      });
+    }
+  } else if (targetRole === "PARTNER") {
+    const pPhone = couple.partnerPatient?.phone || couple.primaryPatient?.phone;
+    if (pPhone) {
+      phonesToSend.push({
+        phone: pPhone,
+        name: couple.partnerPatient?.firstName || "Partner",
+      });
+    }
+  } else {
+    if (couple.primaryPatient?.phone) {
+      phonesToSend.push({
+        phone: couple.primaryPatient.phone,
+        name: couple.primaryPatient.firstName || "Patient",
+      });
+    }
+  }
+
+  const timeStr = task.dueTime ? ` at ${task.dueTime}` : "";
+  const dueDateStr = task.dueDate
+    ? new Date(task.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })
+    : "today";
+
+  for (const recipient of phonesToSend) {
+    const normalizedPhone = normalizeWhatsAppPhone(recipient.phone);
+
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        clinicId: tenant.clinicId,
+        OR: [
+          { contactPhone: normalizedPhone },
+          { contactPhone: `+${normalizedPhone}` },
+          { contactPhone: normalizedPhone.replace(/^\+/, "") },
+        ],
+      },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          clinicId: tenant.clinicId,
+          coupleId: task.coupleId,
+          contactPhone: normalizedPhone,
+          channel: "WHATSAPP",
+          status: "OPEN",
+        },
+      });
+    }
+
+    const body =
+      `Hi ${recipient.name},\n\n` +
+      `⏰ *Upcoming Task Reminder — ${tenant.clinicName}*\n\n` +
+      `Your task is scheduled for *${dueDateStr}${timeStr}*:\n` +
+      `📌 *${task.title}*\n` +
+      (task.description ? `📝 ${task.description}\n` : "") +
+      `\nAre you ready for this? Please confirm or let us know if you need help:`;
+
+    const footer = `${tenant.clinicName} • Care Loop Reminder`;
+
+    const buttons = [
+      { id: `task_ready_${task.id}`, title: "✅ I'm Ready" },
+      { id: `task_done_${task.id}`, title: "✅ Done" },
+      { id: `task_help_${task.id}`, title: "❓ Need Help" },
+    ];
+
+    try {
+      await sendWhatsAppInteractiveButtons(tenant, {
+        conversationId: conversation.id,
+        body,
+        footer,
+        buttons,
+      });
+    } catch (err) {
+      try {
+        const actionText = buttons.map((b) => `• Reply "${b.title}"`).join("\n");
+        const fullSessionBody = `${body}\n\nActions:\n${actionText}`;
+        await sendWhatsAppAiSessionText(tenant, {
+          conversationId: conversation.id,
+          body: fullSessionBody,
+        });
+      } catch (fallbackErr) {
+        console.warn(`[CareLoop Worker] Pre-deadline reminder fallback failed for task ${task.id}:`, (fallbackErr as Error)?.message);
+      }
+    }
+  }
+}
+

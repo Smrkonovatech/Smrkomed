@@ -4,7 +4,7 @@ import { env } from "../../config/env";
 import { resumeDueExecutions } from "./engine";
 import { dispatchWhatsAppTrigger } from "./triggers";
 import { processDueCampaigns } from "./campaigns";
-import { processCareLoopExecutions } from "../care-loop/worker";
+import { processCareLoopExecutions, processPreDeadlineReminders } from "../care-loop/worker";
 import type { TenantContext } from "@smrkomed/database";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -339,6 +339,7 @@ export async function processAutomationTick(opts?: { clinicId?: string }) {
     const resumed = await resumeDueExecutions(25, opts?.clinicId);
     const scheduled = await emitScheduledTriggers(40, opts?.clinicId);
     const careLoop = await processCareLoopExecutions(50, opts?.clinicId);
+    const preDeadline = await processPreDeadlineReminders(50, opts?.clinicId).catch(() => []);
     const campaigns = opts?.clinicId
       ? []
       : await processDueCampaigns(5).catch(() => []);
@@ -350,6 +351,8 @@ export async function processAutomationTick(opts?: { clinicId?: string }) {
       scheduledResults: scheduled,
       careLoop: careLoop.length,
       careLoopResults: careLoop,
+      preDeadline: preDeadline.length,
+      preDeadlineResults: preDeadline,
       campaigns,
       clinicScoped: Boolean(opts?.clinicId),
       at: new Date().toISOString(),

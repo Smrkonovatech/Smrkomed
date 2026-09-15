@@ -462,6 +462,32 @@ export async function activatePatientTreatmentPlan(
           },
         });
 
+        // Pre-deadline reminder for Stage 0 patient tasks
+        if (isFirstStage && tplTask.ownerRole === "PATIENT" && due) {
+          const deadline = new Date(due);
+          if (tplTask.dueTimingHours) {
+            deadline.setHours(tplTask.dueTimingHours, 0, 0, 0);
+          } else {
+            deadline.setHours(10, 0, 0, 0);
+          }
+          const reminderCfg = (tplTask.reminderConfig ?? {}) as Record<string, unknown>;
+          const remindAtHours = typeof reminderCfg["remindAtHours"] === "number" ? reminderCfg["remindAtHours"] : 2;
+          const now = new Date();
+          if (deadline.getTime() > now.getTime()) {
+            let remindAt = new Date(deadline.getTime() - remindAtHours * 3600 * 1000);
+            if (remindAt.getTime() <= now.getTime()) {
+              remindAt = new Date(now.getTime() + Math.max(60000, (deadline.getTime() - now.getTime()) / 2));
+            }
+            await tx.taskReminder.create({
+              data: {
+                careTaskId: careTask.id,
+                remindAt,
+                channel: "WHATSAPP",
+              },
+            });
+          }
+        }
+
         // Assign to role user
         let assigneeId: string | undefined = undefined;
         if (tplTask.ownerRole === "DOCTOR" && doctorId) assigneeId = doctorId;
@@ -490,6 +516,43 @@ export async function activatePatientTreatmentPlan(
   // Check honest WhatsApp status and attempt dispatch if configured
   const waStatus = await checkClinicWhatsAppIntegration(tenant.clinicId);
 
+  // Auto-dispatch initial WhatsApp messages for Stage 0 patient tasks & stage entry
+  try {
+    const { dispatchTaskToWhatsApp, dispatchStageToWhatsApp } = await import("./stage-dispatch");
+    const primaryPhone = couple.primaryPatient?.phone;
+    if (primaryPhone) {
+      await dispatchStageToWhatsApp(tenant, {
+        stageNumber: 1,
+        phoneNumber: primaryPhone,
+        coupleId: couple.id,
+        targetRole: "PRIMARY",
+        syncPlanStage: false,
+        ...(couple.partnerPatient?.phone ? { partnerPhoneNumber: couple.partnerPatient.phone } : {}),
+      }).catch((err) => {
+        console.warn("[activatePatientTreatmentPlan] Stage 1 WhatsApp dispatch skipped/failed:", err);
+      });
+    }
+
+    const stage0Tasks = await prisma.careTask.findMany({
+      where: {
+        carePlanId: plan.id,
+        status: "WAITING",
+        ownerRole: "PATIENT",
+      },
+    });
+
+    for (const t of stage0Tasks) {
+      await dispatchTaskToWhatsApp(tenant, {
+        taskId: t.id,
+        broadcastToBoth: t.targetRole === "COUPLE" || t.targetRole === "BOTH",
+      }).catch((err) => {
+        console.warn(`[activatePatientTreatmentPlan] Task ${t.id} dispatch skipped/failed:`, err);
+      });
+    }
+  } catch (dispatchErr) {
+    console.warn("[activatePatientTreatmentPlan] Auto-dispatch error:", dispatchErr);
+  }
+
   return {
     plan,
     whatsappIntegration: waStatus,
@@ -505,7 +568,7 @@ export async function evaluateStageProgress(tenant: TenantContext, carePlanId: s
     include: {
       steps: { orderBy: { sortOrder: "asc" } },
       tasks: true,
-      couple: { include: { primaryPatient: true } },
+      couple: { include: { primaryPatient: true, partnerPatient: true } },
     },
   });
 
@@ -594,6 +657,35 @@ export async function evaluateStageProgress(tenant: TenantContext, carePlanId: s
               }),
             },
           });
+
+          // Pre-deadline reminder for newly activated patient task
+          if (t.ownerRole === "PATIENT") {
+            const deadline = new Date(due);
+            if (t.dueTime) {
+              const [hStr, mStr] = t.dueTime.split(":");
+              const h = parseInt(hStr || "0", 10);
+              const m = parseInt(mStr || "0", 10);
+              if (!Number.isNaN(h) && !Number.isNaN(m)) {
+                deadline.setHours(h, m, 0, 0);
+              }
+            }
+            const reminderCfg = (t.reminderConfig ?? {}) as Record<string, unknown>;
+            const remindAtHours = typeof reminderCfg["remindAtHours"] === "number" ? reminderCfg["remindAtHours"] : 2;
+            const now = new Date();
+            if (deadline.getTime() > now.getTime()) {
+              let remindAt = new Date(deadline.getTime() - remindAtHours * 3600 * 1000);
+              if (remindAt.getTime() <= now.getTime()) {
+                remindAt = new Date(now.getTime() + Math.max(60000, (deadline.getTime() - now.getTime()) / 2));
+              }
+              await tx.taskReminder.create({
+                data: {
+                  careTaskId: t.id,
+                  remindAt,
+                  channel: "WHATSAPP",
+                },
+              });
+            }
+          }
         }
       }
 
@@ -636,6 +728,46 @@ export async function evaluateStageProgress(tenant: TenantContext, carePlanId: s
       journey_stage: nextStep?.name ?? "COMPLETED",
     },
   }).catch(() => undefined);
+
+  // Auto-dispatch WhatsApp for newly activated stage & tasks
+  if (nextStep) {
+    try {
+      const { dispatchTaskToWhatsApp, dispatchStageToWhatsApp } = await import("./stage-dispatch");
+      const primaryPhone = plan.couple?.primaryPatient?.phone;
+      if (primaryPhone) {
+        await dispatchStageToWhatsApp(tenant, {
+          stageNumber: nextStageIndex + 1,
+          phoneNumber: primaryPhone,
+          coupleId: plan.coupleId,
+          targetRole: "PRIMARY",
+          syncPlanStage: false,
+          ...(plan.couple?.partnerPatient?.phone ? { partnerPhoneNumber: plan.couple.partnerPatient.phone } : {}),
+        }).catch((err) => {
+          console.warn("[evaluateStageProgress] Stage dispatch error:", err);
+        });
+      }
+
+      const newlyActivatedTasks = await prisma.careTask.findMany({
+        where: {
+          carePlanId: plan.id,
+          carePlanStepId: nextStep.id,
+          status: "WAITING",
+          ownerRole: "PATIENT",
+        },
+      });
+
+      for (const at of newlyActivatedTasks) {
+        await dispatchTaskToWhatsApp(tenant, {
+          taskId: at.id,
+          broadcastToBoth: at.targetRole === "COUPLE" || at.targetRole === "BOTH",
+        }).catch((err) => {
+          console.warn(`[evaluateStageProgress] Task ${at.id} dispatch error:`, err);
+        });
+      }
+    } catch (dispatchErr) {
+      console.warn("[evaluateStageProgress] Auto-dispatch error:", dispatchErr);
+    }
+  }
 
   return {
     advanced: true,
@@ -1512,6 +1644,37 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
     }).catch((err) => {
       console.error("[addDoctorTask] Automatic WhatsApp dispatch error:", err);
     });
+  }
+
+  // Schedule pre-deadline reminder ("Are you ready?") if due date is in future
+  const isPatientTask = (task.ownerRole === "PATIENT" || !task.ownerRole) && task.communicationChannel === "WHATSAPP";
+  if (isPatientTask && task.dueDate) {
+    const deadline = new Date(task.dueDate);
+    if (task.dueTime) {
+      const [hStr, mStr] = task.dueTime.split(":");
+      const h = parseInt(hStr || "0", 10);
+      const m = parseInt(mStr || "0", 10);
+      if (!Number.isNaN(h) && !Number.isNaN(m)) {
+        deadline.setHours(h, m, 0, 0);
+      }
+    }
+    const remindAtHours = input.reminderConfig?.remindAtHours ?? 2;
+    const now = new Date();
+    if (deadline.getTime() > now.getTime()) {
+      let remindAt = new Date(deadline.getTime() - remindAtHours * 3600 * 1000);
+      if (remindAt.getTime() <= now.getTime()) {
+        remindAt = new Date(now.getTime() + Math.max(60000, (deadline.getTime() - now.getTime()) / 2));
+      }
+      await prisma.taskReminder.create({
+        data: {
+          careTaskId: task.id,
+          remindAt,
+          channel: "WHATSAPP",
+        },
+      }).catch((err) => {
+        console.error("[addDoctorTask] Failed to create TaskReminder:", err);
+      });
+    }
   }
 
   const patientId = couple.primaryPatientId;

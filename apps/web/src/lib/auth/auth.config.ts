@@ -27,6 +27,7 @@ export const authConfig = {
         pathname.startsWith("/api/demo") ||
         pathname === "/api/health" ||
         pathname.startsWith("/api/whatsapp/webhook") ||
+        pathname.startsWith("/api/ai") ||
         pathname === "/api/onboarding" ||
         pathname === "/api/leads/ingest";
 

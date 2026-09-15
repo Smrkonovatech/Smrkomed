@@ -756,7 +756,59 @@ export async function handleCareLoopMenuAction(input: {
     };
   }
 
-  // Task-specific interactive button replies ([✅ Done], [❓ Need Help], [📞 Call Me])
+  // Task-specific interactive button replies ([✅ I'm Ready], [✅ Done], [❓ Need Help], [📞 Call Me])
+  if (clean.startsWith("task_ready_")) {
+    const taskId = clean.replace("task_ready_", "").trim();
+    const task = await prisma.careTask.findUnique({
+      where: { id: taskId },
+      include: {
+        couple: { include: { primaryPatient: true, partnerPatient: true } },
+      },
+    });
+
+    if (task) {
+      const senderPhoneNorm = input.contactPhone ? input.contactPhone.replace(/\D/g, "") : "";
+      const partnerPhoneNorm = task.couple?.partnerPatient?.phone ? task.couple.partnerPatient.phone.replace(/\D/g, "") : "";
+      const isPartner =
+        task.targetRole === "PARTNER" ||
+        Boolean(partnerPhoneNorm && senderPhoneNorm && senderPhoneNorm.endsWith(partnerPhoneNorm.slice(-10)));
+
+      const pName = isPartner
+        ? (task.couple?.partnerPatient?.firstName || "Partner")
+        : (task.couple?.primaryPatient?.firstName || "Patient");
+
+      await prisma.careTask.update({
+        where: { id: task.id },
+        data: {
+          lastAction: `Confirmed readiness via WhatsApp by ${pName} (${isPartner ? "Partner" : "Primary"})`,
+          nextAction: `Patient confirmed ready — awaiting completion of ${task.title}`,
+        },
+      });
+
+      const reply =
+        `👍 *Great! You're All Set.*\n\n` +
+        `Hello ${pName},\n` +
+        `Thank you for letting us know! Please proceed with:\n` +
+        `📌 *${task.title}*\n\n` +
+        `Once you have completed this task, tap *Done* below so your care team is updated in real time.`;
+
+      await sendWhatsAppInteractiveButtons(input.tenant, {
+        conversationId: input.conversationId,
+        body: reply,
+        footer: `${clinicName} • Care Loop`,
+        buttons: [
+          { id: `task_done_${task.id}`, title: "✅ Done" },
+          { id: `task_help_${task.id}`, title: "❓ Need Help" },
+          { id: "menu_coordinator", title: "📞 Talk to Nurse" },
+        ],
+      }).catch(async () => {
+        await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: reply }).catch(() => undefined);
+      });
+
+      return { handled: true, action: "CARE_TASK_READY_CONFIRMED", responseText: reply };
+    }
+  }
+
   if (clean.startsWith("task_done_")) {
     const taskId = clean.replace("task_done_", "").trim();
     const task = await prisma.careTask.findUnique({
