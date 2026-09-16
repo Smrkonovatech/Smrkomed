@@ -158,12 +158,13 @@ export async function processPendingOutboundMessages(limit = 25, clinicId?: stri
       results.push({ id: msg.id, success: false, error: errStr });
 
       // If attempts exceed, mark failed
-      if (msg.providerMessageId.includes("_retry2_")) {
+      const msgProviderId = msg.providerMessageId ?? "";
+      if (msgProviderId.includes("_retry2_")) {
         await prisma.message.update({
           where: { id: msg.id },
           data: { providerMessageId: `failed_meta_${Date.now()}`, status: "FAILED" },
         });
-      } else if (msg.providerMessageId.includes("_retry1_")) {
+      } else if (msgProviderId.includes("_retry1_")) {
         await prisma.message.update({
           where: { id: msg.id },
           data: { providerMessageId: `pending_meta_retry2_${Date.now()}` },
