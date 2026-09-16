@@ -65,26 +65,57 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
         clinicId,
         status: "ACTIVE",
         user: { isActive: true },
+        OR: [
+          { role: { key: "DOCTOR" } },
+          { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+        ],
       },
       select: {
+        userId: true,
         role: { select: { key: true, name: true } },
-        user: { select: { id: true, name: true, email: true } },
+        user: { select: { id: true, name: true, email: true, title: true, phone: true } },
       },
+      orderBy: { createdAt: "asc" },
     });
 
-    const doctors = memberships.filter((m) => m.role?.key === "DOCTOR" && m.user?.id);
+    if (memberships.length > 0) {
+      const profileRules = await prisma.automationRule.findMany({
+        where: {
+          clinicId,
+          trigger: "DOCTOR_PROFILE",
+        },
+      });
 
-    if (doctors.length > 0) {
-      return doctors.map((m, idx) => ({
-        id: m.user.id,
-        name: m.user.name || `Doctor ${idx + 1}`,
-        displayName: m.user.name?.startsWith("Dr.") ? m.user.name : `Dr. ${m.user.name || "Doctor"}`,
-        specialty: "Reproductive Medicine",
-        experienceYears: 10 + idx,
-        languages: ["English", "Hindi"],
-        bio: `Experienced specialist at this clinic.`,
-        availableDates: getUpcomingDates(7),
-      }));
+      const profileMap = new Map<string, any>();
+      for (const rule of profileRules) {
+        if (rule.name) profileMap.set(rule.name, rule.config);
+      }
+
+      return memberships.map((m, idx) => {
+        const u = m.user;
+        const saved = (profileMap.get(u.id) || profileMap.get(`doc_${u.id}`) || {}) as any;
+        const rawName = saved.displayName || u.name || `Doctor ${idx + 1}`;
+        const cleanName = rawName.replace(/^Dr\s*\.?\s*/i, "").trim();
+        const displayName = `Dr. ${cleanName}`;
+        const specialty = saved.primarySpecialty || saved.department || u.title || "Reproductive Medicine & Fertility Specialist";
+        const experienceYears = saved.yearsExperience ? Number(saved.yearsExperience) : (10 + idx);
+        const languages = Array.isArray(saved.languages) && saved.languages.length > 0 ? saved.languages : ["English", "Hindi"];
+        const bio = saved.professionalBio || saved.shortIntro || saved.bio || "Senior Reproductive Medicine and Fertility Specialist providing patient-centered fertility care.";
+        const fee = saved.consultationFee ? Number(saved.consultationFee) : 1000;
+
+        return {
+          id: u.id,
+          name: cleanName,
+          displayName,
+          specialty,
+          experienceYears,
+          consultationFee: fee,
+          languages,
+          bio,
+          photoUrl: `https://smrkomed-api-production.up.railway.app/api/v1/public/doctors/doc_${u.id}/photo`,
+          availableDates: getUpcomingDates(7),
+        };
+      });
     }
   } catch {
     // Graceful fallback to default doctors

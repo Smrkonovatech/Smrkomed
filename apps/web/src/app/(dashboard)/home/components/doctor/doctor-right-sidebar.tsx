@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { Mic, Clock, ArrowRight, Square } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAppState } from "@/lib/app-state";
 import { coupleLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
 
-export function RightSidebar() {
+export function DoctorRightSidebar() {
   const appState = useAppState() as ReturnType<typeof useAppState> & { couples?: Couple[] };
   const { exceptions, appointments } = appState;
   const couples = appState.couples ?? [];
@@ -49,10 +50,10 @@ export function RightSidebar() {
       {/* Alerts List */}
       <div className="flex flex-col gap-1.5">
         {[
-          { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]' },
-          { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]' },
-          { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]' },
-          { label: 'Patient Questions', count: 2, badgeColor: 'bg-[#71A021]' }
+          { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]', href: '/care-loop' },
+          { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]', href: '/clinical-diagnostics' },
+          { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]', href: '/care-loop' },
+          { label: 'Patient Questions', count: 2, badgeColor: 'bg-[#71A021]', href: '/whatsapp/inbox' }
         ].map((alert, i) => (
           <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
             <div className="flex items-center gap-2">
@@ -61,7 +62,7 @@ export function RightSidebar() {
               </span>
               <span className="text-[clamp(0.7rem,1.1vw,0.875rem)] text-[#866BE3]">{alert.label}</span>
             </div>
-            <button className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</button>
+            <Link href={alert.href} className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</Link>
           </div>
         ))}
       </div>
@@ -85,10 +86,10 @@ export function RightSidebar() {
             {/* Two Overlapping Avatars */}
             <div className="relative z-10 flex -space-x-3 items-center justify-center">
               <div className="w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)] rounded-full border-2 border-white shadow-sm relative z-20 overflow-hidden bg-white">
-                <Image src="/images/dashboard/patient.png" alt="Patient 1" fill className="object-cover" />
+                <Image src="/images/dashboard/patient.png" alt="Patient 1" fill sizes="56px" className="object-cover" />
               </div>
               <div className="w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)] rounded-full border-2 border-white shadow-sm relative z-10 overflow-hidden bg-white">
-                <Image src="/images/dashboard/patient.png" alt="Patient 2" fill className="object-cover" />
+                <Image src="/images/dashboard/patient.png" alt="Patient 2" fill sizes="56px" className="object-cover" />
               </div>
             </div>
           </div>
@@ -123,19 +124,22 @@ export function RightSidebar() {
             </button>
           )}
 
-          <button className="bg-gradient-to-r from-[#FBF9FF] to-[#F3EEFC] text-[#866BE3] rounded-full p-1 pl-2.5 flex items-center justify-between flex-[35%] shadow-[0_8px_16px_rgb(134,107,227,0.08)] border border-white relative overflow-hidden group hover:shadow-[0_8px_20px_rgb(134,107,227,0.12)] transition-shadow">
+          <Link
+            href={nextCouple ? `/patients/${nextCouple.id}` : "/patients"}
+            className="bg-gradient-to-r from-[#FBF9FF] to-[#F3EEFC] text-[#866BE3] rounded-full p-1 pl-2.5 flex items-center justify-between flex-[35%] shadow-[0_8px_16px_rgb(134,107,227,0.08)] border border-white relative overflow-hidden group hover:shadow-[0_8px_20px_rgb(134,107,227,0.12)] transition-shadow"
+          >
             <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap mx-auto">View</span>
             <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full flex items-center justify-center shrink-0 group-hover:translate-x-1 transition-transform">
               <ArrowRight className="w-3.5 h-3.5 text-[#866BE3]" />
             </div>
-          </button>
+          </Link>
         </div>
 
       </div>
 
       {/* AI Prep Card */}
       <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] text-white text-center flex flex-col items-center justify-center relative z-0 overflow-hidden shadow-sm flex-1 min-h-[clamp(8rem,14vh,10rem)] mt-auto">
-        <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill className="object-cover z-0" />
+        <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill sizes="(max-width: 1200px) 100vw, 350px" className="object-cover z-0" />
 
         <p className="text-[clamp(0.7rem,1.1vw,0.9rem)] leading-[1.3] relative z-10">
           <span className="font-semibold drop-shadow-sm">You have {todayVisits} patient visits today</span><br />
@@ -146,7 +150,7 @@ export function RightSidebar() {
           onClick={() => ask("Prepare my day: summarize overdue Care Loop tasks, appointments needing confirmation, and patients needing attention.")}
           className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[clamp(0.6rem,0.9vw,0.75rem)] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm"
         >
-          <Image src="/images/dashboard/bot.svg" alt="Bot Icon" width={14} height={14} />
+          <Image src="/images/dashboard/bot.svg" alt="Bot Icon" width={14} height={14} style={{ width: "auto", height: "auto" }} />
           Prepare my day
         </button>
       </div>

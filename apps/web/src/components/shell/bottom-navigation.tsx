@@ -3,7 +3,17 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Bell, CalendarDays } from "lucide-react";
+import {
+  Bell,
+  CalendarDays,
+  Stethoscope,
+  Sparkles,
+  Activity,
+  MessageCircle,
+  FileText,
+  Users,
+} from "lucide-react";
+import { useSession } from "next-auth/react";
 
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
 import {
@@ -145,7 +155,68 @@ function DockStatus() {
   );
 }
 
+const DOCTOR_NAV_CATEGORIES: AppNavCategory[] = [
+  {
+    id: "doctor_home",
+    label: "Home",
+    description: "Doctor Workspace",
+    icon: Stethoscope,
+    href: "/home",
+    items: [
+      { href: "/home", label: "Dashboard", icon: Stethoscope },
+      { href: "/home", label: "Smrko AI", icon: Sparkles, openAi: true },
+    ],
+  },
+  {
+    id: "doctor_schedule",
+    label: "Schedule",
+    description: "Consultation Schedule",
+    icon: CalendarDays,
+    href: "/appointments",
+    items: [
+      { href: "/appointments", label: "Schedule", icon: CalendarDays },
+      { href: "/appointments", label: "Consultations", icon: Stethoscope },
+    ],
+  },
+  {
+    id: "doctor_patients",
+    label: "Patients",
+    description: "Assigned Patients",
+    icon: Users,
+    href: "/patients",
+    items: [
+      { href: "/patients", label: "Assigned Patients", icon: Users },
+      { href: "/care-plans", label: "Active Treatments", icon: Activity },
+    ],
+  },
+  {
+    id: "doctor_messages",
+    label: "Messages",
+    description: "Patient Messages",
+    icon: MessageCircle,
+    href: "/whatsapp/inbox",
+    items: [
+      { href: "/whatsapp/inbox", label: "Clinical Messages", icon: MessageCircle },
+    ],
+  },
+  {
+    id: "doctor_more",
+    label: "Diagnostics",
+    description: "Clinical Diagnostics",
+    icon: FileText,
+    href: "/clinical-diagnostics",
+    items: [
+      { href: "/clinical-diagnostics", label: "Diagnostic Orders & Review", icon: FileText },
+      { href: "/staff", label: "Team Directory", icon: Users },
+    ],
+  },
+];
+
 export function BottomNavigation() {
+  const { data: session } = useSession();
+  const isDoctor = session?.user?.role === "DOCTOR";
+  const navCategories = isDoctor ? DOCTOR_NAV_CATEGORIES : APP_NAV_CATEGORIES;
+
   const pathname = usePathname();
   const router = useRouter();
   const { setOpen: setAiOpen } = useSmrkoAiBuddy();
@@ -221,7 +292,7 @@ export function BottomNavigation() {
         </Link>
 
         <div className="mx-auto flex h-full items-center justify-center gap-0.5 sm:gap-1">
-          {APP_NAV_CATEGORIES.map((category) => {
+          {navCategories.map((category) => {
             const active = categoryMatchesPath(category, pathname);
             const expanded = openId === category.id;
             const Icon = category.icon;

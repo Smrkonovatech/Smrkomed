@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
-import { doctorsStore } from "./store";
+import { clinicApi } from "@/lib/clinic-api";
+import { doctorsStore, isMockDoctor } from "./store";
 import type { DoctorProfile, DoctorStatus } from "./types";
 
 export function useDoctors() {
@@ -11,12 +12,34 @@ export function useDoctors() {
     doctorsStore.getSnapshot,
     doctorsStore.getServerSnapshot,
   );
+
+  useEffect(() => {
+    doctorsStore.syncFromApi();
+  }, []);
+
   return doctors;
 }
 
 export function useDoctor(id: string | undefined) {
   const doctors = useDoctors();
-  return useMemo(() => (id ? doctors.find((d) => d.id === id) : undefined), [doctors, id]);
+  const found = useMemo(() => {
+    if (!id) return undefined;
+    const cleanId = id.replace(/^doc_/, "");
+    return doctors.find((d) => d.id === id || d.id === `doc_${cleanId}` || d.staffUserId === cleanId);
+  }, [doctors, id]);
+
+  useEffect(() => {
+    if (id && !found) {
+      const cleanId = id.replace(/^doc_/, "");
+      clinicApi.getDoctor(cleanId).then((doc) => {
+        if (doc && !isMockDoctor(doc)) {
+          doctorsStore.upsert(doc);
+        }
+      }).catch(() => {});
+    }
+  }, [id, found]);
+
+  return found;
 }
 
 export type DoctorFilters = {

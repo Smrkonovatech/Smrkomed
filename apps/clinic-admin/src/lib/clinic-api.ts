@@ -120,6 +120,15 @@ export const clinicApi = {
   patient360: (id: string) => apiGet<any>(`/api/v1/couples/${id}/360`),
   careCalendar: (id: string) => apiGet<{ appointments: ClinicAppointment[], tasks: ClinicTask[] }>(`/api/v1/couples/${id}/care-calendar`),
   createCouple: (body: unknown) => apiPost<ClinicCouple>("/api/v1/couples", body),
+  patchCouple: (
+    id: string,
+    body: {
+      assignedDoctorId?: string | null;
+      assignedCoordinatorId?: string | null;
+      careLoopActive?: boolean;
+      status?: string;
+    },
+  ) => apiPatch<ClinicCouple>(`/api/v1/couples/${id}`, body),
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
   patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),

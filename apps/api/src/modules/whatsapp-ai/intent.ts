@@ -97,7 +97,7 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   {
     // Transactional: Appointment booking
     intent: "APPOINTMENT_BOOKING",
-    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(to\s+book|an?\s+(appointment|doctor))|need\s+(to\s+book|an?\s+(appointment|doctor))|need\s+a\s+appointment|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?)|(available|show|list)\s+doctors?)\b/i,
+    re: /\b((book|schedule|make)\s+(an?\s+)?(appointment|appt|visit|consultation|doctor|dr)|want\s+(to\s+book|an?\s+(appointment|doctor))|need\s+(to\s+book|an?\s+(appointment|doctor))|need\s+a\s+appointment|^appointments?$|(can\s+i\s+)?book\s+(for\s+)?(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|can\s+i\s+book|(can\s+i|i\s+want\s+to|want\s+to|i\s+need\s+to)\s+(see|consult|meet)\s+(a\s+|with\s+)?(doctor|dr\.?)|(available|show|list)\s+doctors?)\b|^appt_doctor_/i,
     tools: ["getAvailableAppointmentSlots", "getAppointments"],
     confidence: "high",
   },
@@ -160,8 +160,8 @@ const RULES: Array<{ intent: PatientIntent; re: RegExp; tools: string[]; confide
   },
   {
     intent: "DOCTOR_INFORMATION",
-    re: /\b(who\s+is\s+my\s+doctor|my\s+doctor|doctor\s+name|dr\.?\s+\w+)\b/i,
-    tools: ["getDoctorProfile"],
+    re: /\b(who\s+is\s+my\s+doctor|my\s+doctor|doctor\s+name|dr\.?\s+\w+|doctors?(\s+details?|\s+profile|\s+list|\s+info)?|doctor\s*details?|doctor\s*info|dr\s*details?|specialists?(\s+details?|\s+list|\s+info)?|who\s+are\s+(the|your)\s+doctors?|our\s+doctors?|our\s+specialists?|physicians?|fertility\s+specialists?)\b/i,
+    tools: ["getDoctorProfile", "getClinicDoctors"],
     confidence: "high",
   },
   {

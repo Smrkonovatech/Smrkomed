@@ -1647,17 +1647,36 @@ async function executeNode(
       };
     }
     case "GET_DOCTOR_DETAILS": {
-      const targetDoctorId = vars["selectedDoctorId"] || String(node.config["doctorId"] ?? "");
+      const targetDoctorId =
+        vars["selectedDoctorId"] ||
+        vars["doctor.id"] ||
+        vars["doctor_id"] ||
+        String(node.config["doctorId"] ?? "");
       const doctors = await resolveClinicDoctors(tenant.clinicId);
-      const doc = (targetDoctorId ? doctors.find((d) => d.id === targetDoctorId) : null) ?? doctors[0];
+      let doc = targetDoctorId ? doctors.find((d) => d.id === targetDoctorId) : null;
+      if (!doc && vars["doctor.name"]) {
+        const needle = vars["doctor.name"].toLowerCase().replace(/^dr\.?\s*/i, "");
+        doc = doctors.find((d) => d.name.toLowerCase().includes(needle));
+      }
+      if (!doc && vars["doctor_name"]) {
+        const needle = vars["doctor_name"].toLowerCase().replace(/^dr\.?\s*/i, "");
+        doc = doctors.find((d) => d.name.toLowerCase().includes(needle));
+      }
+      if (!doc && doctors.length > 0) {
+        doc = doctors[0];
+      }
       if (doc) {
+        const cleanDocName = doc.name.replace(/^Dr\.?\s*/i, "").trim();
         vars["doctor.id"] = doc.id;
-        vars["doctor.name"] = doc.name;
+        vars["selectedDoctorId"] = doc.id;
+        vars["doctor.name"] = cleanDocName;
+        vars["doctor_name"] = `Dr. ${cleanDocName}`;
+        vars["doctor.displayName"] = `Dr. ${cleanDocName}`;
         vars["doctor.specialty"] = doc.specialty;
         vars["doctor.experience"] = doc.experience;
         vars["doctor.bio"] = doc.bio;
         if (doc.photoUrl) vars["doctor.photoUrl"] = doc.photoUrl;
-        vars["doctor.languages"] = doc.languages.join(" • ");
+        vars["doctor.languages"] = Array.isArray(doc.languages) ? doc.languages.join(" • ") : String(doc.languages || "English • Hindi");
       }
       const next = nextNodes(definition, node.id)[0];
       return {

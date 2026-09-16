@@ -24,6 +24,12 @@ export default function Error({
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
+        {error?.message && (
+          <div className="mt-4 p-3 rounded-lg bg-destructive/10 text-destructive text-xs text-left font-mono overflow-auto max-h-48 border border-destructive/20">
+            <p className="font-bold">{error.name || "Error"}: {error.message}</p>
+            {error.digest && <p className="mt-1 text-[11px] text-muted-foreground">Digest: {error.digest}</p>}
+          </div>
+        )}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             type="button"

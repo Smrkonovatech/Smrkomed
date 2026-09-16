@@ -1,9 +1,11 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Save } from "lucide-react";
+import Link from "next/link";
+import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Eye, EyeOff, Key, MessageSquare, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { clinicApi } from "@/lib/clinic-api";
 
 import {
   AppointmentSettingsForm,
@@ -36,6 +38,7 @@ import {
   type DoctorExperience,
   type DoctorProfile,
   type DoctorQualification,
+  type DoctorStatus,
 } from "@/lib/doctors";
 import {
   validateAvailability,
@@ -67,7 +70,17 @@ export function DoctorWizard({
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [doctor, setDoctor] = useState<DoctorProfile>(initial);
+  const [password, setPassword] = useState("Doctor@12345");
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
+  const [saving, setSaving] = useState(false);
+  const [createdCredentials, setCreatedCredentials] = useState<{
+    name: string;
+    email: string;
+    password: string;
+    id: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const namePreview = useMemo(() => {
     if (doctor.displayName.trim()) return doctor.displayName.trim();
@@ -98,18 +111,39 @@ export function DoctorWizard({
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
-  function saveDraft() {
+  async function saveDraft() {
     const withName = {
       ...doctor,
       displayName: doctor.displayName.trim() || namePreview,
       isDraft: true,
     };
-    const saved = doctorsStore.saveDraft(withName);
-    toast.success("Draft saved.");
-    router.push(`/doctors/${saved.id}`);
+    setSaving(true);
+    try {
+      if (mode === "create") {
+        const res = await clinicApi.createDoctor({
+          ...withName,
+          password: password || "Doctor@12345",
+          isDraft: true,
+          status: "inactive",
+        });
+        doctorsStore.upsert({ ...withName, id: res.id, staffUserId: res.staffUserId || res.id, isDraft: true, status: "inactive" });
+        toast.success("Doctor draft saved in database.");
+        router.push(`/doctors/${res.id}`);
+      } else {
+        const cleanId = (doctor.staffUserId || doctor.id || "").replace(/^doc_/, "");
+        const res = await clinicApi.updateDoctor(cleanId, { ...withName, isDraft: true });
+        doctorsStore.upsert({ ...withName, id: res.id || doctor.id, isDraft: true });
+        toast.success("Draft updated.");
+        router.push(`/doctors/${doctor.id}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to save draft.");
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function saveAndActivate() {
+  async function saveAndActivate() {
     const withName = {
       ...doctor,
       displayName: doctor.displayName.trim() || namePreview,
@@ -124,15 +158,143 @@ export function DoctorWizard({
         setStep(5);
       return;
     }
-    const saved = doctorsStore.upsert(
-      { ...withName, isDraft: false, status: "active" },
-      {
-        kind: mode === "create" ? "created" : "updated",
-        message: mode === "create" ? "Doctor profile created and activated" : "Doctor profile updated and activated",
-      },
+
+    setSaving(true);
+    try {
+      if (mode === "create") {
+        const res = await clinicApi.createDoctor({
+          ...withName,
+          password: password || "Doctor@12345",
+          isDraft: false,
+          status: "active",
+        });
+        const finalDoc = {
+          ...withName,
+          id: res.id,
+          staffUserId: res.staffUserId || res.id,
+          isDraft: false,
+          status: "active" as DoctorStatus,
+        };
+        doctorsStore.upsert(finalDoc);
+        setCreatedCredentials({
+          name: withName.displayName,
+          email: withName.email,
+          password: password || "Doctor@12345",
+          id: res.id,
+        });
+        toast.success(`${withName.displayName} created and activated!`);
+      } else {
+        const cleanId = (doctor.staffUserId || doctor.id || "").replace(/^doc_/, "");
+        const res = await clinicApi.updateDoctor(cleanId, {
+          ...withName,
+          isDraft: false,
+          status: "active",
+        });
+        const finalDoc = {
+          ...withName,
+          id: res.id || doctor.id,
+          isDraft: false,
+          status: "active" as DoctorStatus,
+        };
+        doctorsStore.upsert(finalDoc);
+        toast.success(`${displayNameOf(finalDoc)} updated and active.`);
+        router.push(`/doctors/${doctor.id}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to activate doctor.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (createdCredentials) {
+    const message = `Hello ${createdCredentials.name},
+Your doctor clinical workspace account at ABC Fertility Centre is active.
+
+Login URL: ${typeof window !== "undefined" ? window.location.origin : ""}/login
+Username: ${createdCredentials.email}
+Password: ${createdCredentials.password}
+
+You can log in to view your schedule, consultations, and assigned patients.
+
+Regards,
+Clinic Administrator`;
+
+    const handleCopy = () => {
+      navigator.clipboard.writeText(message);
+      setCopied(true);
+      toast.success("Doctor credentials copied to clipboard!");
+      setTimeout(() => setCopied(false), 3000);
+    };
+
+    const handleWhatsApp = () => {
+      const text = encodeURIComponent(message);
+      const phone = doctor.phone?.replace(/\D/g, "");
+      const url = phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+      window.open(url, "_blank");
+    };
+
+    return (
+      <div className="mx-auto max-w-xl py-8 px-4">
+        <div className="rounded-2xl border bg-card p-6 shadow-sm space-y-6">
+          <div className="flex flex-col items-center text-center gap-2">
+            <div className="size-16 rounded-full bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center">
+              <CheckCircle2 className="size-8 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <h2 className="text-xl font-bold">{createdCredentials.name} Profile & Account Created!</h2>
+            <p className="text-sm text-muted-foreground">
+              Doctor profile is active in the clinic directory and saved to the database. Share login details below:
+            </p>
+          </div>
+
+          <div className="rounded-xl border bg-muted/40 p-4 space-y-3 text-sm font-mono">
+            <div className="flex justify-between items-center gap-2 flex-wrap font-sans">
+              <span className="text-xs text-muted-foreground">Login Portal</span>
+              <span className="text-xs font-semibold text-primary">{typeof window !== "undefined" ? `${window.location.origin}/login` : "/login"}</span>
+            </div>
+            <div className="border-t" />
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-xs font-sans text-muted-foreground">Doctor Email</span>
+              <span className="font-medium text-foreground">{createdCredentials.email}</span>
+            </div>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-xs font-sans text-muted-foreground">Password</span>
+              <span className="font-bold text-foreground tracking-widest">{createdCredentials.password}</span>
+            </div>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-xs font-sans text-muted-foreground">Role</span>
+              <span className="font-sans text-xs px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                Doctor (Clinical Authority)
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleCopy}>
+              {copied ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
+              {copied ? "Copied!" : "Copy Credentials"}
+            </Button>
+            <Button variant="outline" className="gap-2 text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950" onClick={handleWhatsApp}>
+              <MessageSquare className="size-4" />
+              WhatsApp
+            </Button>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
+            <Button asChild className="flex-1">
+              <Link href={`/doctors/${createdCredentials.id}`}>
+                View Doctor Profile →
+              </Link>
+            </Button>
+            <Button variant="outline" asChild className="flex-1">
+              <Link href="/doctors">
+                Back to Doctor Directory
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
     );
-    toast.success(`${displayNameOf(saved)} is active.`);
-    router.push(`/doctors/${saved.id}`);
   }
 
   return (
@@ -177,7 +339,16 @@ export function DoctorWizard({
 
       <div className="rounded-2xl border bg-card p-4 sm:p-6">
         {step === 0 && (
-          <BasicStep doctor={doctor} patch={patch} errors={errors} />
+          <BasicStep
+            doctor={doctor}
+            patch={patch}
+            errors={errors}
+            mode={mode}
+            password={password}
+            setPassword={setPassword}
+            showPassword={showPassword}
+            setShowPassword={setShowPassword}
+          />
         )}
         {step === 1 && (
           <ProfessionalStep doctor={doctor} patch={patch} errors={errors} />
@@ -232,8 +403,8 @@ export function DoctorWizard({
               Continue <ChevronRight className="size-4" />
             </Button>
           ) : (
-            <Button type="button" onClick={saveAndActivate}>
-              Save & Activate
+            <Button type="button" disabled={saving} onClick={saveAndActivate}>
+              {saving ? "Saving to Database..." : "Save & Activate"}
             </Button>
           )}
         </div>
@@ -246,10 +417,20 @@ function BasicStep({
   doctor,
   patch,
   errors,
+  mode,
+  password,
+  setPassword,
+  showPassword,
+  setShowPassword,
 }: {
   doctor: DoctorProfile;
   patch: (p: Partial<DoctorProfile>) => void;
   errors: FieldErrors;
+  mode?: "create" | "edit";
+  password?: string;
+  setPassword?: (p: string) => void;
+  showPassword?: boolean;
+  setShowPassword?: (s: boolean) => void;
 }) {
   return (
     <div className="space-y-5">
@@ -332,6 +513,43 @@ function BasicStep({
         <Field label="City">
           <Input value={doctor.city} onChange={(e) => patch({ city: e.target.value })} />
         </Field>
+
+        {mode === "create" && setPassword && (
+          <div className="sm:col-span-2 rounded-xl border border-primary/20 bg-primary/5 p-4 space-y-3 mt-2">
+            <div className="flex items-center gap-2">
+              <Key className="size-4 text-primary" />
+              <h4 className="text-sm font-semibold">Doctor Workspace Login Credentials</h4>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A clinical workspace account will be created automatically in PostgreSQL with this doctor's email. You can specify a custom initial password or use the default below.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Login Username / Email</label>
+                <Input value={doctor.email || "Enter email in the form above"} disabled className="bg-muted/50 cursor-not-allowed text-xs" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-muted-foreground block mb-1">Initial Password *</label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password || ""}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Doctor@12345"
+                    className="pr-10 text-xs font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword?.(!showPassword)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1"
+                  >
+                    {showPassword ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

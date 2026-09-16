@@ -28,6 +28,79 @@ export type CalendarEvent = {
   raw: ClinicTask | ClinicAppointment;
 };
 
+function parseSafeDateAndTime(dueStr: string | null | undefined, raw?: any): { date: Date; time: string } {
+  const now = new Date();
+  if (!dueStr && !raw?.dueDate && !raw?.date) {
+    return { date: now, time: "" };
+  }
+
+  // If raw object has dueDate or date
+  if (raw?.dueDate) {
+    const d = new Date(raw.dueDate);
+    if (!isNaN(d.getTime())) {
+      return {
+        date: d,
+        time: raw.dueTime || (dueStr && dueStr.includes("·") ? (dueStr.split("·")[1]?.trim() ?? "") : ""),
+      };
+    }
+  }
+
+  // If dueStr has time part after "·" e.g. "Today · 08:00 PM" or "15 Sep · 10:00 AM"
+  let time = "";
+  let datePart = dueStr || "";
+  if (dueStr && dueStr.includes("·")) {
+    const parts = dueStr.split("·");
+    datePart = (parts[0] || "").trim();
+    time = (parts[1] || "").trim();
+  }
+
+  const lowerDate = datePart.toLowerCase();
+  let d = new Date();
+  if (lowerDate.includes("today")) {
+    d = new Date();
+  } else if (lowerDate.includes("tomorrow")) {
+    d = new Date();
+    d.setDate(d.getDate() + 1);
+  } else if (lowerDate.includes("yesterday")) {
+    d = new Date();
+    d.setDate(d.getDate() - 1);
+  } else if (datePart) {
+    const parsed = new Date(datePart);
+    if (!isNaN(parsed.getTime())) {
+      d = parsed;
+    } else {
+      const withYear = new Date(`${datePart} ${now.getFullYear()}`);
+      if (!isNaN(withYear.getTime())) {
+        d = withYear;
+      } else {
+        d = new Date();
+      }
+    }
+  }
+
+  if (!time && dueStr) {
+    const parsed = new Date(dueStr);
+    if (!isNaN(parsed.getTime())) {
+      try {
+        time = format(parsed, "hh:mm a");
+      } catch {
+        time = "";
+      }
+    }
+  }
+
+  return { date: d, time };
+}
+
+function formatSafeDate(date: Date | null | undefined, formatStr: string, fallback = ""): string {
+  if (!date || isNaN(date.getTime())) return fallback;
+  try {
+    return format(date, formatStr);
+  } catch {
+    return fallback;
+  }
+}
+
 export function CareCalendarWidget({ couple }: CareCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -39,9 +112,11 @@ export function CareCalendarWidget({ couple }: CareCalendarProps) {
   const [loading, setLoading] = useState(true);
 
   const fetchCalendarData = async () => {
+    const coupleKey = couple.id || (couple as any).slug;
+    if (!coupleKey) return;
     try {
       setLoading(true);
-      const res = await clinicApi.careCalendar(couple.id);
+      const res = await clinicApi.careCalendar(coupleKey);
       setTasks(res.tasks || []);
       setAppointments(res.appointments || []);
     } catch (error) {
@@ -53,35 +128,38 @@ export function CareCalendarWidget({ couple }: CareCalendarProps) {
 
   useEffect(() => {
     fetchCalendarData();
-  }, [couple.id]);
+  }, [couple.id, (couple as any).slug]);
 
   const events: CalendarEvent[] = useMemo(() => {
-    const taskEvents: CalendarEvent[] = tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      date: new Date(t.due),
-      time: t.due ? format(new Date(t.due), "hh:mm a") : "",
-      type: "task",
-      status: t.status,
-      category: t.category || "Task",
-      assignedTo: t.assignedTo,
-      isCareLoop: t.targetRole !== null, // Assuming sendWhatsApp or targetRole implies CareLoop
-      raw: t
-    }));
+    const taskEvents: CalendarEvent[] = tasks.map((t) => {
+      const { date, time } = parseSafeDateAndTime(t.due, t);
+      return {
+        id: t.id,
+        title: t.title,
+        date,
+        time: time || (t.due && !t.due.includes("·") ? t.due : ""),
+        type: "task",
+        status: t.status,
+        category: t.category || "Task",
+        assignedTo: t.assignedTo,
+        isCareLoop: t.targetRole !== null,
+        raw: t,
+      };
+    });
 
     const apptEvents: CalendarEvent[] = appointments.map((a) => {
-      const d = new Date(a.date);
+      const { date, time } = parseSafeDateAndTime(a.date, a);
       return {
         id: a.id,
         title: `${a.type} Appointment`,
-        date: isNaN(d.getTime()) ? new Date() : d, 
-        time: a.time,
+        date,
+        time: a.time || time,
         type: "appointment",
         status: a.status,
         category: "Appointment",
         assignedTo: a.doctor,
         isCareLoop: false,
-        raw: a
+        raw: a,
       };
     });
 
@@ -274,7 +352,7 @@ export function CareCalendarWidget({ couple }: CareCalendarProps) {
                           {e.isCareLoop && <Bot className="size-3 text-purple-400" />}
                         </div>
                         <div className="text-xs text-slate-500 flex items-center gap-3">
-                          <span className="font-medium text-slate-700">{format(e.date, "EEE, d MMM yyyy")}</span>
+                          <span className="font-medium text-slate-700">{formatSafeDate(e.date, "EEE, d MMM yyyy")}</span>
                           {e.time && <span>• {e.time}</span>}
                           <span>• {e.category}</span>
                         </div>

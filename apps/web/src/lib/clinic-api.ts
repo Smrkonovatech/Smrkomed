@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api/client";
 
 export type ClinicPerson = {
   id: string;
@@ -120,6 +120,15 @@ export const clinicApi = {
   patient360: (id: string) => apiGet<any>(`/api/v1/couples/${id}/360`),
   careCalendar: (id: string) => apiGet<{ appointments: ClinicAppointment[], tasks: ClinicTask[] }>(`/api/v1/couples/${id}/care-calendar`),
   createCouple: (body: unknown) => apiPost<ClinicCouple>("/api/v1/couples", body),
+  patchCouple: (
+    id: string,
+    body: {
+      assignedDoctorId?: string | null;
+      assignedCoordinatorId?: string | null;
+      careLoopActive?: boolean;
+      status?: string;
+    },
+  ) => apiPatch<ClinicCouple>(`/api/v1/couples/${id}`, body),
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
   patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),
@@ -197,6 +206,8 @@ export const clinicApi = {
   },
   completeConsultation: (appointmentId: string, body: unknown) =>
     apiPost<any>(`/api/v1/doctors/consultations/${appointmentId}`, body),
+  recordConsultation: (appointmentId: string, body: unknown) =>
+    apiPost<any>(`/api/v1/doctors/consultations/${appointmentId}`, body),
   doctorReports: (filter?: string) =>
     apiGet<any[]>(`/api/v1/doctors/reports${filter ? `?filter=${filter}` : ""}`),
   doctorReviewReport: (orderId: string, body: unknown) =>
@@ -237,6 +248,36 @@ export const clinicApi = {
     apiPost<any>("/api/v1/ai/handoff", body),
   aiConditionalAutomation: (body: { taskId: string; event: string; responsePayload?: string }) =>
     apiPost<any>("/api/v1/ai/conditional-automation", body),
+  // Pharmacy APIs
+  pharmacyProducts: () => apiGet<any>("/api/v1/pharmacy/products"),
+  pharmacyPrescriptions: (query?: Record<string, string>) => {
+    const q = query ? "?" + new URLSearchParams(query).toString() : "";
+    return apiGet<any>(`/api/v1/pharmacy/prescriptions${q}`);
+  },
+  createPrescription: (body: unknown) => apiPost<any>("/api/v1/pharmacy/prescriptions", body),
+  // Staff Management
+  getStaff: () => apiGet<any[]>("/api/v1/users/staff"),
+  createStaffMember: (body: {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    title?: string | undefined;
+    phone?: string | undefined;
+    department?: string | undefined;
+    registrationNumber?: string | undefined;
+    qualifications?: string | undefined;
+    yearsExperience?: number | string | undefined;
+    languages?: string | undefined;
+  }) => apiPost<any>("/api/v1/users/staff", body),
+  // Doctor Management (Full Profiles & Real DB Persisted)
+  getDoctors: () => apiGet<any[]>("/api/v1/doctors"),
+  getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
+  createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
+  updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
 };
+
+
+
 
 

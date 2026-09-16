@@ -60,12 +60,17 @@ export function buildIncomingWhatsAppVars(input: {
     media_caption: (input.mediaCaption ?? "").slice(0, 500),
     unmatched: input.unmatched ? "true" : "false",
     inbound_at: input.timestampIso,
-    ...(text.startsWith("appt_doctor_")
+    ...(text.startsWith("appt_doctor_slots_")
       ? {
-          selectedDoctorId: text.replace("appt_doctor_", "").trim(),
-          selected_doctor_id: text.replace("appt_doctor_", "").trim(),
+          selectedDoctorId: text.replace("appt_doctor_slots_", "").trim(),
+          selected_doctor_id: text.replace("appt_doctor_slots_", "").trim(),
         }
-      : {}),
+      : text.startsWith("appt_doctor_")
+        ? {
+            selectedDoctorId: text.replace("appt_doctor_", "").trim(),
+            selected_doctor_id: text.replace("appt_doctor_", "").trim(),
+          }
+        : {}),
     ...(text.startsWith("appt_date_")
       ? (() => {
           const rawDate = text.replace("appt_date_", "").trim();
@@ -367,11 +372,37 @@ export async function resumeWaitForReplyExecutions(input: {
         const docId = rawReply.slice("appt_doctor_slots_".length);
         mergedVars["selectedDoctorId"] = docId;
         mergedVars["doctor.id"] = docId;
+        const { resolveClinicDoctors } = await import("./appointment-nodes");
+        const docs = await resolveClinicDoctors(input.tenant.clinicId);
+        const matched = docs.find((d: any) => d.id === docId);
+        if (matched) {
+          const cleanDocName = matched.name.replace(/^Dr\.?\s*/i, "").trim();
+          mergedVars["doctor.name"] = cleanDocName;
+          mergedVars["doctor_name"] = `Dr. ${cleanDocName}`;
+          mergedVars["doctor.specialty"] = matched.specialty;
+          mergedVars["doctor.experience"] = matched.experience;
+          mergedVars["doctor.bio"] = matched.bio || "";
+          mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
+        }
         replyAction = "btn_see_slots";
       } else if (rawReply.startsWith("appt_doctor_")) {
         const docId = rawReply.slice("appt_doctor_".length);
         mergedVars["selectedDoctorId"] = docId;
         mergedVars["doctor.id"] = docId;
+        const { resolveClinicDoctors } = await import("./appointment-nodes");
+        const docs = await resolveClinicDoctors(input.tenant.clinicId);
+        const matched = docs.find((d: any) => d.id === docId);
+        if (matched) {
+          const cleanDocName = matched.name.replace(/^Dr\.?\s*/i, "").trim();
+          mergedVars["doctor.name"] = cleanDocName;
+          mergedVars["doctor_name"] = `Dr. ${cleanDocName}`;
+          mergedVars["doctor.specialty"] = matched.specialty;
+          mergedVars["doctor.experience"] = matched.experience;
+          mergedVars["doctor.bio"] = matched.bio || "";
+          mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
+        }
         replyAction = rawReply;
       } else {
         const { resolveClinicDoctors } = await import("./appointment-nodes");
@@ -390,8 +421,16 @@ export async function resumeWaitForReplyExecutions(input: {
           }) ?? null;
         }
         if (matched) {
+          const cleanDocName = matched.name.replace(/^Dr\.?\s*/i, "").trim();
           mergedVars["selectedDoctorId"] = matched.id;
           mergedVars["doctor.id"] = matched.id;
+          mergedVars["doctor.name"] = cleanDocName;
+          mergedVars["doctor_name"] = `Dr. ${cleanDocName}`;
+          mergedVars["doctor.specialty"] = matched.specialty;
+          mergedVars["doctor.experience"] = matched.experience;
+          mergedVars["doctor.bio"] = matched.bio || "";
+          mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
           replyAction = `appt_doctor_${matched.id}`;
         } else if (!rawReply.startsWith("appt_")) {
           // User asked a question or sent text instead of picking a doctor

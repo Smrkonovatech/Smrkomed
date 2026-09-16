@@ -29,18 +29,21 @@ export const coupleRoutes = new Hono<AppEnv>()
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const { id } = c.req.valid("param");
     
-    // Ensure couple belongs to clinic
+    // Ensure couple belongs to clinic (support either CUID id or slug)
     const couple = await prisma.couple.findFirst({
-      where: { id, clinicId: tenant.clinicId }
+      where: {
+        OR: [{ id }, { slug: id }],
+        clinicId: tenant.clinicId,
+      },
     });
     if (!couple) throw notFound();
 
     const [appointments, tasks] = await Promise.all([
       prisma.appointment.findMany({
-        where: { coupleId: id, clinicId: tenant.clinicId }
+        where: { coupleId: couple.id, clinicId: tenant.clinicId },
       }),
       prisma.careTask.findMany({
-        where: { coupleId: id, clinicId: tenant.clinicId },
+        where: { coupleId: couple.id, clinicId: tenant.clinicId },
         include: {
           assignments: { include: { user: { select: { name: true } } }, take: 1 },
           couple: {
@@ -51,13 +54,13 @@ export const coupleRoutes = new Hono<AppEnv>()
             },
           },
           carePlanStep: true,
-        }
-      })
+        },
+      }),
     ]);
 
     return ok(c, {
       appointments: appointments.map(serializeAppointment),
-      tasks: tasks.map(task => serializeTask(task as any, task.couple as any))
+      tasks: tasks.map((task) => serializeTask(task as any, task.couple as any)),
     });
   })
   .get("/:id", validate("param", idParam), async (c) => {
@@ -109,10 +112,16 @@ export const coupleRoutes = new Hono<AppEnv>()
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
-    const existing = await prisma.couple.findUnique({ where: { id } });
+    let existing = await prisma.couple.findUnique({ where: { id } });
+    if (!existing) {
+      existing = await prisma.couple.findFirst({
+        where: { slug: id, clinicId: tenant.clinicId },
+      });
+    }
     await requireClinicOwned(tenant, existing);
+    const targetId = existing!.id;
     await prisma.couple.update({
-      where: { id },
+      where: { id: targetId },
       data: {
         ...(body.assignedDoctorId === undefined ? {} : { assignedDoctorId: body.assignedDoctorId }),
         ...(body.assignedCoordinatorId === undefined
@@ -122,7 +131,7 @@ export const coupleRoutes = new Hono<AppEnv>()
         ...(body.status === undefined ? {} : { status: body.status }),
       },
     });
-    const couple = await loadCouple(tenant, id);
+    const couple = await loadCouple(tenant, targetId);
     if (!couple) throw notFound();
     await audit(tenant, "couple.update", "Couple", couple.id, {
       patient: `${couple.primaryPatient.firstName} ${couple.primaryPatient.lastName}`.trim(),

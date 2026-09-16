@@ -3,238 +3,514 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { 
-  UsersRound, 
-  ChevronRight, 
-  Check, 
-  User, 
-  Briefcase, 
-  Building2, 
-  ShieldCheck, 
-  Lock,
-  Mail
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  Eye,
+  EyeOff,
+  Loader2,
+  MessageCircle,
+  Stethoscope,
+  User,
+  UserCheck,
+  Users,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { STAFF_ROLE_PRESETS } from "../staffDemoData";
+import { clinicApi } from "@/lib/clinic-api";
+import { doctorsStore } from "@/lib/doctors";
+
+const ROLE_OPTIONS = [
+  { value: "DOCTOR", label: "Doctor", description: "Full clinical access, consultations, reports", icon: Stethoscope, color: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" },
+  { value: "CARE_COORDINATOR", label: "Care Coordinator", description: "Care Loop, tasks, patient management", icon: UserCheck, color: "bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800" },
+  { value: "NURSE", label: "Nurse", description: "Patient care, vitals, task execution", icon: User, color: "bg-pink-500/10 text-pink-700 dark:text-pink-300 border-pink-200 dark:border-pink-800" },
+  { value: "RECEPTIONIST", label: "Receptionist", description: "Appointments, patient check-in, reception", icon: Users, color: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800" },
+  { value: "CLINIC_ADMIN", label: "Clinic Admin", description: "Full clinic management, settings, staff", icon: User, color: "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800" },
+  { value: "LAB_TECHNICIAN", label: "Lab Technician", description: "Diagnostics, lab results, specimen handling", icon: User, color: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800" },
+  { value: "EMBRYOLOGIST", label: "Embryologist", description: "IVF lab, embryo grading, lab records", icon: User, color: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800" },
+  { value: "PHARMACY_MANAGER", label: "Pharmacy Manager", description: "Pharmacy inventory, dispensing, management", icon: User, color: "bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800" },
+  { value: "BILLING_STAFF", label: "Billing Staff", description: "Billing, payments, invoices", icon: User, color: "bg-lime-500/10 text-lime-700 dark:text-lime-300 border-lime-200 dark:border-lime-800" },
+];
+
+type CreatedStaff = {
+  name: string;
+  email: string;
+  password: string;
+  role: string;
+  phone?: string | undefined;
+  doctorId?: string | undefined;
+};
 
 export default function AddStaffPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
-    firstName: "", lastName: "", email: "", phone: "",
-    roleId: "", department: "", branch: "Bangalore"
-  });
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [title, setTitle] = useState("");
+  const [department, setDepartment] = useState("Reproductive Medicine");
+  const [registrationNumber, setRegistrationNumber] = useState("");
+  const [qualifications, setQualifications] = useState("");
+  const [yearsExperience, setYearsExperience] = useState("10");
+  const [languages, setLanguages] = useState("English, Hindi");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState("DOCTOR");
+  const [loading, setLoading] = useState(false);
+  const [created, setCreated] = useState<CreatedStaff | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
-  const steps = [
-    { id: 1, label: "Basic Info", icon: User },
-    { id: 2, label: "Role & Dept", icon: Briefcase },
-    { id: 3, label: "Clinic / Branch", icon: Building2 },
-    { id: 4, label: "Permissions", icon: ShieldCheck },
-    { id: 5, label: "Security", icon: Lock }
-  ];
+  const loginUrl = typeof window !== "undefined" ? `${window.location.origin}/login` : "https://yourdomain.com/login";
 
-  const handleNext = () => setStep(prev => Math.min(prev + 1, 5));
-  const handleBack = () => setStep(prev => Math.max(prev - 1, 1));
-  
-  const handleSimulateInvite = () => {
-    // Simulate API call for the hospEx demo
-    const btn = document.getElementById("finish-btn");
-    if (btn) btn.innerHTML = "Sending secure invitation...";
-    setTimeout(() => {
-      router.push("/staff/invitations");
-    }, 1500);
-  };
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
 
-  const selectedPreset = STAFF_ROLE_PRESETS.find(p => p.id === formData.roleId);
+    if (name.trim().length < 2) { setError("Full name must be at least 2 characters."); return; }
+    if (!email.includes("@")) { setError("Enter a valid email address."); return; }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+
+    setLoading(true);
+    try {
+      const res = await clinicApi.createStaffMember({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role,
+        title: title.trim() || (role === "DOCTOR" ? "Fertility Specialist" : undefined),
+        phone: phone.trim() || undefined,
+        department: role === "DOCTOR" ? (department.trim() || "Reproductive Medicine") : undefined,
+        registrationNumber: role === "DOCTOR" ? (registrationNumber.trim() || undefined) : undefined,
+        qualifications: role === "DOCTOR" ? (qualifications.trim() || undefined) : undefined,
+        yearsExperience: role === "DOCTOR" && yearsExperience ? Number(yearsExperience) : undefined,
+        languages: role === "DOCTOR" ? (languages.trim() || undefined) : undefined,
+      });
+
+      if (role === "DOCTOR") {
+        doctorsStore.ensureFromStaff({
+          id: res.id,
+          name: name.trim(),
+          email: email.trim().toLowerCase(),
+          phone: phone.trim() || undefined,
+          title: title.trim() || "Fertility Specialist",
+          role: "DOCTOR",
+          department: department.trim() || "Reproductive Medicine",
+          registrationNumber: registrationNumber.trim() || undefined,
+          qualifications: qualifications.trim() || undefined,
+          yearsExperience: yearsExperience ? Number(yearsExperience) : 10,
+        });
+      }
+
+      setCreated({
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        password,
+        role,
+        phone: phone.trim() || undefined,
+        doctorId: role === "DOCTOR" ? `doc_${res.id}` : undefined,
+      });
+      toast.success(`${name.trim()} has been added to the clinic.`);
+    } catch (err: any) {
+      const msg: string = err?.message ?? "Failed to create account.";
+      if (msg.includes("already exists") || msg.includes("EMAIL_TAKEN")) {
+        setError("This email is already registered. Use a different email address.");
+      } else if (msg.includes("USERS_MANAGE") || msg.includes("Forbidden")) {
+        setError("You don't have permission to add staff. You need Clinic Admin access.");
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function getCredentialsMessage(staff: CreatedStaff) {
+    const roleLabel = ROLE_OPTIONS.find((r) => r.value === staff.role)?.label ?? staff.role;
+    return `Hi ${staff.name}! 👋
+
+Your SmrkoMed clinic account has been created.
+
+🔗 Login URL: ${loginUrl}
+📧 Email: ${staff.email}
+🔐 Password: ${staff.password}
+👤 Role: ${roleLabel}
+
+Please log in and change your password after first sign-in.
+
+Regards,
+Clinic Admin`;
+  }
+
+  function handleCopy(staff: CreatedStaff) {
+    navigator.clipboard.writeText(getCredentialsMessage(staff));
+    setCopied(true);
+    toast.success("Credentials copied to clipboard!");
+    setTimeout(() => setCopied(false), 3000);
+  }
+
+  function handleWhatsApp(staff: CreatedStaff) {
+    const text = encodeURIComponent(getCredentialsMessage(staff));
+    const phone = staff.phone?.replace(/\D/g, "");
+    const url = phone
+      ? `https://wa.me/${phone}?text=${text}`
+      : `https://wa.me/?text=${text}`;
+    window.open(url, "_blank");
+  }
+
+  if (created) {
+    const roleObj = ROLE_OPTIONS.find((r) => r.value === created.role);
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6">
+        <Card className="w-full max-w-lg">
+          <CardContent className="pt-8 pb-6 space-y-5">
+            {/* Success header */}
+            <div className="flex flex-col items-center text-center gap-2">
+              <div className="size-16 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                <Check className="size-8 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold">{created.name} account created!</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Share these credentials with them so they can log in.
+                </p>
+              </div>
+            </div>
+
+            {/* Credentials box */}
+            <div className="rounded-xl border bg-muted/30 p-4 space-y-3 text-sm font-mono">
+              <div className="flex justify-between items-center gap-2 flex-wrap">
+                <span className="text-muted-foreground text-xs font-sans">Login URL</span>
+                <span className="text-primary font-medium break-all font-sans">{loginUrl}</span>
+              </div>
+              <div className="border-t" />
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-muted-foreground text-xs font-sans">Email</span>
+                <span className="font-medium">{created.email}</span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-muted-foreground text-xs font-sans">Password</span>
+                <span className="font-bold tracking-widest text-base">{created.password}</span>
+              </div>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-muted-foreground text-xs font-sans">Role</span>
+                <Badge variant="outline" className="font-sans">{roleObj?.label ?? created.role}</Badge>
+              </div>
+            </div>
+
+            {/* Share buttons */}
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground text-center">Send login details to the staff member:</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => handleCopy(created)}
+                >
+                  {copied ? <Check className="size-4 text-emerald-500" /> : <Copy className="size-4" />}
+                  {copied ? "Copied!" : "Copy Message"}
+                </Button>
+                <Button
+                  variant="outline"
+                  className="gap-2 text-emerald-600 border-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950"
+                  onClick={() => handleWhatsApp(created)}
+                >
+                  <MessageCircle className="size-4" />
+                  Send on WhatsApp
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground text-center">
+                {created.phone
+                  ? `WhatsApp will open for ${created.phone}`
+                  : "WhatsApp will open — you can choose a contact"}
+              </p>
+            </div>
+
+            {/* Doctor Profile link */}
+            {created.role === "DOCTOR" && (
+              <Link href="/doctors" className="block">
+                <Button variant="secondary" className="w-full gap-2 text-xs border border-blue-200 dark:border-blue-900 bg-blue-50/50 hover:bg-blue-100 text-blue-700 dark:text-blue-300">
+                  <Stethoscope className="size-3.5" />
+                  View in Doctor Directory & Profiles
+                </Button>
+              </Link>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-2 pt-1 border-t">
+              <Button variant="outline" className="flex-1" onClick={() => {
+                setCreated(null);
+                setName(""); setEmail(""); setPhone(""); setTitle(""); setPassword(""); setRole("DOCTOR");
+                setCopied(false);
+              }}>
+                Add Another
+              </Button>
+              <Button className="flex-1" onClick={() => router.push("/staff")}>
+                Back to Staff
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const selectedRole = ROLE_OPTIONS.find((r) => r.value === role);
 
   return (
-    <div className="flex-1 space-y-6 p-6 bg-slate-50/50 min-h-screen flex flex-col items-center">
-      
-      <div className="w-full max-w-4xl flex items-center justify-between mb-2">
+    <div className="max-w-3xl mx-auto p-6 space-y-6">
+      <div className="flex items-center gap-3">
+        <Link href="/staff">
+          <Button variant="ghost" size="icon" className="shrink-0">
+            <ArrowLeft className="size-4" />
+          </Button>
+        </Link>
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary">Add Staff Member</h1>
-          <p className="text-muted-foreground">Configure profile, roles, and access permissions.</p>
+          <h1 className="text-2xl font-bold tracking-tight">Add Staff Member</h1>
+          <p className="text-sm text-muted-foreground">Create a real login account for your clinic team.</p>
         </div>
-        <Link href="/staff"><Button variant="ghost">Cancel</Button></Link>
       </div>
 
-      <div className="w-full max-w-4xl bg-white p-4 rounded-xl shadow-sm flex items-center justify-between mb-6">
-        {steps.map((s, idx) => (
-          <div key={s.id} className="flex items-center">
-            <div className={`flex items-center gap-2 ${step === s.id ? 'text-indigo-600 font-bold' : step > s.id ? 'text-emerald-500 font-medium' : 'text-slate-400'}`}>
-              <div className={`size-8 rounded-full flex items-center justify-center ${step === s.id ? 'bg-indigo-100' : step > s.id ? 'bg-emerald-100' : 'bg-slate-100'}`}>
-                {step > s.id ? <Check className="size-4"/> : <s.icon className="size-4"/>}
-              </div>
-              <span className="hidden md:inline-block text-sm">{s.label}</span>
-            </div>
-            {idx < steps.length - 1 && <ChevronRight className="size-4 mx-4 text-slate-300" />}
-          </div>
-        ))}
-      </div>
-
-      <Card className="w-full max-w-4xl shadow-sm border-none bg-white">
-        
-        {step === 1 && (
-          <CardContent className="p-8 space-y-6 animate-in fade-in zoom-in-95 duration-300">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Basic Information</h2>
-              <p className="text-sm text-slate-500 mb-6">Provide the foundational details for this team member.</p>
-            </div>
-            <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-2"><label className="text-sm font-bold text-slate-700">First Name *</label><Input placeholder="Asha" value={formData.firstName} onChange={e => setFormData({...formData, firstName: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-sm font-bold text-slate-700">Last Name *</label><Input placeholder="Kumar" value={formData.lastName} onChange={e => setFormData({...formData, lastName: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-sm font-bold text-slate-700">Email Address *</label><Input placeholder="asha.k@smrkomed.com" type="email" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-sm font-bold text-slate-700">Phone Number *</label><Input placeholder="+91 98765 43210" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})}/></div>
-              <div className="space-y-2"><label className="text-sm font-bold text-slate-700">Employee ID</label><Input placeholder="EMP-000"/></div>
-              <div className="space-y-2"><label className="text-sm font-bold text-slate-700">Joining Date</label><Input type="date" /></div>
-            </div>
-          </CardContent>
-        )}
-
-        {step === 2 && (
-          <CardContent className="p-8 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Role & Department</h2>
-              <p className="text-sm text-slate-500 mb-6">Assigning a primary role will determine default system permissions.</p>
-            </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Primary Role *</label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
-                  {STAFF_ROLE_PRESETS.map(preset => (
-                    <div 
-                      key={preset.id} 
-                      onClick={() => setFormData({...formData, roleId: preset.id})}
-                      className={`p-4 border rounded-xl cursor-pointer transition-all ${formData.roleId === preset.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'hover:border-slate-300'}`}
-                    >
-                      <div className="flex justify-between items-center mb-1">
-                        <h4 className="font-bold text-slate-800">{preset.name}</h4>
-                        {formData.roleId === preset.id && <Check className="size-4 text-indigo-600"/>}
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Role selection */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Select Role</CardTitle>
+            <CardDescription>The role determines what this staff member can access.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {ROLE_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                const selected = role === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRole(opt.value)}
+                    className={`text-left rounded-lg border p-3 transition-all hover:border-primary/50 ${
+                      selected ? "border-primary bg-primary/5 ring-1 ring-primary/30" : "border-border"
+                    }`}
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className={`mt-0.5 rounded-md p-1 ${opt.color}`}>
+                        <Icon className="size-3.5" />
                       </div>
-                      <p className="text-[10px] text-slate-500 line-clamp-2">{preset.description}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm leading-tight">{opt.label}</p>
+                        <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 line-clamp-2">{opt.description}</p>
+                      </div>
+                      {selected && <Check className="size-4 text-primary ml-auto shrink-0" />}
                     </div>
-                  ))}
-                </div>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Personal details */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Personal Details</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="name">Full Name <span className="text-destructive">*</span></Label>
+                <Input
+                  id="name"
+                  placeholder={role === "DOCTOR" ? "Dr. Ananya Rao" : "Full name"}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                />
               </div>
-              <div className="space-y-2 mt-6">
-                <label className="text-sm font-bold text-slate-700">Department</label>
-                <select className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm" value={formData.department} onChange={e => setFormData({...formData, department: e.target.value})}>
-                  <option value="">Select Department...</option>
-                  <option>Reproductive Medicine</option>
-                  <option>Clinical Diagnostics</option>
-                  <option>Laboratory</option>
-                  <option>Patient Care</option>
-                  <option>Front Desk</option>
-                  <option>Operations</option>
-                </select>
+              <div className="space-y-1.5">
+                <Label htmlFor="title">
+                  {role === "DOCTOR" ? "Specialty" : "Title / Designation"}
+                </Label>
+                <Input
+                  id="title"
+                  placeholder={role === "DOCTOR" ? "Fertility Specialist" : "e.g. Senior Coordinator"}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+                {role === "DOCTOR" && (
+                  <p className="text-xs text-muted-foreground">
+                    This shows in WhatsApp doctor selection list
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email <span className="text-destructive">*</span></Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="off"
+                  placeholder="doctor@yourclinic.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="phone">
+                  Phone <span className="text-muted-foreground text-xs">(for WhatsApp share)</span>
+                </Label>
+                <Input
+                  id="phone"
+                  placeholder="+91 98XXX XXXXX"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used to send login details via WhatsApp
+                </p>
               </div>
             </div>
           </CardContent>
-        )}
+        </Card>
 
-        {step === 3 && (
-          <CardContent className="p-8 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-             <div>
-              <h2 className="text-xl font-bold text-slate-800">Clinic & Branch Access</h2>
-              <p className="text-sm text-slate-500 mb-6">Assign which physical locations this staff member can operate in.</p>
-            </div>
-            <div className="space-y-4">
-              <div className="p-4 bg-slate-50 rounded-lg border">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Organization</p>
-                <p className="font-bold text-slate-800 text-lg">ABC Fertility Centre</p>
-              </div>
-
-              <div className="space-y-3 mt-4">
-                <label className="text-sm font-bold text-slate-700">Primary Branch</label>
-                <div className="grid grid-cols-2 gap-3">
-                  {["Bangalore", "Kochi", "Chennai"].map(branch => (
-                    <div 
-                      key={branch}
-                      onClick={() => setFormData({...formData, branch})}
-                      className={`p-4 border rounded-xl cursor-pointer flex items-center justify-between ${formData.branch === branch ? 'bg-indigo-50 border-indigo-500' : 'bg-white'}`}
-                    >
-                      <span className="font-bold text-slate-700">{branch}</span>
-                      {formData.branch === branch && <Check className="size-4 text-indigo-600"/>}
-                    </div>
-                  ))}
+        {/* Doctor Clinical & Professional Details */}
+        {role === "DOCTOR" && (
+          <Card className="border-blue-500/30 bg-blue-50/10 dark:bg-blue-950/10">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                  <Stethoscope className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Doctor Profile & Clinical Details</CardTitle>
+                  <CardDescription className="text-xs">
+                    These details will display in the Doctor Directory, patient 360, appointment schedules, and qualifications.
+                  </CardDescription>
                 </div>
               </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="department">Department</Label>
+                  <Input
+                    id="department"
+                    placeholder="e.g. Reproductive Medicine, Fertility & IVF"
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="regNum">Medical Registration No.</Label>
+                  <Input
+                    id="regNum"
+                    placeholder="e.g. KMC-48291"
+                    value={registrationNumber}
+                    onChange={(e) => setRegistrationNumber(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="qualifications">Qualifications / Degrees</Label>
+                  <Input
+                    id="qualifications"
+                    placeholder="e.g. MBBS, MS (OBG), Fellowship in Reproductive Medicine"
+                    value={qualifications}
+                    onChange={(e) => setQualifications(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="experience">Years of Experience</Label>
+                  <Input
+                    id="experience"
+                    type="number"
+                    min="1"
+                    max="50"
+                    placeholder="10"
+                    value={yearsExperience}
+                    onChange={(e) => setYearsExperience(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="languages">Languages Spoken</Label>
+                <Input
+                  id="languages"
+                  placeholder="e.g. English, Hindi, Kannada"
+                  value={languages}
+                  onChange={(e) => setLanguages(e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Password */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Login Password</CardTitle>
+            <CardDescription>
+              Set a temporary password. You'll be able to copy it and share via WhatsApp after creation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-1.5 max-w-sm">
+              <Label htmlFor="password">Password <span className="text-destructive">*</span></Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  placeholder="Min 8 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pr-10"
+                  required
+                />
+                <button
+                  type="button"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={() => setShowPassword((v) => !v)}
+                >
+                  {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                After creation, you'll get a <strong>Copy</strong> and <strong>WhatsApp share</strong> button to send these to the doctor.
+              </p>
             </div>
           </CardContent>
+        </Card>
+
+        {error && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
+          </div>
         )}
 
-        {step === 4 && (
-          <CardContent className="p-8 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Module Access & Permissions</h2>
-              <p className="text-sm text-slate-500 mb-6">Review the recommended permissions for a <span className="font-bold text-indigo-700">{selectedPreset?.name || "selected role"}</span>.</p>
-            </div>
-            
-            {selectedPreset ? (
-              <div className="bg-slate-50 rounded-xl border overflow-hidden">
-                <div className="p-3 bg-indigo-100 text-indigo-800 font-medium text-sm flex items-center justify-between">
-                  <span>✓ Recommended Preset Applied</span>
-                  <span className="text-xs underline cursor-pointer">Customize Permissions</span>
-                </div>
-                <div className="p-4 grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-8">
-                  {Object.entries(selectedPreset.defaultPermissions).map(([mod, perm]) => (
-                    <div key={mod} className="flex justify-between items-center border-b border-slate-200 pb-2">
-                      <span className="text-sm font-medium text-slate-700 capitalize">{mod.replace(/([A-Z])/g, ' $1').trim()}</span>
-                      <Badge variant="outline" className={`
-                        ${perm === 'Manage' ? 'bg-purple-50 text-purple-700 border-purple-200' : ''}
-                        ${perm === 'Approve' ? 'bg-rose-50 text-rose-700 border-rose-200' : ''}
-                        ${perm === 'Edit' ? 'bg-blue-50 text-blue-700 border-blue-200' : ''}
-                        ${perm === 'Create' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''}
-                        ${perm === 'View' ? 'bg-slate-100 text-slate-700 border-slate-300' : ''}
-                        ${perm === 'None' ? 'bg-transparent text-slate-300 border-dashed' : ''}
-                      `}>{perm}</Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" asChild>
+            <Link href="/staff">Cancel</Link>
+          </Button>
+          <Button type="submit" disabled={loading} className="min-w-[160px]">
+            {loading ? (
+              <>
+                <Loader2 className="size-4 mr-2 animate-spin" />
+                Creating account…
+              </>
             ) : (
-              <div className="p-8 text-center text-rose-500 bg-rose-50 rounded-xl border border-rose-200">
-                Please go back to Step 2 and select a role first.
-              </div>
+              <>Create {selectedRole?.label ?? "Staff"} Account</>
             )}
-          </CardContent>
-        )}
-
-        {step === 5 && (
-          <CardContent className="p-8 space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">Login & Security</h2>
-              <p className="text-sm text-slate-500 mb-6">Configure how this team member will access the system.</p>
-            </div>
-
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center space-y-4">
-               <ShieldCheck className="size-12 text-amber-500 mx-auto" />
-               <h3 className="font-bold text-lg text-amber-900">Secure Invitation</h3>
-               <p className="text-sm text-amber-700 max-w-md mx-auto">
-                 For security reasons, plaintext passwords are never generated or shown. We will send a secure invitation link to <span className="font-bold">{formData.email || "their email address"}</span> allowing them to set up their own credentials and two-factor authentication.
-               </p>
-               <div className="bg-white p-3 rounded-lg border border-amber-200 inline-block mt-4 text-xs font-mono text-slate-500 shadow-sm">
-                 Account Status: <span className="font-bold text-amber-600">Pending Invitation</span>
-               </div>
-            </div>
-
-          </CardContent>
-        )}
-
-        <CardFooter className="p-6 bg-slate-50 rounded-b-xl border-t flex justify-between">
-          <Button variant="outline" onClick={handleBack} disabled={step === 1} className="bg-white">Back</Button>
-          {step < 5 ? (
-            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleNext}>Continue <ChevronRight className="size-4 ml-2"/></Button>
-          ) : (
-            <Button id="finish-btn" className="bg-emerald-600 hover:bg-emerald-700" onClick={handleSimulateInvite}>
-              <Mail className="size-4 mr-2"/> Send Secure Invitation
-            </Button>
-          )}
-        </CardFooter>
-      </Card>
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }

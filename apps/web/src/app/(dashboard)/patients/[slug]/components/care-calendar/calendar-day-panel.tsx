@@ -56,11 +56,15 @@ export function CalendarDayPanel({ date, events, onClose, onAddTask, couple, onS
     }
   };
 
+  const safeDate = date && !isNaN(date.getTime()) ? date : new Date();
+  const dayNum = format(safeDate, "d");
+  const monthYear = format(safeDate, "MMM yyyy");
+
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <h3 className="font-medium text-indigo-700 text-lg">{format(date, "d")} <span className="text-slate-700">{format(date, "MMM yyyy")}</span></h3>
+          <h3 className="font-medium text-indigo-700 text-lg">{dayNum} <span className="text-slate-700">{monthYear}</span></h3>
         </div>
         <div className="flex items-center gap-2">
           <p className="text-xs text-slate-500 font-medium">{events.length} {events.length === 1 ? 'task' : 'tasks'}</p>

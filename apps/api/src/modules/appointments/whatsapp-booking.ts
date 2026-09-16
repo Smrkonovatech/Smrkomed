@@ -66,6 +66,7 @@ async function dispatchApptTrigger(input: {
       appointment_date: input.startsAt.toISOString().slice(0, 10),
       appointment_time: input.startsAt.toISOString().slice(11, 16),
       doctor_name: input.doctorName ?? "",
+      "doctor.name": input.doctorName ?? "",
       clinic_name: input.tenant.clinicName,
       source: "whatsapp_ai",
     },
@@ -311,8 +312,14 @@ export async function bookAppointmentFromSlot(input: {
   }
 
   const startTime = new Date(decoded.startMs);
-  // Appointment.doctorName is free-text only — never invent a doctor from unverified schedule.
-  const doctorName = decoded.doctorName || null;
+  let doctorName = decoded.doctorName || null;
+  if (!doctorName) {
+    const { getClinicDoctors } = await import("../appointment-booking/slot-engine");
+    const docs = await getClinicDoctors(input.tenant.clinicId);
+    if (docs.length > 0 && docs[0]?.displayName) {
+      doctorName = docs[0].displayName;
+    }
+  }
 
   const valid = await validateSlotStillAvailable({
     clinicId: input.tenant.clinicId,
@@ -466,7 +473,7 @@ export async function rescheduleAppointmentFromSlot(input: {
   slotId: string;
   idempotencyKey: string;
 }): Promise<
-  | { ok: true; appointmentId: string; startsAt: string; alreadyExisted: boolean }
+  | { ok: true; appointmentId: string; startsAt: string; doctorName?: string | null; alreadyExisted: boolean }
   | { ok: false; reason: string; handoffRecommended?: boolean }
 > {
   const existingIdem = await prisma.whatsAppBookingIdempotency.findUnique({
@@ -483,6 +490,7 @@ export async function rescheduleAppointmentFromSlot(input: {
         ok: true,
         appointmentId: appt.id,
         startsAt: appt.startsAt.toISOString(),
+        doctorName: appt.doctorName,
         alreadyExisted: true,
       };
     }
@@ -574,6 +582,7 @@ export async function rescheduleAppointmentFromSlot(input: {
     ok: true,
     appointmentId: updated.id,
     startsAt: updated.startsAt.toISOString(),
+    doctorName: updated.doctorName,
     alreadyExisted: false,
   };
 }
@@ -670,6 +679,11 @@ export function formatSlotLabel(slot: { startTime: string; doctorName: string | 
     minute: "2-digit",
     hour12: true,
   });
-  const doc = slot.doctorName ? ` · ${slot.doctorName}` : "";
+  const cleanDoc = slot.doctorName
+    ? slot.doctorName.startsWith("Dr.")
+      ? slot.doctorName
+      : `Dr. ${slot.doctorName.replace(/^Dr\.?\s*/i, "").trim()}`
+    : null;
+  const doc = cleanDoc ? ` · ${cleanDoc}` : "";
   return `${when}${doc} · ${slot.appointmentType}`;
 }

@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useAppState } from "@/lib/app-state";
 import { currentUser, findCouple } from "@/lib/demo-data";
 
-export function MainOverview() {
+export function DoctorMainOverview() {
    const { data: session } = useSession();
    const { kpis, tasks, exceptions, appointments, couples } = useAppState();
 
@@ -48,20 +49,20 @@ export function MainOverview() {
             {/* Center Wrapper for Image, Text, and Orbits to ensure perfect alignment */}
             <div className="relative w-[clamp(160px,18vw,200px)] h-[clamp(160px,18vw,200px)] flex items-center justify-center shrink-0 overflow-visible">
 
-               {/* Glowing Gradient Donut (Image) - oversized so it bleeds out; centered via transform */}
+               {/* Glowing Gradient Donut (Image) */}
                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-0 pointer-events-none w-[clamp(260px,32vw,500px)] h-[clamp(260px,32vw,500px)]">
                   <Image src="/images/dashboard/circle-glow.png"
-                     alt="Active Journeys" fill className="object-contain" priority />
+                     alt="Active Journeys" fill sizes="(max-width: 768px) 260px, 500px" className="object-contain" priority />
                </div>
 
-               {/* Center Text - perfectly centered, no offset */}
+               {/* Center Text */}
                <div className="relative z-10 flex flex-col items-center justify-center left-[33px]">
                   <span className="font-medium text-[#7F73E6] leading-none tracking-tight text-[clamp(2.5rem,4vw,5.5rem)]">{activeJourneys}</span>
                   <span className="text-gray-500 mt-1 font-medium text-[clamp(0.625rem,1.5vw,1.1rem)]">Active Journeys</span>
-                  <button className="text-[clamp(9px,1vw,14px)] text-gray-400 underline mt-1 hover:text-indigo-500">View all</button>
+                  <Link href="/ivf-cycles" className="text-[clamp(9px,1vw,14px)] text-gray-400 underline mt-1 hover:text-indigo-500">View all</Link>
                </div>
 
-               {/* Orbiting Badges Container - only if real appointments exist */}
+               {/* Orbiting Badges Container */}
                {(orbit1 || orbit2 || orbit3 || orbit4 || orbit5) && (
                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30 pointer-events-none w-[clamp(260px,32vw,440px)] h-[clamp(260px,32vw,440px)] flex items-center justify-center">
                   <div className="relative w-full h-full">
@@ -148,28 +149,28 @@ export function MainOverview() {
             <div className="lg:absolute lg:right-4 lg:top-1/2 lg:-translate-y-1/2 flex flex-row flex-wrap lg:flex-nowrap lg:flex-col gap-2 z-10 origin-right justify-center mt-6 lg:mt-0 px-2 lg:px-0">
                {/* On track */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
-                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
+                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill sizes="120px" className="object-fill -z-10" />
                   <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">{String(onTrack).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">On track</span>
                </div>
 
                {/* Due today */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
-                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
+                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill sizes="120px" className="object-fill -z-10" />
                   <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">{String(dueTodayTasks).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Tasks Due Today</span>
                </div>
 
                {/* Exceptions */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
-                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
+                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill sizes="120px" className="object-fill -z-10" />
                   <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#7F73E6] leading-none">{String(exceptionsCount).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Exceptions</span>
                </div>
 
                {/* Awaiting Review */}
                <div className="relative flex flex-col items-center justify-center w-[clamp(5rem,8vw,7.5rem)] h-[clamp(3.5rem,6vw,5rem)]">
-                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill className="object-fill -z-10" />
+                  <Image src="/images/dashboard/glass-card.png" alt="Card Background" fill sizes="120px" className="object-fill -z-10" />
                   <span className="text-[clamp(1rem,2vw,1.75rem)] text-[#C178F5] leading-none">{String(awaitingReview).padStart(2, '0')}</span>
                   <span className="text-[clamp(0.45rem,0.7vw,0.6rem)] text-gray-500">Awaiting Review</span>
                </div>
@@ -181,16 +182,17 @@ export function MainOverview() {
                   src="/images/dashboard/patient.png"
                   alt="Patient and Doctor"
                   fill
+                  sizes="(max-width: 1280px) 220px, 340px"
                   className="object-contain object-bottom"
                />
             </div>
          </div>
 
          <div className="flex justify-end mt-[clamp(0.5rem,1.5vh,1rem)]">
-            <button className="bg-[#866BE3] text-white px-[clamp(1rem,2vw,1.5rem)] py-[clamp(0.3rem,0.8vh,0.5rem)] rounded-full text-[clamp(0.7rem,1.1vw,0.9rem)] font-medium hover:bg-[#7254d1] transition-colors shadow-md flex items-center gap-2">
-               <Image src="/images/dashboard/med-icon.svg" alt="Med Icon" width={16} height={16} />
+            <a href="/care-loop" className="bg-[#866BE3] text-white px-[clamp(1rem,2vw,1.5rem)] py-[clamp(0.3rem,0.8vh,0.5rem)] rounded-full text-[clamp(0.7rem,1.1vw,0.9rem)] font-medium hover:bg-[#7254d1] transition-colors shadow-md flex items-center gap-2">
+               <Image src="/images/dashboard/med-icon.svg" alt="Med Icon" width={16} height={16} style={{ width: "auto", height: "auto" }} />
                <span>Open care loop</span>
-            </button>
+            </a>
          </div>
       </div>
    );

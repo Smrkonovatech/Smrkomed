@@ -4,10 +4,8 @@ import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import { useAppState } from "@/lib/app-state";
 
-export function LeftSidebar() {
+export function DoctorLeftSidebar() {
   const { appointments, kpis, exceptions } = useAppState();
-
-  console.log("check", appointments)
 
   const cards = [
     {
@@ -58,7 +56,7 @@ export function LeftSidebar() {
                 {card.title}<br />{card.subtitle}
               </span>
               <div className="relative opacity-70 mt-0.5 shrink-0 w-[clamp(1rem,1.5vw,1.4rem)] h-[clamp(1rem,1.5vw,1.4rem)]">
-                <Image src={card.icon} alt={card.title} fill className="object-contain" />
+                <Image src={card.icon} alt={card.title} fill sizes="24px" className="object-contain" />
               </div>
             </div>
             <div className={`font-medium tracking-tight ${card.valueClass} leading-none text-[clamp(2rem,4vw,3.5rem)] mt-[clamp(0.5rem,1vh,1rem)]`}>

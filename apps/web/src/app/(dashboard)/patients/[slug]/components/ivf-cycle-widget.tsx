@@ -21,17 +21,20 @@ const carePlanSteps = [
   "12. Beta HCG",
 ];
 
-export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | any, p360?: any }) {
+export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | any; p360?: any }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [targetModalStage, setTargetModalStage] = useState<string | undefined>(undefined);
 
-  let currentStageName = couple.stage || "";
+  let currentStageName = couple?.stage || "Consultation";
   let nextStageName = "Complete";
   let carePlanStepsArr = carePlanSteps;
 
   if (p360?.header?.currentCarePlan) {
     const steps = p360.header.currentCarePlan.steps || [];
     const sortedSteps = [...steps].sort((a: any, b: any) => a.sortOrder - b.sortOrder);
-    carePlanStepsArr = sortedSteps.map((s: any) => s.name);
+    if (sortedSteps.length > 0) {
+      carePlanStepsArr = sortedSteps.map((s: any) => s.name);
+    }
     
     const currentIndex = sortedSteps.findIndex((s: any) => s.status === "IN_PROGRESS");
     if (currentIndex !== -1) {
@@ -49,80 +52,129 @@ export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | a
       }
     }
   } else {
-    const currentStepIdx = carePlanSteps.findIndex(s => s === currentStageName);
+    const currentStepIdx = carePlanSteps.findIndex((s) => s === currentStageName);
     nextStageName = currentStepIdx >= 0 && currentStepIdx < carePlanSteps.length - 1 ? (carePlanSteps[currentStepIdx + 1] || "Complete") : "Complete";
   }
 
+  const handleOpenStage = (stageName?: string) => {
+    setTargetModalStage(stageName);
+    setIsModalOpen(true);
+  };
+
   return (
     <>
-    <div className="bg-[#F8F9FA] rounded-2xl border border-gray-100 shadow-sm p-5 relative overflow-hidden h-full flex flex-col">
-      <div className="flex justify-between items-start mb-6 z-10 relative">
-        <h2 className="text-lg font-bold text-gray-900">IVF Cycle</h2>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] transition-colors"
-        >
-          View full timeline <ArrowRight className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      <div className="flex-1 flex justify-center items-center gap-10 relative z-10 w-full max-w-[700px] mx-auto mt-2">
-        
-        {/* Cycle Diagram */}
-        <div className="relative w-[240px] h-[240px] flex-shrink-0 mt-2 mb-2">
-          {/* Main filled circle background */}
-          <div className="absolute inset-0 m-auto w-[180px] h-[180px] bg-[#EBE5FF] rounded-full" />
-          
-          {/* Center Content */}
-          <div className="absolute inset-0 m-auto w-24 h-24 flex flex-col items-center justify-center">
-            <div className="w-12 h-12 rounded-full bg-white overflow-hidden shadow-sm flex items-center justify-center mb-1 z-10">
-              <Image 
-                src="/images/dashboard/patient.png" 
-                alt="Patient" 
-                width={48} 
-                height={48} 
-                className="object-cover"
-              />
-            </div>
-            <div className="text-center text-[11px] text-gray-600 font-medium leading-none mb-0.5">
-              Current:
-            </div>
-            <div className="text-center text-[13px] font-bold text-[#4B3F72] leading-tight max-w-[100px] truncate">
-              {currentStageName.split('. ')[1] || currentStageName}
-            </div>
-          </div>
-
-          {/* Nodes around the circle (Radius = 100, Center = 120,120) */}
-          <CycleNode label="Consultation" angle={-90} active={currentStageName.includes("Consultation") || currentStageName.includes("Initial")} labelPos="top" />
-          <CycleNode label="Baseline" angle={-30} active={currentStageName.includes("Baseline")} />
-          <CycleNode label="Monitoring" angle={30} active={currentStageName.includes("Monitoring")} />
-          <CycleNode label="Procedure" angle={90} active={currentStageName.includes("OPU") || currentStageName.includes("Retrieval")} labelPos="bottom" />
-          <CycleNode label="Transfer" angle={150} active={currentStageName.includes("Transfer")} />
-          <CycleNode label="Follow up" angle={210} active={currentStageName.includes("Beta HCG")} />
+      <div className="bg-[#F8F9FA] rounded-2xl border border-gray-100 shadow-sm p-5 relative overflow-hidden h-full flex flex-col">
+        <div className="flex justify-between items-start mb-6 z-10 relative">
+          <h2 className="text-lg font-bold text-gray-900">IVF Cycle</h2>
+          <button 
+            type="button"
+            onClick={() => handleOpenStage(currentStageName)}
+            className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] transition-colors active:scale-98"
+          >
+            View full timeline <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
 
-        {/* Right side info & Illustration */}
-        <div className="flex flex-col justify-start h-[240px] relative z-10 w-[220px]">
-          <div className="text-left w-full z-20 pt-4 pl-4">
-            <p className="text-xs text-gray-600 mb-1">Next Stage:</p>
-            <p className="text-sm font-bold text-gray-900 truncate">
-              {nextStageName?.split('. ')?.[1] || nextStageName || "Complete"}
-            </p>
-          </div>
-          
-          <div className="absolute -bottom-6 -right-4 w-[220px] h-[220px] pointer-events-none z-0">
-            <Image 
-              src="/images/dashboard/patient.png" 
-              alt="Patient and Doctor" 
-              fill 
-              className="object-contain object-bottom right-0" 
+        <div className="flex-1 flex justify-center items-center gap-10 relative z-10 w-full max-w-[700px] mx-auto mt-2">
+          {/* Cycle Diagram */}
+          <div className="relative w-[240px] h-[240px] flex-shrink-0 mt-2 mb-2">
+            {/* Main filled circle background */}
+            <div className="absolute inset-0 m-auto w-[180px] h-[180px] bg-[#EBE5FF] rounded-full" />
+            
+            {/* Center Content */}
+            <button
+              type="button"
+              onClick={() => handleOpenStage(currentStageName)}
+              className="absolute inset-0 m-auto w-24 h-24 flex flex-col items-center justify-center rounded-full hover:scale-105 transition-transform cursor-pointer group"
+              title="Click to view current cycle stage details"
+            >
+              <div className="w-12 h-12 rounded-full bg-white overflow-hidden shadow-sm flex items-center justify-center mb-1 z-10 group-hover:ring-2 group-hover:ring-[#866BE3]">
+                <Image 
+                  src="/images/dashboard/patient.png" 
+                  alt="Patient" 
+                  width={48} 
+                  height={48} 
+                  className="object-cover"
+                />
+              </div>
+              <div className="text-center text-[11px] text-gray-600 font-medium leading-none mb-0.5">
+                Current:
+              </div>
+              <div className="text-center text-[13px] font-bold text-[#4B3F72] leading-tight max-w-[100px] truncate group-hover:text-[#866BE3]">
+                {currentStageName.split('. ')[1] || currentStageName}
+              </div>
+            </button>
+
+            {/* Nodes around the circle (Radius = 100, Center = 120,120) */}
+            <CycleNode 
+              label="Consultation" 
+              angle={-90} 
+              active={currentStageName.toLowerCase().includes("consultation") || currentStageName.toLowerCase().includes("initial")} 
+              labelPos="top" 
+              onClick={() => handleOpenStage("Consultation")}
+            />
+            <CycleNode 
+              label="Baseline" 
+              angle={-30} 
+              active={currentStageName.toLowerCase().includes("baseline")} 
+              onClick={() => handleOpenStage("Baseline")}
+            />
+            <CycleNode 
+              label="Monitoring" 
+              angle={30} 
+              active={currentStageName.toLowerCase().includes("monitoring")} 
+              onClick={() => handleOpenStage("Monitoring")}
+            />
+            <CycleNode 
+              label="Procedure" 
+              angle={90} 
+              active={currentStageName.toLowerCase().includes("opu") || currentStageName.toLowerCase().includes("retrieval") || currentStageName.toLowerCase().includes("procedure")} 
+              labelPos="bottom" 
+              onClick={() => handleOpenStage("Procedure")}
+            />
+            <CycleNode 
+              label="Transfer" 
+              angle={150} 
+              active={currentStageName.toLowerCase().includes("transfer")} 
+              onClick={() => handleOpenStage("Transfer")}
+            />
+            <CycleNode 
+              label="Follow up" 
+              angle={210} 
+              active={currentStageName.toLowerCase().includes("beta") || currentStageName.toLowerCase().includes("follow")} 
+              onClick={() => handleOpenStage("Follow up")}
             />
           </div>
-        </div>
 
+          {/* Right side info & Illustration */}
+          <div className="flex flex-col justify-start h-[240px] relative z-10 w-[220px]">
+            <div className="text-left w-full z-20 pt-4 pl-4">
+              <p className="text-xs text-gray-600 mb-1">Next Stage:</p>
+              <p className="text-sm font-bold text-gray-900 truncate">
+                {nextStageName?.split('. ')?.[1] || nextStageName || "Complete"}
+              </p>
+            </div>
+            
+            <div className="absolute -bottom-6 -right-4 w-[220px] h-[220px] pointer-events-none z-0">
+              <Image 
+                src="/images/dashboard/patient.png" 
+                alt="Patient and Doctor" 
+                fill 
+                className="object-contain object-bottom right-0" 
+              />
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
-    <IvfJourneyModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} currentStage={currentStageName} steps={carePlanStepsArr} />
+
+      <IvfJourneyModal 
+        isOpen={isModalOpen} 
+        setIsOpen={setIsModalOpen} 
+        currentStage={targetModalStage || currentStageName} 
+        steps={carePlanStepsArr}
+        couple={couple}
+        p360={p360}
+      />
     </>
   );
 }
@@ -131,17 +183,17 @@ function CycleNode({
   label, 
   angle, 
   active, 
-  labelPos = "bottom" 
+  labelPos = "bottom",
+  onClick,
 }: { 
-  label: string, 
-  angle: number, 
-  active: boolean,
-  labelPos?: "top" | "bottom"
+  label: string; 
+  angle: number; 
+  active: boolean;
+  labelPos?: "top" | "bottom";
+  onClick?: () => void;
 }) {
-  // Radius of the track is 100
   const radius = 100;
   const radian = (angle * Math.PI) / 180;
-  // center is 120, 120 (since container is 240x240)
   const cx = 120;
   const cy = 120;
   
@@ -149,24 +201,27 @@ function CycleNode({
   const y = cy + radius * Math.sin(radian);
 
   return (
-    <div 
-      className="absolute flex flex-col items-center justify-center w-20 -ml-10 -mt-10"
+    <button 
+      type="button"
+      onClick={onClick}
+      className="absolute flex flex-col items-center justify-center w-20 -ml-10 -mt-10 cursor-pointer group hover:scale-110 transition-transform focus:outline-none"
       style={{ left: `${x}px`, top: `${y}px` }}
+      title={`View ${label} stage`}
     >
       {labelPos === "top" && (
         <span className={cn(
-          "text-[10px] mb-1.5 text-center font-bold px-1 rounded-sm whitespace-nowrap",
-          active ? "text-[#866BE3]" : "text-gray-700"
+          "text-[10px] mb-1.5 text-center font-bold px-1 rounded-sm whitespace-nowrap transition-colors",
+          active ? "text-[#866BE3]" : "text-gray-700 group-hover:text-[#866BE3]"
         )}>
           {label}
         </span>
       )}
 
       <div className={cn(
-        "w-10 h-10 rounded-full flex items-center justify-center shadow-sm z-10 transition-colors border",
+        "w-10 h-10 rounded-full flex items-center justify-center shadow-sm z-10 transition-all border",
         active 
           ? "bg-[#866BE3] border-[#866BE3] text-white shadow-[#866BE3]/30 shadow-md scale-110 ring-4 ring-[#866BE3]/20" 
-          : "bg-white border-gray-200 text-[#866BE3]"
+          : "bg-white border-gray-200 text-[#866BE3] group-hover:border-[#866BE3]"
       )}>
         {active ? (
           <User className="w-4 h-4" />
@@ -177,12 +232,12 @@ function CycleNode({
 
       {labelPos === "bottom" && (
         <span className={cn(
-          "text-[10px] mt-1.5 text-center font-bold px-1 rounded-sm whitespace-nowrap",
-          active ? "text-[#866BE3]" : "text-gray-700"
+          "text-[10px] mt-1.5 text-center font-bold px-1 rounded-sm whitespace-nowrap transition-colors",
+          active ? "text-[#866BE3]" : "text-gray-700 group-hover:text-[#866BE3]"
         )}>
           {label}
         </span>
       )}
-    </div>
+    </button>
   );
 }

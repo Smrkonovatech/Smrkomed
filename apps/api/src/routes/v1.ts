@@ -53,6 +53,7 @@ protectedRoutes.route("/campaigns", campaignRoutes);
 protectedRoutes.route("/crm", crmRoutes);
 protectedRoutes.route("/appointments", appointmentRoutes);
 protectedRoutes.route("/doctors", doctorRoutes);
+protectedRoutes.route("/doctor", doctorRoutes);
 protectedRoutes.route("/care-plans", carePlanRoutes);
 protectedRoutes.route("/treatment-plan-templates", treatmentPlanTemplateRoutes);
 protectedRoutes.route("/care-tasks", careTaskRoutes);

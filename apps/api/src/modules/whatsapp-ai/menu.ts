@@ -249,11 +249,10 @@ export async function handleMenuAction(input: {
     return handleCareLoopMenuAction(input);
   }
 
-  // 1. My Appointments
+  // 1. My Appointments (menu item 3)
   if (
     clean === MENU_ACTIONS.MY_APPOINTMENTS ||
     clean === "3" ||
-    clean === "2" ||
     /\b(my\s*app(ointment)?s?|check\s*app(ointment)?s?|existing\s*app(ointment)?s?)\b/i.test(clean)
   ) {
     const normalizedPhone = input.contactPhone.replace(/\s+/g, "");
@@ -341,10 +340,10 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "MY_APPOINTMENTS", responseText: msg };
   }
 
-  // 2. Available Doctor Slots
+  // 2. Available Doctor Slots (menu item 4)
   if (
     clean === MENU_ACTIONS.DOCTOR_SLOTS ||
-    clean === "3" ||
+    clean === "4" ||
     /\b(available\s*slots?|doctor\s*slots?|slots?|open\s*times?|when\s*can\s*i\s*see)\b/i.test(clean)
   ) {
     const doctors = await getClinicDoctors(input.tenant.clinicId);
@@ -354,7 +353,7 @@ export async function handleMenuAction(input: {
     msg += `Here are the upcoming open slots with our fertility specialists:\n\n`;
 
     let totalSlotsShown = 0;
-    for (const doc of doctors.slice(0, 2)) {
+    for (const doc of doctors.slice(0, 3)) {
       msg += `🩺 *${doc.displayName}*\n`;
       msg += `   _${doc.specialty} (${doc.experienceYears}+ yrs exp)_\n`;
 
@@ -407,10 +406,44 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "DOCTOR_SLOTS", responseText: msg };
   }
 
-  // 3. Book Consultation / Appointment
+  // Doctor selection via list or button
+  if (clean.startsWith("appt_doctor_")) {
+    const docId = clean.startsWith("appt_doctor_slots_")
+      ? clean.replace("appt_doctor_slots_", "").trim()
+      : clean.replace("appt_doctor_", "").trim();
+    const doctors = await getClinicDoctors(input.tenant.clinicId);
+    const doc = doctors.find((d) => d.id === docId || d.displayName.toLowerCase().includes(docId.toLowerCase())) || doctors[0];
+    if (doc) {
+      const upcomingDates = getUpcomingDates(3);
+      let msg = `🩺 *${doc.displayName}*\n`;
+      msg += `_${doc.specialty} (${doc.experienceYears}+ yrs exp)_\n\n`;
+      if (doc.bio) msg += `"${doc.bio}"\n\n`;
+      msg += `📅 *Available Consultation Slots:*\n\n`;
+
+      let hasSlots = false;
+      for (const dateIso of upcomingDates.slice(0, 2)) {
+        const slots = await getDoctorDaySlots(input.tenant.clinicId, doc.id, dateIso);
+        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 4);
+        const d = new Date(`${dateIso}T00:00:00`);
+        const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
+        if (freeSlots.length > 0) {
+          hasSlots = true;
+          const times = freeSlots.map((s) => s.timeLabel).join(", ");
+          msg += `• *${dayLabel}*: ${times}\n`;
+        } else {
+          msg += `• *${dayLabel}*: No open slots\n`;
+        }
+      }
+      msg += `\nReply *Book* to confirm an appointment with ${doc.displayName}, or reply with your preferred date/time.`;
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+      return { handled: true, action: "DOCTOR_SELECTED", responseText: msg };
+    }
+  }
+
+  // 3. Book Consultation / Appointment (menu item 2)
   if (
     clean === MENU_ACTIONS.BOOK_APPOINTMENT ||
-    clean === "1" ||
+    clean === "2" ||
     clean === "btn_book_wa" ||
     clean === "btn_ai_call" ||
     clean === "book" ||
@@ -496,10 +529,10 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "BOOK_APPOINTMENT" };
   }
 
-  // 4. Treatments & Services
+  // 4. Treatments & Services (menu item 5)
   if (
     clean === MENU_ACTIONS.SERVICES ||
-    clean === "4" ||
+    clean === "5" ||
     /\b(fertility\s*treatments?|services?|ivf|iui|icsi|egg\s*freez(ing)?)\b/i.test(clean)
   ) {
     let msg = `🔬 *Fertility Treatments & Services — ${clinicName}*\n\n`;
@@ -522,11 +555,11 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "SERVICES", responseText: msg };
   }
 
-  // 5. Our Specialists / Doctors
-  if (clean === MENU_ACTIONS.DOCTORS || clean === "5" || /\b(doctors?|specialists?|physicians?)\b/i.test(clean)) {
+  // 5. Our Specialists / Doctors (menu item 6)
+  if (clean === MENU_ACTIONS.DOCTORS || clean === "6" || /\b(doctors?|specialists?|physicians?)\b/i.test(clean)) {
     const doctors = await getClinicDoctors(input.tenant.clinicId);
     let msg = `🩺 *Our Fertility Specialists — ${clinicName}*\n\n`;
-    for (const doc of doctors.slice(0, 3)) {
+    for (const doc of doctors.slice(0, 5)) {
       msg += `👩‍⚕️ *${doc.displayName}*\n`;
       msg += `   • Specialty: ${doc.specialty}\n`;
       msg += `   • Experience: ${doc.experienceYears}+ years\n`;
@@ -542,10 +575,10 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "DOCTORS", responseText: msg };
   }
 
-  // 6. Timings & Location
+  // 6. Timings & Location (menu item 7)
   if (
     clean === MENU_ACTIONS.TIMINGS ||
-    clean === "6" ||
+    clean === "7" ||
     /\b(timings?|hours?|location|address|directions?|open\s*hours?)\b/i.test(clean)
   ) {
     const address = clinic?.address || "Main Healthcare Blvd, Indiranagar";
@@ -569,10 +602,10 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "TIMINGS", responseText: msg };
   }
 
-  // 7. Care Coordinator Handoff
+  // 7. Care Coordinator Handoff (menu item 8)
   if (
     clean === MENU_ACTIONS.COORDINATOR ||
-    clean === "7" ||
+    clean === "8" ||
     /\b(coordinator|human|staff|speak\s*to\s*(staff|human|doctor)|representative|call\s*me)\b/i.test(clean)
   ) {
     // Escalate conversation to human staff
@@ -599,10 +632,10 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "COORDINATOR", responseText: msg };
   }
 
-  // 8. Couple Registration
+  // 8. Couple Registration (menu item 9)
   if (
     clean === MENU_ACTIONS.REGISTER ||
-    clean === "8" ||
+    clean === "9" ||
     /\b(register|couple\s*registration|new\s*patient|sign\s*up)\b/i.test(clean)
   ) {
     const { tryHandleRegistrationMessage } = await import("./registration");

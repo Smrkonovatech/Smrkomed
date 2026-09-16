@@ -9,7 +9,7 @@ assertIntegrationEncryptionConfig();
 
 const app = createApp();
 
-serve({ fetch: app.fetch, port: env.port }, (info) => {
+serve({ fetch: app.fetch, port: env.port, hostname: "0.0.0.0" }, (info) => {
   console.log(`SmrkoMed API listening on http://localhost:${info.port}`);
   startWhatsAppAutomationWorker();
 });

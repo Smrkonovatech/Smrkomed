@@ -15,8 +15,8 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") || "/home";
-  const [email, setEmail] = useState("meera@abcfertility.demo");
-  const [password, setPassword] = useState("Demo@12345");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -48,10 +48,12 @@ function LoginForm() {
         );
         return;
       }
-      // Prefer entering full screen from the sign-in gesture; also flag the app shell as fallback.
       markFullscreenAfterLogin();
       await enterAppFullscreen();
-      router.push(callbackUrl);
+
+      // Route all authenticated clinic users to /home (proper dashboard)
+      const destination = callbackUrl || "/home";
+      router.push(destination === "/" ? "/home" : destination);
       router.refresh();
     } catch {
       setError("Could not reach the sign-in service. Try again.");
@@ -59,6 +61,7 @@ function LoginForm() {
       setLoading(false);
     }
   }
+
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
@@ -68,6 +71,7 @@ function LoginForm() {
           id="email"
           type="email"
           autoComplete="username"
+          placeholder="you@yourclinic.com"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -79,6 +83,7 @@ function LoginForm() {
           id="password"
           type="password"
           autoComplete="current-password"
+          placeholder="Your password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
@@ -94,7 +99,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(123_79_224/0.12),_transparent_55%),var(--background)] px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_top,_rgb(123_79_224/0.12),_transparent_55%),var(--background)] px-4 py-8">
       <div className="w-full max-w-md space-y-6 rounded-2xl border bg-card p-5 shadow-[0_20px_50px_-32px_rgb(41_35_45/0.45)] sm:p-8">
         <div className="space-y-1 text-center">
           <p className="text-xs font-semibold tracking-[0.18em] text-primary">SMRKOMED</p>
@@ -112,15 +117,6 @@ export default function LoginPage() {
             Start free trial
           </Link>
         </p>
-        <div className="rounded-xl bg-muted/60 p-3 text-xs text-muted-foreground">
-          <p className="font-medium text-foreground">Demo accounts (password: Demo@12345)</p>
-          <p className="mt-1">First sign-in creates the demo clinic in the database.</p>
-          <ul className="mt-2 space-y-1">
-            <li>meera@abcfertility.demo — Care Coordinator</li>
-            <li>ananya@abcfertility.demo — Doctor</li>
-            <li>admin@abcfertility.demo — Clinic Admin</li>
-          </ul>
-        </div>
       </div>
     </div>
   );

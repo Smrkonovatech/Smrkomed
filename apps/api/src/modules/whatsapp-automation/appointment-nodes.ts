@@ -61,32 +61,63 @@ export const DEMO_DOCTORS: ClinicDoctor[] = [
 
 /** Fetch real active doctors for the clinic, falling back to clinic demo doctors if none configured. */
 export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoctor[]> {
-  const memberships = await prisma.clinicMembership.findMany({
-    where: {
-      clinicId,
-      status: "ACTIVE",
-      role: { key: "DOCTOR" },
-    },
-    include: {
-      user: {
-        select: { id: true, name: true, title: true, phone: true, initials: true },
+  try {
+    const memberships = await prisma.clinicMembership.findMany({
+      where: {
+        clinicId,
+        status: "ACTIVE",
+        user: { isActive: true },
+        OR: [
+          { role: { key: "DOCTOR" } },
+          { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+        ],
       },
-    },
-  });
-
-  if (memberships.length > 0) {
-    return memberships.map((m, idx) => {
-      const demo = DEMO_DOCTORS[idx % DEMO_DOCTORS.length]!;
-      return {
-        id: m.userId,
-        name: m.user.name.startsWith("Dr.") ? m.user.name : `Dr. ${m.user.name}`,
-        specialty: m.user.title || demo.specialty || "Fertility Specialist",
-        experience: demo.experience || "10+ years experience",
-        bio: demo.bio || "Compassionate, personalised reproductive medicine.",
-        languages: demo.languages || ["English", "Hindi"],
-        photoUrl: getDoctorPhotoUrl(m.userId),
-      };
+      include: {
+        user: {
+          select: { id: true, name: true, title: true, phone: true, initials: true },
+        },
+      },
+      orderBy: { createdAt: "asc" },
     });
+
+    if (memberships.length > 0) {
+      const profileRules = await prisma.automationRule.findMany({
+        where: {
+          clinicId,
+          trigger: "DOCTOR_PROFILE",
+        },
+      });
+
+      const profileMap = new Map<string, any>();
+      for (const rule of profileRules) {
+        if (rule.name) profileMap.set(rule.name, rule.config);
+      }
+
+      return memberships.map((m, idx) => {
+        const demo = DEMO_DOCTORS[idx % DEMO_DOCTORS.length]!;
+        const saved = (profileMap.get(m.userId) || profileMap.get(`doc_${m.userId}`) || {}) as any;
+        const rawName = saved.displayName || m.user.name || demo.name;
+        const cleanName = rawName.replace(/^Dr\s*\.?\s*/i, "").trim();
+        const displayName = `Dr. ${cleanName}`;
+        const specialty = saved.primarySpecialty || saved.department || m.user.title || demo.specialty || "Fertility Specialist";
+        const experience = saved.yearsExperience ? `${saved.yearsExperience}+ years experience` : demo.experience;
+        const bio = saved.professionalBio || saved.shortIntro || saved.bio || demo.bio;
+        const languages = Array.isArray(saved.languages) && saved.languages.length > 0 ? saved.languages : demo.languages;
+
+        return {
+          id: m.userId,
+          name: cleanName,
+          displayName,
+          specialty,
+          experience,
+          bio,
+          languages,
+          photoUrl: getDoctorPhotoUrl(m.userId),
+        };
+      });
+    }
+  } catch {
+    // Fallback to demo doctors
   }
 
   return DEMO_DOCTORS;
@@ -99,21 +130,30 @@ export function interpolateVariables(template: string, vars: Record<string, stri
     const key = rawKey.trim();
     // Support dot notation: patient.firstName -> patient_first_name or patient.firstName
     const direct = vars[key];
-    if (direct !== undefined) return direct;
+    if (direct !== undefined && direct !== "") return direct;
 
     const lower = vars[key.toLowerCase()];
-    if (lower !== undefined) return lower;
+    if (lower !== undefined && lower !== "") return lower;
 
     const snake = vars[key.replace(/\./g, "_")];
-    if (snake !== undefined) return snake;
+    if (snake !== undefined && snake !== "") return snake;
 
     const lowerSnake = vars[key.replace(/\./g, "_").toLowerCase()];
-    if (lowerSnake !== undefined) return lowerSnake;
+    if (lowerSnake !== undefined && lowerSnake !== "") return lowerSnake;
 
     // Common abbreviations
     if (key === "patient.firstName" || key === "patient.name") return vars["patient_name"] || vars["patient.name"] || vars["first_name"] || "there";
     if (key === "clinic.name") return vars["clinic.name"] || vars["clinic_name"] || "our clinic";
-    if (key === "doctor.name") return vars["doctor.name"] || vars["doctor_name"] || "the doctor";
+    if (key === "doctor.name" || key === "doctor_name" || key === "doctor") {
+      const doc = vars["doctor.name"] || vars["doctor_name"] || vars["firstDoctorName"] || DEMO_DOCTORS[0]?.name || "Dr. Ananya Rao";
+      return doc;
+    }
+    if (key === "doctor.specialty" || key === "doctor_specialty") {
+      return vars["doctor.specialty"] || vars["doctor_specialty"] || DEMO_DOCTORS[0]?.specialty || "Fertility Specialist";
+    }
+    if (key === "doctor.experience" || key === "doctor_experience") {
+      return vars["doctor.experience"] || vars["doctor_experience"] || DEMO_DOCTORS[0]?.experience || "10+ years experience";
+    }
     if (key === "appointment.date") return vars["appointment.date"] || vars["appointment_date"] || vars["selected_date"] || "";
     if (key === "appointment.time") return vars["appointment.time"] || vars["selected_time"] || vars["appointment_time"] || "";
 

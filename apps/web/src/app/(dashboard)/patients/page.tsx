@@ -35,7 +35,7 @@ export default function PatientsPage() {
   );
   const { openAction } = useGlobalActions();
   const { couples, loadState, loadError, reload } = useAppState();
-  const inactiveHint = couples.filter((c) => c.careLoop === "Paused" || c.status === "Needs Attention")
+  const inactiveHint = couples.filter((c) => c?.careLoop === "Paused" || c?.status === "Needs Attention")
     .length;
 
   const rows = useMemo(
@@ -45,13 +45,13 @@ export default function PatientsPage() {
         const matchQ =
           !query ||
           [
-            c.primary.name,
+            c.primary?.name ?? "",
             c.partner?.name ?? "",
-            c.treatment,
-            c.stage,
-            c.doctor,
-            c.coordinator,
-            c.nextStep,
+            c.treatment ?? "",
+            c.stage ?? "",
+            c.doctor ?? "",
+            c.coordinator ?? "",
+            c.nextStep ?? "",
           ]
             .join(" ")
             .toLowerCase()
@@ -224,7 +224,7 @@ export default function PatientsPage() {
                         className="flex min-w-0 items-center gap-2.5 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <Avatar
-                          initials={c.primary.name
+                          initials={(c.primary?.name || "Patient")
                             .split(" ")
                             .map((p) => p[0])
                             .join("")
@@ -237,8 +237,8 @@ export default function PatientsPage() {
                             {coupleLabel(c)}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
-                            {c.primary.name}
-                            {c.partner ? ` · ${c.partner.name}` : ""}
+                            {c.primary?.name ?? ""}
+                            {c.partner?.name ? ` · ${c.partner.name}` : ""}
                           </span>
                         </span>
                       </Link>
@@ -298,7 +298,8 @@ export default function PatientsPage() {
   );
 }
 
-function matchesFilter(couple: Couple, filter: (typeof filters)[number]) {
+function matchesFilter(couple: Couple | any, filter: (typeof filters)[number]) {
+  if (!couple) return false;
   if (filter === "All") return true;
   if (filter === "Needs Attention" || filter === "On Track") return couple.status === filter;
   if (filter === "Paused") return couple.careLoop === "Paused";

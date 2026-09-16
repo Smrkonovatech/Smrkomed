@@ -474,6 +474,7 @@ export async function runWhatsAppAiPipeline(input: {
           intent: intentResult.intent,
           args: {
             ...(preferredDate ? { preferredDate } : {}),
+            patientMessage: input.patientMessage,
           },
         })
       : [];

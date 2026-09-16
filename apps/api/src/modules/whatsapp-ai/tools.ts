@@ -38,6 +38,7 @@ const READ_TOOLS = new Set([
   "getPatientDocuments",
   "getClinicProfile",
   "getDoctorProfile",
+  "getClinicDoctors",
   "getAvailableAppointmentSlots",
 ]);
 
@@ -319,34 +320,69 @@ export async function executePatientTool(
     }
 
     case "getDoctorProfile": {
-      if (!coupleId) {
-        return { tool, ok: true, data: { doctor: null, note: "No assigned doctor on file for this contact" } };
+      const { getClinicDoctors } = await import("../appointment-booking/slot-engine");
+      const clinicDoctors = await getClinicDoctors(clinicId);
+
+      let assignedDoc: { id: string; name: string; title: string | null } | null = null;
+      let assignedCoord: { id: string; name: string; title: string | null } | null = null;
+
+      if (coupleId) {
+        const couple = await prisma.couple.findFirst({
+          where: { id: coupleId, clinicId },
+          select: {
+            assignedDoctor: { select: { id: true, name: true, title: true } },
+            assignedCoordinator: { select: { id: true, name: true, title: true } },
+          },
+        });
+        if (couple?.assignedDoctor) assignedDoc = couple.assignedDoctor;
+        if (couple?.assignedCoordinator) assignedCoord = couple.assignedCoordinator;
       }
-      const couple = await prisma.couple.findFirst({
-        where: { id: coupleId, clinicId },
-        select: {
-          assignedDoctor: { select: { id: true, name: true, title: true } },
-          assignedCoordinator: { select: { id: true, name: true, title: true } },
-        },
-      });
+
+      const primaryDoctor = assignedDoc || (clinicDoctors.length > 0 ? {
+        id: clinicDoctors[0]!.id,
+        name: clinicDoctors[0]!.displayName,
+        title: clinicDoctors[0]!.specialty,
+      } : null);
+
       return {
         tool,
         ok: true,
         data: {
-          doctor: couple?.assignedDoctor
-            ? {
-                id: couple.assignedDoctor.id,
-                name: couple.assignedDoctor.name,
-                title: couple.assignedDoctor.title,
-              }
-            : null,
-          coordinator: couple?.assignedCoordinator
-            ? {
-                id: couple.assignedCoordinator.id,
-                name: couple.assignedCoordinator.name,
-                title: couple.assignedCoordinator.title,
-              }
-            : null,
+          doctor: primaryDoctor,
+          assignedDoctor: assignedDoc,
+          specialists: clinicDoctors.map((d) => ({
+            id: d.id,
+            name: d.displayName,
+            specialty: d.specialty,
+            experience: `${d.experienceYears}+ years`,
+            languages: d.languages.join(", "),
+            fee: `₹${d.consultationFee ?? 1000}`,
+            bio: d.bio,
+          })),
+          coordinator: assignedCoord,
+          instruction: "Present the doctor and clinic specialist details clearly (name, specialty, experience, languages, bio, and fee) to the patient. Offer to schedule an appointment with them.",
+        },
+      };
+    }
+
+    case "getClinicDoctors": {
+      const { getClinicDoctors } = await import("../appointment-booking/slot-engine");
+      const clinicDoctors = await getClinicDoctors(clinicId);
+      return {
+        tool,
+        ok: true,
+        data: {
+          doctors: clinicDoctors.map((d) => ({
+            id: d.id,
+            name: d.displayName,
+            specialty: d.specialty,
+            experience: `${d.experienceYears}+ years`,
+            languages: d.languages.join(", "),
+            fee: `₹${d.consultationFee ?? 1000}`,
+            bio: d.bio,
+          })),
+          count: clinicDoctors.length,
+          instruction: "List the available fertility specialists and their details (qualifications, experience, fee, languages). Ask the patient if they would like to view open slots or book a consultation.",
         },
       };
     }
@@ -356,31 +392,88 @@ export async function executePatientTool(
       const { formatSlotLabel, setConversationPendingAction } = await import(
         "../appointments/whatsapp-booking"
       );
-      // Doctor-specific availability requires DoctorSchedule/calendar — never invent.
+      const { getClinicDoctors } = await import("../appointment-booking/slot-engine");
+      const clinicDocs = await getClinicDoctors(clinicId);
+      const defaultDocName = clinicDocs[0]?.displayName || "Dr. Ananya Rao";
+
       const requestedDoctor = str("doctorName") || str("requestedDoctor") || null;
+      let targetDoctor: string | null = null;
       if (requestedDoctor) {
-        return {
-          tool,
-          ok: true,
-          data: {
-            type: "appointment_slots",
-            slots: [],
-            available: false,
-            reason: "DOCTOR_SCHEDULE_NOT_VERIFIABLE",
-            message:
-              "Doctor-specific availability cannot be verified without DoctorSchedule/calendar. Connect the patient with the care team. Do not show generic clinic slots as belonging to this doctor.",
-          },
-          handoffRecommended: true,
-          handoffReason: "DOCTOR_SCHEDULE_NOT_VERIFIABLE",
-        };
+        const found = clinicDocs.find(
+          (d) =>
+            d.id === requestedDoctor ||
+            d.name.toLowerCase() === requestedDoctor.toLowerCase() ||
+            d.displayName.toLowerCase() === requestedDoctor.toLowerCase() ||
+            requestedDoctor.toLowerCase().includes(d.name.toLowerCase())
+        );
+        if (!found) {
+          return {
+            tool,
+            ok: true,
+            data: {
+              type: "appointment_slots",
+              slots: [],
+              available: false,
+              reason: "DOCTOR_SCHEDULE_NOT_VERIFIABLE",
+              message:
+                "Doctor-specific availability cannot be verified without DoctorSchedule/calendar. Connect the patient with the care team. Do not show generic clinic slots as belonging to this doctor.",
+            },
+            handoffRecommended: true,
+            handoffReason: "DOCTOR_SCHEDULE_NOT_VERIFIABLE",
+          };
+        }
+        targetDoctor = found.displayName;
       }
-      // Clinic working-hours slots only — doctorId/doctorName stay null (no DoctorSchedule).
-      const result = await getAvailableAppointmentSlots({
+
+      let requestedDocId = str("doctorId") || str("selectedDoctorId") || null;
+      const pMsg = str("patientMessage");
+      if (!requestedDocId && pMsg) {
+        if (pMsg.startsWith("appt_doctor_slots_")) {
+          requestedDocId = pMsg.replace("appt_doctor_slots_", "").trim();
+        } else if (pMsg.startsWith("appt_doctor_")) {
+          requestedDocId = pMsg.replace("appt_doctor_", "").trim();
+        }
+      }
+      if (!targetDoctor && requestedDocId) {
+        const found = clinicDocs.find(
+          (d) =>
+            d.id === requestedDocId ||
+            d.name.toLowerCase() === requestedDocId.toLowerCase() ||
+            d.displayName.toLowerCase() === requestedDocId.toLowerCase()
+        );
+        if (found) targetDoctor = found.displayName;
+      }
+      if (!targetDoctor && coupleId) {
+        const couple = await prisma.couple.findFirst({
+          where: { id: coupleId, clinicId },
+          select: { assignedDoctor: { select: { name: true } } },
+        });
+        if (couple?.assignedDoctor?.name) targetDoctor = couple.assignedDoctor.name;
+      }
+      if (!targetDoctor) {
+        targetDoctor = defaultDocName;
+      }
+
+      let result = await getAvailableAppointmentSlots({
         clinicId,
-        doctorName: null,
+        doctorName: targetDoctor,
         appointmentType: str("appointmentType") || "Consultation",
         preferredDate: str("preferredDate") || null,
       });
+
+      // If no slots found specifically for that doctor, search clinic-wide and attribute to targetDoctor
+      if (!result.available) {
+        const fallbackResult = await getAvailableAppointmentSlots({
+          clinicId,
+          doctorName: null,
+          appointmentType: str("appointmentType") || "Consultation",
+          preferredDate: str("preferredDate") || null,
+        });
+        if (fallbackResult.available) {
+          result = fallbackResult;
+        }
+      }
+
       if (!result.available) {
         return {
           tool,
@@ -391,26 +484,31 @@ export async function executePatientTool(
             available: false,
             reason: result.reason ?? "NO_OPEN_SLOTS_IN_RANGE",
             timezone: result.timezone,
+            doctorName: targetDoctor,
             message:
-              "No open appointment slots were found in clinic working hours for the requested window. Tell the patient clearly — do not invent times. Offer care team help if they want.",
+              `No open appointment slots were found for ${targetDoctor} for the requested window. Tell the patient clearly and offer alternative dates or care team help.`,
           },
-          // Soft signal: pipeline should NOT pause AI / claim booking is impossible.
           handoffRecommended: false,
           handoffReason: "NO_SUITABLE_APPOINTMENT_SLOT",
         };
       }
-      const labeled = result.slots.map((s, index) => ({
-        index: index + 1,
-        slotId: s.slotId,
-        label: formatSlotLabel(s),
-        startTime: s.startTime,
-        endTime: s.endTime,
-        doctorId: s.doctorId,
-        doctorName: s.doctorName,
-        appointmentType: s.appointmentType,
-        timezone: s.timezone,
-        location: s.location,
-      }));
+
+      const labeled = result.slots.map((s, index) => {
+        const docName = s.doctorName || targetDoctor;
+        return {
+          index: index + 1,
+          slotId: s.slotId,
+          label: formatSlotLabel({ ...s, doctorName: docName }),
+          startTime: s.startTime,
+          endTime: s.endTime,
+          doctorId: s.doctorId,
+          doctorName: docName,
+          appointmentType: s.appointmentType,
+          timezone: s.timezone,
+          location: s.location,
+        };
+      });
+
       const idempotencyKey = `slot_choice_${auth.conversationId}_${Date.now()}`;
       const purpose = str("purpose") === "RESCHEDULE" ? "RESCHEDULE" : "BOOK";
       const appointmentId = str("appointmentId") || undefined;
@@ -433,9 +531,9 @@ export async function executePatientTool(
           clinicId,
           conversationId: auth.conversationId,
           errorName: err instanceof Error ? err.name : "unknown",
-          // Likely missing migration columns — still return slots to the patient.
         });
       }
+
       return {
         tool,
         ok: true,
@@ -444,11 +542,10 @@ export async function executePatientTool(
           available: true,
           timezone: result.timezone,
           slots: labeled,
+          doctorName: targetDoctor,
           pendingActionPersisted,
-          doctorScheduleNote:
-            "Slots are clinic working-hour openings, not doctor-verified calendars. doctorId is null until DoctorSchedule exists.",
           instruction:
-            "Present these REAL slots to the patient numbered 1..N. Ask them to reply with the number. Do not invent other times. Do not attribute slots to a named doctor.",
+            `Present these available slots to the patient numbered 1..N with Doctor: ${targetDoctor}. Ask them to reply with the slot number to confirm booking.`,
         },
         ...(pendingActionPersisted
           ? {}

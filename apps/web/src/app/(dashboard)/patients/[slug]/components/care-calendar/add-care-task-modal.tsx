@@ -23,11 +23,12 @@ interface AddCareTaskModalProps {
 
 export function AddCareTaskModal({ isOpen, onClose, couple, defaultDate, onSaved }: AddCareTaskModalProps) {
   
+  const safeDefaultDate = defaultDate && !isNaN(defaultDate.getTime()) ? defaultDate : new Date();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     title: "",
     type: "Blood Test",
-    date: format(defaultDate, "yyyy-MM-dd"),
+    date: format(safeDefaultDate, "yyyy-MM-dd"),
     time: "10:00",
     assignedTo: "Care Coordinator",
     enableCareLoop: true
@@ -40,10 +41,6 @@ export function AddCareTaskModal({ isOpen, onClose, couple, defaultDate, onSaved
     }
     
     setIsSubmitting(true);
-    
-    // Simulate network delay for demo
-    await new Promise(r => setTimeout(r, 600));
-    
     try {
       await clinicApi.createTask({
         title: formData.title,
@@ -57,7 +54,9 @@ export function AddCareTaskModal({ isOpen, onClose, couple, defaultDate, onSaved
         sendWhatsApp: formData.enableCareLoop,
       });
 
-      toast.success(`"${formData.title}" scheduled for ${format(new Date(formData.date), "d MMM")} • ${formData.time}`);
+      const parsedDate = new Date(formData.date);
+      const dateDisplay = !isNaN(parsedDate.getTime()) ? format(parsedDate, "d MMM") : formData.date;
+      toast.success(`"${formData.title}" scheduled for ${dateDisplay} • ${formData.time}`);
       
       if (onSaved) {
         onSaved();
@@ -114,10 +113,10 @@ export function AddCareTaskModal({ isOpen, onClose, couple, defaultDate, onSaved
               <Select value={formData.assignedTo} onValueChange={v => setFormData({...formData, assignedTo: v})}>
                 <SelectTrigger><SelectValue placeholder="Select assignee..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Dr. Shreya Iyer">Dr. Shreya Iyer</SelectItem>
-                  <SelectItem value="Care Coordinator">Care Coordinator</SelectItem>
+                  <SelectItem value="Doctor">{couple?.doctor || "Doctor"}</SelectItem>
+                  <SelectItem value="Care Coordinator">{couple?.coordinator || "Care Coordinator"}</SelectItem>
                   <SelectItem value="Lab Technician">Lab Technician</SelectItem>
-                  <SelectItem value="Patient">Patient ({couple.primary.name})</SelectItem>
+                  <SelectItem value="Patient">Patient ({couple?.primary?.name || couple?.primaryPatient?.firstName || "Patient"})</SelectItem>
                 </SelectContent>
               </Select>
             </div>

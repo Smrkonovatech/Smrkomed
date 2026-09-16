@@ -180,6 +180,35 @@ async function loadProduct(tenant: TenantContext, id: string) {
   return requireClinicOwned(tenant, product);
 }
 
+async function loadProductOrEnsure(tenant: TenantContext, item: { productId: string; medicineName?: string | null | undefined }) {
+  let product = await prisma.pharmacyProduct.findUnique({ where: { id: item.productId } });
+  if (product && product.clinicId === tenant.clinicId) {
+    return product;
+  }
+  const medName = item.medicineName?.trim() || "Prescribed Medicine";
+  product = await prisma.pharmacyProduct.findFirst({
+    where: {
+      clinicId: tenant.clinicId,
+      name: { equals: medName, mode: "insensitive" },
+    },
+  });
+  if (product) {
+    return product;
+  }
+  return await prisma.pharmacyProduct.create({
+    data: {
+      clinicId: tenant.clinicId,
+      name: medName,
+      category: "Fertility / Medication",
+      unit: "unit",
+      prescriptionRequired: true,
+      defaultSellingPrice: 0,
+      defaultPurchasePrice: 0,
+      defaultMrp: 0,
+    },
+  });
+}
+
 async function loadBatch(tenant: TenantContext, id: string) {
   const batch = await prisma.pharmacyBatch.findUnique({
     where: { id },
@@ -1218,7 +1247,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
       await requireClinicOwned(tenant, await prisma.treatment.findUnique({ where: { id: body.treatmentId } }));
     }
 
-    const productRows = await Promise.all(body.items.map((item) => loadProduct(tenant, item.productId)));
+    const productRows = await Promise.all(body.items.map((item) => loadProductOrEnsure(tenant, item)));
     const appointment = body.appointmentId
       ? await prisma.appointment.findUnique({ where: { id: body.appointmentId } })
       : null;
@@ -1236,7 +1265,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         notes: body.notes ?? null,
         items: {
           create: body.items.map((item, index) => ({
-            productId: item.productId,
+            productId: productRows[index]!.id,
             medicineName: item.medicineName ?? productRows[index]!.name,
             dosage: item.dosage ?? null,
             frequency: item.frequency ?? null,

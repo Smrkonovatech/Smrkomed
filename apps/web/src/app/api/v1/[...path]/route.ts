@@ -42,7 +42,18 @@ async function proxy(req: NextRequest, path: string[]) {
     if (hasBody) {
       init.body = await req.arrayBuffer();
     }
-    const upstream = await fetch(target, init);
+    let upstream: Response;
+    try {
+      upstream = await fetch(target, init);
+    } catch (firstErr) {
+      // Retry once with 127.0.0.1 (handles Windows IPv6 vs IPv4 localhost mismatch or tsx reload)
+      const fallbackTarget = target.includes("://localhost:")
+        ? target.replace("://localhost:", "://127.0.0.1:")
+        : target;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      upstream = await fetch(fallbackTarget, init);
+    }
+
     if (upstream.status >= 400) {
       console.error("V1_PROXY_UPSTREAM_ERROR", {
         path: path.join("/"),
@@ -78,6 +89,7 @@ async function proxy(req: NextRequest, path: string[]) {
       method,
       upstreamHost,
       errorName: error instanceof Error ? error.name : "unknown",
+      message: error instanceof Error ? error.message : String(error),
     });
     return NextResponse.json(
       {

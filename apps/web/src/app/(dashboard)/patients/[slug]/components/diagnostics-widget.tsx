@@ -23,39 +23,19 @@ export function PatientDiagnosticsWidget({
   const [ordering, setOrdering] = useState(false);
 
   const loadData = () => {
-    if (!patientId) return;
+    if (!patientId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     clinicApi
       .patientDiagnostics(patientId)
       .then((res: any) => {
         setOrders(res?.orders || []);
       })
-      .catch(() => {
-        // Fallback default demo data if API not responding
-        setOrders([
-          {
-            id: "diag_1",
-            testName: "Day 6 Follicular Scan",
-            category: "Imaging",
-            priority: "Routine",
-            status: "Doctor Reviewed",
-            findings: "Right ovary 4 follicles (12-14mm), left ovary 5 follicles (10-13mm), endometrium 8.2mm trilaminar.",
-            doctorReview: { doctorNotes: "Follicular growth on schedule. Continue stimulation dose." },
-            dueDate: new Date().toISOString(),
-          },
-          {
-            id: "diag_2",
-            testName: "Hormone Panel — AMH/TSH/FSH",
-            category: "Fertility Lab",
-            priority: "Routine",
-            status: "Verified",
-            results: [
-              { parameter: "AMH", result: "2.4", unit: "ng/mL", flag: "Normal" },
-              { parameter: "TSH", result: "1.8", unit: "mIU/L", flag: "Normal" },
-            ],
-            dueDate: new Date().toISOString(),
-          },
-        ]);
+      .catch((err) => {
+        console.error("Failed to load patient diagnostics:", err);
+        setOrders([]);
       })
       .finally(() => setLoading(false));
   };

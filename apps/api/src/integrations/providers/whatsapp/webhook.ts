@@ -41,12 +41,46 @@ async function findActiveIntegration(event: NormalizedWebhookEvent) {
   const cfg = metaConfig();
 
   if (phoneNumberId) {
-    const byPhone = await prisma.whatsAppAccount.findFirst({
+    const activeAccounts = await prisma.whatsAppAccount.findMany({
       where: { phoneNumberId, isActive: true },
       include: { integration: true },
+      orderBy: { updatedAt: "desc" },
     });
-    if (byPhone?.integration?.status === "ACTIVE") {
-      return { account: byPhone, integration: byPhone.integration };
+    const valid = activeAccounts.filter(
+      (a): a is typeof a & { integration: NonNullable<typeof a.integration> } =>
+        Boolean(a.integration && a.integration.status === "ACTIVE"),
+    );
+    if (valid.length > 0) {
+      const fromPhone = typeof event.metadata["from"] === "string" ? normalizeWhatsAppPhone(event.metadata["from"]) : "";
+      if (fromPhone && valid.length > 1) {
+        // If multiple clinics share this WhatsApp number, route to the clinic where this patient exists
+        for (const candidate of valid) {
+          const matchedPatient = await prisma.patient.findFirst({
+            where: {
+              clinicId: candidate.clinicId,
+              OR: [{ phone: fromPhone }, { whatsappNumber: fromPhone }, { phone: `+${fromPhone}` }],
+            },
+            select: { id: true },
+          });
+          if (matchedPatient) {
+            return { account: candidate, integration: candidate.integration };
+          }
+        }
+        for (const candidate of valid) {
+          const matchedConv = await prisma.conversation.findFirst({
+            where: {
+              clinicId: candidate.clinicId,
+              channel: "WHATSAPP",
+              OR: [{ contactPhone: fromPhone }, { contactPhone: `+${fromPhone}` }],
+            },
+            select: { id: true },
+          });
+          if (matchedConv) {
+            return { account: candidate, integration: candidate.integration };
+          }
+        }
+      }
+      return { account: valid[0]!, integration: valid[0]!.integration };
     }
 
     // Direct Meta fallback if phone matches configured server phone
@@ -78,7 +112,7 @@ async function findActiveIntegration(event: NormalizedWebhookEvent) {
       where: { businessAccountId: wabaId, isActive: true },
       include: { integration: true },
     });
-    if (byWaba?.integration?.status === "ACTIVE") {
+    if (byWaba?.integration && byWaba.integration.status === "ACTIVE") {
       return { account: byWaba, integration: byWaba.integration };
     }
 

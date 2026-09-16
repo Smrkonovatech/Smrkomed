@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { LayoutGrid, List, Plus, Search, Stethoscope } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { DoctorCard, DoctorPhoto, DoctorStatusBadge } from "@/components/doctors/doctor-card";
@@ -12,6 +12,7 @@ import { EmptyState, PageHeader } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAppState } from "@/lib/app-state";
+import { clinicApi } from "@/lib/clinic-api";
 import { clinics } from "@/lib/demo-data";
 import {
   DEPARTMENTS,
@@ -36,6 +37,10 @@ export default function DoctorsPage() {
   const role = session?.user?.role as StaffRole | undefined;
   const canManage =
     !role || roleHasPermission(role, PERMISSIONS.USERS_MANAGE) || role === "CLINIC_ADMIN";
+
+  useEffect(() => {
+    doctorsStore.syncFromApi();
+  }, []);
 
   const [q, setQ] = useState("");
   const [specialty, setSpecialty] = useState("all");

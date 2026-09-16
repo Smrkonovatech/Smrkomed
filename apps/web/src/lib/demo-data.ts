@@ -499,25 +499,42 @@ export const couples: Couple[] = [
   },
 ];
 
-export const coupleLabel = (c: Couple) =>
-  c.partner ? `${c.primary.name.split(" ")[0]!} + ${c.partner.name.split(" ")[0]!}` : c.primary.name;
+export const coupleLabel = (c: Couple | any) => {
+  if (!c) return "Couple";
+  const pName = (c.primary?.name || c.primary?.firstName || "Patient").trim();
+  const pFirst = pName.split(" ")[0] || pName;
+  if (c.partner) {
+    const partName = (c.partner.name || c.partner.firstName || "").trim();
+    const partFirst = partName ? partName.split(" ")[0] || partName : "";
+    if (partFirst) return `${pFirst} + ${partFirst}`;
+  }
+  return pName;
+};
 
-export const coupleFullLabel = (c: Couple) =>
-  c.partner ? `${c.primary.name} + ${c.partner.name}` : c.primary.name;
+export const coupleFullLabel = (c: Couple | any) => {
+  if (!c) return "Couple";
+  const pName = (c.primary?.name || c.primary?.firstName || "Patient").trim();
+  if (c.partner) {
+    const partName = (c.partner.name || c.partner.firstName || "").trim();
+    if (partName) return `${pName} + ${partName}`;
+  }
+  return pName;
+};
 
 export const findCouple = (id: string, list: Couple[] = couples) =>
   list.find(
     (c) =>
-      c.id === id ||
-      c.slug === id ||
-      (id === "manideep-mani" &&
-        (c.slug === "c-agvw37vp-mtu9ejo8" ||
-          c.id === "cmtu9ejo9002zo9109nk9xthy" ||
-          c.primary.phone.includes("7795559724"))) ||
-      (id === "c-agvw37vp-mtu9ejo8" &&
-        (c.slug === "manideep-mani" ||
-          c.id === "cmtu9ejo9002zo9109nk9xthy" ||
-          c.primary.phone.includes("7795559724"))),
+      Boolean(c) &&
+      (c.id === id ||
+        c.slug === id ||
+        (id === "manideep-mani" &&
+          (c.slug === "c-agvw37vp-mtu9ejo8" ||
+            c.id === "cmtu9ejo9002zo9109nk9xthy" ||
+            Boolean(c.primary?.phone && c.primary.phone.includes("7795559724")))) ||
+        (id === "c-agvw37vp-mtu9ejo8" &&
+          (c.slug === "manideep-mani" ||
+            c.id === "cmtu9ejo9002zo9109nk9xthy" ||
+            Boolean(c.primary?.phone && c.primary.phone.includes("7795559724"))))),
   );
 
 export const getCouple = (id: string) =>

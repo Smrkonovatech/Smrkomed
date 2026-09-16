@@ -309,66 +309,55 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
     setStaffLoading(true);
     try {
-      const [couples, nextTasks, appointments, documents, nextActivity, staffOutcome] =
+      const [couplesOutcome, tasksOutcome, apptsOutcome, docsOutcome, activityOutcome, staffOutcome] =
         await Promise.all([
-          clinicApi.couples(),
-          clinicApi.tasks(),
-          clinicApi.appointments(),
-          clinicApi.documents(),
-          clinicApi.activity(),
-          clinicApi
-            .staff()
-            .then((rows) => ({ ok: true as const, rows }))
-            .catch((error: unknown) => ({
-              ok: false as const,
-              error: clinicErrorMessage(error, "Unable to load clinic staff."),
-            })),
+          clinicApi.couples().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.tasks().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.appointments().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.documents().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.activity().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.staff().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
         ]);
 
-      const mappedCouples = couples.map(toCouple);
-      setCoupleList(mappedCouples);
+      let activeCount = 0;
+      let needAttentionCount = 0;
 
-      const mappedTasks = nextTasks.map(toTask);
-      setTasks(mappedTasks);
-
-      const mappedAppointments = appointments.map(toAppointment);
-      setAppointmentList(mappedAppointments);
-
-      const mappedDocuments = documents.map(toDocument);
-      setDocumentList(mappedDocuments);
-
-      setActivity(nextActivity);
-      setExceptionList([]);
-
+      if (couplesOutcome.ok) {
+        const mappedCouples = couplesOutcome.rows.map(toCouple);
+        setCoupleList(mappedCouples);
+        activeCount = mappedCouples.length;
+      }
+      if (tasksOutcome.ok) {
+        const mappedTasks = tasksOutcome.rows.map(toTask);
+        setTasks(mappedTasks);
+        needAttentionCount = mappedTasks.filter((task) => task.status === "overdue" || task.status === "escalated").length;
+      }
+      if (apptsOutcome.ok) {
+        const mappedAppointments = apptsOutcome.rows.map(toAppointment);
+        setAppointmentList(mappedAppointments);
+      }
+      if (docsOutcome.ok) {
+        setDocumentList(docsOutcome.rows.map(toDocument));
+      }
+      if (activityOutcome.ok) {
+        setActivity(activityOutcome.rows);
+      }
       if (staffOutcome.ok) {
         setStaff(staffOutcome.rows);
         setStaffError(null);
       } else {
-        setStaffError(staffOutcome.error);
-        // Do not clear previously loaded staff when only the staff request failed.
-        setStaff((previous) => previous);
+        setStaffError(clinicErrorMessage(staffOutcome.error, "Unable to load clinic staff."));
       }
-      setKpis({
-        active: mappedCouples.length,
+
+      setKpis((prev) => ({
+        active: couplesOutcome.ok ? activeCount : prev.active,
         completion: loopKpis.completion,
         automatedToday: 0,
-        needAttention: mappedTasks.filter((task) => task.status === "overdue" || task.status === "escalated").length,
-      });
+        needAttention: tasksOutcome.ok ? needAttentionCount : prev.needAttention,
+      }));
       setLoadState("ready");
-    } catch {
-      setCoupleList([]);
-      setTasks([]);
-      setAppointmentList([]);
-      setDocumentList([]);
-      setActivity([]);
-      setExceptionList([]);
-      setKpis({
-        active: 0,
-        completion: 100,
-        automatedToday: 0,
-        needAttention: 0,
-      });
-      setLoadError(null);
+    } catch (err) {
+      console.error("[AppState] Unexpected reload error:", err);
       setLoadState("ready");
     } finally {
       setStaffLoading(false);

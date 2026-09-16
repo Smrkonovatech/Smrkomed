@@ -148,13 +148,38 @@ export function AppointmentsTimeline() {
 
    const colors = ["#866BE3", "#C178F5", "#00A89D", "#00A89D", "#F39C12"];
 
+   // Compute lane (0 = up, 1 = down) to prevent overlapping pills
+   const sortedWithPos = [...appointments]
+      .map((app, index) => ({
+         app,
+         index,
+         leftPercent: getLeftPercentage(app.time),
+      }))
+      .sort((a, b) => a.leftPercent - b.leftPercent);
+
+   const laneMap = new Map<string, number>();
+   let lastLane = 1;
+   let lastPercent = -100;
+
+   sortedWithPos.forEach((item) => {
+      let lane = 0;
+      if (Math.abs(item.leftPercent - lastPercent) < 14) {
+         lane = lastLane === 0 ? 1 : 0;
+      } else {
+         lane = 0;
+      }
+      laneMap.set(item.app.id, lane);
+      lastLane = lane;
+      lastPercent = item.leftPercent;
+   });
+
    return (
       <div className="px-4 pt-4 pb-0">
          <h3 className="text-[#866BE3] font-medium mb-6">Todays Appointments</h3>
 
          <div className="overflow-x-auto pb-6 -mt-[350px] pt-[350px]">
             <div className="min-w-[1000px] lg:min-w-full px-6">
-               <div className="relative mx-[100px]">
+               <div className="relative mx-[100px] min-h-[150px]">
                   {/* Timeline intervals */}
                   <div className="flex justify-between relative z-0">
                      {Array.from({ length: 23 }, (_, i) => {
@@ -165,8 +190,8 @@ export function AppointmentsTimeline() {
                         const label = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
                         return (
                            <div key={i} className="flex flex-col items-center">
-                              <span className={`mb-8 text-gray-400 ${isHour ? 'text-[11px]' : 'text-[11px]'}`}>{label}</span>
-                              <div className={`rounded-full bg-gray-300 ${isHour ? 'w-[2px] h-16' : 'w-[2px] h-16'}`}></div>
+                              <span className={`mb-4 text-gray-400 ${isHour ? 'text-[11px] font-semibold' : 'text-[11px]'}`}>{label}</span>
+                              <div className={`rounded-full bg-gray-300/80 ${isHour ? 'w-[2px] h-28' : 'w-[1.5px] h-28 opacity-60'}`}></div>
                            </div>
                         );
                      })}
@@ -185,9 +210,11 @@ export function AppointmentsTimeline() {
                      const color = colors[index % colors.length] || "#866BE3";
                      const initial = couple?.primary?.name?.[0] || 'P';
                      const isUpNext = index === 0;
+                     const lane = laneMap.get(app.id) ?? 0;
+                     const topClass = lane === 1 ? "top-[70px]" : "top-[18px]";
 
                      return (
-                        <div key={app.id} className="absolute top-12 z-20 group cursor-pointer" style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}>
+                        <div key={app.id} className={`absolute ${topClass} z-20 hover:z-30 group cursor-pointer transition-all`} style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}>
                            {!isUpNext && <TooltipCard appointment={app} couple={couple} color={color} initial={initial} leftPercent={leftPercent} />}
                            
                            <div className={`relative rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white`} style={{ backgroundColor: `${color}15` }}>

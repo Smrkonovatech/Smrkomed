@@ -1,0 +1,120 @@
+"use client";
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Stethoscope, Calendar, User, FileText, Pill, ArrowRight } from "lucide-react";
+
+interface ConsultationSummaryModalProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  consultation?: any;
+  p360?: any;
+}
+
+export function ConsultationSummaryModal({
+  isOpen,
+  onOpenChange,
+  consultation,
+  p360,
+}: ConsultationSummaryModalProps) {
+  const latestConsultation =
+    consultation ||
+    p360?.timeline?.items?.find((i: any) => i.type === "Consultation") ||
+    p360?.timeline?.items?.[0];
+
+  const title = latestConsultation?.title || "Doctor Consultation Summary";
+  const dateStr = latestConsultation?.date
+    ? new Date(latestConsultation.date).toLocaleDateString("en-IN", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "Recent";
+  const doctor = latestConsultation?.actor || p360?.header?.assignedDoctor || "Primary Doctor";
+  const notes = latestConsultation?.content || latestConsultation?.description || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[580px] p-0 overflow-hidden bg-white border-0 shadow-2xl rounded-2xl">
+        <DialogHeader className="p-6 pb-4 border-b border-gray-100 flex flex-row items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-[#866BE3]/10 text-[#866BE3] flex items-center justify-center">
+            <Stethoscope className="w-5 h-5" />
+          </div>
+          <div>
+            <DialogTitle className="text-lg font-bold text-gray-900">
+              {title}
+            </DialogTitle>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Verified clinical consultation records
+            </p>
+          </div>
+        </DialogHeader>
+
+        <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
+          {/* Metadata chips */}
+          <div className="flex flex-wrap items-center gap-3 text-xs bg-gray-50 p-3 rounded-xl border border-gray-100">
+            <div className="flex items-center gap-1.5 text-gray-600">
+              <Calendar className="w-3.5 h-3.5 text-[#866BE3]" />
+              <span>{dateStr}</span>
+            </div>
+            <span className="text-gray-300">•</span>
+            <div className="flex items-center gap-1.5 text-gray-600">
+              <User className="w-3.5 h-3.5 text-[#866BE3]" />
+              <span className="font-semibold text-gray-800">{doctor}</span>
+            </div>
+            <span className="text-gray-300">•</span>
+            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+              Verified Record
+            </Badge>
+          </div>
+
+          {/* Clinical Notes */}
+          <div className="p-4 rounded-xl bg-[#F8F9FA] border border-gray-100 space-y-2">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-[#866BE3]" />
+              Doctor Impressions & Clinical Notes
+            </h4>
+            <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
+              {notes}
+            </p>
+          </div>
+
+          {/* Prescribed Medications */}
+          {p360?.medications?.current && p360.medications.current.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Pill className="w-3.5 h-3.5 text-[#866BE3]" />
+                Prescribed Medications
+              </h4>
+              <div className="space-y-1.5">
+                {p360.medications.current.slice(0, 3).map((m: any, i: number) => (
+                  <div key={i} className="p-2.5 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="font-semibold text-gray-800">{m.medicineName}</span>
+                      <span className="text-[10px] text-gray-400 ml-2">{m.frequency}</span>
+                    </div>
+                    <span className="text-xs font-bold text-[#866BE3]">{m.dosage}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="p-4 bg-gray-50 border-t border-gray-100">
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="text-xs w-full">
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

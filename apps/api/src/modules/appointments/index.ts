@@ -25,15 +25,46 @@ export const appointmentRoutes = new Hono<AppEnv>()
   .post("/", validate("json", createAppointmentSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.APPOINTMENTS_WRITE);
     const body = c.req.valid("json");
-    const couple = await requireClinicOwned(tenant, await prisma.couple.findUnique({ where: { id: body.coupleId } }));
+    let coupleId = body.coupleId;
+    if (!coupleId && body.patientId) {
+      const coupleByPatient = await prisma.couple.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [{ primaryPatientId: body.patientId }, { partnerPatientId: body.patientId }],
+        },
+      });
+      if (coupleByPatient) coupleId = coupleByPatient.id;
+    }
+    if (!coupleId) {
+      const firstCouple = await prisma.couple.findFirst({ where: { clinicId: tenant.clinicId } });
+      if (firstCouple) coupleId = firstCouple.id;
+    }
+    const couple = await requireClinicOwned(tenant, await prisma.couple.findUnique({ where: { id: coupleId ?? "" } }));
+    const startsAtStr = body.startsAt || body.date || new Date().toISOString();
+    let doctorName = body.doctorName || body.doctor;
+    if (!doctorName) {
+      const coupleWithDoc = await prisma.couple.findUnique({
+        where: { id: couple.id },
+        select: { assignedDoctor: { select: { name: true } } },
+      });
+      if (coupleWithDoc?.assignedDoctor?.name) {
+        doctorName = coupleWithDoc.assignedDoctor.name;
+      }
+    }
+    const rawStatus = (body.status || "CONFIRMED").toUpperCase();
+    const status = ["CONFIRMED", "WAITING", "COMPLETED", "NO_SHOW", "CANCELLED"].includes(rawStatus)
+      ? (rawStatus as "CONFIRMED" | "WAITING" | "COMPLETED" | "NO_SHOW" | "CANCELLED")
+      : "CONFIRMED";
+
     const appointment = await prisma.appointment.create({
       data: {
         clinicId: couple.clinicId,
         coupleId: couple.id,
         type: body.type,
-        startsAt: new Date(body.startsAt),
+        startsAt: new Date(startsAtStr),
+        status,
         ...(body.durationMin === undefined ? {} : { durationMin: body.durationMin }),
-        ...(body.doctorName === undefined ? {} : { doctorName: body.doctorName }),
+        ...(doctorName ? { doctorName } : {}),
         ...(body.room === undefined ? {} : { room: body.room }),
         ...(body.notes === undefined ? {} : { notes: body.notes }),
       },
@@ -51,6 +82,7 @@ export const appointmentRoutes = new Hono<AppEnv>()
             appointment_date: appointment.startsAt.toISOString().slice(0, 10),
             appointment_time: appointment.startsAt.toISOString().slice(11, 16),
             doctor_name: appointment.doctorName ?? "",
+            "doctor.name": appointment.doctorName ?? "",
             clinic_name: tenant.clinicName,
           },
         }),
@@ -89,6 +121,7 @@ export const appointmentRoutes = new Hono<AppEnv>()
               appointment_date: appointment.startsAt.toISOString().slice(0, 10),
               appointment_time: appointment.startsAt.toISOString().slice(11, 16),
               doctor_name: appointment.doctorName ?? "",
+              "doctor.name": appointment.doctorName ?? "",
               clinic_name: tenant.clinicName,
             },
           }),
@@ -107,6 +140,7 @@ export const appointmentRoutes = new Hono<AppEnv>()
               appointment_date: appointment.startsAt.toISOString().slice(0, 10),
               appointment_time: appointment.startsAt.toISOString().slice(11, 16),
               doctor_name: appointment.doctorName ?? "",
+              "doctor.name": appointment.doctorName ?? "",
               clinic_name: tenant.clinicName,
             },
           }),
@@ -125,6 +159,7 @@ export const appointmentRoutes = new Hono<AppEnv>()
               appointment_date: appointment.startsAt.toISOString().slice(0, 10),
               appointment_time: appointment.startsAt.toISOString().slice(11, 16),
               doctor_name: appointment.doctorName ?? "",
+              "doctor.name": appointment.doctorName ?? "",
               clinic_name: tenant.clinicName,
             },
           }),

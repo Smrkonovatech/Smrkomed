@@ -28,12 +28,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAppState } from "@/lib/app-state";
 import { coupleLabel } from "@/lib/demo-data";
+import { clinicApi } from "@/lib/clinic-api";
 import {
   DOCUMENT_KIND_LABELS,
   LEAVE_TYPE_LABELS,
   displayNameOf,
   doctorsStore,
   formatNextAvailable,
+  isMockDoctor,
   useDoctor,
 } from "@/lib/doctors";
 import { PERMISSIONS, roleHasPermission, type StaffRole } from "@/lib/permissions/rbac";
@@ -57,6 +59,25 @@ export default function DoctorProfilePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const doctor = useDoctor(params.id);
+  const [loading, setLoading] = useState(!doctor);
+
+  useEffect(() => {
+    if (doctor) {
+      setLoading(false);
+    } else if (params.id) {
+      const cleanId = params.id.replace(/^doc_/, "");
+      clinicApi
+        .getDoctor(cleanId)
+        .then((doc) => {
+          if (doc && !isMockDoctor(doc)) {
+            doctorsStore.upsert(doc);
+          }
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }
+  }, [doctor, params.id]);
+
   const { appointments, couples, cycles } = useAppState();
   const { data: session } = useSession();
   const role = session?.user?.role as StaffRole | undefined;
@@ -97,6 +118,16 @@ export default function DoctorProfilePage() {
     const name = displayNameOf(doctor);
     return cycles.filter((c) => c.doctor === name || c.doctor.includes(doctor.lastName));
   }, [cycles, doctor]);
+
+  if (!doctor && loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="text-sm text-muted-foreground animate-pulse">
+          Loading doctor clinical profile from database...
+        </div>
+      </div>
+    );
+  }
 
   if (!doctor) {
     return (
