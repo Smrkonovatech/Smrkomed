@@ -1,11 +1,14 @@
 /**
  * Doctor Photos & Media Management for WhatsApp Interactive Flow.
- * Strictly Doctor-ID based mapping to supplied images.
+ * Resolves doctor images from:
+ *   1. Real profile data (photoDataUrl / profileImageUrl stored in AutomationRule config)
+ *   2. Static asset files as fallback
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prisma } from "@smrkomed/database";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +66,73 @@ export function resolveDoctorPhotoAsset(doctorId: string, doctorName?: string | 
 }
 
 /**
+ * Lookup the real profileImageUrl or photo endpoint for the doctor's saved profile data in the DB.
+ * Returns the URL string if found, null otherwise.
+ */
+export async function resolveRealDoctorImageUrl(
+  clinicId?: string | null,
+  doctorId?: string | null,
+  doctorName?: string | null,
+): Promise<string | null> {
+  try {
+    if (!doctorId && !doctorName) return null;
+    const cleanId = (doctorId || "").replace(/^doc_/, "");
+
+    const whereOr: Array<Record<string, unknown>> = [];
+    if (cleanId) whereOr.push({ name: cleanId }, { name: `doc_${cleanId}` });
+    if (doctorId) whereOr.push({ name: doctorId });
+
+    let rule = whereOr.length > 0 ? await prisma.automationRule.findFirst({
+      where: {
+        ...(clinicId ? { clinicId } : {}),
+        trigger: "DOCTOR_PROFILE",
+        OR: whereOr,
+      },
+    }) : null;
+
+    if (!rule && doctorName) {
+      const cleanName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
+      const users = await prisma.user.findMany({
+        where: {
+          name: { contains: cleanName, mode: "insensitive" },
+        },
+        select: { id: true },
+        take: 3,
+      });
+      for (const u of users) {
+        rule = await prisma.automationRule.findFirst({
+          where: {
+            ...(clinicId ? { clinicId } : {}),
+            trigger: "DOCTOR_PROFILE",
+            OR: [{ name: u.id }, { name: `doc_${u.id}` }],
+          },
+        });
+        if (rule) break;
+      }
+    }
+
+    if (rule?.config && typeof rule.config === "object") {
+      const cfg = rule.config as any;
+      const httpUrl = (typeof cfg["profileImageUrl"] === "string" && cfg["profileImageUrl"].startsWith("http")) ? cfg["profileImageUrl"] :
+                      (typeof cfg["photoUrl"] === "string" && cfg["photoUrl"].startsWith("http")) ? cfg["photoUrl"] :
+                      (typeof cfg["imageUrl"] === "string" && cfg["imageUrl"].startsWith("http")) ? cfg["imageUrl"] :
+                      (typeof cfg["avatarUrl"] === "string" && cfg["avatarUrl"].startsWith("http")) ? cfg["avatarUrl"] : null;
+      if (httpUrl) return httpUrl;
+
+      // If stored as base64 data URL, the public photo endpoint serves it as a real image URL
+      const dataUrl = (typeof cfg["photoDataUrl"] === "string" && cfg["photoDataUrl"].startsWith("data:image/")) ? cfg["photoDataUrl"] :
+                      (typeof cfg["profileImageUrl"] === "string" && cfg["profileImageUrl"].startsWith("data:image/")) ? cfg["profileImageUrl"] : null;
+      if (dataUrl && (cleanId || doctorId)) {
+        return getDoctorPhotoUrl(cleanId || doctorId!);
+      }
+    }
+  } catch {
+    // DB lookup failed, fall back to static assets
+  }
+  return null;
+}
+
+/**
  * Locate the local directory containing doctor assets.
  */
 export function getDoctorAssetsDir(): string {
@@ -110,11 +180,100 @@ export function getDoctorPhotoUrl(doctorId: string, baseUrl?: string): string {
 
 /**
  * Return image buffer for a doctor photo.
+ * Priority:
+ *   1. Uploaded base64 image (photoDataUrl) from AutomationRule profile in DB
+ *   2. Custom HTTP/HTTPS image URL (fetched as buffer)
+ *   3. Deterministic static asset fallback
  */
 export async function getDoctorPhotoBuffer(
   doctorId: string,
   doctorName?: string | null,
+  clinicId?: string | null,
 ): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
+  const cleanId = (doctorId || "").replace(/^doc_/, "");
+
+  // 1. Try resolving real uploaded photo from database config
+  try {
+    const whereOr: Array<Record<string, unknown>> = [];
+    if (cleanId) whereOr.push({ name: cleanId }, { name: `doc_${cleanId}` });
+    if (doctorId) whereOr.push({ name: doctorId });
+
+    let rule = whereOr.length > 0 ? await prisma.automationRule.findFirst({
+      where: {
+        ...(clinicId ? { clinicId } : {}),
+        trigger: "DOCTOR_PROFILE",
+        OR: whereOr,
+      },
+    }) : null;
+
+    if (!rule && doctorName) {
+      const cleanName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
+      const users = await prisma.user.findMany({
+        where: {
+          name: { contains: cleanName, mode: "insensitive" },
+        },
+        select: { id: true },
+        take: 3,
+      });
+      for (const u of users) {
+        rule = await prisma.automationRule.findFirst({
+          where: {
+            ...(clinicId ? { clinicId } : {}),
+            trigger: "DOCTOR_PROFILE",
+            OR: [{ name: u.id }, { name: `doc_${u.id}` }],
+          },
+        });
+        if (rule) break;
+      }
+    }
+
+    if (rule?.config && typeof rule.config === "object") {
+      const cfg = rule.config as any;
+
+      // Check for base64 data URL
+      const dataUrl = (typeof cfg["photoDataUrl"] === "string" && cfg["photoDataUrl"].startsWith("data:image/")) ? cfg["photoDataUrl"] :
+                      (typeof cfg["profileImageUrl"] === "string" && cfg["profileImageUrl"].startsWith("data:image/")) ? cfg["profileImageUrl"] : null;
+      if (dataUrl) {
+        const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (match && match[1] && match[2]) {
+          const contentType = match[1];
+          const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+          const buffer = Buffer.from(match[2], "base64");
+          return {
+            buffer,
+            contentType,
+            filename: `doctor-${cleanId || "photo"}.${ext}`,
+          };
+        }
+      }
+
+      // Check for HTTP image URL
+      const httpUrl = (typeof cfg["profileImageUrl"] === "string" && cfg["profileImageUrl"].startsWith("http")) ? cfg["profileImageUrl"] :
+                      (typeof cfg["photoUrl"] === "string" && cfg["photoUrl"].startsWith("http")) ? cfg["photoUrl"] :
+                      (typeof cfg["imageUrl"] === "string" && cfg["imageUrl"].startsWith("http")) ? cfg["imageUrl"] : null;
+      if (httpUrl) {
+        try {
+          const res = await fetch(httpUrl);
+          if (res.ok) {
+            const arrayBuf = await res.arrayBuffer();
+            const contentType = res.headers.get("content-type") || "image/jpeg";
+            const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
+            return {
+              buffer: Buffer.from(arrayBuf),
+              contentType,
+              filename: `doctor-${cleanId || "photo"}.${ext}`,
+            };
+          }
+        } catch {
+          // fetch error, continue to static fallback
+        }
+      }
+    }
+  } catch {
+    // DB error, continue to static fallback
+  }
+
+  // 2. Static asset fallback
   const asset = resolveDoctorPhotoAsset(doctorId, doctorName);
   const assetsDir = getDoctorAssetsDir();
   const filePath = path.join(assetsDir, asset.filename);
@@ -145,7 +304,7 @@ export async function getOrUploadDoctorMetaMediaId(
     return cached.mediaId;
   }
 
-  const asset = await getDoctorPhotoBuffer(doctorId, doctorName);
+  const asset = await getDoctorPhotoBuffer(doctorId, doctorName, tenant.clinicId);
   if (!asset) return null;
 
   try {
@@ -192,4 +351,3 @@ export async function getOrUploadDoctorMetaMediaId(
 
   return null;
 }
-

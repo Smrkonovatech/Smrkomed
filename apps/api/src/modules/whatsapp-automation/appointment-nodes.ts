@@ -112,7 +112,9 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
           experience,
           bio,
           languages,
-          photoUrl: getDoctorPhotoUrl(m.userId),
+          photoUrl: (typeof saved.profileImageUrl === "string" && saved.profileImageUrl.startsWith("http"))
+            ? saved.profileImageUrl
+            : getDoctorPhotoUrl(m.userId),
         };
       });
     }

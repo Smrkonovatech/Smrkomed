@@ -1545,7 +1545,7 @@ async function executeNode(
       const docExp = doc?.experience || vars["doctor.experience"] || "10+ years experience";
       const docBio = doc?.bio || vars["doctor.bio"] || "Compassionate, personalized patient care.";
       const docLangs = doc?.languages?.join(" • ") || vars["doctor.languages"] || "English • Hindi";
-      const docPhoto = doc?.photoUrl || vars["doctor.photoUrl"] || "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?w=800&auto=format&fit=crop&q=80";
+      const docPhoto = doc?.photoUrl || vars["doctor.photoUrl"] || (doc?.id ? getDoctorPhotoUrl(doc.id) : null) || getDoctorPhotoUrl("doc_1");
 
       const bodyText = interpolateVariables(
         String(node.config["body"] || `👨‍⚕️ Dr. {{doctor.name}}\n{{doctor.specialty}}\n\n⏳ {{doctor.experience}}\n🗣️ Languages: {{doctor.languages}}\n\n"${docBio}"`),

@@ -358,6 +358,7 @@ export async function executePatientTool(
             languages: d.languages.join(", "),
             fee: `₹${d.consultationFee ?? 1000}`,
             bio: d.bio,
+            photoUrl: d.photoUrl || null,
           })),
           coordinator: assignedCoord,
           instruction: "Present the doctor and clinic specialist details clearly (name, specialty, experience, languages, bio, and fee) to the patient. Offer to schedule an appointment with them.",

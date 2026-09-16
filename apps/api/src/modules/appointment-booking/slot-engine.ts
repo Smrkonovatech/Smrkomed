@@ -6,6 +6,7 @@
 import { prisma } from "@smrkomed/database";
 import type { BookingDoctorSummary, BookingSlot } from "./types";
 import { formatDateIso, formatTimeLabel } from "./nlp-parser";
+import { getDoctorPhotoUrl } from "../whatsapp-automation/doctor-photos";
 
 // Standard seed doctor profiles to ensure deterministic availability across environments
 export const DEFAULT_DOCTORS: BookingDoctorSummary[] = [
@@ -112,7 +113,11 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
           consultationFee: fee,
           languages,
           bio,
-          photoUrl: `https://smrkomed-api-production.up.railway.app/api/v1/public/doctors/doc_${u.id}/photo`,
+          photoUrl: (typeof saved.profileImageUrl === "string" && saved.profileImageUrl.startsWith("http"))
+            ? saved.profileImageUrl
+            : (typeof saved.photoUrl === "string" && saved.photoUrl.startsWith("http"))
+            ? saved.photoUrl
+            : getDoctorPhotoUrl(u.id),
           availableDates: getUpcomingDates(7),
         };
       });

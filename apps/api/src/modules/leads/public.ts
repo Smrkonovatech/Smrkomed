@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { ingestPublicLeadByClinicSlug, writeAuditLog } from "@smrkomed/database";
+import { ingestPublicLeadByClinicSlug, writeAuditLog, prisma } from "@smrkomed/database";
 
 import { env } from "../../config/env";
 import { HttpError } from "../../lib/errors";
@@ -71,24 +71,17 @@ export const publicLeadRoutes = new Hono<AppEnv>()
   })
   .get("/doctors/:doctorId/photo", async (c) => {
     const doctorId = c.req.param("doctorId");
-    const { resolveDoctorPhotoAsset, getDoctorAssetsDir } = await import("../whatsapp-automation/doctor-photos");
-    const fs = await import("node:fs");
-    const path = await import("node:path");
+    const { getDoctorPhotoBuffer } = await import("../whatsapp-automation/doctor-photos");
 
-    const asset = resolveDoctorPhotoAsset(doctorId);
-    const assetsDir = getDoctorAssetsDir();
-    const filePath = path.join(assetsDir, asset.filename);
-
-    if (!fs.existsSync(filePath)) {
+    const photo = await getDoctorPhotoBuffer(doctorId);
+    if (!photo) {
       throw new HttpError(404, "RESOURCE_NOT_FOUND", "Doctor photo not found.");
     }
 
-    const fileBuffer = await fs.promises.readFile(filePath);
-    return c.body(fileBuffer, 200, {
-      "Content-Type": asset.contentType,
-      "Content-Length": String(fileBuffer.length),
+    return c.body(new Uint8Array(photo.buffer), 200, {
+      "Content-Type": photo.contentType,
+      "Content-Length": String(photo.buffer.length),
       "Accept-Ranges": "bytes",
       "Cache-Control": "public, max-age=86400",
     });
   });
-

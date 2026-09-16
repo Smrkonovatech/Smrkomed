@@ -1,55 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { Check, CheckCheck, ChevronLeft, MoreVertical, Phone, Video, Send, RotateCcw, Sparkles } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import { Check, CheckCheck, ChevronLeft, MoreVertical, Phone, Video, Send, RotateCcw, Sparkles, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useDoctors, displayNameOf, type DoctorProfile } from "@/lib/doctors";
 
 export type SimMessage = {
   id: string;
   sender: "patient" | "clinic";
   time: string;
   type: "text" | "buttons" | "list" | "card" | "summary" | "confirmation";
-  text?: string;
-  header?: string;
-  footer?: string;
-  imageUrl?: string;
-  buttons?: Array<{ id: string; title: string }>;
-  listButtonLabel?: string;
-  listItems?: Array<{ id: string; title: string; subtitle?: string }>;
+  text?: string | undefined;
+  header?: string | undefined;
+  footer?: string | undefined;
+  imageUrl?: string | undefined;
+  buttons?: Array<{ id: string; title: string }> | undefined;
+  listButtonLabel?: string | undefined;
+  listItems?: Array<{ id: string; title: string; subtitle?: string }> | undefined;
 };
-
-const INITIAL_SIM_MESSAGES: SimMessage[] = [
-  {
-    id: "m_1",
-    sender: "patient",
-    time: "10:42 AM",
-    type: "text",
-    text: "Hi, I'd like to book an appointment with a doctor",
-  },
-  {
-    id: "m_2",
-    sender: "clinic",
-    time: "10:42 AM",
-    type: "text",
-    text: "Absolutely! 👋\nI can help you find the right specialist and appointment time.\n\nWho would you like to consult?",
-  },
-  {
-    id: "m_3",
-    sender: "clinic",
-    time: "10:42 AM",
-    type: "card",
-    header: "Available Fertility Specialists",
-    imageUrl: "https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&q=80&w=400",
-    text: "Dr. Ananya Rao\nSenior Fertility Specialist\n14+ years experience • MBBS, MD",
-    footer: "SmrkoMed Clinic",
-    buttons: [
-      { id: "appt_doctor_doc_ananya", title: "📅 See Available Slots" },
-      { id: "view_profile_ananya", title: "👩‍⚕️ View Full Profile" },
-    ],
-  },
-];
 
 export function WhatsAppPhoneSimulator({
   clinicName = "SmrkoMed Clinic",
@@ -58,12 +28,67 @@ export function WhatsAppPhoneSimulator({
   clinicName?: string;
   onSimulateStep?: (stepName: string) => void;
 }) {
-  const [messages, setMessages] = useState<SimMessage[]>(INITIAL_SIM_MESSAGES);
+  const clinicDoctors = useDoctors();
+  const realDoctors = useMemo(() => {
+    const active = clinicDoctors.filter((d) => !d.isDraft && d.status === "active");
+    return active.length > 0 ? active : clinicDoctors.filter((d) => !d.isDraft);
+  }, [clinicDoctors]);
+
+  const primaryDoctor = realDoctors[0];
+  const primaryDoctorName = primaryDoctor ? displayNameOf(primaryDoctor) : "Dr. Ananya Rao";
+  const primaryDoctorSpecialty = primaryDoctor?.primarySpecialty || primaryDoctor?.designation || "Senior Fertility Specialist";
+  const primaryDoctorExp = primaryDoctor?.yearsExperience ? `${primaryDoctor.yearsExperience}+ years experience` : "14+ years experience";
+  const primaryDoctorImage = primaryDoctor?.photoDataUrl || (primaryDoctor?.staffUserId || primaryDoctor?.id ? `/api/v1/public/doctors/${primaryDoctor.staffUserId || primaryDoctor.id}/photo` : undefined);
+
+  const defaultMessages = useMemo<SimMessage[]>(() => {
+    const degrees = primaryDoctor?.qualifications?.map((q) => q.degree).filter(Boolean).join(", ");
+    const qualLine = degrees ? ` • ${degrees}` : " • MBBS, MD";
+    return [
+      {
+        id: "m_1",
+        sender: "patient",
+        time: "10:42 AM",
+        type: "text",
+        text: "Hi, I'd like to book an appointment with a doctor",
+      },
+      {
+        id: "m_2",
+        sender: "clinic",
+        time: "10:42 AM",
+        type: "text",
+        text: "Absolutely! 👋\nI can help you find the right specialist and appointment time.\n\nWho would you like to consult?",
+      },
+      {
+        id: "m_3",
+        sender: "clinic",
+        time: "10:42 AM",
+        type: "card",
+        header: "Available Fertility Specialists",
+        imageUrl: primaryDoctorImage,
+        text: `${primaryDoctorName}\n${primaryDoctorSpecialty}\n${primaryDoctorExp}${qualLine}`,
+        footer: clinicName,
+        buttons: [
+          { id: `appt_doctor_${primaryDoctor?.id || "doc_1"}`, title: "📅 See Available Slots" },
+          { id: `view_profile_${primaryDoctor?.id || "doc_1"}`, title: "👩‍⚕️ View Full Profile" },
+        ],
+      },
+    ];
+  }, [primaryDoctor, primaryDoctorName, primaryDoctorSpecialty, primaryDoctorExp, primaryDoctorImage, clinicName]);
+
+  const [messages, setMessages] = useState<SimMessage[]>(defaultMessages);
   const [inputText, setInputText] = useState("");
-  const [selectedDoctor, setSelectedDoctor] = useState("Dr. Ananya Rao");
+  const [selectedDoctor, setSelectedDoctor] = useState(primaryDoctorName);
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [activeListItems, setActiveListItems] = useState<Array<{ id: string; title: string; subtitle?: string }>>([]);
   const [listModalTitle, setListModalTitle] = useState("Select an option");
+
+  // Keep simulator in sync when clinic admin adds or updates a doctor
+  useEffect(() => {
+    if (primaryDoctor) {
+      setSelectedDoctor(primaryDoctorName);
+      setMessages(defaultMessages);
+    }
+  }, [defaultMessages, primaryDoctor, primaryDoctorName]);
 
   function handleSendUserMessage(customText?: string) {
     const text = (customText || inputText).trim();
@@ -90,6 +115,52 @@ export function WhatsAppPhoneSimulator({
   function handleFlowResponse(input: string) {
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const lower = input.toLowerCase();
+
+    // Check if user selected or typed a doctor's name
+    const matchedDoctor = realDoctors.find((d) => {
+      const name = displayNameOf(d).toLowerCase();
+      const first = (d.firstName || "").toLowerCase();
+      const last = (d.lastName || "").toLowerCase();
+      const cleanInput = lower.replace(/^dr\.?\s*/i, "").trim();
+      return (
+        lower.includes(name) ||
+        (first && lower.includes(first)) ||
+        (last && lower.includes(last)) ||
+        (first && cleanInput.includes(first)) ||
+        (last && cleanInput.includes(last)) ||
+        input.includes(d.id)
+      );
+    });
+
+    if (matchedDoctor && (lower.includes("dr") || lower.includes(matchedDoctor.firstName.toLowerCase()) || lower.includes("profile") || input.startsWith("btn_doc_"))) {
+      const docName = displayNameOf(matchedDoctor);
+      setSelectedDoctor(docName);
+      const docImg = matchedDoctor.photoDataUrl || (matchedDoctor.staffUserId || matchedDoctor.id ? `/api/v1/public/doctors/${matchedDoctor.staffUserId || matchedDoctor.id}/photo` : undefined);
+      const docSpec = matchedDoctor.primarySpecialty || matchedDoctor.designation || "Fertility Specialist";
+      const docExp = matchedDoctor.yearsExperience ? `${matchedDoctor.yearsExperience}+ years experience` : "10+ years experience";
+      const degrees = matchedDoctor.qualifications?.map((q) => q.degree).filter(Boolean).join(", ");
+      const qualLine = degrees ? ` • ${degrees}` : "";
+
+      onSimulateStep?.("SHOW_DOCTOR_PROFILE");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `c_${Date.now()}`,
+          sender: "clinic",
+          time,
+          type: "card",
+          header: "Doctor Profile",
+          imageUrl: docImg,
+          text: `${docName}\n${docSpec}\n${docExp}${qualLine}`,
+          footer: clinicName,
+          buttons: [
+            { id: `appt_doctor_${matchedDoctor.id}`, title: "📅 See Available Slots" },
+            { id: "appt_other_doc", title: "👩‍⚕️ Other Doctors" },
+          ],
+        },
+      ]);
+      return;
+    }
 
     if (lower.includes("slot") || lower.includes("doctor") || input.startsWith("appt_doctor_")) {
       onSimulateStep?.("GET_AVAILABLE_DATES");
@@ -118,7 +189,7 @@ export function WhatsAppPhoneSimulator({
           sender: "clinic",
           time,
           type: "buttons",
-          text: "Available times for Monday, 7 Sep ⏰\n\n☀️ Morning Slots:",
+          text: `Available times for Monday, 7 Sep with ${selectedDoctor} ⏰\n\n☀️ Morning Slots:`,
           buttons: [
             { id: "appt_slot_0930", title: "09:30 AM" },
             { id: "appt_slot_1000", title: "10:00 AM" },
@@ -160,6 +231,17 @@ export function WhatsAppPhoneSimulator({
         },
       ]);
     } else {
+      const docButtons = realDoctors.length > 0
+        ? realDoctors.slice(0, 3).map((d) => ({
+            id: `btn_doc_${d.id}`,
+            title: displayNameOf(d),
+          }))
+        : [
+            { id: "btn_doc_ananya", title: "Dr. Ananya Rao" },
+            { id: "btn_doc_rahul", title: "Dr. Rahul Mehta" },
+            { id: "btn_doc_priya", title: "Dr. Priya Nair" },
+          ];
+
       setMessages((prev) => [
         ...prev,
         {
@@ -168,11 +250,7 @@ export function WhatsAppPhoneSimulator({
           time,
           type: "buttons",
           text: "Let's find the right doctor for you 👩‍⚕️",
-          buttons: [
-            { id: "btn_doc_ananya", title: "Dr. Ananya Rao" },
-            { id: "btn_doc_rahul", title: "Dr. Rahul Mehta" },
-            { id: "btn_doc_priya", title: "Dr. Priya Nair" },
-          ],
+          buttons: docButtons,
         },
       ]);
     }
@@ -195,8 +273,8 @@ export function WhatsAppPhoneSimulator({
   }
 
   function resetSimulation() {
-    setMessages(INITIAL_SIM_MESSAGES);
-    setSelectedDoctor("Dr. Ananya Rao");
+    setMessages(defaultMessages);
+    setSelectedDoctor(primaryDoctorName);
   }
 
   return (
@@ -221,32 +299,38 @@ export function WhatsAppPhoneSimulator({
             </div>
           </div>
 
-          {/* WhatsApp top bar */}
-          <div className="flex items-center justify-between border-b border-black/5 bg-[#008069] px-2 py-2 text-white dark:bg-[#202c33]">
-            <div className="flex items-center gap-1.5">
-              <ChevronLeft className="size-5 cursor-pointer opacity-90" />
-              <div className="relative flex size-8 items-center justify-center rounded-full bg-emerald-700 text-xs font-bold text-white shadow-inner">
-                🏥
+          {/* WhatsApp Header */}
+          <div className="flex h-14 items-center justify-between border-b border-black/5 bg-[#f0f2f5] px-3 shadow-2xs dark:bg-[#202c33]">
+            <div className="flex items-center gap-2">
+              <ChevronLeft className="size-5 text-[#00a884] cursor-pointer" />
+              <div className="relative flex size-9 items-center justify-center rounded-full bg-[#00a884] text-white font-bold text-xs shadow-xs">
+                {clinicName.slice(0, 2).toUpperCase()}
+                <span className="absolute bottom-0 right-0 size-2.5 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
               </div>
               <div className="flex flex-col">
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-bold leading-tight">{clinicName}</span>
-                  <span className="rounded-full bg-emerald-400 p-0.5 text-[8px] text-slate-900">✓</span>
-                </div>
-                <span className="text-[10px] opacity-80">Official WhatsApp Business</span>
+                <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[130px]">
+                  {clinicName}
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Online</span>
               </div>
             </div>
-            <div className="flex items-center gap-2.5 pr-2 opacity-85">
-              <Video className="size-4" />
-              <Phone className="size-3.5" />
-              <MoreVertical className="size-4" />
+            <div className="flex items-center gap-3 text-slate-600 dark:text-slate-300">
+              <Video className="size-4 cursor-pointer hover:text-slate-900 dark:hover:text-white" />
+              <Phone className="size-3.5 cursor-pointer hover:text-slate-900 dark:hover:text-white" />
+              <RotateCcw
+                className="size-3.5 cursor-pointer hover:text-slate-900 dark:hover:text-white"
+                onClick={resetSimulation}
+              />
             </div>
           </div>
 
-          {/* Messages scroll area */}
-          <div className="flex-1 space-y-2 overflow-y-auto p-2.5 text-xs">
-            <div className="mx-auto my-1 max-w-[200px] rounded-md bg-white/70 px-2 py-1 text-center text-[10px] font-medium text-slate-600 shadow-2xs backdrop-blur-xs dark:bg-slate-800/80 dark:text-slate-300">
-              🔒 End-to-end encrypted
+          {/* Chat Messages scroll area */}
+          <div className="flex-1 space-y-3 overflow-y-auto p-3 text-xs">
+            {/* Timestamp tag */}
+            <div className="flex justify-center">
+              <span className="rounded-md bg-white/80 px-2 py-0.5 text-[10px] font-medium text-slate-600 shadow-2xs dark:bg-[#182229] dark:text-slate-400">
+                TODAY
+              </span>
             </div>
 
             {messages.map((m) => {
@@ -257,14 +341,23 @@ export function WhatsAppPhoneSimulator({
                   {m.type === "card" ? (
                     <div className="max-w-[85%] overflow-hidden rounded-2xl bg-white shadow-sm dark:bg-[#1f2c34]">
                       {m.imageUrl ? (
-                        <div className="relative h-28 w-full overflow-hidden bg-slate-200">
+                        <div className="relative h-28 w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img src={m.imageUrl} alt="Doctor" className="h-full w-full object-cover" />
                           <div className="absolute bottom-1 right-2 rounded-md bg-black/60 px-1.5 py-0.5 text-[9px] font-medium text-white">
                             Verified Doctor
                           </div>
                         </div>
-                      ) : null}
+                      ) : (
+                        <div className="relative flex h-24 w-full items-center justify-center bg-emerald-50/80 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-b border-slate-100 dark:border-slate-800">
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="size-10 rounded-full bg-emerald-100 dark:bg-emerald-900/60 flex items-center justify-center">
+                              <UserRound className="size-5 text-emerald-700 dark:text-emerald-300" />
+                            </div>
+                            <span className="text-[10px] font-medium text-emerald-800 dark:text-emerald-200">Verified Specialist</span>
+                          </div>
+                        </div>
+                      )}
                       <div className="p-2.5">
                         <p className="whitespace-pre-line font-medium leading-relaxed text-slate-900 dark:text-slate-100">
                           {m.text}
@@ -399,35 +492,10 @@ export function WhatsAppPhoneSimulator({
               onClick={() => handleSendUserMessage()}
               className="size-8 shrink-0 rounded-full bg-[#00a884] hover:bg-[#008069]"
             >
-              <Send className="size-3.5 text-white" />
+              <Send className="size-4 text-white" />
             </Button>
           </div>
         </div>
-      </div>
-
-      {/* Simulator Quick Action Toolbar */}
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => handleSendUserMessage("I want an appointment")}
-          className="h-7 text-xs"
-        >
-          <Sparkles className="mr-1 size-3 text-purple-600" />
-          Test: &quot;I want an appointment&quot;
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => handleSendUserMessage("Next Monday evening with Dr Ananya")}
-          className="h-7 text-xs"
-        >
-          Test Natural Language
-        </Button>
-        <Button size="sm" variant="ghost" onClick={resetSimulation} className="h-7 text-xs">
-          <RotateCcw className="mr-1 size-3" />
-          Reset Chat
-        </Button>
       </div>
     </div>
   );
