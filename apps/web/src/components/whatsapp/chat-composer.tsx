@@ -66,10 +66,17 @@ type Props = {
   disabled?: boolean;
   onTyping?: () => void;
   onSent?: () => void;
+  draftText?: string;
 };
 
-export function ChatComposer({ conversationId, patientId, disabled, onTyping, onSent }: Props) {
+export function ChatComposer({ conversationId, patientId, disabled, onTyping, onSent, draftText }: Props) {
   const [text, setText] = useState("");
+
+  useEffect(() => {
+    if (draftText !== undefined && draftText !== "") {
+      setText(draftText);
+    }
+  }, [draftText]);
   const [attachOpen, setAttachOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [pending, setPending] = useState<PendingAttachment | null>(null);

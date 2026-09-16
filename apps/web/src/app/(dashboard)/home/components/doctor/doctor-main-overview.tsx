@@ -5,12 +5,16 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useAppState } from "@/lib/app-state";
 import { currentUser, findCouple } from "@/lib/demo-data";
+import { useDoctorAppointments, stripDrPrefix } from "./doctor-dashboard";
 
 export function DoctorMainOverview() {
    const { data: session } = useSession();
-   const { kpis, tasks, exceptions, appointments, couples } = useAppState();
+   const { kpis, tasks, exceptions, couples } = useAppState();
+   const appointments = useDoctorAppointments();
 
-   const firstName = (session?.user?.name ?? currentUser.name).split(" ")[0] ?? "Dr.";
+   // Strip leading "Dr." so we don't get "Good Evening Dr. Dr."
+   const cleanName = stripDrPrefix(session?.user?.name ?? currentUser.name);
+   const firstName = cleanName.split(" ")[0] || "Doctor";
    const hour = new Date().getHours();
    const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
 

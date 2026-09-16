@@ -1434,6 +1434,14 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const result = await sendWhatsAppSessionText(tenant, { conversationId: id, body: body.body });
+
+    // If the message couldn't be dispatched directly to Meta (no local token),
+    // trigger the Railway production worker to sweep and send it immediately.
+    if (typeof result.providerMessageId === "string" && result.providerMessageId.startsWith("pending_meta_")) {
+      const { triggerRemoteOutboundDispatch } = await import("./outbound-bridge");
+      void triggerRemoteOutboundDispatch().catch(() => undefined);
+    }
+
     return ok(c, result, 201);
   })
 

@@ -3,9 +3,11 @@
 import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
 import { useAppState } from "@/lib/app-state";
+import { useDoctorAppointments } from "./doctor-dashboard";
 
 export function DoctorLeftSidebar() {
-  const { appointments, kpis, exceptions } = useAppState();
+  const { kpis, exceptions } = useAppState();
+  const appointments = useDoctorAppointments();
 
   const cards = [
     {

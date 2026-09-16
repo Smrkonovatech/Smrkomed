@@ -608,13 +608,27 @@ export class AppointmentBookingMachine {
         couple = await prisma.couple.findFirst({ where: { clinicId } });
       }
 
+      let doctorName = session.doctorName;
+      if (!doctorName && session.doctorId) {
+        const doctors = await getClinicDoctors(clinicId);
+        const matched = doctors.find((d) => d.id === session.doctorId);
+        if (matched) doctorName = matched.displayName;
+      }
+      if (!doctorName) {
+        const doctors = await getClinicDoctors(clinicId);
+        if (doctors.length > 0) doctorName = doctors[0]?.displayName;
+      }
+      if (doctorName && !doctorName.startsWith("Dr.") && !doctorName.startsWith("Dr ")) {
+        doctorName = `Dr. ${doctorName.trim()}`;
+      }
+
       // Create appointment in database
       const appointment = await prisma.appointment.create({
         data: {
           clinicId,
           coupleId: couple?.id ?? null,
           type: session.appointmentType || "Consultation",
-          doctorName: session.doctorName || "Dr. Ananya Rao",
+          doctorName: doctorName || "Dr. Medical Consultant",
           room: "Consultation Room 1",
           startsAt,
           durationMin: 30,

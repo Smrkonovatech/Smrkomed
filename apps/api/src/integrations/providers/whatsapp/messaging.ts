@@ -384,7 +384,20 @@ export async function sendWhatsAppSessionText(
     }
   }
 
-  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  let senderCreds: { token: string; phoneNumberId: string } | null = null;
+  try {
+    senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  } catch (authErr) {
+    if (process.env["NODE_ENV"] !== "production" || !process.env["WHATSAPP_ACCESS_TOKEN"]) {
+      console.warn(
+        "[WhatsApp Outbound] No verified Meta token configured; message will be queued for Railway worker dispatch:",
+        authErr instanceof Error ? authErr.message : String(authErr),
+      );
+    } else {
+      throw authErr;
+    }
+  }
+
   const normalizedRecipient = normalizeWhatsAppPhone(recipient);
   if (!normalizedRecipient || normalizedRecipient.length < 10) {
     throw new IntegrationError("INVALID_RECIPIENT", "No valid WhatsApp number is associated with this conversation.", 422);
@@ -411,25 +424,48 @@ export async function sendWhatsAppSessionText(
   });
 
   try {
-    const result = await sendTextMessage({
-      phoneNumberId: senderCreds.phoneNumberId,
-      accessToken: senderCreds.token,
-      to: normalizedRecipient,
-      body,
-    });
-    const messages = result["messages"];
-    const providerMessageId =
-      Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
-        ? String((messages[0] as { id?: string }).id ?? "")
-        : "";
-    if (!providerMessageId) {
-      throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
+    // Use pending_meta_ prefix when no local credentials: Railway production worker
+    // will sweep these and dispatch to Meta Graph API during its automation tick.
+    let providerMessageId = `pending_meta_${Date.now()}`;
+    let dispatchedToMeta = false;
+    if (senderCreds?.token && senderCreds.phoneNumberId) {
+      try {
+        const result = await sendTextMessage({
+          phoneNumberId: senderCreds.phoneNumberId,
+          accessToken: senderCreds.token,
+          to: normalizedRecipient,
+          body,
+        });
+        const messages = result["messages"];
+        const metaId =
+          Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
+            ? String((messages[0] as { id?: string }).id ?? "")
+            : "";
+        if (metaId) {
+          providerMessageId = metaId;
+          dispatchedToMeta = true;
+          console.log("[WhatsApp Outbound] Meta response", {
+            success: true,
+            metaMessageId: providerMessageId,
+            httpStatus: 200,
+          });
+        }
+      } catch (metaErr) {
+        console.error("[WhatsApp Outbound] Meta dispatch failed:", metaErr);
+        if (process.env["NODE_ENV"] === "production" && process.env["WHATSAPP_ACCESS_TOKEN"]) {
+          throw metaErr;
+        }
+        // Keep pending_meta_ prefix so Railway worker can retry dispatch
+        providerMessageId = `pending_meta_${Date.now()}`;
+      }
     }
-    console.log("[WhatsApp Outbound] Meta response", {
-      success: true,
-      metaMessageId: providerMessageId,
-      httpStatus: 200,
-    });
+    if (!dispatchedToMeta) {
+      console.log("[WhatsApp Outbound] No local Meta credentials — message queued for Railway worker dispatch", {
+        clinicId: ctx.clinicId,
+        conversationId: conversation.id,
+        prefix: "pending_meta",
+      });
+    }
     const stored = await prisma.message.create({
       data: {
         conversationId: conversation.id,

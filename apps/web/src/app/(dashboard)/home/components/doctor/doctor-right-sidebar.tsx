@@ -7,11 +7,13 @@ import { useState, useEffect } from "react";
 import { useAppState } from "@/lib/app-state";
 import { coupleLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
+import { useDoctorAppointments } from "./doctor-dashboard";
 
 export function DoctorRightSidebar() {
   const appState = useAppState() as ReturnType<typeof useAppState> & { couples?: Couple[] };
-  const { exceptions, appointments } = appState;
+  const { exceptions } = appState;
   const couples = appState.couples ?? [];
+  const appointments = useDoctorAppointments();
   const { ask } = useSmrkoAiBuddy();
 
   const [isRecording, setIsRecording] = useState(false);

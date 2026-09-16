@@ -37,6 +37,7 @@ import { appointmentBookingRoutes } from "../modules/appointment-booking";
 import { diagnosticRoutes } from "../modules/diagnostics";
 import { doctorRoutes } from "../modules/doctors";
 import { aiRoutes } from "../modules/ai";
+import { processPendingOutboundMessages, verifyOutboundBridgeSignature } from "../modules/whatsapp-automation/outbound-bridge";
 import type { AppEnv } from "../types";
 
 const protectedRoutes = new Hono<AppEnv>();
@@ -78,6 +79,24 @@ v1.route("/public", publicLeadRoutes);
 v1.route("/payments/webhooks", paymentWebhookRoutes);
 v1.route("/digital-health/abdm/v0.5", abdmCallbackRoutes);
 v1.route("/v0.5", abdmCallbackRoutes);
+
+v1.post("/internal/dispatch-outbound", async (c) => {
+  const sig = c.req.header("x-bridge-signature") ?? "";
+  const ts = Number.parseInt(c.req.header("x-bridge-timestamp") ?? "0", 10);
+  const secret = process.env["WHATSAPP_WORKER_SECRET"];
+  const authHeader = c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+
+  const validSig = Boolean(sig && ts && verifyOutboundBridgeSignature(sig, ts));
+  const validSecret = Boolean(secret && authHeader === secret);
+
+  if (!validSig && !validSecret) {
+    return c.json({ success: false, error: "Unauthorized bridge request" }, 401);
+  }
+
+  const result = await processPendingOutboundMessages(25);
+  return c.json({ success: true, ...result });
+});
+
 v1.route("/appointment-booking", appointmentBookingRoutes);
 v1.route("/", publicIntegrationRoutes);
 v1.route("/", protectedRoutes);

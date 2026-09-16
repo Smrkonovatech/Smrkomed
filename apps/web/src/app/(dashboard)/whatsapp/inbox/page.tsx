@@ -6,7 +6,8 @@ import { toast } from "sonner";
 
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { 
-  Bot, Plus, User, MoreVertical, Sparkles, Layout, CornerDownRight, Smile, Paperclip, FileImage, Download 
+  Bot, Plus, User, MoreVertical, Sparkles, Layout, CornerDownRight, Smile, Paperclip, FileImage, Download,
+  Calendar, Clock, CheckCircle2, Send, ChevronRight, MessageSquare, AlertCircle, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,7 @@ type Detail = {
   assignedStaff: { id: string; name: string } | null;
   patient: { id: string; firstName: string; lastName: string; phone: string | null } | null;
   clinicName: string;
+  contactPhone?: string | null;
   messages: Array<{
     id: string;
     direction: string;
@@ -145,7 +147,44 @@ export default function WhatsAppInboxPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showContext, setShowContext] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [activeRightTab, setActiveRightTab] = useState<"ai" | "context">("ai");
+  const [aiMessages, setAiMessages] = useState<Array<{ role: "user" | "assistant"; text: string }>>([
+    {
+      role: "assistant",
+      text: "Hello! I am Smrko AI, your clinical care assistant. I can analyze patient context, summarize communications, or draft WhatsApp replies. How can I help?",
+    },
+  ]);
+
+  const handleAskAi = async (customPrompt?: string) => {
+    const p = (customPrompt || aiPrompt).trim();
+    if (!p || aiLoading || !activeId) return;
+    setAiMessages((prev) => [...prev, { role: "user", text: p }]);
+    setAiPrompt("");
+    setAiLoading(true);
+    try {
+      const res = await apiPost<{ reply: string }>(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`, {
+        prompt: p,
+        includeContext: true,
+      });
+      setAiMessages((prev) => [...prev, { role: "assistant", text: res.reply }]);
+    } catch {
+      const patientName = detail?.patient
+        ? `${detail.patient.firstName} ${detail.patient.lastName}`.trim()
+        : "Patient";
+      setAiMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: `Suggested draft for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, thank you for contacting ${detail?.clinicName || "ABC Fertility Centre"}. We are reviewing your record and our medical team will update you shortly with details."`,
+        },
+      ]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   // Scroll & Realtime UX state
   const [hasNewMessageBelow, setHasNewMessageBelow] = useState(false);
@@ -740,62 +779,85 @@ export default function WhatsAppInboxPage() {
                   }}
                   className="flex-1 space-y-4 overflow-y-auto bg-[#FAFAFA] p-6 pb-8"
                 >
-                  <div className="text-center text-[10px] text-gray-400 font-medium mb-6">Today 2:20pm</div>
-                  {detail.messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
-                        m.direction === "INBOUND"
-                          ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
-                          : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
-                      )}
-                    >
-                      {m.media ? (
-                        <div className="my-1.5">
-                          <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
-                        </div>
-                      ) : (
-                        <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                      )}
-                      
-                      <p className={cn(
-                        "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
-                        m.direction === "INBOUND" ? "text-gray-400" : "text-white/70"
-                      )}>
-                        <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        {m.direction === "OUTBOUND" &&
-                          (m.status === "FAILED" || m.media?.status === "FAILED") ? (
-                          <button
-                            type="button"
-                            className="font-semibold text-rose-200 underline"
-                            onClick={() => void retryMedia(m.id)}
-                          >
-                            Retry
-                          </button>
-                        ) : null}
+                  {detail.messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full min-h-[250px] text-center text-gray-400">
+                      <div className="rounded-full bg-gray-100 p-4 mb-3">
+                        <Bot className="size-8 text-gray-400" />
+                      </div>
+                      <p className="text-sm font-semibold text-gray-600">No messages yet</p>
+                      <p className="text-xs text-gray-400 mt-1 max-w-[260px]">
+                        Type a reply below to start communicating with this patient via WhatsApp.
                       </p>
                     </div>
-                  ))}
-                  <div className="text-center text-[10px] text-gray-400 font-medium my-6">2:35 pm</div>
-                  <div className="max-w-[70%] ml-auto text-[15px] bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3">
-                    <p className="whitespace-pre-wrap leading-relaxed">Sure thing, I'll have a look today.</p>
-                  </div>
-                  <div className="bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[70%] flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-green-100 p-1.5 rounded-lg">
-                        <FileImage className="size-6 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">Report</p>
-                        <p className="text-xs text-gray-500">1.2 MB</p>
-                      </div>
-                    </div>
-                    <Download className="size-5 text-[#866BE3]" />
-                  </div>
-                  <div className="max-w-[70%] ml-auto text-[15px] bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3">
-                    <p className="whitespace-pre-wrap leading-relaxed">They're looking great!</p>
-                  </div>
+                  ) : (
+                    detail.messages.map((m, idx) => {
+                      const prev = idx > 0 ? detail.messages[idx - 1] : null;
+                      const showDate =
+                        !prev ||
+                        new Date(m.createdAt).toDateString() !== new Date(prev.createdAt).toDateString();
+                      return (
+                        <div key={m.id} className="space-y-4">
+                          {showDate && (
+                            <div className="text-center text-[10px] text-gray-400 font-semibold my-2">
+                              {new Date(m.createdAt).toLocaleDateString("en-IN", {
+                                weekday: "short",
+                                day: "numeric",
+                                month: "short",
+                              })}
+                            </div>
+                          )}
+                          <div
+                            className={cn(
+                              "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
+                              m.direction === "INBOUND"
+                                ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
+                                : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
+                            )}
+                          >
+                            {m.label && m.direction === "OUTBOUND" && (
+                              <div className="text-[10px] font-bold text-white/80 mb-1 flex items-center gap-1">
+                                {m.label}
+                              </div>
+                            )}
+                            {m.media ? (
+                              <div className="my-1.5">
+                                <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
+                              </div>
+                            ) : (
+                              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                            )}
+
+                            <p
+                              className={cn(
+                                "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
+                                m.direction === "INBOUND" ? "text-gray-400" : "text-white/70",
+                              )}
+                            >
+                              <span>
+                                {new Date(m.createdAt).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                              {m.direction === "OUTBOUND" && (
+                                <span className="font-bold">
+                                  {m.status === "READ"
+                                    ? "✓✓"
+                                    : m.status === "DELIVERED"
+                                      ? "✓✓"
+                                      : m.status === "SENT"
+                                        ? "✓"
+                                        : m.status === "FAILED"
+                                          ? "⚠ Failed"
+                                          : ""}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
 
                 {hasNewMessageBelow && (
@@ -822,8 +884,10 @@ export default function WhatsAppInboxPage() {
                     <ChatComposer
                       conversationId={activeId}
                       {...(detail.patient?.id ? { patientId: detail.patient.id } : {})}
+                      draftText={draftText}
                       onTyping={() => notifyTyping(activeId)}
                       onSent={() => {
+                        setDraftText("");
                         void (async () => {
                           const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
                           setDetail(d);
@@ -839,74 +903,205 @@ export default function WhatsAppInboxPage() {
           </section>
 
           <aside className="border-l border-gray-100 flex flex-col bg-[#FAFAFA] h-full min-h-0 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between bg-white">
-              <h3 className="font-bold text-gray-900 flex items-center gap-1.5 text-[15px]">
-                Ask Smrko AI <Sparkles className="size-4 text-[#866BE3]" />
-              </h3>
-              <Button size="icon" variant="ghost" className="size-7 text-gray-400">
-                <Layout className="size-4" />
-              </Button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-              <div className="text-center text-[10px] text-gray-400 font-medium">Today 2:20pm</div>
-              
-              <div className="text-[14px] text-gray-800 leading-relaxed max-w-[90%]">
-                Hey Olivia, can you please review the latest report when you can?
-              </div>
-              
-              <div className="text-center text-[10px] text-gray-400 font-medium">2:35 pm</div>
-              
-              <div className="flex flex-col items-end gap-2 w-full">
-                <div className="bg-[#F3F0FF] text-gray-800 rounded-xl rounded-tr-sm p-3 text-[14px] max-w-[95%] border border-[#866BE3]/10 shadow-sm">
-                  <div className="bg-[#E9E5F5] text-gray-600 text-[13px] px-2 py-1.5 rounded mb-2 border-l-2 border-[#866BE3]">
-                    Sure thing, I'll have a look today.
-                  </div>
-                  Sure thing, I'll have a look today.
-                </div>
-              </div>
-              
-              <div className="bg-white border border-gray-100 rounded-xl p-3 flex items-center justify-between shadow-sm max-w-[95%]">
-                <div className="flex items-center gap-3">
-                  <div className="bg-green-100 p-2 rounded-lg">
-                    <FileImage className="size-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-900">Report</p>
-                    <p className="text-xs text-gray-500">1.2 MB</p>
-                  </div>
-                </div>
-                <Download className="size-4 text-[#866BE3]" />
-              </div>
-              
-              <div className="flex justify-end w-full">
-                 <div className="bg-white border border-gray-100 rounded-xl rounded-tr-sm px-4 py-2.5 text-[14px] text-gray-800 shadow-sm max-w-[85%]">
-                   They're looking great!
-                 </div>
-              </div>
-              
-              <div className="flex gap-1.5 items-center bg-white border border-gray-100 w-fit px-3 py-1.5 rounded-full shadow-sm text-gray-400">
-                <span className="size-1 bg-gray-400 rounded-full" />
-                <span className="size-1 bg-gray-400 rounded-full" />
-                <span className="size-1 bg-gray-400 rounded-full" />
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
+              <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab("ai")}
+                  className={cn(
+                    "px-3 py-1 rounded-md font-semibold transition-colors flex items-center gap-1.5",
+                    activeRightTab === "ai"
+                      ? "bg-white text-[#866BE3] shadow-xs"
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  <Sparkles className="size-3.5 text-[#866BE3]" />
+                  Smrko AI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveRightTab("context")}
+                  className={cn(
+                    "px-3 py-1 rounded-md font-semibold transition-colors flex items-center gap-1.5",
+                    activeRightTab === "context"
+                      ? "bg-white text-[#866BE3] shadow-xs"
+                      : "text-gray-500 hover:text-gray-800"
+                  )}
+                >
+                  <User className="size-3.5 text-gray-500" />
+                  Context
+                </button>
               </div>
             </div>
-            
-            <div className="p-4 bg-white border-t border-gray-100 flex-shrink-0">
-              <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm focus-within:border-[#866BE3]/40 focus-within:ring-2 focus-within:ring-[#866BE3]/10 transition-all">
-                <div className="flex items-center gap-2 px-3 py-2 bg-[#F3F0FF]/50 border-b border-gray-100 text-xs text-gray-600 font-medium">
-                  <CornerDownRight className="size-3.5 text-[#866BE3]" /> Report.jpg
+
+            {activeRightTab === "ai" ? (
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="p-3 border-b border-gray-100 bg-white/70">
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                    Quick AI Assistance
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleAskAi("Draft a polite WhatsApp reminder about the upcoming consultation appointment.")
+                      }
+                      className="text-xs bg-[#F3F0FF] hover:bg-[#E9E3FC] text-[#866BE3] px-2.5 py-1 rounded-full border border-[#866BE3]/15 font-medium transition-colors text-left"
+                    >
+                      📅 Appointment Reminder
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleAskAi("Draft pre-consultation instructions and fasting/document reminders for the patient.")
+                      }
+                      className="text-xs bg-[#F3F0FF] hover:bg-[#E9E3FC] text-[#866BE3] px-2.5 py-1 rounded-full border border-[#866BE3]/15 font-medium transition-colors text-left"
+                    >
+                      📋 Pre-visit Instructions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void handleAskAi("Summarize this patient's WhatsApp message history and main query concisely.")
+                      }
+                      className="text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-full border border-gray-200 font-medium transition-colors text-left"
+                    >
+                      🔍 Summarize Chat
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-col p-2 bg-white">
-                  <input type="text" placeholder="Send a message" className="w-full bg-transparent border-none focus:outline-none text-[15px] px-2 py-3 text-gray-800 placeholder:text-gray-400" />
-                  <div className="flex items-center justify-end gap-1.5 mt-2">
-                    <Button size="icon" variant="ghost" className="size-8 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100"><Smile className="size-[18px]" /></Button>
-                    <Button size="icon" variant="ghost" className="size-8 rounded-full text-gray-500 hover:text-gray-700 hover:bg-gray-100"><Paperclip className="size-[18px]" /></Button>
-                    <Button size="sm" className="rounded-full h-8 px-4 bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 font-semibold ml-2 shadow-sm transition-colors">Send</Button>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {aiMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "text-xs leading-relaxed rounded-xl p-3 shadow-xs animate-in fade-in",
+                        msg.role === "assistant"
+                          ? "bg-white border border-gray-100 text-gray-800"
+                          : "bg-[#866BE3] text-white ml-auto max-w-[85%]"
+                      )}
+                    >
+                      {msg.role === "assistant" && (
+                        <div className="flex items-center justify-between mb-1.5 text-[10px] font-bold text-[#866BE3]">
+                          <span className="flex items-center gap-1">
+                            <Sparkles className="size-3" /> Smrko AI Suggestion
+                          </span>
+                        </div>
+                      )}
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                      {msg.role === "assistant" && i > 0 && (
+                        <div className="mt-2 pt-2 border-t border-gray-100 flex justify-end">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 text-[11px] px-2.5 text-[#866BE3] border-[#866BE3]/20 hover:bg-[#F3F0FF]"
+                            onClick={() => {
+                              const match = msg.text.match(/"([^"]+)"/);
+                              const cleanText = match ? match[1] : msg.text;
+                              setDraftText(cleanText || msg.text);
+                              toast.success("Inserted into staff reply composer!");
+                            }}
+                          >
+                            <CornerDownRight className="size-3 mr-1" /> Use in reply
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {aiLoading && (
+                    <div className="flex items-center gap-2 text-xs text-gray-400 italic p-2 bg-white rounded-xl border border-gray-100">
+                      <Sparkles className="size-3.5 text-[#866BE3] animate-spin" />
+                      Smrko AI is thinking…
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 bg-white border-t border-gray-100">
+                  <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 focus-within:border-[#866BE3] focus-within:ring-2 focus-within:ring-[#866BE3]/10">
+                    <input
+                      type="text"
+                      placeholder="Ask Smrko AI or draft reply…"
+                      className="flex-1 bg-transparent border-none focus:outline-none text-xs text-gray-800 placeholder:text-gray-400"
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleAskAi();
+                      }}
+                    />
+                    <Button
+                      size="icon"
+                      disabled={!aiPrompt.trim() || aiLoading}
+                      onClick={() => void handleAskAi()}
+                      className="size-7 rounded-lg bg-[#866BE3] hover:bg-[#7254d1] text-white disabled:opacity-40"
+                    >
+                      <Send className="size-3.5" />
+                    </Button>
                   </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+                <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs space-y-2">
+                  <p className="font-bold text-gray-900 text-sm">
+                    {detail?.patient ? `${detail.patient.firstName} ${detail.patient.lastName}` : "Unmatched"}
+                  </p>
+                  <p className="text-gray-500">{detail?.patient?.phone ?? detail?.contactPhone ?? "No phone"}</p>
+                  <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                    <span className="text-gray-400">Clinic</span>
+                    <span className="font-semibold text-gray-700">{detail?.clinicName}</span>
+                  </div>
+                </div>
+
+                {context?.upcomingAppointment && (
+                  <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs space-y-1.5">
+                    <div className="flex items-center gap-1.5 font-bold text-gray-900">
+                      <Calendar className="size-3.5 text-[#866BE3]" />
+                      Upcoming Appointment
+                    </div>
+                    <p className="text-gray-700 font-medium">
+                      {new Date(context.upcomingAppointment.startsAt).toLocaleDateString("en-IN", {
+                        weekday: "short",
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                    <p className="text-gray-500">
+                      {context.upcomingAppointment.type} · {context.upcomingAppointment.doctorName || "Assigned Doctor"}
+                    </p>
+                  </div>
+                )}
+
+                {context?.couple && (
+                  <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs space-y-1.5">
+                    <p className="font-bold text-gray-900">Fertility Couple Details</p>
+                    <p className="text-gray-500">ID: {context.couple.slug}</p>
+                    {context.couple.doctor && (
+                      <p className="text-gray-700">Doctor: {context.couple.doctor.name}</p>
+                    )}
+                    {context.couple.coordinator && (
+                      <p className="text-gray-700">Coordinator: {context.couple.coordinator.name}</p>
+                    )}
+                  </div>
+                )}
+
+                {context?.recentTasks && context.recentTasks.length > 0 && (
+                  <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs space-y-2">
+                    <p className="font-bold text-gray-900">Care Loop Tasks</p>
+                    <div className="space-y-1">
+                      {context.recentTasks.slice(0, 3).map((t) => (
+                        <div key={t.id} className="flex items-center justify-between text-gray-600">
+                          <span className="truncate pr-2">{t.title}</span>
+                          <span className="text-[10px] font-semibold uppercase">{t.status}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </aside>
         </div>
       )}

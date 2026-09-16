@@ -5,6 +5,8 @@ import Image from "next/image";
 import { useAppState } from "@/lib/app-state";
 import { findCouple } from "@/lib/demo-data";
 import type { Appointment, Couple } from "@/lib/demo-data";
+import { useDoctorAppointments } from "./doctor-dashboard";
+
 
 interface TooltipCardProps {
    appointment: Appointment;
@@ -120,7 +122,8 @@ const TooltipCard = ({ appointment, couple, color, initial, leftPercent }: Toolt
 };
 
 export function AppointmentsTimeline() {
-   const { appointments, couples } = useAppState();
+   const { couples } = useAppState();
+   const appointments = useDoctorAppointments();
 
    const getMinutesFrom8AM = (timeStr: string) => {
       if (!timeStr) return 0;

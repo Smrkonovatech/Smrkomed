@@ -313,6 +313,9 @@ export async function bookAppointmentFromSlot(input: {
 
   const startTime = new Date(decoded.startMs);
   let doctorName = decoded.doctorName || null;
+  if (doctorName && !doctorName.startsWith("Dr.") && !doctorName.startsWith("Dr ")) {
+    doctorName = `Dr. ${doctorName.trim()}`;
+  }
   if (!doctorName) {
     const { getClinicDoctors } = await import("../appointment-booking/slot-engine");
     const docs = await getClinicDoctors(input.tenant.clinicId);
