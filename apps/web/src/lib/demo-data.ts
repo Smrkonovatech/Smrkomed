@@ -168,7 +168,7 @@ export interface MediaItem {
 export const clinics: Clinic[] = [
   {
     id: "blr",
-    name: "ABC Fertility Centre",
+    name: "Hospex",
     city: "Bangalore",
     address: "12 Lavelle Road, Bangalore 560001",
     phone: "+91 80 4000 1200",
@@ -176,7 +176,7 @@ export const clinics: Clinic[] = [
   },
   {
     id: "kochi",
-    name: "ABC Fertility Centre",
+    name: "Hospex",
     city: "Kochi",
     address: "Panampilly Nagar, Kochi 682036",
     phone: "+91 484 400 2200",
@@ -184,7 +184,7 @@ export const clinics: Clinic[] = [
   },
   {
     id: "chennai",
-    name: "ABC Fertility Centre",
+    name: "Hospex",
     city: "Chennai",
     address: "Nungambakkam High Road, Chennai 600034",
     phone: "+91 44 4000 3300",

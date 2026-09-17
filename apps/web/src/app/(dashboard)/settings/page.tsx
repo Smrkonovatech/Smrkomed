@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
 import { PageHeader, StatusBadge } from "@/components/ui-kit";
@@ -203,13 +203,13 @@ function SectionIntro({
   );
 }
 
-function SaveActions({ saved }: { saved: boolean }) {
+function SaveActions({ saved, loading }: { saved: boolean; loading?: boolean }) {
   return (
     <div className="flex items-center gap-3 border-t pt-4">
-      <Button type="submit" className="rounded-lg">
-        Save changes
+      <Button type="submit" className="rounded-lg" disabled={loading}>
+        {loading ? "Saving..." : "Save changes"}
       </Button>
-      {saved && (
+      {saved && !loading && (
         <span className="inline-flex items-center gap-1.5 text-xs font-medium text-success">
           <Check className="size-3.5" />
           Saved just now
@@ -220,19 +220,34 @@ function SaveActions({ saved }: { saved: boolean }) {
 }
 
 export default function SettingsPage() {
-  const { role, clinicId } = useAppState();
+  const { role, clinicId, currentClinic, updateClinic } = useAppState();
   const clinic = clinics.find((item) => item.id === clinicId) ?? clinics[0]!;
   const [activeSection, setActiveSection] = useState<SectionId>("clinic");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [savedSection, setSavedSection] = useState<SectionId | null>(null);
+  const [isSavingClinic, setIsSavingClinic] = useState(false);
   const [profile, setProfile] = useState({
-    name: clinic.name,
-    city: clinic.city,
-    address: clinic.address,
-    phone: clinic.phone,
-    hours: clinic.hours,
+    name: currentClinic?.name || clinic.name,
+    city: currentClinic?.city || clinic.city,
+    address: currentClinic?.address || clinic.address,
+    phone: currentClinic?.phone || clinic.phone,
+    hours: currentClinic?.hours || currentClinic?.branches?.[0]?.hours || clinic.hours,
     languages: "English, Hindi, Kannada, Malayalam",
   });
+
+  useEffect(() => {
+    if (currentClinic) {
+      setProfile((prev) => ({
+        ...prev,
+        name: currentClinic.name || prev.name,
+        city: currentClinic.city || prev.city,
+        address: currentClinic.address || prev.address,
+        phone: currentClinic.phone || prev.phone,
+        hours: currentClinic.hours || currentClinic.branches?.[0]?.hours || prev.hours,
+      }));
+    }
+  }, [currentClinic]);
+
   const [teamSettings, setTeamSettings] = useState({
     escalationContact: "Meera Iyer",
     coverageWindow: "08:00 – 20:00",
@@ -278,7 +293,7 @@ export default function SettingsPage() {
   const active = sections.find((section) => section.id === activeSection)!;
   const isOwner = role === "owner";
 
-  function save(
+  async function save(
     event: FormEvent<HTMLFormElement>,
     section: SectionId,
     requiredFields: Array<[string, string]>,
@@ -295,6 +310,28 @@ export default function SettingsPage() {
       toast.error("Please complete the required fields");
       return;
     }
+
+    if (section === "clinic") {
+      setIsSavingClinic(true);
+      try {
+        await updateClinic({
+          name: profile.name,
+          city: profile.city,
+          address: profile.address,
+          phone: profile.phone,
+          hours: profile.hours,
+        });
+        setSavedSection(section);
+        toast.success("Clinic Profile saved");
+      } catch (err) {
+        console.error("Failed to save clinic profile:", err);
+        toast.error("Failed to save clinic profile. Please try again.");
+      } finally {
+        setIsSavingClinic(false);
+      }
+      return;
+    }
+
     setSavedSection(section);
     toast.success(`${sections.find((item) => item.id === section)?.label} saved`);
   }
@@ -459,7 +496,7 @@ export default function SettingsPage() {
                   />
                 </Field>
               </div>
-              <SaveActions saved={savedSection === "clinic"} />
+              <SaveActions saved={savedSection === "clinic"} loading={isSavingClinic} />
             </form>
           )}
 

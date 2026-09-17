@@ -7,6 +7,7 @@ import { useState, useEffect } from "react";
 import { useAppState } from "@/lib/app-state";
 import { coupleLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
+import { clinicApi } from "@/lib/clinic-api";
 import { useDoctorAppointments } from "./doctor-dashboard";
 
 export function DoctorRightSidebar() {
@@ -47,6 +48,18 @@ export function DoctorRightSidebar() {
   const appointmentDetails = nextAppointment ? `${nextAppointment.type} • ${nextAppointment.time}` : "—";
   const todayVisits = appointments.length;
 
+  const [patientQuestionsCount, setPatientQuestionsCount] = useState(2);
+
+  useEffect(() => {
+    clinicApi.whatsappInbox({ filter: "waiting_staff" })
+      .then((rows: any[]) => {
+        if (Array.isArray(rows) && rows.length > 0) {
+          setPatientQuestionsCount(rows.length);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="flex flex-col gap-2.5 h-full">
       {/* Alerts List */}
@@ -55,7 +68,7 @@ export function DoctorRightSidebar() {
           { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]', href: '/care-loop' },
           { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]', href: '/clinical-diagnostics' },
           { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]', href: '/care-loop' },
-          { label: 'Patient Questions', count: 2, badgeColor: 'bg-[#71A021]', href: '/whatsapp/inbox' }
+          { label: 'Patient Questions', count: patientQuestionsCount, badgeColor: 'bg-[#71A021]', href: '/whatsapp/inbox' }
         ].map((alert, i) => (
           <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
             <div className="flex items-center gap-2">
@@ -64,7 +77,19 @@ export function DoctorRightSidebar() {
               </span>
               <span className="text-[clamp(0.7rem,1.1vw,0.875rem)] text-[#866BE3]">{alert.label}</span>
             </div>
-            <Link href={alert.href} className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</Link>
+            {alert.label === 'Patient Questions' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("open-header-messages"));
+                }}
+                className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2"
+              >
+                View
+              </button>
+            ) : (
+              <Link href={alert.href} className="text-[clamp(0.6rem,0.9vw,0.75rem)] text-[#866BE3] underline hover:text-[#7254d1] decoration-1 underline-offset-2">View</Link>
+            )}
           </div>
         ))}
       </div>

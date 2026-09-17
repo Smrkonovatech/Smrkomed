@@ -16,6 +16,7 @@ import {
   type ClinicAppointment,
   type ClinicCouple,
   type ClinicDocument,
+  type ClinicProfile,
   type ClinicStaff,
   type ClinicTask,
 } from "./clinic-api";
@@ -136,6 +137,16 @@ export interface AppState {
   clinicId: string;
   setClinicId: (id: string) => void;
   clinicName: string;
+  currentClinic: ClinicProfile | null;
+  updateClinic: (patch: {
+    name?: string;
+    city?: string;
+    address?: string;
+    phone?: string;
+    hours?: string;
+    email?: string;
+    website?: string;
+  }) => Promise<ClinicProfile>;
   loadState: "loading" | "ready" | "error";
   loadError: string | null;
   reload: () => Promise<void>;
@@ -265,6 +276,7 @@ function toDocument(row: ClinicDocument): AppDocument {
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>("doctor");
   const [clinicId, setClinicId] = useState(clinics[0]!.id);
+  const [currentClinic, setCurrentClinic] = useState<ClinicProfile | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
   const [staff, setStaff] = useState<ClinicStaff[]>([]);
@@ -309,7 +321,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
     setStaffLoading(true);
     try {
-      const [couplesOutcome, tasksOutcome, apptsOutcome, docsOutcome, activityOutcome, staffOutcome] =
+      const [couplesOutcome, tasksOutcome, apptsOutcome, docsOutcome, activityOutcome, staffOutcome, clinicOutcome] =
         await Promise.all([
           clinicApi.couples().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
           clinicApi.tasks().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
@@ -317,6 +329,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           clinicApi.documents().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
           clinicApi.activity().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
           clinicApi.staff().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.getCurrentClinic().then((row) => ({ ok: true as const, row })).catch((e) => ({ ok: false as const, error: e })),
         ]);
 
       let activeCount = 0;
@@ -347,6 +360,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setStaffError(null);
       } else {
         setStaffError(clinicErrorMessage(staffOutcome.error, "Unable to load clinic staff."));
+      }
+      if (clinicOutcome.ok && clinicOutcome.row) {
+        const raw = clinicOutcome.row as any;
+        const clinicObj = (raw?.clinic ? raw.clinic : raw) as ClinicProfile;
+        setCurrentClinic(clinicObj);
+        if (clinicObj?.name) {
+          for (const c of clinics) {
+            c.name = clinicObj.name;
+          }
+        }
       }
 
       setKpis((prev) => ({
@@ -601,13 +624,39 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setKpis((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const updateClinic = useCallback(
+    async (patch: {
+      name?: string;
+      city?: string;
+      address?: string;
+      phone?: string;
+      hours?: string;
+      email?: string;
+      website?: string;
+    }) => {
+      const updated = await clinicApi.updateCurrentClinic(patch);
+      const raw = updated as any;
+      const clinicObj = (raw?.clinic ? raw.clinic : raw) as ClinicProfile;
+      setCurrentClinic(clinicObj);
+      if (clinicObj?.name) {
+        for (const c of clinics) {
+          c.name = clinicObj.name;
+        }
+      }
+      return clinicObj;
+    },
+    [],
+  );
+
   const value = useMemo<AppState>(
     () => ({
       role,
       setRole,
       clinicId,
       setClinicId,
-      clinicName: clinics.find((c) => c.id === clinicId)?.city ?? clinics[0]!.city,
+      clinicName: currentClinic?.name ?? clinics.find((c) => c.id === clinicId)?.name ?? clinics[0]!.name,
+      currentClinic,
+      updateClinic,
       loadState,
       loadError,
       reload,
@@ -645,6 +694,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [
       role,
       clinicId,
+      currentClinic,
+      updateClinic,
       loadState,
       loadError,
       reload,

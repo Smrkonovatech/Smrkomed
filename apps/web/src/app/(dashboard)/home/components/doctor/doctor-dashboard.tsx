@@ -10,7 +10,7 @@ import { AppointmentsTimeline } from "./doctor-appointments-timeline";
 
 /** Strip leading "Dr."/"Dr" prefix from a name string (case-insensitive). */
 export function stripDrPrefix(name: string): string {
-  return name.replace(/^Dr\.?\s*/i, "").trim();
+  return name.replace(/^(?:Dr\.?|DR)\s+/i, "").replace(/^(?:Dr\.?|DR)\s+/i, "").trim();
 }
 
 /** Fuzzy match: does one cleaned name contain the other? */

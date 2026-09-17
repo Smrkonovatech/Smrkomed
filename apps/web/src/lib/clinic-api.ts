@@ -275,9 +275,42 @@ export const clinicApi = {
   getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
   createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
   updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
+  // WhatsApp Inbox & Conversations
+  whatsappInbox: (params?: { filter?: string; q?: string }) => {
+    const q = params
+      ? "?" + new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as [string, string][]).toString()
+      : "";
+    return apiGet<any[]>(`/api/v1/whatsapp-automation/inbox${q}`);
+  },
+  whatsappConversation: (id: string) =>
+    apiGet<any>(`/api/v1/whatsapp-automation/inbox/${id}`),
+  sendWhatsappMessage: (conversationId: string, body: string) =>
+    apiPost<any>(`/api/v1/whatsapp-automation/inbox/${conversationId}/reply`, { body }),
+  // Clinic Profile & Location Settings
+  getCurrentClinic: () => apiGet<ClinicProfile>("/api/v1/clinics/current"),
+  updateCurrentClinic: (body: Partial<ClinicProfile> & { hours?: string | null }) =>
+    apiPatch<ClinicProfile>("/api/v1/clinics/current", body),
+  getClinics: () => apiGet<ClinicProfile[]>("/api/v1/clinics"),
 };
 
-
-
-
-
+export type ClinicProfile = {
+  id: string;
+  name: string;
+  slug?: string;
+  city?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  timezone?: string;
+  hours?: string | null;
+  organizationId?: string;
+  branches?: Array<{
+    id: string;
+    name: string;
+    city?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    hours?: string | null;
+  }>;
+};

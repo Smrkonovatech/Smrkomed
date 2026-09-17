@@ -11,20 +11,13 @@ import {
   Plus,
   Search,
   UserPlus,
-  Maximize2,
-  MoreVertical,
-  CheckCheck,
-  ChevronRight,
-  X,
-  Paperclip,
-  Send,
-  Download,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { useGlobalActions } from "@/components/actions/global-action-provider";
+import { HeaderMessagesPopup } from "./header-messages-popup";
 import { Avatar } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,12 +52,20 @@ type SearchResult = {
 export function AppHeader() {
   const router = useRouter();
   const { openAction } = useGlobalActions();
-  const { clinicId, setClinicId, role, setRole, couples: stateCouples, tasks: stateTasks, documents: stateDocs } = useAppState();
+  const {
+    clinicId,
+    setClinicId,
+    clinicName,
+    currentClinic,
+    role,
+    setRole,
+    couples: stateCouples,
+    tasks: stateTasks,
+    documents: stateDocs,
+  } = useAppState();
   const { data: session } = useSession();
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [messagesOpen, setMessagesOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
 
   const sessionName = session?.user?.name ?? currentUser.name;
   const sessionInitials =
@@ -76,6 +77,7 @@ export function AppHeader() {
       .toUpperCase() ?? currentUser.initials;
   const sessionRoleLabel = session?.user?.role?.replaceAll("_", " ") ?? roleLabels[role];
   const clinic = clinics.find((c) => c.id === clinicId) ?? clinics[0]!;
+  const displayClinicName = currentClinic?.name || clinicName || clinic.name;
 
   const results = useMemo<SearchResult[]>(() => {
     const pool: SearchResult[] = [
@@ -195,7 +197,7 @@ export function AppHeader() {
                 aria-label="Clinic selector"
               >
                 <Building2 className="size-4 shrink-0" />
-                <span className="truncate font-medium">{clinic.name}</span>
+                <span className="truncate font-medium">{displayClinicName}</span>
                 <ChevronDown className="size-3.5 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
@@ -204,7 +206,7 @@ export function AppHeader() {
               <DropdownMenuSeparator />
               {clinics.map((c) => (
                 <DropdownMenuItem key={c.id} onSelect={() => setClinicId(c.id)}>
-                  {c.name} · {c.city}
+                  {currentClinic?.name || c.name} · {c.city}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -240,124 +242,7 @@ export function AppHeader() {
           </DropdownMenu>
 
           {/* 3. Messages/Notifications */}
-          <Popover open={messagesOpen} onOpenChange={setMessagesOpen}>
-            <PopoverTrigger asChild>
-              <button className="relative hidden lg:flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors">
-                <MessageSquare className="size-[18px] text-[#866BE3]" />
-                <span className="absolute top-0 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-[#F67575] text-[9px] font-bold text-white border-2 border-white shadow-sm">
-                  2
-                </span>
-              </button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-[340px] rounded-2xl p-0 shadow-[0_10px_40px_rgb(0,0,0,0.1)] border-border/40 overflow-hidden mr-4 mt-2">
-              {/* Header */}
-              <div className="flex items-center justify-between px-4 pt-4 pb-3">
-                <h3 className="font-bold text-gray-900 text-[17px]">Messages</h3>
-                <div className="flex items-center gap-3 text-gray-500">
-                  <Maximize2 className="size-4 cursor-pointer hover:text-gray-800" />
-                  <MoreVertical className="size-4 cursor-pointer hover:text-gray-800" />
-                </div>
-              </div>
-              
-              {/* Search */}
-              <div className="px-4 pb-3">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-                  <Input placeholder="Search" className="h-10 w-full rounded-xl border-gray-200 pl-9 text-sm bg-white focus-visible:ring-1 focus-visible:ring-primary/30" />
-                </div>
-              </div>
-
-              {/* Message List */}
-              <div className="max-h-[400px] overflow-y-auto pb-2">
-                {/* Item 1 */}
-                <div 
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-t border-gray-100"
-                  onClick={() => {
-                    setMessagesOpen(false);
-                    setChatOpen(true);
-                  }}
-                >
-                  <div className="relative shrink-0">
-                    <img src="/images/dashboard/patient.png" alt="Avatar" className="size-11 rounded-full object-cover bg-gray-200" />
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-bold text-sm text-gray-800 truncate">Phoenix Baker</span>
-                      <span className="text-[11px] text-gray-400 shrink-0">5min ago</span>
-                    </div>
-                    <p className="text-[13px] text-gray-500 truncate pr-4">Hey Olivia, Katherine sent me over the lat...</p>
-                  </div>
-                </div>
-
-                {/* Item 2 */}
-                <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-t border-gray-100 bg-[#F8F7FC]">
-                  <div className="relative shrink-0">
-                    <div className="size-11 rounded-full bg-[#866BE3]"></div>
-                    <span className="absolute bottom-0 right-0 size-3.5 rounded-full bg-[#22C55E] border-2 border-white"></span>
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-bold text-sm text-gray-800 truncate">Phoenix Baker</span>
-                      <span className="text-[11px] text-gray-400 shrink-0">5min ago</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[13px] text-gray-600 truncate">Hey Olivia, Katherine sent me over th...</p>
-                      <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[#866BE3] text-[9px] font-bold text-white">2</span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Item 3 */}
-                <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-t border-gray-100">
-                  <div className="relative shrink-0 flex -space-x-5">
-                    <div className="size-11 rounded-full bg-[#E85D5D] border-[3px] border-white relative z-10"></div>
-                    <div className="size-11 rounded-full bg-[#E85D5D]"></div>
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-bold text-sm text-gray-800 truncate">Mohit & Shruti</span>
-                      <span className="text-[11px] text-gray-400 shrink-0">5min ago</span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-[13px] text-gray-500 truncate"><span className="text-gray-700 font-medium">Mohit:</span> Hey Olivia, Katherine sent m...</p>
-                      <ChevronRight className="size-4 shrink-0 text-gray-400" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Item 4 */}
-                <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-t border-gray-100">
-                  <div className="relative shrink-0">
-                    <div className="size-11 rounded-full bg-[#4B83D8]"></div>
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-bold text-sm text-gray-800 truncate">Phoenix Baker</span>
-                      <span className="text-[11px] text-gray-400 shrink-0">5min ago</span>
-                    </div>
-                    <p className="text-[13px] text-gray-500 truncate flex items-center gap-1">
-                      <CheckCheck className="size-3.5 text-[#4B83D8] shrink-0" />
-                      Hey Olivia, Katherine sent me over the...
-                    </p>
-                  </div>
-                </div>
-
-                {/* Item 5 */}
-                <div className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-t border-gray-100">
-                  <div className="relative shrink-0">
-                    <div className="size-11 rounded-full bg-gray-400"></div>
-                  </div>
-                  <div className="flex-1 min-w-0 pt-0.5">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <span className="font-bold text-sm text-gray-800 truncate">Phoenix Baker</span>
-                      <span className="text-[11px] text-gray-400 shrink-0">5min ago</span>
-                    </div>
-                    <p className="text-[13px] text-gray-500 truncate pr-4">Hey Olivia, Katherine sent me over the lat...</p>
-                  </div>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <HeaderMessagesPopup />
 
           {/* 4. User Profile */}
           <DropdownMenu>
@@ -401,87 +286,6 @@ export function AppHeader() {
       </div>
     </header>
 
-      {chatOpen && (
-        <div className="fixed bottom-6 right-6 w-[340px] max-h-[calc(100vh-100px)] bg-white rounded-2xl shadow-[0_10px_40px_rgb(0,0,0,0.12)] border border-gray-100 overflow-hidden flex flex-col z-50">
-          {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white shrink-0">
-            <div className="flex items-center gap-3">
-              <img src="/images/dashboard/patient.png" alt="Avatar" className="size-9 rounded-full object-cover bg-gray-200" />
-              <div>
-                <h4 className="text-sm font-bold text-gray-800 leading-tight">Phoenix Baker</h4>
-                <p className="text-[11px] text-gray-500">Active now</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3 text-gray-500">
-              <Maximize2 className="size-4 cursor-pointer hover:text-gray-800" />
-              <MoreVertical className="size-4 cursor-pointer hover:text-gray-800" />
-              <X className="size-5 cursor-pointer hover:text-gray-800" onClick={() => setChatOpen(false)} />
-            </div>
-          </div>
-          
-          {/* Chat Body */}
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 bg-[#F8F7FC] min-h-[200px]">
-            {/* Timestamp */}
-            <div className="flex items-center gap-4">
-              <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-[10px] text-gray-400 font-medium">Today 2:20pm</span>
-              <div className="flex-1 h-px bg-gray-200"></div>
-            </div>
-
-            {/* Received Message */}
-            <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-3 text-[13px] text-gray-800 shadow-sm w-fit max-w-[85%]">
-              Hey Olivia, can you please review the latest report when you can?
-            </div>
-
-            {/* Timestamp */}
-            <div className="flex items-center gap-4 mt-2">
-              <div className="flex-1 h-px bg-gray-200"></div>
-              <span className="text-[10px] text-gray-400 font-medium">2:35 pm</span>
-              <div className="flex-1 h-px bg-gray-200"></div>
-            </div>
-
-            {/* Sent Message */}
-            <div className="bg-[#866BE3] text-white rounded-2xl rounded-tr-sm p-3 text-[13px] shadow-sm self-end w-fit max-w-[85%]">
-              Sure thing, I'll have a look today.
-            </div>
-
-            {/* Received File */}
-            <div className="bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-3 shadow-sm w-[220px] flex items-center gap-3">
-              <div className="size-10 rounded-lg bg-[#E6F4EA] flex flex-col items-center justify-center text-[#1E8E3E]">
-                <span className="text-[10px] font-bold">JPG</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[13px] font-semibold text-gray-800 truncate">Report</p>
-                <p className="text-[11px] text-gray-500">1.2 MB</p>
-              </div>
-              <Download className="size-4 text-[#866BE3] cursor-pointer" />
-            </div>
-
-            {/* Sent Message */}
-            <div className="bg-[#866BE3] text-white rounded-2xl rounded-tr-sm p-3 text-[13px] shadow-sm self-end w-fit max-w-[85%]">
-              They're looking great!
-            </div>
-
-            {/* Typing Indicator */}
-            <div className="bg-white border border-gray-100 rounded-xl rounded-tl-sm p-2 w-fit flex gap-1 items-center shadow-sm">
-              <div className="size-1.5 rounded-full bg-gray-400 animate-bounce"></div>
-              <div className="size-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-              <div className="size-1.5 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }}></div>
-            </div>
-          </div>
-
-          {/* Input Area */}
-          <div className="p-4 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0">
-            <div className="flex-1 relative">
-              <Input placeholder="Send a message" className="h-10 w-full rounded-xl border-gray-200 pr-10 text-sm focus-visible:ring-1 focus-visible:ring-primary/30" />
-              <Paperclip className="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-gray-400 cursor-pointer hover:text-gray-600" />
-            </div>
-            <button className="size-10 rounded-xl bg-gray-400 text-white flex items-center justify-center shrink-0 hover:bg-gray-500 transition-colors">
-              <Send className="size-4 ml-0.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

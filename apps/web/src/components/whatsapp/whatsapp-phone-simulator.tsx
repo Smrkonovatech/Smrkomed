@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useDoctors, displayNameOf, type DoctorProfile } from "@/lib/doctors";
+import { useAppState } from "@/lib/app-state";
 
 export type SimMessage = {
   id: string;
@@ -22,12 +23,23 @@ export type SimMessage = {
 };
 
 export function WhatsAppPhoneSimulator({
-  clinicName = "SmrkoMed Clinic",
+  clinicName: propClinicName,
   onSimulateStep,
 }: {
   clinicName?: string;
   onSimulateStep?: (stepName: string) => void;
 }) {
+  let appClinicName = "Hospex";
+  try {
+    const appState = useAppState();
+    if (appState?.clinicName) appClinicName = appState.clinicName;
+  } catch {
+    // If rendered outside AppStateProvider, fallback to Hospex
+  }
+  const clinicName =
+    propClinicName && propClinicName !== "ABC Fertility Centre" && propClinicName !== "SmrkoMed Clinic"
+      ? propClinicName
+      : appClinicName;
   const clinicDoctors = useDoctors();
   const realDoctors = useMemo(() => {
     const active = clinicDoctors.filter((d) => !d.isDraft && d.status === "active");
