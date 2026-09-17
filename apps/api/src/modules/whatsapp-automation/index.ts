@@ -1263,7 +1263,7 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     if (media.clinicId !== tenant.clinicId) {
       throw new HttpError(403, "FORBIDDEN", "Access to media for foreign clinic denied");
     }
-    let isReady = media.status === "READY" && Boolean(media.storageKey) && (await mediaStorageProvider.exists(media.storageKey!));
+    let isReady = Boolean(media.storageKey) && (await mediaStorageProvider.exists(media.storageKey!));
     if (!isReady && media.providerMediaId) {
       try {
         const { downloadAndStoreWhatsAppMedia } = await import("../media/service");
@@ -1571,6 +1571,139 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     },
   )
 
+  .post(
+    "/couples/:coupleId/media",
+    validate("param", z.object({ coupleId: z.string().min(1) })),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+      const { coupleId } = c.req.valid("param");
+
+      const couple = await prisma.couple.findFirst({
+        where: { id: coupleId, clinicId: tenant.clinicId },
+        include: {
+          primaryPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+          partnerPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        },
+      });
+      if (!couple) throw new HttpError(404, "NOT_FOUND", "Couple not found");
+
+      const body = await c.req.parseBody({ all: true });
+      const file = body["file"];
+      if (!(file instanceof File)) {
+        throw new HttpError(422, "INVALID_FILE", "A file upload is required.");
+      }
+
+      const captionRaw = body["caption"];
+      const caption = typeof captionRaw === "string" ? captionRaw : undefined;
+      const kindRaw = body["kind"];
+      const kindHint =
+        typeof kindRaw === "string" && ["IMAGE", "VIDEO", "DOCUMENT", "AUDIO"].includes(kindRaw)
+          ? (kindRaw as OutboundMediaKind)
+          : undefined;
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const mimeType = file.type || "application/octet-stream";
+      const filename = sanitizeFilename(file.name) || `upload${getExtensionForMime(mimeType)}`;
+
+      const validated = validateOutboundMediaFile({
+        mimeType,
+        sizeBytes: buffer.length,
+        filename,
+        ...(kindHint ? { kind: kindHint } : {}),
+      });
+      if (!validated.ok) {
+        throw new HttpError(422, "INVALID_FILE", validated.reason);
+      }
+
+      const targets: Array<{ patientId: string; name: string; phone: string }> = [];
+      if (couple.primaryPatient?.phone) {
+        targets.push({
+          patientId: couple.primaryPatientId,
+          name: `${couple.primaryPatient.firstName || ""} ${couple.primaryPatient.lastName || ""}`.trim() || "Primary",
+          phone: couple.primaryPatient.phone,
+        });
+      }
+      if (couple.partnerPatient?.phone && couple.partnerPatientId) {
+        targets.push({
+          patientId: couple.partnerPatientId,
+          name: `${couple.partnerPatient.firstName || ""} ${couple.partnerPatient.lastName || ""}`.trim() || "Partner",
+          phone: couple.partnerPatient.phone,
+        });
+      }
+
+      if (targets.length === 0) {
+        throw new HttpError(422, "NO_VALID_PHONE", "Neither partner has a registered phone number.");
+      }
+
+      const results: any[] = [];
+      for (const target of targets) {
+        const normPhone = normalizeWhatsAppPhone(target.phone);
+        let conv = await prisma.conversation.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            channel: "WHATSAPP",
+            OR: [
+              { patientId: target.patientId },
+              ...(normPhone ? [{ contactPhone: normPhone }, { contactPhone: `+${normPhone}` }] : []),
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+        });
+
+        if (!conv) {
+          conv = await prisma.conversation.create({
+            data: {
+              clinicId: tenant.clinicId,
+              patientId: target.patientId,
+              coupleId: couple.id,
+              contactPhone: normPhone || target.phone,
+              unmatched: false,
+              channel: "WHATSAPP",
+              status: "OPEN",
+            },
+          });
+        }
+
+        try {
+          const res = await sendWhatsAppSessionMedia(tenant, {
+            conversationId: conv.id,
+            buffer,
+            mimeType: validated.mimeType,
+            filename,
+            ...(caption !== undefined ? { caption } : {}),
+            kind: validated.kind,
+          });
+          results.push({
+            patientId: target.patientId,
+            name: target.name,
+            conversationId: conv.id,
+            mediaId: res.media?.id,
+            status: "SENT",
+          });
+        } catch (sendErr) {
+          console.error(`[Couple Media] Failed to send media to ${target.name}:`, sendErr);
+          results.push({
+            patientId: target.patientId,
+            name: target.name,
+            conversationId: conv.id,
+            status: "FAILED",
+          });
+        }
+      }
+
+      return ok(
+        c,
+        {
+          ok: true,
+          coupleId: couple.id,
+          sentCount: results.filter((r) => r.status !== "FAILED").length,
+          results,
+        },
+        201,
+      );
+    },
+  )
+
   .get(
     "/couples/:coupleId/messages",
     validate("param", z.object({ coupleId: z.string().min(1) })),
@@ -1613,12 +1746,13 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         where: {
           conversationId: { in: convs.map((cv) => cv.id) },
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: { createdAt: "desc" },
         include: {
           whatsappMedia: true,
         },
-        take: 150,
+        take: 300,
       });
+      rawMessages.reverse();
 
       const primaryName = couple.primaryPatient
         ? `${couple.primaryPatient.firstName || ""} ${couple.primaryPatient.lastName || ""}`.trim() || "Primary Patient"
@@ -1670,8 +1804,14 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
             ? {
                 id: m.whatsappMedia.id,
                 type: m.whatsappMedia.type,
+                mimeType: m.whatsappMedia.mimeType,
                 filename: m.whatsappMedia.filename,
+                caption: m.whatsappMedia.caption,
                 sizeBytes: m.whatsappMedia.sizeBytes,
+                durationSeconds: m.whatsappMedia.durationSeconds,
+                isVoice: m.whatsappMedia.isVoice,
+                status: m.whatsappMedia.status,
+                url: `/api/v1/whatsapp-automation/inbox/media/${m.whatsappMedia.id}`,
               }
             : null,
         };
@@ -1937,6 +2077,12 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
           ? { durationSeconds }
           : {}),
       });
+
+      if (typeof result.providerMessageId === "string" && result.providerMessageId.startsWith("pending_meta_")) {
+        const { triggerRemoteOutboundDispatch } = await import("./outbound-bridge");
+        void triggerRemoteOutboundDispatch().catch(() => undefined);
+      }
+
       return ok(c, result, 201);
     } catch (err) {
       if (err instanceof IntegrationError) {

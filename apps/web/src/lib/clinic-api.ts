@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut, apiUpload } from "@/lib/api/client";
 
 export type ClinicPerson = {
   id: string;
@@ -297,6 +297,10 @@ export const clinicApi = {
     apiPost<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/reply`, { body }),
   whatsappCoupleMessages: (coupleId: string) =>
     apiGet<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/messages`),
+  sendWhatsappMedia: (conversationId: string, formData: FormData) =>
+    apiUpload<any>(`/api/v1/whatsapp-automation/inbox/${conversationId}/media`, formData),
+  sendWhatsappCoupleMedia: (coupleId: string, formData: FormData) =>
+    apiUpload<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/media`, formData),
   sendWhatsappToRecipient: (body: {
     patientId?: string | undefined;
     coupleId?: string | undefined;

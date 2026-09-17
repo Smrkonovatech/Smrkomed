@@ -212,8 +212,8 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
         },
       },
       messages: {
-        orderBy: { createdAt: "asc" },
-        take: 200,
+        orderBy: { createdAt: "desc" },
+        take: 300,
         select: {
           id: true,
           direction: true,
@@ -241,6 +241,8 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
     },
   });
   if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
+
+  conversation.messages.reverse();
 
   await prisma.conversation.update({
     where: { id: conversation.id },

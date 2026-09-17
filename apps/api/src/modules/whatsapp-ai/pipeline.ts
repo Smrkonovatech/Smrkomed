@@ -315,6 +315,61 @@ export async function runWhatsAppAiPipeline(input: {
     }
   }
 
+  // Media / Photo / Document inbound handling:
+  // When a patient sends a photo, scan report, or document
+  const isPhotoOrDoc =
+    input.patientMessage === "📷 Photo" ||
+    input.patientMessage === "📄 Document" ||
+    input.patientMessage.startsWith("📷 ") ||
+    input.patientMessage.startsWith("📄 ") ||
+    Boolean(
+      input.inboundMessageId &&
+        (await prisma.whatsAppMedia.findFirst({
+          where: { messageId: input.inboundMessageId },
+          select: { id: true },
+        })),
+    );
+
+  if (isPhotoOrDoc && !isAppointmentIntent) {
+    const clinicName = input.tenant.clinicName || "our clinic";
+    const mediaAckReply =
+      `✦ Smrko AI\n\n` +
+      `Thank you for sharing your attachment with *${clinicName}*! 📎\n\n` +
+      `Our clinical care team has received it and will review it shortly. If you are experiencing any urgent symptoms or have specific questions regarding this report, please let us know.`;
+
+    let sentMsgId: string | undefined;
+    if (!input.simulation && input.mode === "send") {
+      try {
+        const sent = await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: conversation.id,
+          body: mediaAckReply,
+        });
+        sentMsgId = sent.id;
+      } catch (err) {
+        console.error("[WhatsApp AI] Failed to send media ack:", err);
+      }
+    }
+
+    const interaction = await recordAiInteraction({
+      clinicId: input.tenant.clinicId,
+      conversationId: conversation.id,
+      patientId: conversation.patientId,
+      trigger: input.trigger,
+      intent: "MEDIA_RECEIVED",
+      classification: "MEDIA_RECEIVED",
+      safeToAutoReply: true,
+      status: sentMsgId ? "SENT" : "DRAFT",
+      rawSummary: mediaAckReply,
+      ...(sentMsgId ? { messageId: sentMsgId } : {}),
+    });
+
+    return {
+      text: mediaAckReply,
+      ...(sentMsgId ? { messageId: sentMsgId } : {}),
+      interactionId: interaction.id,
+    };
+  }
+
   // Tool-driven hard handoff (e.g. booking with no slot service) after signal checks.
   if (signals.handoff && signals.pauseAi && !isAppointmentIntent) {
     const escalated = await escalateToHuman({
