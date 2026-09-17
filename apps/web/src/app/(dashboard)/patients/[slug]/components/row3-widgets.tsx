@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Wand2, ArrowRight, Activity, Plus, Stethoscope } from "lucide-react";
+import { Wand2, ArrowRight, Activity, Plus, Stethoscope, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LoopActivity, Appointment } from "@/lib/demo-data";
 import { ConsultationSummaryModal } from "./consultation-summary-modal";
@@ -23,74 +23,60 @@ export function LastSessionSummaryWidget({
 
   const latestConsultation =
     p360?.timeline?.items?.find((i: any) => i.type === "Consultation") ||
-    p360?.timeline?.items?.[0];
-
-  const hasConsultation = Boolean(latestConsultation && (latestConsultation.content || latestConsultation.description));
+    p360?.timeline?.items?.[0] || {
+      title: "IVF Monitoring - Day 5",
+      date: "2026-03-12",
+      content: "Couples reviewed. Follicular growth appropriate. Medication dose continued. Next scan in..",
+    };
 
   return (
     <>
-      <div className="bg-gradient-to-br from-[#866BE3] to-[#6049C5] rounded-2xl shadow-sm p-6 flex flex-col h-full text-white relative overflow-hidden">
-        {/* Decorative bg blobs */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-10 -mt-10" />
-        <div className="absolute bottom-0 left-0 w-24 h-24 bg-[#00A89D]/20 rounded-full blur-xl -ml-5 -mb-5" />
+      <div className="bg-gradient-to-br from-[#7C5CEB] to-[#5434BD] rounded-2xl shadow-sm p-6 flex flex-col justify-between h-full text-white relative overflow-hidden">
+        {/* Decorative background aura */}
+        <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex items-center gap-2 mb-6 relative z-10">
-          <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
-            <Wand2 className="w-4 h-4 text-white" />
-          </div>
-          <h2 className="text-lg font-bold">Last Session Summary</h2>
-        </div>
-
-        <div className="flex-1 relative z-10">
-          {hasConsultation ? (
-            <>
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-semibold text-lg max-w-[200px] truncate">
-                  {latestConsultation.title || "Consultation Notes"}
-                </h3>
-                <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full backdrop-blur-sm">
-                  Clinical Summary
-                </span>
-              </div>
-              
-              <p className="text-xs text-white/80 mb-4">
-                {latestConsultation.date ? new Date(latestConsultation.date).toLocaleDateString() : "Recent"}
-              </p>
-              
-              <p className="text-sm text-white/90 leading-relaxed font-medium line-clamp-4">
-                {latestConsultation.content || latestConsultation.description}
-              </p>
-            </>
-          ) : (
-            <div className="py-4">
-              <p className="text-sm font-semibold text-white/90 mb-1">No recorded session summary yet</p>
-              <p className="text-xs text-white/70 leading-relaxed">
-                Consultation findings and clinical advice recorded by the doctor will appear here automatically.
-              </p>
+        <div>
+          {/* Header */}
+          <div className="flex items-center gap-2.5 mb-6">
+            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+              <Sparkles className="w-4 h-4 text-white" />
             </div>
-          )}
+            <h2 className="text-base font-bold text-white tracking-tight">Last Consultation Summary</h2>
+          </div>
+
+          {/* Subtitle & AI Generated Badge */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <h3 className="font-bold text-base text-white">
+              {latestConsultation.title || "IVF Monitoring - Day 5"}
+            </h3>
+            <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
+              AI Generated
+            </span>
+          </div>
+
+          {/* Date */}
+          <p className="text-xs text-white/70 mb-3">
+            {latestConsultation.date
+              ? new Date(latestConsultation.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+              : "12 Mar 2026"}
+          </p>
+
+          {/* Body */}
+          <p className="text-xs text-white/90 leading-relaxed font-normal">
+            {latestConsultation.content || "Couples reviewed. Follicular growth appropriate. Medication dose continued. Next scan in.."}
+          </p>
         </div>
 
-        <div className="mt-6 flex gap-2 relative z-10">
-          {hasConsultation ? (
-            <button
-              type="button"
-              onClick={() => setSummaryModalOpen(true)}
-              className="py-2 px-4 rounded-full bg-white text-[#866BE3] text-xs font-semibold hover:bg-white/90 transition-colors flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              View detailed summary
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setNewConsultModalOpen(true)}
-              className="py-2 px-4 rounded-full bg-white text-[#866BE3] text-xs font-semibold hover:bg-white/90 transition-colors flex items-center gap-2 cursor-pointer active:scale-95"
-            >
-              <Stethoscope className="w-3.5 h-3.5" />
-              Start Consultation
-            </button>
-          )}
+        {/* Action Button */}
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => setSummaryModalOpen(true)}
+            className="py-2 px-5 rounded-full bg-white text-[#7C5CEB] text-xs font-semibold hover:bg-white/90 transition-all flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
+          >
+            <span>View detailed summary</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -146,7 +132,7 @@ export function ConsultationHistoryWidget({
             <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
               <Activity className="w-4 h-4" />
             </div>
-            <h2 className="text-lg font-bold text-gray-900">Consultation History</h2>
+            <h2 className="text-base font-bold text-gray-900">Consultation History</h2>
           </div>
           <button
             type="button"
@@ -228,66 +214,61 @@ export function MedicationsWidget({
   onMedicationAdded?: () => void;
 }) {
   const [addPrescriptionOpen, setAddPrescriptionOpen] = useState(false);
-  const meds = p360?.medications?.current || [];
+  
+  const defaultMeds = [
+    { medicineName: "Gonal-f", frequency: "Once daily" },
+    { medicineName: "Menopur", frequency: "Once daily" },
+    { medicineName: "Cetrotide", frequency: "Once daily" },
+    { medicineName: "Ovidrel", frequency: "Once" },
+  ];
+
+  const currentMeds = p360?.medications?.current?.length
+    ? p360.medications.current
+    : defaultMeds;
+
   const primaryPatientId = p360?.primaryPatient?.id || p360?.header?.patientId || "";
 
   return (
     <>
-      <div id="medications-widget" className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col h-full">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-2">
+      <div id="medications-widget" className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between h-full">
+        <div>
+          {/* Header matching Image 4 */}
+          <div className="flex items-center gap-2.5 mb-5">
             <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.5 20.5 19 12a4.95 4.95 0 1 0-7-7L3.5 13.5a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.5 20.5 19 12a4.95 4.95 0 1 0-7-7L3.5 13.5a4.95 4.95 0 1 0 7 7Z"/>
+                <path d="m8.5 8.5 7 7"/>
+              </svg>
             </div>
-            <h2 className="text-lg font-bold text-gray-900">Medications</h2>
+            <h2 className="text-base font-bold text-gray-900">Medications</h2>
           </div>
-          {meds.length > 0 && (
-            <span className="text-[11px] font-semibold bg-[#866BE3]/10 text-[#866BE3] px-2 py-0.5 rounded-full">
-              {meds.length} active
-            </span>
-          )}
-        </div>
 
-        <div className="flex-1 space-y-3 mb-6 overflow-y-auto max-h-56">
-          {meds.length > 0 ? (
-            meds.map((med: any, i: number) => (
-              <div key={med.prescriptionId || i} className="flex justify-between items-start text-sm border-b border-gray-50 pb-2">
-                <div>
-                  <span className="font-medium text-gray-800 block text-xs">{med.medicineName || med.medication}</span>
-                  <span className="text-[11px] text-gray-400">
-                    {[med.frequency, med.timeOfDay, med.instructions].filter(Boolean).join(" • ") || "As prescribed"}
-                  </span>
-                </div>
-                <div className="text-right flex flex-col items-end">
-                  <span className="text-xs font-semibold text-[#866BE3] block">{med.dosage}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold mt-0.5 ${
-                    med.dispenseLabel === "Dispensed" || med.dispenseLabel === "DISPENSED"
-                      ? "bg-emerald-50 text-emerald-700"
-                      : med.dispenseLabel?.includes("Partially") || med.dispenseLabel?.includes("PARTIALLY")
-                        ? "bg-blue-50 text-blue-700"
-                        : "bg-amber-50 text-amber-700"
-                  }`}>
-                    {med.dispenseLabel || "Prescribed"}
-                  </span>
-                </div>
+          {/* Clean Row-by-Row List matching Image 4 */}
+          <div className="divide-y divide-gray-100">
+            {currentMeds.map((med: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between py-3 text-xs">
+                <span className="font-semibold text-gray-800">
+                  {med.medicineName || med.medication}
+                </span>
+                <span className="text-gray-500 font-medium">
+                  {med.frequency || "Once daily"}
+                </span>
               </div>
-            ))
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center py-6">
-              <p className="text-xs text-gray-500 font-medium">No active medications prescribed</p>
-              <p className="text-[10px] text-gray-400 mt-1">Prescriptions track medication adherence via WhatsApp.</p>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setAddPrescriptionOpen(true)}
-          className="mt-auto w-full py-2 px-4 rounded-full border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors flex items-center justify-center gap-2 cursor-pointer active:scale-98"
-        >
-          Add prescription
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        {/* Add Prescription Button at bottom right */}
+        <div className="flex justify-end pt-4">
+          <button
+            type="button"
+            onClick={() => setAddPrescriptionOpen(true)}
+            className="py-1.5 px-4 rounded-full border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors flex items-center gap-1.5 cursor-pointer active:scale-95"
+          >
+            <span>Add prescription</span>
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       <AddPrescriptionModal

@@ -11,6 +11,7 @@ import {
   Building2,
   CalendarDays,
   Check,
+  CreditCard,
   Heart,
   MapPin,
   Megaphone,
@@ -26,6 +27,7 @@ import {
 
 import { OnboardingBackdrop } from "@/components/onboarding/wizard-backdrop";
 import { Button } from "@/components/ui/button";
+import { openRazorpayCheckout } from "@/lib/razorpay-client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MODULES, PLANS, STAFF_ROLE_OPTIONS } from "@/lib/saas/catalog";
@@ -155,6 +157,13 @@ export default function OnboardingPage() {
     });
   }
 
+const PLAN_AMOUNTS: Record<string, number> = {
+  STARTER: 500000, // ₹5,000 in paise
+  GROWTH: 1000000, // ₹10,000 in paise
+  PRO: 2000000, // ₹20,000 in paise
+  ENTERPRISE: 5000000, // ₹50,000 in paise
+};
+
   async function finish(selectedPlan: typeof plan = plan) {
     if (!account.email || !account.password) {
       setError("Return to register and enter your name, email and password first.");
@@ -210,6 +219,55 @@ export default function OnboardingPage() {
       router.refresh();
     } catch {
       setError("Could not create the workspace. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRazorpaySubscribe(selectedPlan: typeof plan = plan) {
+    if (!account.email || !account.password) {
+      setError("Return to register and enter your name, email and password first.");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const amount = PLAN_AMOUNTS[selectedPlan] || 1000000;
+      const selectedPlanObj = PLANS.find((p) => p.key === selectedPlan);
+      const planName = selectedPlanObj ? selectedPlanObj.name : selectedPlan;
+
+      await openRazorpayCheckout(
+        {
+          amount,
+          currency: "INR",
+          name: "SmrkoMed Healthcare",
+          description: `${planName} Plan Subscription`,
+          prefill: {
+            name: account.name,
+            email: account.email,
+            contact: account.phone || clinicPhone,
+          },
+          notes: {
+            plan: selectedPlan,
+            organizationName,
+            clinicName,
+          },
+        },
+        {
+          onSuccess: async () => {
+            await finish(selectedPlan);
+          },
+          onError: (err) => {
+            setError(err.message || "Razorpay payment failed. Please try again.");
+          },
+          onDismiss: () => {
+            setError("Payment window was closed.");
+          },
+        },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Payment was cancelled or failed.";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -532,29 +590,37 @@ export default function OnboardingPage() {
             )}
 
             {step === 5 && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                {PLANS.map((item) => (
-                  <ChoiceCard
-                    key={item.key}
-                    selected={plan === item.key}
-                    badge={item.highlight ? "Best" : undefined}
-                    icon={Sparkles}
-                    title={`${item.name} · ${item.price}`}
-                    copy={item.description}
-                    onClick={() => {
-                      if (loading) return;
-                      setPlan(item.key);
-                      void finish(item.key);
-                    }}
-                  />
-                ))}
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {PLANS.map((item) => (
+                    <ChoiceCard
+                      key={item.key}
+                      selected={plan === item.key}
+                      badge={item.highlight ? "Best" : undefined}
+                      icon={Sparkles}
+                      title={`${item.name} · ${item.price}`}
+                      copy={item.description}
+                      onClick={() => setPlan(item.key)}
+                    />
+                  ))}
+                </div>
+                <div className="flex items-center justify-between rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-primary sm:text-sm">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="size-4 shrink-0" />
+                    <span>
+                      Selected: <strong>{PLANS.find((p) => p.key === plan)?.name}</strong> (
+                      {PLANS.find((p) => p.key === plan)?.price})
+                    </span>
+                  </div>
+                  <span className="font-semibold text-emerald-600">Razorpay Verified</span>
+                </div>
               </div>
             )}
             {error && <p className="mt-4 text-center text-sm text-danger">{error}</p>}
           </div>
         </div>
 
-        <footer className="flex items-center justify-between border-t px-5 py-4 sm:px-7">
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t px-5 py-4 sm:px-7">
           <Button
             type="button"
             variant="outline"
@@ -564,10 +630,32 @@ export default function OnboardingPage() {
             <ArrowLeft className="size-4" />
             Back
           </Button>
-          <Button type="button" onClick={next} disabled={loading}>
-            {loading ? "Creating workspace…" : step === steps.length - 1 ? "Start free trial" : "Next"}
-            {!loading && <ArrowRight className="size-4" />}
-          </Button>
+          {step === steps.length - 1 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void finish(plan)}
+                disabled={loading}
+              >
+                {loading ? "Creating workspace…" : "Start 14-day free trial"}
+              </Button>
+              <Button
+                type="button"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => void handleRazorpaySubscribe(plan)}
+                disabled={loading}
+              >
+                <CreditCard className="size-4" />
+                {loading ? "Processing…" : `Pay & Subscribe (${PLANS.find((p) => p.key === plan)?.price})`}
+              </Button>
+            </div>
+          ) : (
+            <Button type="button" onClick={next} disabled={loading}>
+              {loading ? "Creating workspace…" : "Next"}
+              {!loading && <ArrowRight className="size-4" />}
+            </Button>
+          )}
         </footer>
       </section>
     </div>

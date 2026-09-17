@@ -15,11 +15,9 @@ import { PatientHeader } from "./components/patient-header";
 import { PatientProfileCards } from "./components/patient-profile-cards";
 import { IvfCycleWidget } from "./components/ivf-cycle-widget";
 import { FertilityEstimateWidget } from "./components/fertility-estimate-widget";
-import { AbdmStatusWidget, UpcomingSessionWidget, UpcomingTasksWidget } from "./components/row2-widgets";
-import { LastSessionSummaryWidget, ConsultationHistoryWidget, MedicationsWidget } from "./components/row3-widgets";
+import { LastSessionSummaryWidget, MedicationsWidget } from "./components/row3-widgets";
 import { ViewConversationWidget, RecentActivitiesWidget } from "./components/row4-widgets";
 import { CareCalendarWidget } from "./components/care-calendar/care-calendar";
-import { PatientDiagnosticsWidget } from "./components/diagnostics-widget";
 
 export default function PatientProfile() {
     const params = useParams<{ slug: string }>();
@@ -179,59 +177,37 @@ export default function PatientProfile() {
         <div className="space-y-6 pb-24">
             <PatientHeader couple={effectiveCouple} p360={p360} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-12 gap-5 auto-rows-[minmax(250px,auto)]">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Row 1 */}
-                <div className="xl:col-span-4">
+                <div className="lg:col-span-4">
                     <PatientProfileCards couple={effectiveCouple} p360={p360} />
                 </div>
-                <div className="xl:col-span-5">
+                <div className="lg:col-span-5">
                     <IvfCycleWidget couple={effectiveCouple} p360={p360} />
                 </div>
-                <div className="xl:col-span-3">
+                <div className="lg:col-span-3">
                     <FertilityEstimateWidget />
                 </div>
 
-                {/* Row 1.5 - Care Calendar */}
-                <div className="xl:col-span-12">
+                {/* Row 2 - Care Calendar */}
+                <div className="lg:col-span-12">
                     <CareCalendarWidget couple={effectiveCouple} />
                 </div>
 
-                {/* Row 2 */}
-                <div className="xl:col-span-4">
-                    <AbdmStatusWidget couple={effectiveCouple} />
-                </div>
-                <div className="xl:col-span-4">
-                    <UpcomingSessionWidget p360={p360} />
-                </div>
-                <div className="xl:col-span-4">
-                    <UpcomingTasksWidget p360={p360} />
-                </div>
-
                 {/* Row 3 */}
-                <div className="xl:col-span-4">
-                    <LastSessionSummaryWidget p360={p360} />
-                </div>
-                <div className="xl:col-span-4">
-                    <ConsultationHistoryWidget p360={p360} />
-                </div>
-                <div className="xl:col-span-4">
+                <div className="lg:col-span-7 xl:col-span-8">
                     <MedicationsWidget coupleId={effectiveCouple.id} p360={p360} />
                 </div>
-
-                {/* Diagnostics Row */}
-                <div className="xl:col-span-12">
-                    <PatientDiagnosticsWidget
-                        patientId={p360?.primaryPatient?.id ?? (effectiveCouple as any).primary?.id}
-                        coupleId={effectiveCouple.id}
-                    />
+                <div className="lg:col-span-5 xl:col-span-4">
+                    <LastSessionSummaryWidget p360={p360} />
                 </div>
 
                 {/* Row 4 */}
-                <div className="xl:col-span-8 lg:col-span-2">
-                    <ViewConversationWidget messages={messages} />
-                </div>
-                <div className="xl:col-span-4">
+                <div className="lg:col-span-5 xl:col-span-5">
                     <RecentActivitiesWidget p360={p360} />
+                </div>
+                <div className="lg:col-span-7 xl:col-span-7">
+                    <ViewConversationWidget messages={messages} />
                 </div>
             </div>
         </div>

@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, UserPlus, Pencil, Copy, Check, CreditCard, Pill } from "lucide-react";
+import { ArrowLeft, Pencil, Copy, Check, Calendar, Play, Wand2 } from "lucide-react";
 import { AssignTeamModal } from "./assign-team-modal";
 import { BillingSummaryModal } from "./billing-summary-modal";
 import { EditTreatmentModal } from "./edit-treatment-modal";
+import { ConsultationModal } from "./consultation-modal";
 import { toast } from "sonner";
 
 export function PatientHeader({
@@ -13,22 +14,26 @@ export function PatientHeader({
   p360,
   onTeamUpdated,
   onOpenTreatmentJourney,
+  onSessionUpdated,
 }: {
   couple: { id: string; slug?: string } | any;
   p360?: any;
   onTeamUpdated?: () => void;
   onOpenTreatmentJourney?: () => void;
+  onSessionUpdated?: () => void;
 }) {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
   const [isEditTreatmentOpen, setIsEditTreatmentOpen] = useState(false);
+  const [isConsultModalOpen, setIsConsultModalOpen] = useState(false);
+  const [prepareMessage, setPrepareMessage] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState(false);
 
   const [doctorName, setDoctorName] = useState(
-    p360?.header?.assignedDoctor || couple?.doctor || "Unassigned",
+    p360?.header?.assignedDoctor || couple?.doctor || "Dr. Shreyas Iyer",
   );
   const [coordinatorName, setCoordinatorName] = useState(
-    p360?.header?.assignedCoordinator || couple?.coordinator || "Unassigned",
+    p360?.header?.assignedCoordinator || couple?.coordinator || "Anjali Desai",
   );
 
   useEffect(() => {
@@ -44,7 +49,7 @@ export function PatientHeader({
     }
   }, [p360, couple]);
 
-  const coupleId = couple?.id || couple?.slug || "";
+  const coupleId = couple?.id || couple?.slug || "SMR-1025";
 
   const handleCopyCoupleId = () => {
     if (coupleId) {
@@ -55,162 +60,185 @@ export function PatientHeader({
     }
   };
 
-  const handleScrollToMedications = () => {
-    const el = document.getElementById("medications-widget");
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
-    } else {
-      toast.info(`Current active medications: ${p360?.summaryCards?.currentMedications ?? 0}`);
-    }
+  const upcoming = p360?.summaryCards?.nextAppointment;
+  const sessionTitle = upcoming?.type || "Ultrasound Review";
+  const sessionStatus = upcoming?.status || "Confirmed";
+  const sessionTime = upcoming?.startsAt
+    ? `Today ${new Date(upcoming.startsAt).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}, ${new Date(upcoming.startsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : "Today 03 Sept 2026. 09:00 AM";
+
+  const patientName = p360?.header?.patientName || couple?.primary?.name || "Patient";
+  const partnerName = p360?.header?.partnerName || couple?.partner?.name;
+  const treatmentName = p360?.header?.currentTreatment?.label || couple?.treatment || "IVF Journey";
+  const currentStage = p360?.header?.currentCarePlan?.stageName || couple?.stage || "Consultation";
+
+  const handlePrepareMe = () => {
+    setPrepareMessage(
+      `Patient ${patientName} is in ${treatmentName} (${currentStage}). Review follicular tracking scan and confirm stimulation injections before starting consultation.`,
+    );
+    setTimeout(() => setPrepareMessage(null), 8000);
   };
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/patients" className="flex items-center gap-2 text-sm font-medium text-[#866BE3] hover:text-[#7254d1] w-fit">
-        <ArrowLeft className="w-4 h-4" />
+      {/* Back Link */}
+      <Link href="/patients" className="flex items-center gap-1.5 text-xs font-semibold text-[#866BE3] hover:text-[#7254d1] w-fit transition-colors">
+        <ArrowLeft className="w-3.5 h-3.5" />
         Patients
       </Link>
       
-      <h1 className="text-2xl font-bold text-gray-800">Patient Overview</h1>
+      {/* Title */}
+      <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Patient 360</h1>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-white/60 border border-gray-100 shadow-sm mt-2 backdrop-blur-md">
-        <div className="flex flex-wrap gap-8 items-center">
-          {/* Treatment Button & Doctor Edit Trigger */}
-          <div>
-            <div className="flex items-center gap-1.5 mb-1">
-              <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wider">Treatment:</p>
+      {/* Header Info & Upcoming Session Split Card */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        
+        {/* Left Card: Treatment, Couple ID, Primary Doctor, Care Coordinator */}
+        <div className="lg:col-span-7 xl:col-span-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-wrap items-center justify-between gap-6">
+          <div className="flex flex-wrap items-center gap-6">
+            {/* Treatment */}
+            <div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <p className="text-[11px] text-gray-500 font-medium">Treatment:</p>
+                <button
+                  type="button"
+                  onClick={() => setIsEditTreatmentOpen(true)}
+                  className="text-gray-400 hover:text-[#866BE3] transition-colors p-0.5 rounded cursor-pointer"
+                  title="Doctor: Edit Treatment Protocol"
+                >
+                  <Pencil className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onOpenTreatmentJourney}
+                  className="bg-[#F8F5FF] hover:bg-[#866BE3]/15 text-[#866BE3] text-xs font-semibold px-3 py-1 rounded-full border border-[#866BE3]/20 transition-colors cursor-pointer active:scale-95 text-left"
+                  title="Click to view treatment journey"
+                >
+                  {treatmentName}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditTreatmentOpen(true)}
+                  className="bg-white hover:bg-gray-50 text-gray-600 hover:text-[#866BE3] text-[11px] font-medium px-2 py-0.5 rounded-full border border-gray-200 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                  title="Doctor: Edit Treatment"
+                >
+                  <Pencil className="w-2.5 h-2.5" />
+                  Edit
+                </button>
+              </div>
+            </div>
+
+            {/* Couple ID */}
+            <div>
+              <p className="text-[11px] text-gray-500 font-medium mb-1">Couple ID:</p>
               <button
                 type="button"
-                onClick={() => setIsEditTreatmentOpen(true)}
-                className="text-gray-400 hover:text-[#866BE3] transition-colors p-0.5 rounded cursor-pointer"
-                title="Doctor: Edit Treatment Protocol"
+                onClick={handleCopyCoupleId}
+                className="text-xs font-bold text-gray-800 hover:text-[#866BE3] flex items-center gap-1.5 transition-colors group cursor-pointer"
+                title="Click to copy Couple ID"
               >
-                <Pencil className="w-3 h-3" />
+                <span>{coupleId}</span>
+                {copiedId ? (
+                  <Check className="w-3 h-3 text-emerald-600 shrink-0" />
+                ) : (
+                  <Copy className="w-3 h-3 text-gray-400 group-hover:text-[#866BE3] shrink-0" />
+                )}
               </button>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onOpenTreatmentJourney}
-                className="bg-[#F8F5FF] hover:bg-[#866BE3]/15 text-[#866BE3] text-xs font-semibold px-3 py-1 rounded-full border border-[#866BE3]/20 transition-colors cursor-pointer active:scale-95 text-left"
-                title="Click to view IVF cycle journey"
-              >
-                {p360?.header?.currentTreatment?.label || couple?.treatment || "Fertility Evaluation"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEditTreatmentOpen(true)}
-                className="bg-white hover:bg-gray-50 text-gray-600 hover:text-[#866BE3] text-[11px] font-medium px-2 py-0.5 rounded-full border border-gray-200 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                title="Doctor: Edit Treatment"
-              >
-                <Pencil className="w-2.5 h-2.5" />
-                Edit
-              </button>
-            </div>
           </div>
 
-          {/* Billing & Payment Button */}
-          <div>
-            <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wider mb-1">Billing & Payment:</p>
+          <div className="flex items-center gap-6">
+            {/* Primary Doctor */}
             <button
               type="button"
-              onClick={() => setIsBillingModalOpen(true)}
-              className={`text-xs font-semibold px-3 py-1 rounded-full border transition-colors cursor-pointer active:scale-95 flex items-center gap-1.5 ${
-                p360?.summaryCards?.paymentStatus === "OUTSTANDING"
-                  ? "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
-                  : "bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200"
-              }`}
-              title="Click to view invoices and financial details"
+              onClick={() => setIsAssignModalOpen(true)}
+              className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-gray-50 transition-colors text-left group cursor-pointer"
+              title="Click to assign primary doctor"
             >
-              <CreditCard className="w-3 h-3" />
-              {p360?.summaryCards?.paymentStatus === "OUTSTANDING"
-                ? `Outstanding: ₹${Number(p360?.summaryCards?.outstandingAmountInr || 0).toLocaleString("en-IN")}`
-                : "Billing: Clear (₹0 due)"}
+              <div className="w-8 h-8 rounded-full bg-[#866BE3] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                {doctorName?.replace(/^Dr\.?\s*/i, "")?.[0] || "S"}
+              </div>
+              <div>
+                <div className="flex items-center gap-1">
+                  <p className="text-xs font-bold text-gray-900 group-hover:text-[#866BE3] transition-colors">
+                    {doctorName}
+                  </p>
+                </div>
+                <p className="text-[11px] text-gray-400 font-medium">Primary Doctor</p>
+              </div>
             </button>
-          </div>
-
-          {/* Pharmacy Button */}
-          <div>
-            <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wider mb-1">Pharmacy:</p>
+            
+            {/* Care Coordinator */}
             <button
               type="button"
-              onClick={handleScrollToMedications}
-              className="bg-[#F8F5FF] hover:bg-[#866BE3]/15 text-[#866BE3] text-xs font-semibold px-3 py-1 rounded-full border border-[#866BE3]/20 transition-colors cursor-pointer active:scale-95 flex items-center gap-1.5"
-              title="Click to view active medications"
+              onClick={() => setIsAssignModalOpen(true)}
+              className="flex items-center gap-2.5 p-1.5 rounded-xl hover:bg-gray-50 transition-colors text-left group cursor-pointer"
+              title="Click to assign care coordinator"
             >
-              <Pill className="w-3 h-3" />
-              {p360?.summaryCards?.currentMedications ?? 0} active meds
-            </button>
-          </div>
-
-          {/* Couple ID Button */}
-          <div>
-            <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wider mb-1">Couple ID:</p>
-            <button
-              type="button"
-              onClick={handleCopyCoupleId}
-              className="text-sm font-bold text-gray-800 hover:text-[#866BE3] flex items-center gap-1.5 transition-colors group cursor-pointer"
-              title="Click to copy Couple ID"
-            >
-              <span>{coupleId}</span>
-              {copiedId ? (
-                <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-              ) : (
-                <Copy className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#866BE3] shrink-0" />
-              )}
+              <div className="w-8 h-8 rounded-full bg-[#866BE3] text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                {coordinatorName?.[0] || "A"}
+              </div>
+              <div>
+                <div className="flex items-center gap-1">
+                  <p className="text-xs font-bold text-gray-900 group-hover:text-[#866BE3] transition-colors">
+                    {coordinatorName}
+                  </p>
+                </div>
+                <p className="text-[11px] text-gray-400 font-medium">Care Coordinator</p>
+              </div>
             </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-6">
-          {/* Primary Doctor Button / Card */}
-          <button
-            type="button"
-            onClick={() => setIsAssignModalOpen(true)}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/80 transition-colors border border-transparent hover:border-gray-200 text-left group"
-            title="Click to assign or change primary doctor"
-          >
-            <div className="w-9 h-9 rounded-full bg-[#866BE3] text-white flex items-center justify-center font-bold text-xs shadow-sm">
-              {doctorName?.[0] && doctorName !== "Unassigned" ? doctorName[0] : <UserPlus className="w-4 h-4" />}
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-semibold text-gray-800 group-hover:text-[#866BE3] transition-colors">
-                  {doctorName}
-                </p>
-                <Pencil className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+        {/* Right Card: Upcoming Session (Ultrasound Review) */}
+        <div className="lg:col-span-5 xl:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
+                <Calendar className="w-4 h-4" />
               </div>
-              <p className="text-xs text-gray-500">
-                {doctorName === "Unassigned" ? "Assign Doctor" : "Primary Doctor"}
-              </p>
+              <h2 className="text-sm font-bold text-gray-900">{sessionTitle}</h2>
             </div>
-          </button>
-          
-          {/* Care Coordinator Button / Card */}
-          <button
-            type="button"
-            onClick={() => setIsAssignModalOpen(true)}
-            className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/80 transition-colors border border-transparent hover:border-gray-200 text-left group"
-            title="Click to assign or change care coordinator"
-          >
-            <div className="w-9 h-9 rounded-full bg-[#C178F5] text-white flex items-center justify-center font-bold text-xs shadow-sm">
-              {coordinatorName?.[0] && coordinatorName !== "Unassigned" ? coordinatorName[0] : <UserPlus className="w-4 h-4" />}
+            <span className="bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+              {sessionStatus}
+            </span>
+          </div>
+
+          <p className="text-[11px] text-gray-500 pl-10 mb-3">
+            {sessionTime}
+          </p>
+
+          {prepareMessage && (
+            <div className="mb-2 p-2 bg-[#866BE3]/10 text-[#866BE3] border border-[#866BE3]/20 rounded-xl text-[11px] leading-relaxed">
+              {prepareMessage}
             </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <p className="text-sm font-semibold text-gray-800 group-hover:text-[#C178F5] transition-colors">
-                  {coordinatorName}
-                </p>
-                <Pencil className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <p className="text-xs text-gray-500">
-                {coordinatorName === "Unassigned" ? "Assign Coordinator" : "Care Coordinator"}
-              </p>
-            </div>
-          </button>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setIsConsultModalOpen(true)}
+              className="flex-1 py-2 px-4 rounded-full bg-[#866BE3] text-white text-xs font-semibold hover:bg-[#7254d1] transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+            >
+              <span>Start Session</span>
+              <Play className="w-3 h-3 fill-current" />
+            </button>
+            <button
+              type="button"
+              onClick={handlePrepareMe}
+              className="flex-1 py-2 px-4 rounded-full border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
+            >
+              <span>Prepare me</span>
+              <Wand2 className="w-3 h-3" />
+            </button>
+          </div>
         </div>
+
       </div>
 
+      {/* Modals */}
       <AssignTeamModal
         isOpen={isAssignModalOpen}
         onOpenChange={setIsAssignModalOpen}
@@ -240,6 +268,19 @@ export function PatientHeader({
         onSaved={() => {
           onTeamUpdated?.();
         }}
+      />
+
+      <ConsultationModal
+        isOpen={isConsultModalOpen}
+        onOpenChange={setIsConsultModalOpen}
+        appointment={upcoming}
+        patientName={patientName}
+        patientId={p360?.primaryPatient?.id || couple?.primary?.id}
+        coupleId={couple?.id}
+        partnerName={partnerName}
+        treatmentName={treatmentName}
+        currentStage={currentStage}
+        onCompleted={onSessionUpdated}
       />
     </div>
   );

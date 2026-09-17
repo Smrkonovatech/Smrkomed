@@ -2,7 +2,8 @@ import { loadEnvConfig } from "@next/env";
 import type { NextConfig } from "next";
 import { resolve } from "node:path";
 
-const repoRoot = resolve(__dirname, "../..");
+const repoRoot = resolve(process.cwd(), process.cwd().endsWith("web") ? "../.." : ".");
+loadEnvConfig(process.cwd());
 loadEnvConfig(repoRoot);
 
 const nextConfig = {

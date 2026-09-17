@@ -151,6 +151,8 @@ export function emptyDoctorDraft(partial?: Partial<DoctorProfile>): DoctorProfil
   };
 }
 
+const EMPTY_DOCTORS: DoctorProfile[] = [];
+
 export const doctorsStore = {
   subscribe(listener: Listener) {
     listeners.add(listener);
@@ -160,7 +162,7 @@ export const doctorsStore = {
     return getAll();
   },
   getServerSnapshot(): DoctorProfile[] {
-    return [];
+    return EMPTY_DOCTORS;
   },
   async syncFromApi(): Promise<DoctorProfile[]> {
     try {

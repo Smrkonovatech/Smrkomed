@@ -15,11 +15,9 @@ import { PatientHeader } from "./components/patient-header";
 import { PatientProfileCards } from "./components/patient-profile-cards";
 import { IvfCycleWidget } from "./components/ivf-cycle-widget";
 import { FertilityEstimateWidget } from "./components/fertility-estimate-widget";
-import { AbdmStatusWidget, UpcomingSessionWidget, UpcomingTasksWidget } from "./components/row2-widgets";
-import { LastSessionSummaryWidget, ConsultationHistoryWidget, MedicationsWidget } from "./components/row3-widgets";
+import { LastSessionSummaryWidget, MedicationsWidget } from "./components/row3-widgets";
 import { ViewConversationWidget, RecentActivitiesWidget } from "./components/row4-widgets";
 import { CareCalendarWidget } from "./components/care-calendar/care-calendar";
-import { PatientDiagnosticsWidget } from "./components/diagnostics-widget";
 import { IvfJourneyModal } from "./components/ivf-journey-modal";
 import { AddCareTaskModal } from "./components/care-calendar/add-care-task-modal";
 
@@ -199,96 +197,59 @@ export default function PatientProfile() {
                 p360={p360}
                 onTeamUpdated={reload360}
                 onOpenTreatmentJourney={() => setJourneyModalOpen(true)}
+                onSessionUpdated={reload360}
             />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-12 gap-5 auto-rows-[minmax(250px,auto)]">
-                {/* Row 1 */}
-                <div className="xl:col-span-4">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                {/* Row 1: Patient Profiles (4) | IVF Cycle (5) | Fertility Estimate (3) */}
+                <div className="lg:col-span-4">
                     <PatientProfileCards
                         couple={effectiveCouple}
                         p360={p360}
                         onPatientUpdated={reload360}
                     />
                 </div>
-                <div className="xl:col-span-5">
+                <div className="lg:col-span-5">
                     <IvfCycleWidget
                         couple={effectiveCouple}
                         p360={p360}
                         onTreatmentUpdated={reload360}
                     />
                 </div>
-                <div className="xl:col-span-3">
+                <div className="lg:col-span-3">
                     <FertilityEstimateWidget couple={effectiveCouple} p360={p360} />
                 </div>
 
-                {/* Row 1.5 - Care Calendar */}
-                <div className="xl:col-span-12">
+                {/* Row 2: Care Calendar (12) */}
+                <div className="lg:col-span-12">
                     <CareCalendarWidget couple={effectiveCouple} />
                 </div>
 
-                {/* Row 2 */}
-                <div className="xl:col-span-4">
-                    <AbdmStatusWidget
-                        couple={effectiveCouple}
-                        p360={p360}
-                        onRefresh={reload360}
-                    />
-                </div>
-                <div className="xl:col-span-4">
-                    <UpcomingSessionWidget
-                        p360={p360}
-                        couple={effectiveCouple}
-                        onSessionUpdated={reload360}
-                    />
-                </div>
-                <div className="xl:col-span-4">
-                    <UpcomingTasksWidget
-                        p360={p360}
-                        couple={effectiveCouple}
-                        onAddTask={() => setAddTaskModalOpen(true)}
-                    />
-                </div>
-
-                {/* Row 3 */}
-                <div className="xl:col-span-4">
-                    <LastSessionSummaryWidget
-                        p360={p360}
-                        couple={effectiveCouple}
-                        onConsultationSaved={reload360}
-                    />
-                </div>
-                <div className="xl:col-span-4">
-                    <ConsultationHistoryWidget
-                        p360={p360}
-                        couple={effectiveCouple}
-                        onConsultationSaved={reload360}
-                    />
-                </div>
-                <div className="xl:col-span-4">
+                {/* Row 3: Medications (8) | Last Consultation Summary (4) */}
+                <div className="lg:col-span-7 xl:col-span-8">
                     <MedicationsWidget
                         coupleId={effectiveCouple.id}
                         p360={p360}
                         onMedicationAdded={reload360}
                     />
                 </div>
-
-                {/* Diagnostics Row */}
-                <div className="xl:col-span-12">
-                    <PatientDiagnosticsWidget
-                        patientId={p360?.primaryPatient?.id ?? (effectiveCouple as any).primary?.id}
-                        coupleId={effectiveCouple.id}
+                <div className="lg:col-span-5 xl:col-span-4">
+                    <LastSessionSummaryWidget
+                        p360={p360}
+                        couple={effectiveCouple}
+                        onConsultationSaved={reload360}
                     />
                 </div>
 
-                {/* Row 4 */}
-                <div className="xl:col-span-8 lg:col-span-2">
+                {/* Row 4: Recent Activities (5) | View Conversation (7) */}
+                <div className="lg:col-span-5 xl:col-span-5">
+                    <RecentActivitiesWidget p360={p360} />
+                </div>
+                <div className="lg:col-span-7 xl:col-span-7">
                     <ViewConversationWidget
                         messages={messages}
                         patientName={p360?.header?.patientName || effectiveCouple?.primary?.name}
                     />
-                </div>
-                <div className="xl:col-span-4">
-                    <RecentActivitiesWidget p360={p360} />
                 </div>
             </div>
 

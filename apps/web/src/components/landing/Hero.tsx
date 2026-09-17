@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { ArrowRight, Sparkles, CheckCircle2, Bot, MessageSquare, HeartHandshake, Smartphone } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 interface HeroProps {
   onOpenDemo?: ((interest?: string) => void) | undefined;
@@ -17,175 +17,99 @@ export function Hero({ onOpenDemo }: HeroProps) {
     }
   };
 
-  const handleExploreClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    const target = document.querySelector("#care-loop");
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.history.pushState(null, "", "#care-loop");
-    }
-  };
-
   return (
-    <section className="relative overflow-hidden pt-8 pb-16 md:pt-16 md:pb-28 bg-gradient-to-b from-purple-50/50 via-white to-white">
-      {/* Background Soft Glow Auras matching brochure */}
-      <div className="pointer-events-none absolute -top-40 right-10 -z-10 h-[550px] w-[550px] rounded-full bg-gradient-to-br from-purple-300/30 via-cyan-200/20 to-transparent blur-3xl" />
-      <div className="pointer-events-none absolute top-1/2 left-0 -z-10 h-[450px] w-[450px] -translate-y-1/2 rounded-full bg-gradient-to-tr from-cyan-300/20 via-purple-200/20 to-transparent blur-3xl" />
+    <section className="relative overflow-hidden pt-8 pb-12 sm:pt-14 sm:pb-20 lg:pt-16 lg:pb-24">
+      {/* Iridescent background glow behind the doctor image on left */}
+      <div className="pointer-events-none absolute left-[-5%] top-[10%] -z-10 h-[520px] w-[520px] rounded-full bg-gradient-to-tr from-cyan-300/40 via-emerald-300/30 to-purple-400/35 blur-3xl opacity-75" />
+      <div className="pointer-events-none absolute right-[10%] top-[5%] -z-10 h-[380px] w-[380px] rounded-full bg-white/30 blur-2xl" />
 
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 items-center gap-10 lg:gap-8">
           
-          {/* LEFT COLUMN: Hero Messaging */}
-          <div className="lg:col-span-6 flex flex-col items-start text-left">
-            {/* Eyebrow */}
-            <div className="inline-flex items-center gap-2 rounded-full border border-purple-200/70 bg-purple-50/80 px-3.5 py-1 text-xs font-semibold text-purple-700 shadow-sm mb-6">
-              <span className="flex h-2 w-2 rounded-full bg-cyan-500 animate-pulse" />
-              <span>Healthcare Intelligence Platform</span>
-            </div>
-
-            {/* Main Headline */}
-            <h1 className="text-4xl sm:text-5xl xl:text-6xl font-extrabold tracking-tight text-slate-900 leading-[1.12]">
-              One Connected Platform.<br />
-              <span className="bg-gradient-to-r from-purple-600 via-indigo-600 to-cyan-500 bg-clip-text text-transparent">
-                Every Modern Healthcare Need.
-              </span>
-            </h1>
-
-            {/* Supporting Copy */}
-            <p className="mt-6 text-lg sm:text-xl text-slate-600 font-normal leading-relaxed max-w-xl">
-              SmrkoMed connects clinical care, care teams, patient communication, workflows and intelligence in one connected platform.
-            </p>
-
-            {/* CTAs */}
-            <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={() => handleDemoClick()}
-                className="inline-flex items-center justify-center gap-2.5 rounded-2xl bg-purple-600 px-8 py-4 text-base font-semibold text-white shadow-xl shadow-purple-600/25 hover:bg-purple-700 hover:shadow-purple-600/35 transition group"
-              >
-                <Sparkles className="h-4 w-4" />
-                <span>Book a Demo</span>
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-              </button>
-
-              <a
-                href="#care-loop"
-                onClick={handleExploreClick}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-7 py-4 text-base font-semibold text-slate-800 shadow-sm hover:border-purple-200 hover:bg-purple-50/50 hover:text-purple-700 transition"
-              >
-                Explore SmrkoMed →
-              </a>
-            </div>
-
-            {/* Quick Value Indicators */}
-            <div className="mt-10 grid grid-cols-2 sm:grid-cols-4 gap-4 w-full border-t border-slate-100 pt-6">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Deploy</div>
-                <div className="text-sm font-bold text-slate-800 mt-0.5">Clinics & Hospitals</div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Security</div>
-                <div className="text-sm font-bold text-slate-800 mt-0.5">Tenant-Isolated</div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Ecosystem</div>
-                <div className="text-sm font-bold text-slate-800 mt-0.5">Built for India</div>
-              </div>
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400">Engine</div>
-                <div className="text-sm font-bold text-slate-800 mt-0.5">Smrko AI Built-in</div>
-              </div>
-            </div>
-          </div>
-
-          {/* RIGHT COLUMN: Large SmrkoMed Dashboard Floating UI with Connected Micro-Cards */}
-          <div className="lg:col-span-6 relative">
-            {/* Background Glow */}
-            <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-purple-500/10 via-cyan-400/10 to-indigo-500/15 blur-2xl -z-10" />
-
-            {/* Dashboard Mockup Window */}
-            <div className="relative rounded-2xl sm:rounded-3xl border border-slate-200/90 bg-white shadow-2xl shadow-purple-900/10 overflow-hidden ring-1 ring-slate-900/5">
-              {/* Window Chrome */}
-              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-amber-400" />
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                  <span className="ml-2 text-[11px] font-medium text-slate-500 hidden sm:inline">
-                    SmrkoMed Clinic Intelligence • Dr. Shreya Session
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 border border-emerald-200/70">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
-                    Live Workspace
-                  </span>
-                </div>
+          {/* LEFT COLUMN: Doctor with Glowing Ring & Floating Cloud Accents */}
+          <div className="lg:col-span-6 flex justify-center lg:justify-start order-2 lg:order-1 relative">
+            <div className="relative w-full max-w-[420px] sm:max-w-[460px]">
+              
+              {/* Iridescent Halo Ring Backdrop */}
+              <div className="absolute -inset-2 rounded-full bg-gradient-to-tr from-cyan-400/50 via-teal-300/40 to-indigo-400/40 blur-xl -z-10" />
+              
+              {/* Floating Soft Cloud 1 - Top Left */}
+              <div className="absolute -top-6 -left-6 z-20 pointer-events-none opacity-90 drop-shadow-md hidden sm:block">
+                <svg width="140" height="70" viewBox="0 0 140 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M28 58C12.536 58 0 45.464 0 30C0 14.536 12.536 2 28 2C32.1462 2 36.0594 2.89904 39.5768 4.51688C45.3908 1.68537 51.982 0 59 0C80.5391 0 98 17.4609 98 39C98 40.0163 97.9611 41.0234 97.8845 42.0191C102.327 38.3056 108.067 36 114.5 36C128.583 36 140 47.4167 140 61.5C140 62.6869 139.919 63.8552 139.761 65H28V58Z" fill="url(#cloudGradTop)" />
+                  <defs>
+                    <linearGradient id="cloudGradTop" x1="70" y1="0" x2="70" y2="65" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="white" stopOpacity="0.95" />
+                      <stop offset="1" stopColor="white" stopOpacity="0.8" />
+                    </linearGradient>
+                  </defs>
+                </svg>
               </div>
 
-              {/* Real Dashboard Screenshot Display */}
-              <div className="relative aspect-[16/10] w-full overflow-hidden bg-slate-900/5">
+              {/* Main Doctor Image Container */}
+              <div className="relative rounded-3xl overflow-hidden shadow-2xl shadow-sky-900/15 border-4 border-white/70 bg-gradient-to-b from-white/30 to-white/10 backdrop-blur-sm">
                 <Image
-                  src="/branding/dashboard-doctor-preview.png"
-                  alt="SmrkoMed Doctor Dashboard Workspace"
-                  fill
-                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  src="/branding/hero-doctor.jpg"
+                  alt="Doctor collaborating on SmrkoMed Healthcare Platform"
+                  width={500}
+                  height={620}
                   priority
-                  className="object-cover object-top hover:scale-[1.02] transition-transform duration-500"
+                  className="w-full h-auto object-cover object-top"
                 />
               </div>
 
-              {/* Quick Summary Bar */}
-              <div className="grid grid-cols-3 border-t border-slate-100 bg-white p-3 text-center text-xs">
-                <div className="border-r border-slate-100">
-                  <span className="font-bold text-slate-900 text-sm">38</span>
-                  <span className="block text-[10px] text-slate-500">Active Journeys</span>
-                </div>
-                <div className="border-r border-slate-100">
-                  <span className="font-bold text-emerald-600 text-sm">31</span>
-                  <span className="block text-[10px] text-slate-500">On Track</span>
-                </div>
-                <div>
-                  <span className="font-bold text-purple-600 text-sm">08</span>
-                  <span className="block text-[10px] text-slate-500">Today Visits</span>
-                </div>
+              {/* Floating Soft Cloud 2 - Bottom Under Doctor */}
+              <div className="absolute -bottom-8 -left-10 -right-10 z-20 pointer-events-none drop-shadow-xl">
+                <svg viewBox="0 0 500 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-auto">
+                  <path d="M70 120C31.3401 120 0 88.6599 0 50C0 14.5 28.5 0 65 0C82.5 0 98 7 110 18C126 6 148 0 172 0C222 0 263 38 268 87C282 76 301 70 322 70C363 70 398 98 406 138C418 127 434 120 452 120C478.51 120 500 141.49 500 168V180H0V120H70Z" fill="url(#heroCloudBottom)" />
+                  <defs>
+                    <linearGradient id="heroCloudBottom" x1="250" y1="0" x2="250" y2="180" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="white" stopOpacity="0.98" />
+                      <stop offset="0.6" stopColor="white" stopOpacity="0.92" />
+                      <stop offset="1" stopColor="white" stopOpacity="0.8" />
+                    </linearGradient>
+                  </defs>
+                </svg>
               </div>
-            </div>
 
-            {/* Floating Connected Product Card 1: Doctor App (Top Right) */}
-            <div className="absolute -top-6 -right-4 sm:-right-6 hidden sm:flex items-center gap-3 rounded-2xl border border-purple-100 bg-white/95 p-3 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-top-4 duration-500">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
-                <Smartphone className="h-4 w-4" />
-              </div>
-              <div className="text-left">
-                <div className="text-xs font-bold text-slate-900">Doctor Mobile App</div>
-                <div className="text-[11px] text-slate-500">38 Journeys • Schedule Sync</div>
-              </div>
             </div>
+          </div>
 
-            {/* Floating Connected Product Card 2: Care Loop (Bottom Left) */}
-            <div className="absolute -bottom-6 -left-4 sm:-left-6 hidden sm:flex items-center gap-3 rounded-2xl border border-cyan-100 bg-white/95 p-3 shadow-xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
-                <HeartHandshake className="h-4 w-4" />
-              </div>
-              <div className="text-left">
-                <div className="text-xs font-bold text-slate-900">Care Loop Engine</div>
-                <div className="text-[11px] text-emerald-600 font-medium">98.4% Automated Next Actions</div>
-              </div>
-            </div>
+          {/* RIGHT COLUMN: Bold Typography matching reference */}
+          <div className="lg:col-span-6 flex flex-col items-start text-left order-1 lg:order-2 lg:pl-6">
+            
+            {/* Main Headline */}
+            <h1 className="tracking-tight leading-[1.08]">
+              <span className="block text-4xl sm:text-6xl lg:text-7xl font-light text-slate-800">
+                One
+              </span>
+              <span className="block text-4xl sm:text-6xl lg:text-7xl font-extrabold text-sky-500 mt-1">
+                Connected
+              </span>
+              <span className="block text-4xl sm:text-6xl lg:text-7xl font-light text-slate-800 mt-1">
+                Platform
+              </span>
+            </h1>
 
-            {/* Floating Connected Product Card 3: WhatsApp + Smrko AI (Bottom Right) */}
-            <div className="absolute -bottom-8 right-8 hidden lg:flex items-center gap-3 rounded-2xl border border-emerald-100 bg-white/95 p-2.5 shadow-xl backdrop-blur-md">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
-                <MessageSquare className="h-3.5 w-3.5" />
-              </div>
-              <div className="text-left">
-                <div className="text-[11px] font-bold text-slate-900 flex items-center gap-1">
-                  WhatsApp + Smrko AI
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                </div>
-                <div className="text-[10px] text-slate-500">Instant patient confirmation</div>
-              </div>
+            {/* Sub-headline */}
+            <h2 className="mt-5 text-xl sm:text-2xl font-normal text-slate-800 tracking-tight">
+              for Every Modern Healthcare Need
+            </h2>
+
+            {/* Supporting Copy */}
+            <p className="mt-4 text-xs sm:text-sm text-slate-600 max-w-md leading-relaxed">
+              Smrkomed brings clinical care, care teams, patient communication, workflows, and intelligence together in one seamless healthcare platform.
+            </p>
+
+            {/* Dark Pill CTA */}
+            <div className="mt-7">
+              <button
+                type="button"
+                onClick={() => handleDemoClick()}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-[#201c38] px-8 py-3.5 text-xs sm:text-sm font-semibold text-white shadow-xl hover:bg-slate-900 hover:shadow-2xl hover:scale-[1.02] active:scale-[0.99] transition-all duration-200"
+              >
+                <span>Book a Demo</span>
+              </button>
             </div>
 
           </div>

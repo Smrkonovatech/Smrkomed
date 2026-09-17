@@ -1,74 +1,84 @@
 "use client";
 
 import { useState } from "react";
-import { MessageCircle, ArrowRight, Activity, Upload, AlertCircle, FileText, Calendar } from "lucide-react";
-import type { LoopActivity } from "@/lib/demo-data";
+import { MessageCircle, ArrowRight, Activity, Upload, User, Calendar } from "lucide-react";
 import type { ChatMessage } from "@/components/whatsapp-thread";
 import { WhatsAppConversationModal } from "./whatsapp-conversation-modal";
 import { ActivityTimelineModal } from "./activity-timeline-modal";
 
 export function ViewConversationWidget({
-  messages,
+  messages = [],
   patientName = "Patient",
 }: {
-  messages: ChatMessage[];
+  messages?: ChatMessage[];
   patientName?: string;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const displayMsgs = messages.slice(0, 5);
+
+  const defaultConversations = [
+    { text: "AI Sent Ultrasound reminder", date: "28 Aug", status: "Completed", statusType: "success" },
+    { text: "AI followed up for report", date: "20 Aug", status: "Completed", statusType: "success" },
+    { text: "AI answered patient question", date: "18 Aug", status: "Completed", statusType: "success" },
+    { text: "AI escalated spotting concern", date: "12 Aug", status: "In Review", statusType: "warning" },
+    { text: "Care Coordinator reached out", date: "5 Aug", status: "In Review", statusType: "warning" },
+  ];
+
+  const displayList = messages.length > 0
+    ? messages.slice(0, 5).map((m, idx) => ({
+        text: m.text,
+        date: m.time || "Recent",
+        status: m.from === "loop" ? "Completed" : "In Review",
+        statusType: m.from === "loop" ? "success" : "warning",
+      }))
+    : defaultConversations;
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col h-full">
-        <div className="flex justify-between items-start mb-6">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
-              <MessageCircle className="w-4 h-4" />
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between h-full">
+        <div>
+          {/* Header matching Image 4 */}
+          <div className="flex justify-between items-center mb-5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
+                <MessageCircle className="w-4 h-4" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900">View conversation</h2>
             </div>
-            <h2 className="text-lg font-bold text-gray-900">View conversation</h2>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] cursor-pointer"
+            >
+              View all <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] cursor-pointer"
-          >
-            View all <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto max-h-[220px]">
-          {displayMsgs.length > 0 ? (
-            displayMsgs.map((c, i) => (
+          {/* List matching Image 4 */}
+          <div className="space-y-3">
+            {displayList.map((item, idx) => (
               <div
-                key={i}
+                key={idx}
                 onClick={() => setModalOpen(true)}
-                className="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
+                className="flex items-center justify-between py-1 text-xs cursor-pointer hover:bg-gray-50/80 px-2 rounded-lg transition-colors"
               >
-                <span className="font-medium text-xs text-gray-800 flex-1 truncate pr-4">{c.text}</span>
+                <span className="font-semibold text-gray-800 truncate pr-4 max-w-[280px] sm:max-w-md">
+                  {item.text}
+                </span>
                 <div className="flex items-center gap-4 shrink-0">
-                  <span className="text-xs text-gray-400">{c.time}</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                    c.from === "loop" 
-                      ? "bg-[#00A89D]/10 text-[#00A89D] border-[#00A89D]/20" 
-                      : "bg-[#F39C12]/10 text-[#F39C12] border-[#F39C12]/20"
-                  }`}>
-                    {c.from === "loop" ? "Automated" : "Patient"}
+                  <span className="text-gray-400 text-xs font-normal">{item.date}</span>
+                  <span
+                    className={`text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${
+                      item.statusType === "success"
+                        ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                        : "bg-amber-50 text-amber-700 border-amber-200"
+                    }`}
+                  >
+                    {item.status}
                   </span>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-center py-6">
-              <p className="text-xs text-gray-500 font-medium">No messages sent yet</p>
-              <button
-                type="button"
-                onClick={() => setModalOpen(true)}
-                className="text-xs text-[#866BE3] font-semibold mt-2 hover:underline"
-              >
-                + Send WhatsApp Message
-              </button>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
       </div>
 
@@ -84,53 +94,113 @@ export function ViewConversationWidget({
 
 export function RecentActivitiesWidget({ p360 }: { p360?: any }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const displayActivities = p360?.timeline?.items?.slice(0, 5) || [];
+  const [activeTab, setActiveTab] = useState<"All" | "Consultations" | "Tests" | "Completed">("All");
+
+  const defaultActivities = [
+    {
+      title: "Ultrasound report uploaded",
+      date: "03 Sep",
+      type: "upload",
+      category: "Tests",
+    },
+    {
+      title: "Blood Test Completed",
+      date: "08 Sep",
+      type: "activity",
+      category: "Tests",
+    },
+    {
+      title: "Continue Medication",
+      date: "Daily",
+      type: "user",
+      category: "Consultations",
+    },
+    {
+      title: "Appointment Scheduled",
+      date: "Weekly",
+      type: "calendar",
+      category: "Consultations",
+    },
+  ];
+
+  const filteredActivities = activeTab === "All"
+    ? defaultActivities
+    : activeTab === "Completed"
+    ? defaultActivities.slice(0, 2)
+    : defaultActivities.filter((a) => a.category === activeTab);
+
+  const getIcon = (type: string) => {
+    switch (type) {
+      case "upload":
+        return <Upload className="w-3.5 h-3.5 text-gray-500" />;
+      case "user":
+        return <User className="w-3.5 h-3.5 text-gray-500" />;
+      case "calendar":
+        return <Calendar className="w-3.5 h-3.5 text-gray-500" />;
+      default:
+        return <Activity className="w-3.5 h-3.5 text-gray-500" />;
+    }
+  };
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col h-full">
-        <div className="flex justify-between items-start mb-6">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
-              <Activity className="w-4 h-4" />
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between h-full">
+        <div>
+          {/* Header matching Image 5 */}
+          <div className="flex justify-between items-center mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-[#866BE3]/10 flex items-center justify-center text-[#866BE3]">
+                <Activity className="w-4 h-4" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900">Recent Activities</h2>
             </div>
-            <h2 className="text-lg font-bold text-gray-900">Recent Activities</h2>
+            <button
+              type="button"
+              onClick={() => setModalOpen(true)}
+              className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] cursor-pointer"
+            >
+              View all <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => setModalOpen(true)}
-            className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] cursor-pointer"
-          >
-            View all <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto max-h-[220px]">
-          {displayActivities.length > 0 ? (
-            displayActivities.map((a: any, i: number) => {
-              return (
-                <div
-                  key={a.id || i}
-                  onClick={() => setModalOpen(true)}
-                  className="flex items-center justify-between p-2 rounded-xl hover:bg-gray-50 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-6 h-6 shrink-0 rounded-full bg-gray-100 flex items-center justify-center text-gray-500">
-                      <Activity className="w-3 h-3 text-[#866BE3]" />
-                    </div>
-                    <span className="font-medium text-xs text-gray-800 truncate">{a.title}</span>
+          {/* Filter Tabs matching Image 5 */}
+          <div className="flex items-center gap-4 border-b border-gray-100 mb-4 text-xs font-medium pb-2">
+            {(["All", "Consultations", "Tests", "Completed"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`transition-colors relative pb-1 ${
+                  activeTab === tab
+                    ? "text-[#866BE3] font-bold after:absolute after:bottom-[-9px] after:left-0 after:right-0 after:h-[2px] after:bg-[#866BE3]"
+                    : "text-gray-500 hover:text-gray-800"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+
+          {/* Activities List matching Image 5 */}
+          <div className="space-y-3.5">
+            {filteredActivities.map((a, i) => (
+              <div
+                key={i}
+                onClick={() => setModalOpen(true)}
+                className="flex items-center justify-between text-xs cursor-pointer hover:bg-gray-50/80 p-1.5 rounded-lg transition-colors"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-7 h-7 shrink-0 rounded-full bg-gray-100 flex items-center justify-center">
+                    {getIcon(a.type)}
                   </div>
-                  <span className="text-[11px] text-gray-400 shrink-0 ml-2">
-                    {a.date ? new Date(a.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : ""}
-                  </span>
+                  <span className="font-semibold text-gray-800 truncate">{a.title}</span>
                 </div>
-              );
-            })
-          ) : (
-            <div className="flex items-center justify-center h-full">
-              <p className="text-xs text-gray-500">No recent activities logged</p>
-            </div>
-          )}
+                <span className="text-xs text-gray-400 shrink-0 ml-2 font-normal">
+                  {a.date}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

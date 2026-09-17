@@ -4,9 +4,11 @@ import { loadDatabaseEnv } from "./env";
 
 loadDatabaseEnv();
 
-function resolveDatabaseUrl() {
-  let url = process.env["DATABASE_URL"];
-  if (!url) return url;
+function resolveDatabaseUrl(): string {
+  loadDatabaseEnv();
+  let url =
+    process.env["DATABASE_URL"] ||
+    "postgresql://postgres:iRGwdhwXiWUTlLblsFkouQJjkPKofzNS@altaria.proxy.rlwy.net:49540/railway";
   const onVercel = process.env["VERCEL"] === "1";
   if (onVercel && !/sslmode=/i.test(url) && !/localhost|127\.0\.0\.1/i.test(url)) {
     url = `${url}${url.includes("?") ? "&" : "?"}sslmode=require`;
@@ -14,6 +16,7 @@ function resolveDatabaseUrl() {
   if (!/connect_timeout=/i.test(url) && !/localhost|127\.0\.0\.1/i.test(url)) {
     url = `${url}${url.includes("?") ? "&" : "?"}connect_timeout=30&pool_timeout=30`;
   }
+  process.env["DATABASE_URL"] = url;
   return url;
 }
 
@@ -23,7 +26,7 @@ const databaseUrl = resolveDatabaseUrl();
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    ...(databaseUrl ? { datasources: { db: { url: databaseUrl } } } : {}),
+    datasources: { db: { url: databaseUrl } },
     log: process.env["NODE_ENV"] === "development" ? ["error", "warn"] : ["error"],
   });
 

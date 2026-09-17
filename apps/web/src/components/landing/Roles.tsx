@@ -2,16 +2,10 @@
 
 import { 
   Stethoscope, 
-  HeartHandshake, 
-  CalendarCheck, 
-  Activity, 
-  FlaskConical, 
-  Dna, 
-  Pill, 
-  Receipt, 
-  ShieldCheck, 
-  SlidersHorizontal,
-  ArrowRight
+  Heart, 
+  CalendarDays, 
+  UserCheck, 
+  FlaskConical 
 } from "lucide-react";
 
 interface RolesProps {
@@ -24,116 +18,79 @@ export function Roles({ onOpenDemo }: RolesProps) {
       title: "Doctor",
       purpose: "Clinical decisions",
       icon: Stethoscope,
-      accent: "from-purple-500 to-indigo-600",
-      bgLight: "bg-purple-50/70 text-purple-700 border-purple-100",
+      circleGradient: "from-[#38bdf8] to-[#0ea5e9]",
+      glowColor: "shadow-sky-400/30",
     },
     {
-      title: "Care Coordinator",
-      purpose: "Patient follow-up",
-      icon: HeartHandshake,
-      accent: "from-cyan-500 to-blue-600",
-      bgLight: "bg-cyan-50/70 text-cyan-700 border-cyan-100",
+      title: "Care coordinator",
+      purpose: "Clinical assistant",
+      icon: Heart,
+      circleGradient: "from-[#c084fc] to-[#9333ea]",
+      glowColor: "shadow-purple-400/30",
     },
     {
       title: "Reception",
-      purpose: "Appointments",
-      icon: CalendarCheck,
-      accent: "from-emerald-500 to-teal-600",
-      bgLight: "bg-emerald-50/70 text-emerald-700 border-emerald-100",
+      purpose: "General workflows",
+      icon: CalendarDays,
+      circleGradient: "from-[#5eead4] to-[#14b8a6]",
+      glowColor: "shadow-teal-400/30",
     },
     {
       title: "Nurse",
-      purpose: "Care support",
-      icon: Activity,
-      accent: "from-rose-500 to-pink-600",
-      bgLight: "bg-rose-50/70 text-rose-700 border-rose-100",
+      purpose: "Clinical workflows",
+      icon: UserCheck,
+      circleGradient: "from-[#93c5fd] to-[#6366f1]",
+      glowColor: "shadow-indigo-400/30",
     },
     {
       title: "Lab",
-      purpose: "Diagnostics",
+      purpose: "Clinical decisions",
       icon: FlaskConical,
-      accent: "from-blue-500 to-indigo-600",
-      bgLight: "bg-blue-50/70 text-blue-700 border-blue-100",
-    },
-    {
-      title: "Embryology",
-      purpose: "IVF laboratory",
-      icon: Dna,
-      accent: "from-violet-500 to-purple-600",
-      bgLight: "bg-violet-50/70 text-violet-700 border-violet-100",
-    },
-    {
-      title: "Pharmacy",
-      purpose: "Medication fulfilment",
-      icon: Pill,
-      accent: "from-amber-500 to-orange-600",
-      bgLight: "bg-amber-50/70 text-amber-700 border-amber-100",
-    },
-    {
-      title: "Billing",
-      purpose: "Payments",
-      icon: Receipt,
-      accent: "from-emerald-500 to-green-600",
-      bgLight: "bg-emerald-50/70 text-emerald-700 border-emerald-100",
-    },
-    {
-      title: "Insurance",
-      purpose: "Claims",
-      icon: ShieldCheck,
-      accent: "from-sky-500 to-cyan-600",
-      bgLight: "bg-sky-50/70 text-sky-700 border-sky-100",
-    },
-    {
-      title: "Admin",
-      purpose: "Operations",
-      icon: SlidersHorizontal,
-      accent: "from-slate-600 to-slate-900",
-      bgLight: "bg-slate-100 text-slate-800 border-slate-200",
+      circleGradient: "from-[#f472b6] to-[#db2777]",
+      glowColor: "shadow-pink-400/30",
     },
   ];
 
   return (
-    <section className="py-16 sm:py-24 bg-slate-50/60 border-y border-slate-100">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <section className="relative overflow-hidden pt-12 pb-24 sm:pt-16 sm:pb-32">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 relative z-10">
         
         {/* Section Header */}
-        <div className="text-center max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/70 px-3 py-1 text-xs font-semibold text-purple-700 mb-3">
-            Connected Care Team
-          </div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">
-            Built for everyone who delivers care.
+        <div className="text-center max-w-xl mx-auto">
+          <h2 className="text-3xl sm:text-4xl lg:text-[40px] font-extrabold tracking-tight text-slate-900 leading-tight">
+            Built for everyone <span className="font-light text-slate-800">who</span>
+            <br />
+            delivers care
           </h2>
-          <p className="mt-3 text-base sm:text-lg text-slate-600 font-normal">
-            Every role gets the tools, context and actions they need.
+          <p className="mt-3 text-xs sm:text-sm text-slate-600 font-normal max-w-md mx-auto leading-relaxed">
+            Every role gets a separate login,
+            <br className="hidden sm:inline" />
+            with the tools, context and actions they need.
           </p>
-          
-          {/* Ecosystem Flow Ribbon */}
-          <div className="mt-4 inline-flex flex-wrap items-center justify-center gap-2 text-xs font-semibold text-slate-500 bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">
-            <span className="text-purple-600">ONE PLATFORM</span>
-            <span className="text-slate-300">→</span>
-            <span className="text-indigo-600">MANY ROLES</span>
-            <span className="text-slate-300">→</span>
-            <span className="text-cyan-600">ONE CONNECTED CARE ENVIRONMENT</span>
-          </div>
         </div>
 
-        {/* 10 Compact Role Cards Grid */}
-        <div className="mt-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 sm:gap-4">
+        {/* 5 Distinct White Feature Cards */}
+        <div className="mt-12 sm:mt-16 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-5">
           {roles.map((role) => {
             const Icon = role.icon;
             return (
               <div
                 key={role.title}
-                className="group relative flex flex-col items-start rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm hover:shadow-md hover:border-purple-300 transition-all duration-200"
+                onClick={() => onOpenDemo?.(role.title)}
+                className="group relative flex flex-col items-center justify-center rounded-3xl bg-white/95 p-6 sm:p-7 text-center shadow-lg shadow-sky-500/5 border border-white hover:bg-white hover:shadow-xl hover:-translate-y-1.5 transition-all duration-300 cursor-pointer"
               >
-                <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${role.bgLight} group-hover:scale-110 transition-transform`}>
-                  <Icon className="h-5 w-5" />
+                {/* Circular Gradient Icon Container with subtle glow */}
+                <div className={`flex h-16 w-16 sm:h-20 sm:w-20 items-center justify-center rounded-full bg-gradient-to-b ${role.circleGradient} p-3 text-white shadow-md ${role.glowColor} group-hover:scale-105 transition-transform duration-300`}>
+                  <Icon className="h-8 w-8 sm:h-9 sm:w-9 text-white stroke-[1.75]" />
                 </div>
-                <h3 className="mt-3.5 text-base font-bold text-slate-900 group-hover:text-purple-600 transition-colors">
+
+                {/* Role Title */}
+                <h3 className="mt-5 text-sm sm:text-base font-bold text-slate-900 group-hover:text-sky-600 transition-colors">
                   {role.title}
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 font-medium leading-relaxed">
+
+                {/* Purpose / Subtitle */}
+                <p className="mt-1 text-[11px] sm:text-xs text-slate-400 font-normal">
                   {role.purpose}
                 </p>
               </div>
@@ -141,18 +98,29 @@ export function Roles({ onOpenDemo }: RolesProps) {
           })}
         </div>
 
-        {/* Bottom CTA */}
-        <div className="mt-10 text-center">
-          <button
-            type="button"
-            onClick={() => onOpenDemo?.("Clinic Management")}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-purple-600 hover:text-purple-700 transition"
-          >
-            <span>See how each role collaborates inside SmrkoMed</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
-        </div>
+      </div>
 
+      {/* Layered Soft Clouds at Bottom transitioning to pure white */}
+      <div className="absolute bottom-0 left-0 right-0 pointer-events-none -z-0 opacity-95">
+        <svg
+          viewBox="0 0 1440 220"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="w-full h-auto translate-y-4"
+          preserveAspectRatio="none"
+        >
+          {/* Back Cloud Layer */}
+          <path
+            d="M0 160C120 140 240 120 380 135C520 150 640 190 780 170C920 150 1060 110 1200 125C1340 140 1400 160 1440 170V220H0V160Z"
+            fill="white"
+            fillOpacity="0.6"
+          />
+          {/* Front Fluffy Clouds Layer */}
+          <path
+            d="M0 180C90 140 190 140 290 165C390 190 480 200 580 175C680 150 780 120 890 135C1000 150 1100 185 1220 175C1320 165 1390 150 1440 155V220H0V180Z"
+            fill="white"
+          />
+        </svg>
       </div>
     </section>
   );

@@ -25,7 +25,11 @@ export default auth((req) => {
     pathname === "/api/health" ||
     pathname.startsWith("/api/whatsapp/webhook") ||
     pathname === "/api/onboarding" ||
-    pathname === "/api/leads/ingest";
+    pathname === "/api/leads/ingest" ||
+    pathname.startsWith("/api/create-order") ||
+    pathname.startsWith("/api/verify-payment") ||
+    pathname.startsWith("/api/razorpay") ||
+    pathname.startsWith("/api/payments");
 
   if (isPublicApi || isPublicPage || isOnboarding) {
     return NextResponse.next();

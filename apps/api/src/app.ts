@@ -7,6 +7,7 @@ import { rateLimitMiddleware } from "./middleware/rate-limit";
 import { v1 } from "./routes/v1";
 import { abdmCallbackRoutes } from "./modules/digital-health/abdm-callbacks";
 import { aiBookAppointmentRoute } from "./routes/ai-book-appointment";
+import { razorpayRoutes } from "./routes/razorpay";
 import type { AppEnv } from "./types";
 
 export function createApp() {
@@ -21,6 +22,8 @@ export function createApp() {
   app.route("/api/ai/book-appointment", aiBookAppointmentRoute);
   app.route("/api/v1/ai/doctor-schedule", aiBookAppointmentRoute);
   app.route("/api/ai/doctor-schedule", aiBookAppointmentRoute);
+  app.route("/api", razorpayRoutes);
+  app.route("/api/v1/payments", razorpayRoutes);
   app.route("/api/v1", v1);
   return app;
 }

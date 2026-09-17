@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -32,12 +33,10 @@ import {
   Scissors,
   Building2,
   AlertTriangle,
-  HeartHandshake,
   Compass,
   FileSignature,
   FileCheck2,
 } from "lucide-react";
-import { toast } from "sonner";
 
 interface PatientDetailsModalProps {
   isOpen: boolean;
@@ -45,7 +44,6 @@ interface PatientDetailsModalProps {
   patient: any;
   p360?: any;
   isPartner?: boolean;
-  onPatientUpdated?: (() => void) | undefined;
 }
 
 export function PatientDetailsModal({
@@ -59,17 +57,13 @@ export function PatientDetailsModal({
     "overview" | "abha" | "medical" | "investigations" | "medications" | "documents"
   >("overview");
 
-  // Overview Tags State
   const [tags, setTags] = useState<string[]>([
     "IVF Patient",
     "PCOS",
     "Hypothyroidism",
     "High Priority",
   ]);
-  const [isAddingTag, setIsAddingTag] = useState(false);
-  const [newTagInput, setNewTagInput] = useState("");
 
-  // Tab Filtering States
   const [medicalCategory, setMedicalCategory] = useState("All Records");
   const [investigationCategory, setInvestigationCategory] = useState("All");
   const [investigationSearch, setInvestigationSearch] = useState("");
@@ -108,16 +102,6 @@ export function PatientDetailsModal({
   const doctorName = p360?.header?.assignedDoctor || "Dr. Ananya Rao";
   const coordinatorName = p360?.header?.assignedCoordinator || "Meera Iyer";
 
-  const handleAddTag = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newTagInput.trim() && !tags.includes(newTagInput.trim())) {
-      setTags([...tags, newTagInput.trim()]);
-      setNewTagInput("");
-      setIsAddingTag(false);
-      toast.success("Tag added");
-    }
-  };
-
   const getTagStyle = (tag: string) => {
     switch (tag.toLowerCase()) {
       case "ivf patient":
@@ -133,7 +117,6 @@ export function PatientDetailsModal({
     }
   };
 
-  // Medical History Data (Image 2)
   const medicalRecords = [
     {
       date: "12 Sep 2026",
@@ -201,7 +184,6 @@ export function PatientDetailsModal({
     ? medicalRecords
     : medicalRecords.filter((r) => r.category === medicalCategory);
 
-  // Investigations Data (Image 3)
   const investigationsList = [
     {
       date: "12 Sep 2026",
@@ -261,7 +243,6 @@ export function PatientDetailsModal({
     return matchCat && matchSearch;
   });
 
-  // Medications Data (Image 4)
   const medicationsList = [
     {
       date: "12 Sep 2026",
@@ -331,7 +312,6 @@ export function PatientDetailsModal({
     return matchStatus && matchSearch;
   });
 
-  // Documents Data (Image 5)
   const documentsList = [
     {
       name: "Pelvic Ultrasound Report",
@@ -396,12 +376,10 @@ export function PatientDetailsModal({
         {/* TOP HEADER */}
         <div className="p-6 pb-4 border-b border-gray-100 flex items-start justify-between">
           <div className="flex items-center gap-4">
-            {/* Avatar */}
             <div className="w-13 h-13 rounded-full bg-[#866BE3] text-white flex items-center justify-center font-bold text-xl shadow-sm shrink-0">
               {patientName?.[0] || "M"}
             </div>
 
-            {/* Name, Badges & Meta Info */}
             <div>
               <div className="flex flex-wrap items-center gap-2.5">
                 <DialogTitle className="text-xl font-bold text-gray-900 leading-tight">
@@ -416,7 +394,6 @@ export function PatientDetailsModal({
                 </span>
               </div>
 
-              {/* Subtitle Details */}
               <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 mt-1.5">
                 <span>ID: {patientId}</span>
                 <span>•</span>
@@ -432,11 +409,9 @@ export function PatientDetailsModal({
             </div>
           </div>
 
-          {/* Top Right Action & Close */}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => toast.info("Full EHR profile opened in new tab")}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
@@ -484,8 +459,6 @@ export function PatientDetailsModal({
 
         {/* TAB CONTENTS */}
         <div className="p-6">
-          
-          {/* TAB 1: OVERVIEW */}
           {activeTab === "overview" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               
@@ -615,41 +588,7 @@ export function PatientDetailsModal({
                     <Tag className="w-4 h-4 text-[#866BE3]" />
                     <h3 className="text-sm font-bold text-gray-900">Quick Tags</h3>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingTag(true)}
-                    className="text-xs font-semibold text-[#866BE3] hover:text-[#7254d1] flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Tag</span>
-                  </button>
                 </div>
-
-                {isAddingTag && (
-                  <form onSubmit={handleAddTag} className="flex gap-2 mb-3">
-                    <input
-                      type="text"
-                      placeholder="Enter new tag..."
-                      value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
-                      className="px-2.5 py-1 text-xs border rounded-lg focus:outline-[#866BE3] flex-1"
-                      autoFocus
-                    />
-                    <button
-                      type="submit"
-                      className="bg-[#866BE3] text-white px-3 py-1 rounded-lg text-xs font-semibold"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setIsAddingTag(false)}
-                      className="text-gray-400 text-xs px-2"
-                    >
-                      Cancel
-                    </button>
-                  </form>
-                )}
 
                 <div className="flex flex-wrap gap-2 pt-1">
                   {tags.map((tag) => (
@@ -676,7 +615,6 @@ export function PatientDetailsModal({
 
                 <button
                   type="button"
-                  onClick={() => toast.info("Opening calendar to appointment date")}
                   className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors cursor-pointer"
                 >
                   <Calendar className="w-3.5 h-3.5" />
@@ -687,39 +625,9 @@ export function PatientDetailsModal({
             </div>
           )}
 
-          {/* TAB 2: ABHA */}
-          {activeTab === "abha" && (
-            <div className="p-6 rounded-2xl bg-slate-50 border border-gray-100 space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className="w-7 h-7 text-[#00A89D]" />
-                  <div>
-                    <h4 className="text-sm font-bold text-gray-900">ABDM & ABHA Digital Profile</h4>
-                    <p className="text-xs text-gray-500">Ayushman Bharat Digital Mission • Sandbox Active</p>
-                  </div>
-                </div>
-                <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  Connected
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-xs pt-2">
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
-                  <span className="text-gray-400">ABHA Number</span>
-                  <p className="font-bold text-gray-900 text-sm mt-1">91-4829-1029-4920</p>
-                </div>
-                <div className="bg-white p-4 rounded-xl border shadow-sm">
-                  <span className="text-gray-400">ABHA Address (PHR)</span>
-                  <p className="font-bold text-gray-900 text-sm mt-1">{patientName?.toLowerCase().replace(/\s+/g, "")}@sbx</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 3: MEDICAL HISTORY (Matching Image 2) */}
+          {/* TAB 3: MEDICAL HISTORY */}
           {activeTab === "medical" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Sidebar */}
               <div className="lg:col-span-4 bg-slate-50/70 p-4 rounded-2xl border border-gray-100 space-y-4">
                 <div>
                   <h4 className="text-sm font-bold text-gray-900">Medical History</h4>
@@ -753,40 +661,21 @@ export function PatientDetailsModal({
                           <Icon className={`w-3.5 h-3.5 ${isSel ? "text-[#866BE3]" : "text-gray-400"}`} />
                           <span>{cat.label}</span>
                         </div>
-                        <span className={`text-xs ${isSel ? "text-[#866BE3] font-bold" : "text-gray-400"}`}>
-                          {cat.count}
-                        </span>
+                        <span className={`text-xs ${isSel ? "text-[#866BE3] font-bold" : "text-gray-400"}`}>{cat.count}</span>
                       </button>
                     );
                   })}
                 </div>
-
-                <div className="pt-2 border-t border-gray-200/60 flex items-start gap-2 text-[11px] text-gray-500 leading-relaxed">
-                  <Info className="w-3.5 h-3.5 text-[#866BE3] shrink-0 mt-0.5" />
-                  <span>This information is fetched from ABDM with patient consent. Data availability depends on records shared by healthcare providers.</span>
-                </div>
               </div>
 
-              {/* Right Content */}
               <div className="lg:col-span-8 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h4 className="text-sm font-bold text-gray-900">{medicalCategory}</h4>
                     <p className="text-[11px] text-gray-500">{filteredMedicalRecords.length} records from 3 healthcare providers</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button type="button" className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center gap-1.5 shadow-sm">
-                      <span>All Years</span>
-                      <ChevronDown className="w-3 h-3 text-gray-400" />
-                    </button>
-                    <button type="button" className="px-3 py-1.5 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center gap-1.5 shadow-sm">
-                      <span>Newest First</span>
-                      <ChevronDown className="w-3 h-3 text-gray-400" />
-                    </button>
-                  </div>
                 </div>
 
-                {/* Timeline List */}
                 <div className="space-y-3">
                   {filteredMedicalRecords.map((item, idx) => {
                     const Icon = item.icon;
@@ -796,7 +685,7 @@ export function PatientDetailsModal({
                           <span className={`w-2 h-2 rounded-full ${item.bulletColor}`} />
                           <span>{item.date}</span>
                         </div>
-                        <div className="flex-1 bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between hover:border-purple-200 transition-colors">
+                        <div className="flex-1 bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-xl ${item.iconBg} flex items-center justify-center shrink-0`}>
                               <Icon className="w-4 h-4" />
@@ -822,108 +711,54 @@ export function PatientDetailsModal({
             </div>
           )}
 
-          {/* TAB 4: INVESTIGATIONS (Matching Image 3) */}
+          {/* TAB 4: INVESTIGATIONS */}
           {activeTab === "investigations" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Sidebar */}
               <div className="lg:col-span-4 bg-slate-50/70 p-4 rounded-2xl border border-gray-100 space-y-4">
                 <div className="p-3 bg-white rounded-xl border border-purple-100/60 shadow-sm flex items-start gap-2.5">
                   <ShieldCheck className="w-5 h-5 text-[#866BE3] shrink-0 mt-0.5" />
                   <div>
                     <h5 className="text-xs font-bold text-gray-900">ABDM-linked Investigations</h5>
                     <p className="text-[10px] text-gray-500 mt-0.5">Reports available through ABDM with your consent.</p>
-                    <span className="inline-block mt-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-bold">
-                      8 records
-                    </span>
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Categories</p>
-                  <div className="space-y-1 text-xs">
-                    {[
-                      { label: "All", text: "All Investigations", count: 8, icon: FlaskConical },
-                      { label: "Laboratory", text: "Laboratory Reports", count: 5, icon: FlaskConical },
-                      { label: "Imaging", text: "Imaging / Diagnostics", count: 3, icon: FileText },
-                    ].map((c) => {
-                      const Icon = c.icon;
-                      const isSel = investigationCategory === c.label;
-                      return (
-                        <button
-                          key={c.label}
-                          type="button"
-                          onClick={() => setInvestigationCategory(c.label)}
-                          className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all font-medium text-left cursor-pointer ${
-                            isSel
-                              ? "bg-[#866BE3]/10 text-[#866BE3] font-bold"
-                              : "text-gray-700 hover:bg-gray-100"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Icon className={`w-3.5 h-3.5 ${isSel ? "text-[#866BE3]" : "text-gray-400"}`} />
-                            <span>{c.text}</span>
-                          </div>
-                          <span className={`text-xs ${isSel ? "text-[#866BE3] font-bold" : "text-gray-400"}`}>{c.count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-gray-200/60 flex items-start gap-2 text-[11px] text-gray-500 leading-relaxed">
-                  <Info className="w-3.5 h-3.5 text-[#866BE3] shrink-0 mt-0.5" />
-                  <span>Data is fetched from ABDM with patient consent. Availability depends on records shared by healthcare providers.</span>
+                <div className="space-y-1 text-xs">
+                  {[
+                    { label: "All", text: "All Investigations", count: 8, icon: FlaskConical },
+                    { label: "Laboratory", text: "Laboratory Reports", count: 5, icon: FlaskConical },
+                    { label: "Imaging", text: "Imaging / Diagnostics", count: 3, icon: FileText },
+                  ].map((c) => {
+                    const Icon = c.icon;
+                    const isSel = investigationCategory === c.label;
+                    return (
+                      <button
+                        key={c.label}
+                        type="button"
+                        onClick={() => setInvestigationCategory(c.label)}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all font-medium text-left cursor-pointer ${
+                          isSel
+                            ? "bg-[#866BE3]/10 text-[#866BE3] font-bold"
+                            : "text-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon className={`w-3.5 h-3.5 ${isSel ? "text-[#866BE3]" : "text-gray-400"}`} />
+                          <span>{c.text}</span>
+                        </div>
+                        <span className={`text-xs ${isSel ? "text-[#866BE3] font-bold" : "text-gray-400"}`}>{c.count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Right Content */}
               <div className="lg:col-span-8 space-y-4">
-                {/* Search & Filter Bar */}
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search by test name, report or facility..."
-                      value={investigationSearch}
-                      onChange={(e) => setInvestigationSearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-[#866BE3]"
-                    />
-                  </div>
-                  <button type="button" className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center gap-1.5 shadow-sm">
-                    <span>Newest First</span>
-                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                  </button>
-                </div>
-
-                {/* Filter Pills */}
-                <div className="flex items-center gap-2">
-                  {[
-                    { label: "All", text: "All (8)" },
-                    { label: "Laboratory", text: "Laboratory (5)" },
-                    { label: "Imaging", text: "Imaging (3)" },
-                  ].map((p) => (
-                    <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => setInvestigationCategory(p.label)}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
-                        investigationCategory === p.label
-                          ? "bg-[#866BE3] text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {p.text}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Investigations List */}
                 <div className="space-y-3">
                   {filteredInvestigations.map((item, idx) => {
                     const Icon = item.icon;
                     return (
-                      <div key={idx} className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between hover:border-purple-200 transition-colors">
+                      <div key={idx} className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-9 h-9 rounded-xl ${item.iconBg} flex items-center justify-center shrink-0`}>
                             <Icon className="w-4 h-4" />
@@ -951,97 +786,44 @@ export function PatientDetailsModal({
             </div>
           )}
 
-          {/* TAB 5: MEDICATIONS (Matching Image 4) */}
+          {/* TAB 5: MEDICATIONS */}
           {activeTab === "medications" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Sidebar */}
               <div className="lg:col-span-4 bg-slate-50/70 p-4 rounded-2xl border border-gray-100 space-y-4">
                 <div className="p-3 bg-white rounded-xl border border-purple-100/60 shadow-sm flex items-start gap-2.5">
                   <Pill className="w-5 h-5 text-[#866BE3] shrink-0 mt-0.5" />
                   <div>
                     <h5 className="text-xs font-bold text-gray-900">Medications from ABDM</h5>
-                    <p className="text-[10px] text-gray-500 mt-0.5">Prescriptions available through ABDM with your consent.</p>
-                    <span className="inline-block mt-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded font-bold">
-                      6 records
-                    </span>
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Filters</p>
-                  <div className="space-y-1 text-xs">
-                    {[
-                      { label: "All", text: "All Medications", count: 6 },
-                      { label: "Current", text: "Current Medications", count: 2 },
-                      { label: "Past", text: "Past Medications", count: 4 },
-                    ].map((f) => {
-                      const isSel = medicationFilter === f.label;
-                      return (
-                        <button
-                          key={f.label}
-                          type="button"
-                          onClick={() => setMedicationFilter(f.label)}
-                          className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all font-medium text-left cursor-pointer ${
-                            isSel
-                              ? "bg-[#866BE3]/10 text-[#866BE3] font-bold"
-                              : "text-gray-700 hover:bg-gray-100"
-                          }`}
-                        >
-                          <span>{f.text}</span>
-                          <span className={`text-xs ${isSel ? "text-[#866BE3] font-bold" : "text-gray-400"}`}>{f.count}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-2">Category</p>
-                  <div className="space-y-2 text-xs text-gray-700">
-                    {[
-                      { name: "Hormones", count: 2 },
-                      { name: "Fertility Medications", count: 2 },
-                      { name: "Thyroid Medications", count: 1 },
-                      { name: "Vitamins & Supplements", count: 1 },
-                    ].map((cat) => (
-                      <label key={cat.name} className="flex items-center justify-between cursor-pointer">
-                        <div className="flex items-center gap-2">
-                          <input type="checkbox" defaultChecked className="rounded text-[#866BE3] focus:ring-[#866BE3]" />
-                          <span>{cat.name}</span>
-                        </div>
-                        <span className="text-gray-400 text-xs">{cat.count}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-gray-200/60 flex items-start gap-2 text-[11px] text-gray-500 leading-relaxed">
-                  <Info className="w-3.5 h-3.5 text-[#866BE3] shrink-0 mt-0.5" />
-                  <span>Medication data is fetched from ABDM with patient consent. Information availability depends on records shared by healthcare providers.</span>
+                <div className="space-y-1 text-xs">
+                  {[
+                    { label: "All", text: "All Medications", count: 6 },
+                    { label: "Current", text: "Current Medications", count: 2 },
+                    { label: "Past", text: "Past Medications", count: 4 },
+                  ].map((f) => {
+                    const isSel = medicationFilter === f.label;
+                    return (
+                      <button
+                        key={f.label}
+                        type="button"
+                        onClick={() => setMedicationFilter(f.label)}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all font-medium text-left cursor-pointer ${
+                          isSel
+                            ? "bg-[#866BE3]/10 text-[#866BE3] font-bold"
+                            : "text-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        <span>{f.text}</span>
+                        <span className={`text-xs ${isSel ? "text-[#866BE3] font-bold" : "text-gray-400"}`}>{f.count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* Right Content */}
               <div className="lg:col-span-8 space-y-4">
-                {/* Search & Filter Bar */}
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search by medicine name, doctor or facility..."
-                      value={medicationSearch}
-                      onChange={(e) => setMedicationSearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-[#866BE3]"
-                    />
-                  </div>
-                  <button type="button" className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center gap-1.5 shadow-sm">
-                    <span>Newest First</span>
-                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                  </button>
-                </div>
-
-                {/* Medications List */}
                 <div className="space-y-3">
                   {filteredMedications.map((item, idx) => (
                     <div key={idx} className="flex items-center gap-3">
@@ -1054,7 +836,7 @@ export function PatientDetailsModal({
                           </span>
                         </div>
                       </div>
-                      <div className="flex-1 bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between hover:border-purple-200 transition-colors">
+                      <div className="flex-1 bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-8 h-8 rounded-xl ${item.iconBg} flex items-center justify-center shrink-0`}>
                             <Pill className="w-4 h-4" />
@@ -1082,10 +864,9 @@ export function PatientDetailsModal({
             </div>
           )}
 
-          {/* TAB 6: DOCUMENTS (Matching Image 5) */}
+          {/* TAB 6: DOCUMENTS */}
           {activeTab === "documents" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-              {/* Left Sidebar */}
               <div className="lg:col-span-4 bg-slate-50/70 p-4 rounded-2xl border border-gray-100 space-y-4">
                 <div>
                   <h4 className="text-sm font-bold text-gray-900">Patient Documents</h4>
@@ -1125,62 +906,12 @@ export function PatientDetailsModal({
                     );
                   })}
                 </div>
-
-                <div className="pt-2 border-t border-gray-200/60 flex items-start gap-2 text-[11px] text-gray-500 leading-relaxed">
-                  <Info className="w-3.5 h-3.5 text-[#866BE3] shrink-0 mt-0.5" />
-                  <span>Documents are fetched from ABDM with patient consent. Availability depends on records shared by healthcare providers.</span>
-                </div>
               </div>
 
-              {/* Right Content */}
               <div className="lg:col-span-8 space-y-4">
-                {/* Search & Filter Bar */}
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search documents by name, hospital or type..."
-                      value={documentSearch}
-                      onChange={(e) => setDocumentSearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-white border border-gray-200 rounded-xl text-xs focus:outline-[#866BE3]"
-                    />
-                  </div>
-                  <button type="button" className="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold text-gray-700 flex items-center gap-1.5 shadow-sm">
-                    <span>Newest First</span>
-                    <ChevronDown className="w-3 h-3 text-gray-400" />
-                  </button>
-                </div>
-
-                {/* Filter Pills */}
-                <div className="flex items-center gap-2 overflow-x-auto pb-1 [&::-webkit-scrollbar]:hidden">
-                  {[
-                    { label: "All", text: "All (14)" },
-                    { label: "Prescriptions", text: "Prescriptions (4)" },
-                    { label: "Lab Reports", text: "Lab Reports (4)" },
-                    { label: "Imaging", text: "Imaging (2)" },
-                    { label: "Discharge", text: "Discharge Summaries (1)" },
-                    { label: "Others", text: "Others (3)" },
-                  ].map((dp) => (
-                    <button
-                      key={dp.label}
-                      type="button"
-                      onClick={() => setDocumentCategory(dp.label)}
-                      className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
-                        documentCategory === dp.label
-                          ? "bg-[#866BE3] text-white"
-                          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                      }`}
-                    >
-                      {dp.text}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Documents List */}
                 <div className="space-y-3">
                   {filteredDocuments.map((doc, idx) => (
-                    <div key={idx} className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between hover:border-purple-200 transition-colors">
+                    <div key={idx} className="bg-white rounded-2xl border border-gray-100 p-3.5 shadow-sm flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-xl ${doc.iconBg} flex items-center justify-center shrink-0`}>
                           <FileText className="w-4 h-4" />
@@ -1218,19 +949,6 @@ export function PatientDetailsModal({
                     </div>
                   ))}
                 </div>
-
-                {/* Pagination */}
-                <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-                  <span>Showing {filteredDocuments.length} of 14 documents</span>
-                  <div className="flex items-center gap-1.5">
-                    <button type="button" className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-gray-50">&lt;</button>
-                    <button type="button" className="w-7 h-7 rounded-lg bg-[#866BE3] text-white font-bold flex items-center justify-center">1</button>
-                    <button type="button" className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-gray-50">2</button>
-                    <button type="button" className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-gray-50">3</button>
-                    <button type="button" className="w-7 h-7 rounded-lg border flex items-center justify-center hover:bg-gray-50">&gt;</button>
-                  </div>
-                </div>
-
               </div>
             </div>
           )}

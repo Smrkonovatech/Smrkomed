@@ -22,7 +22,7 @@ export default function SetupPage() {
   const pct = Math.round((complete / steps.length) * 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-16">
       <PageHeader
         title="Set up your clinic"
         subtitle="Recommended fertility setup. Connect accounts — never paste API keys."

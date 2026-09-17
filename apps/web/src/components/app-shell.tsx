@@ -24,9 +24,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
                 <main
                   id="app-main"
-                  className="h-full overflow-y-auto overscroll-contain pt-[calc(var(--app-header-height)+0.85rem)] pb-[calc(var(--app-dock-height)+1.25rem)] [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  tabIndex={0}
+                  className="h-full w-full overflow-y-auto overflow-x-hidden overscroll-contain pt-[calc(var(--app-header-height)+0.85rem)] pb-[calc(var(--app-dock-height)+3.5rem)] focus:outline-none"
                 >
-                  <div className="relative mx-auto w-full h-full max-w-[1920px] px-4 sm:px-5 lg:px-6 animate-in fade-in-0 duration-200">
+                  <div className="relative mx-auto w-full min-h-full max-w-[1920px] px-4 sm:px-5 lg:px-6 animate-in fade-in-0 duration-200 pb-12">
                     {children}
                   </div>
                 </main>

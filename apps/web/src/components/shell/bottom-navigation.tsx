@@ -46,11 +46,13 @@ function formatDate(date: Date) {
 function DockStatus() {
   const { activity, kpis } = useAppState();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [now, setNow] = useState(() => new Date());
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
   useEffect(() => {
+    setMounted(true);
     const id = window.setInterval(() => setNow(new Date()), 15_000);
     return () => window.clearInterval(id);
   }, []);
@@ -101,20 +103,22 @@ function DockStatus() {
         ) : null}
       </button>
 
-      <div className="flex flex-col items-end justify-center text-white/90 pr-2">
+      <div className="flex flex-col items-end justify-center text-white/90 pr-2" suppressHydrationWarning>
         <time
-          dateTime={now.toISOString()}
+          suppressHydrationWarning
+          dateTime={mounted ? now.toISOString() : undefined}
           className="text-[14px] font-semibold leading-tight tabular-nums tracking-wide"
-          aria-label={`Current time ${formatClock(now)}`}
+          aria-label={mounted ? `Current time ${formatClock(now)}` : "Current time"}
         >
-          {formatClock(now)}
+          {mounted ? formatClock(now) : "--:--"}
         </time>
         <time
-          dateTime={now.toISOString()}
+          suppressHydrationWarning
+          dateTime={mounted ? now.toISOString() : undefined}
           className="text-[12px] text-white/60 tabular-nums leading-tight mt-0.5"
-          aria-label={`Current date`}
+          aria-label="Current date"
         >
-          {formatDate(now)}
+          {mounted ? formatDate(now) : "--/--/----"}
         </time>
       </div>
 

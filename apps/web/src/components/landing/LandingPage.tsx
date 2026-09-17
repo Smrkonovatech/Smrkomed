@@ -32,17 +32,23 @@ export function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans text-slate-900 selection:bg-purple-600 selection:text-white antialiased">
-      {/* 1. Sticky Navigation Bar */}
-      <Nav onOpenDemo={handleOpenDemo} />
+    <div className="min-h-screen bg-white font-sans text-slate-900 selection:bg-sky-500 selection:text-white antialiased">
+      {/* 1. Top Section with Sky Blue to White Gradient matching reference */}
+      <div 
+        className="relative overflow-hidden" 
+        style={{ background: "linear-gradient(180deg, #00AEEF 0%, #FFFFFF 100%)" }}
+      >
+        {/* Floating Glassmorphic Pill Nav */}
+        <Nav onOpenDemo={handleOpenDemo} />
 
-      <main>
-        {/* 2. Hero Section (One Connected Platform. Every Modern Healthcare Need.) */}
+        {/* Hero Section */}
         <Hero onOpenDemo={handleOpenDemo} />
 
-        {/* 3. Section 2 — Connected Care Team */}
+        {/* Roles Section (Built for everyone who delivers care) */}
         <Roles onOpenDemo={handleOpenDemo} />
+      </div>
 
+      <main>
         {/* 4. Section 3 — Complete Healthcare Operating Platform */}
         <Platform onOpenDemo={handleOpenDemo} />
 
