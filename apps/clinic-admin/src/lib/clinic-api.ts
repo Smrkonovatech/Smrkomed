@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api/client";
 
 export type ClinicPerson = {
   id: string;
@@ -212,6 +212,13 @@ export const clinicApi = {
     apiPost<any>(`/api/v1/doctors/reports/${orderId}/review`, body),
   doctorCareLoopExceptions: () => apiGet<any[]>("/api/v1/doctors/care-loop-exceptions"),
   doctorMessages: () => apiGet<any[]>("/api/v1/doctors/messages"),
+  // Doctor Management (Full Profiles & Real DB Persisted)
+  getDoctors: () => apiGet<any[]>("/api/v1/doctors"),
+  getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
+  createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
+  updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
+  deleteDoctor: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/doctors/${id.replace(/^doc_/, "")}`),
   // Analytics APIs
   analyticsOverview: (params?: { dateRange?: string | undefined; dateFrom?: string | undefined; dateTo?: string | undefined; doctorId?: string | undefined; status?: string | undefined }) => {
     const q = params ? "?" + new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as [string, string][]).toString() : "";

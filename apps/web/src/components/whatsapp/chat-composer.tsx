@@ -15,6 +15,7 @@ import {
   Pause,
   Play,
   FileStack,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, apiGet, apiPost, apiUpload } from "@/lib/api/client";
+import { cn } from "@/lib/utils";
 
 type ApprovedTemplate = {
   id: string;
@@ -41,14 +43,7 @@ type ApprovedTemplate = {
   };
 };
 
-type PatientDoc = {
-  id: string;
-  name: string;
-  mimeType: string | null;
-  sizeBytes: number | null;
-  sendable: boolean;
-  note: string | null;
-};
+type PatientDoc = { id: string; name: string; sendable: boolean };
 
 type PendingAttachment = {
   file: File;
@@ -63,14 +58,33 @@ const QUICK_EMOJI = ["😊", "🙏", "👍", "✅", "📅", "🏥", "❤️", "�
 type Props = {
   conversationId: string;
   patientId?: string | null;
+  coupleId?: string | null;
+  partnerInfo?: {
+    name: string;
+    phone: string | null;
+    conversationId?: string | null;
+    primaryName?: string | null;
+  } | null;
+  onSwitchConversation?: (convId: string) => void;
   disabled?: boolean;
   onTyping?: () => void;
   onSent?: () => void;
   draftText?: string;
 };
 
-export function ChatComposer({ conversationId, patientId, disabled, onTyping, onSent, draftText }: Props) {
+export function ChatComposer({
+  conversationId,
+  patientId,
+  coupleId,
+  partnerInfo,
+  onSwitchConversation,
+  disabled,
+  onTyping,
+  onSent,
+  draftText,
+}: Props) {
   const [text, setText] = useState("");
+  const [sendToCouple, setSendToCouple] = useState(false);
 
   useEffect(() => {
     if (draftText !== undefined && draftText !== "") {
@@ -248,7 +262,12 @@ export function ChatComposer({ conversationId, patientId, disabled, onTyping, on
     setSending(true);
     setSendError(null);
     try {
-      await apiPost(`/api/v1/whatsapp-automation/inbox/${conversationId}/reply`, { body });
+      if (sendToCouple && coupleId) {
+        await apiPost(`/api/v1/whatsapp-automation/couples/${coupleId}/reply`, { body });
+        toast.success("Broadcast sent to both primary patient and partner!");
+      } else {
+        await apiPost(`/api/v1/whatsapp-automation/inbox/${conversationId}/reply`, { body });
+      }
       setText("");
       onSent?.();
     } catch (err) {
@@ -516,10 +535,59 @@ export function ChatComposer({ conversationId, patientId, disabled, onTyping, on
         </div>
       ) : null}
 
+      {coupleId && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-xs">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Users className="size-3.5 text-emerald-700 shrink-0" />
+            <span className="font-semibold text-emerald-900">Couple Channel:</span>
+            <span className="text-emerald-800 truncate">
+              {partnerInfo?.primaryName || "Primary"} & {partnerInfo?.name || "Partner"}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="inline-flex rounded-md bg-emerald-100/70 p-0.5 border border-emerald-200">
+              <button
+                type="button"
+                onClick={() => setSendToCouple(false)}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
+                  !sendToCouple
+                    ? "bg-white text-emerald-900 shadow-xs font-semibold"
+                    : "text-emerald-700 hover:text-emerald-950"
+                )}
+              >
+                Patient only
+              </button>
+              <button
+                type="button"
+                onClick={() => setSendToCouple(true)}
+                className={cn(
+                  "px-2 py-0.5 rounded text-[11px] font-semibold transition-colors flex items-center gap-1",
+                  sendToCouple
+                    ? "bg-emerald-600 text-white shadow-xs"
+                    : "text-emerald-700 hover:text-emerald-950 hover:bg-emerald-200/50"
+                )}
+              >
+                <Users className="size-3" /> Both (Couple Broadcast)
+              </button>
+            </div>
+            {partnerInfo?.conversationId && onSwitchConversation && (
+              <button
+                type="button"
+                onClick={() => onSwitchConversation(partnerInfo.conversationId!)}
+                className="text-[11px] font-medium text-emerald-800 hover:text-emerald-950 underline ml-1"
+              >
+                Open {partnerInfo.name}&apos;s chat →
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="relative">
         <Textarea
           rows={2}
-          placeholder={pending ? "Optional caption…" : "Write a staff reply…"}
+          placeholder={pending ? "Optional caption…" : sendToCouple ? "Write a message to broadcast to BOTH partners…" : "Write a staff reply…"}
           value={text}
           disabled={disabled || sending || recording}
           onChange={(e) => {
@@ -623,10 +691,13 @@ export function ChatComposer({ conversationId, patientId, disabled, onTyping, on
           size="sm"
           disabled={disabled || sending || recording || (!text.trim() && !pending)}
           onClick={() => void primarySend()}
-          className="gap-1.5"
+          className={cn(
+            "gap-1.5",
+            sendToCouple && "bg-emerald-600 hover:bg-emerald-700 text-white"
+          )}
         >
-          {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-          {sending ? "Sending…" : pending ? "Send media" : "Send as staff"}
+          {sending ? <Loader2 className="size-3.5 animate-spin" /> : sendToCouple ? <Users className="size-3.5" /> : <Send className="size-3.5" />}
+          {sending ? "Sending…" : pending ? "Send media" : sendToCouple ? "Broadcast to Couple" : "Send as staff"}
         </Button>
       </div>
 

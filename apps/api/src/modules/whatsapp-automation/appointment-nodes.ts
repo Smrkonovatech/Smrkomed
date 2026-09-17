@@ -59,7 +59,23 @@ export const DEMO_DOCTORS: ClinicDoctor[] = [
   },
 ];
 
-/** Fetch real active doctors for the clinic, falling back to clinic demo doctors if none configured. */
+export function isMockDoctorEmail(email?: string | null, name?: string | null): boolean {
+  const e = (email || "").toLowerCase().trim();
+  const n = (name || "").toLowerCase().trim();
+  return (
+    e === "ananya@abcfertility.demo" ||
+    e === "ravi@abcfertility.demo" ||
+    e === "priya@abcfertility.demo" ||
+    e === "rajesh@abcfertility.demo" ||
+    (e.endsWith("@abcfertility.demo") && (n.includes("ananya") || n.includes("rahul") || n.includes("priya") || n.includes("rajesh"))) ||
+    n.includes("ananya rao") ||
+    n.includes("rahul menon") ||
+    n.includes("priya nair") ||
+    n.includes("rajesh sharma")
+  );
+}
+
+/** Fetch real active doctors for the clinic, never injecting mock doctors if they were removed. */
 export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoctor[]> {
   try {
     const memberships = await prisma.clinicMembership.findMany({
@@ -74,13 +90,15 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
       },
       include: {
         user: {
-          select: { id: true, name: true, title: true, phone: true, initials: true },
+          select: { id: true, name: true, title: true, phone: true, initials: true, email: true },
         },
       },
       orderBy: { createdAt: "asc" },
     });
 
-    if (memberships.length > 0) {
+    const realMemberships = memberships.filter((m) => !isMockDoctorEmail(m.user.email, m.user.name));
+
+    if (realMemberships.length > 0) {
       const profileRules = await prisma.automationRule.findMany({
         where: {
           clinicId,
@@ -93,7 +111,7 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
         if (rule.name) profileMap.set(rule.name, rule.config);
       }
 
-      return memberships.map((m, idx) => {
+      return realMemberships.map((m, idx) => {
         const demo = DEMO_DOCTORS[idx % DEMO_DOCTORS.length]!;
         const saved = (profileMap.get(m.userId) || profileMap.get(`doc_${m.userId}`) || {}) as any;
         const rawName = saved.displayName || m.user.name || demo.name;
@@ -119,10 +137,10 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
       });
     }
   } catch {
-    // Fallback to demo doctors
+    // Fallback
   }
 
-  return DEMO_DOCTORS;
+  return [];
 }
 
 /** Interpolate {{variables}} safely in template strings. */
@@ -147,14 +165,14 @@ export function interpolateVariables(template: string, vars: Record<string, stri
     if (key === "patient.firstName" || key === "patient.name") return vars["patient_name"] || vars["patient.name"] || vars["first_name"] || "there";
     if (key === "clinic.name") return vars["clinic.name"] || vars["clinic_name"] || "our clinic";
     if (key === "doctor.name" || key === "doctor_name" || key === "doctor") {
-      const doc = vars["doctor.name"] || vars["doctor_name"] || vars["firstDoctorName"] || DEMO_DOCTORS[0]?.name || "Dr. Ananya Rao";
+      const doc = vars["doctor.name"] || vars["doctor_name"] || vars["firstDoctorName"] || "Doctor";
       return doc;
     }
     if (key === "doctor.specialty" || key === "doctor_specialty") {
-      return vars["doctor.specialty"] || vars["doctor_specialty"] || DEMO_DOCTORS[0]?.specialty || "Fertility Specialist";
+      return vars["doctor.specialty"] || vars["doctor_specialty"] || "Fertility Specialist";
     }
     if (key === "doctor.experience" || key === "doctor_experience") {
-      return vars["doctor.experience"] || vars["doctor_experience"] || DEMO_DOCTORS[0]?.experience || "10+ years experience";
+      return vars["doctor.experience"] || vars["doctor_experience"] || "10+ years experience";
     }
     if (key === "appointment.date") return vars["appointment.date"] || vars["appointment_date"] || vars["selected_date"] || "";
     if (key === "appointment.time") return vars["appointment.time"] || vars["selected_time"] || vars["appointment_time"] || "";
@@ -163,8 +181,8 @@ export function interpolateVariables(template: string, vars: Record<string, stri
   }).replace(/\bDr\.\s+Dr\.\s+/gi, "Dr. ");
 }
 
-/** Extract unique available dates from slots with friendly labels. */
-export function groupAvailableDates(slots: AppointmentSlot[]): Array<{
+/** Extract unique available dates from slots with friendly labels in clinic local time. */
+export function groupAvailableDates(slots: AppointmentSlot[], timezone = "Asia/Kolkata"): Array<{
   dateIso: string;
   label: string;
   weekday: string;
@@ -176,14 +194,14 @@ export function groupAvailableDates(slots: AppointmentSlot[]): Array<{
     const d = new Date(s.startTime);
     if (Number.isNaN(d.getTime())) continue;
 
-    const dateIso = d.toISOString().slice(0, 10);
+    const dateIso = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(d);
     const existing = map.get(dateIso);
     if (existing) {
       existing.slotCount += 1;
     } else {
-      const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
-      const month = d.toLocaleDateString("en-US", { month: "short" });
-      const day = d.getDate();
+      const weekday = d.toLocaleDateString("en-US", { timeZone: timezone, weekday: "short" });
+      const month = d.toLocaleDateString("en-US", { timeZone: timezone, month: "short" });
+      const day = new Intl.DateTimeFormat("en-US", { timeZone: timezone, day: "numeric" }).format(d);
       const label = `${weekday}, ${day} ${month}`;
       map.set(dateIso, { label, weekday, slotCount: 1 });
     }
@@ -195,8 +213,8 @@ export function groupAvailableDates(slots: AppointmentSlot[]): Array<{
   }));
 }
 
-/** Segment available slots by morning and afternoon/evening. */
-export function segmentSlots(slots: AppointmentSlot[]): {
+/** Segment available slots by morning and afternoon/evening in clinic local time. */
+export function segmentSlots(slots: AppointmentSlot[], timezone = "Asia/Kolkata"): {
   morning: Array<{ slotId: string; timeLabel: string; startMs: number }>;
   afternoon: Array<{ slotId: string; timeLabel: string; startMs: number }>;
 } {
@@ -207,14 +225,22 @@ export function segmentSlots(slots: AppointmentSlot[]): {
     const d = new Date(s.startTime);
     if (Number.isNaN(d.getTime())) continue;
 
-    const hours = d.getUTCHours();
-    const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const h12 = hours % 12 || 12;
-    const timeLabel = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
+    const hour23Str = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(d);
+    const localHour = parseInt(hour23Str, 10);
+
+    const timeLabel = d.toLocaleTimeString("en-US", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
 
     const item = { slotId: s.slotId, timeLabel, startMs: d.getTime() };
-    if (hours < 12) {
+    if (localHour < 12) {
       morning.push(item);
     } else {
       afternoon.push(item);

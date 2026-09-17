@@ -1,4 +1,4 @@
-import { apiGet, apiPatch, apiPost, type PageResult } from "./client";
+import { apiDelete, apiGet, apiPatch, apiPost, type PageResult } from "./client";
 
 export type DashboardData = {
   totals: {
@@ -57,6 +57,10 @@ export function fetchUser(id: string) {
 
 export function patchUser(id: string, body: unknown) {
   return apiPatch(`/api/v1/admin/users/${id}`, body);
+}
+
+export function deleteUser(id: string) {
+  return apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/admin/users/${id}`);
 }
 
 export function fetchSubscriptions(params: string) {

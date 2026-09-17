@@ -9,6 +9,7 @@ import {
   Eye,
   UserX,
   CalendarDays,
+  Trash2,
 } from "lucide-react";
 
 import { Avatar, StatusBadge } from "@/components/ui-kit";
@@ -83,11 +84,13 @@ export function DoctorCard({
   appointmentsToday,
   onDeactivate,
   onAddLeave,
+  onDelete,
 }: {
   doctor: DoctorProfile;
   appointmentsToday: number;
   onDeactivate: () => void;
   onAddLeave: () => void;
+  onDelete?: (() => void) | undefined;
 }) {
   const name = displayNameOf(doctor);
   return (
@@ -106,6 +109,7 @@ export function DoctorCard({
               doctor={doctor}
               onDeactivate={onDeactivate}
               onAddLeave={onAddLeave}
+              onDelete={onDelete}
             />
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -165,10 +169,12 @@ export function DoctorActions({
   doctor,
   onDeactivate,
   onAddLeave,
+  onDelete,
 }: {
   doctor: DoctorProfile;
   onDeactivate: () => void;
   onAddLeave: () => void;
+  onDelete?: (() => void) | undefined;
 }) {
   return (
     <DropdownMenu>
@@ -205,10 +211,21 @@ export function DoctorActions({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
+              className="text-amber-600 focus:text-amber-600 focus:bg-amber-50 dark:focus:bg-amber-950/20"
               onClick={onDeactivate}
             >
               <UserX className="size-4" /> Deactivate
+            </DropdownMenuItem>
+          </>
+        )}
+        {onDelete && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive focus:bg-destructive/10"
+              onClick={onDelete}
+            >
+              <Trash2 className="size-4" /> Delete Doctor
             </DropdownMenuItem>
           </>
         )}

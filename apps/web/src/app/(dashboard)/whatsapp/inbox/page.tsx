@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { 
   Bot, Plus, User, MoreVertical, Sparkles, Layout, CornerDownRight, Smile, Paperclip, FileImage, Download,
-  Calendar, Clock, CheckCircle2, Send, ChevronRight, MessageSquare, AlertCircle, FileText
+  Calendar, Clock, CheckCircle2, Send, ChevronRight, MessageSquare, AlertCircle, FileText, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -61,6 +61,14 @@ type Detail = {
   aiPausedAt?: string | null;
   assignedStaff: { id: string; name: string } | null;
   patient: { id: string; firstName: string; lastName: string; phone: string | null } | null;
+  couple?: {
+    id: string;
+    slug: string;
+    status?: string;
+    primaryPatient?: { id: string; firstName: string; lastName: string; phone: string | null } | null;
+    partnerPatient?: { id: string; firstName: string; lastName: string; phone: string | null } | null;
+  } | null;
+  partnerConversationId?: string | null;
   clinicName: string;
   contactPhone?: string | null;
   messages: Array<{
@@ -733,6 +741,23 @@ export default function WhatsAppInboxPage() {
                         <p className="text-xs text-gray-500 mt-0.5">
                           {detail.patient?.phone ?? "No phone"} · {detail.clinicName}
                         </p>
+                        {detail.couple && (
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                              <Users className="size-3 text-emerald-600" />
+                              Couple: {detail.couple.primaryPatient ? `${detail.couple.primaryPatient.firstName || ""} ${detail.couple.primaryPatient.lastName || ""}`.trim() : "Primary"} & {detail.couple.partnerPatient ? `${detail.couple.partnerPatient.firstName || ""} ${detail.couple.partnerPatient.lastName || ""}`.trim() : "Partner"}
+                            </span>
+                            {detail.partnerConversationId && (
+                              <button
+                                type="button"
+                                onClick={() => setActiveId(detail.partnerConversationId!)}
+                                className="text-[11px] font-medium text-emerald-700 hover:text-emerald-950 underline"
+                              >
+                                Switch to partner chat →
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     
@@ -879,25 +904,50 @@ export default function WhatsAppInboxPage() {
                   </div>
                 )}
 
-                {activeId ? (
-                  <div className="bg-white pt-2 border-t border-gray-100">
-                    <ChatComposer
-                      conversationId={activeId}
-                      {...(detail.patient?.id ? { patientId: detail.patient.id } : {})}
-                      draftText={draftText}
-                      onTyping={() => notifyTyping(activeId)}
-                      onSent={() => {
-                        setDraftText("");
-                        void (async () => {
-                          const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
-                          setDetail(d);
-                          scrollToBottom(true);
-                          await loadList();
-                        })();
-                      }}
-                    />
-                  </div>
-                ) : null}
+                {activeId ? (() => {
+                  const isPrimary = detail.couple?.primaryPatient?.id === detail.patient?.id;
+                  const partnerObj = isPrimary ? detail.couple?.partnerPatient : detail.couple?.primaryPatient;
+                  const primaryDisplayName = detail.couple?.primaryPatient
+                    ? `${detail.couple.primaryPatient.firstName || ""} ${detail.couple.primaryPatient.lastName || ""}`.trim()
+                    : detail.patient?.firstName || "Primary";
+                  const partnerDisplayName = partnerObj
+                    ? `${partnerObj.firstName || ""} ${partnerObj.lastName || ""}`.trim()
+                    : "Partner";
+
+                  return (
+                    <div className="bg-white pt-2 border-t border-gray-100">
+                      <ChatComposer
+                        conversationId={activeId}
+                        {...(detail.patient?.id ? { patientId: detail.patient.id } : {})}
+                        coupleId={detail.couple?.id ?? null}
+                        partnerInfo={
+                          partnerObj
+                            ? {
+                                name: partnerDisplayName,
+                                phone: partnerObj.phone ?? null,
+                                primaryName: primaryDisplayName,
+                                conversationId: detail.partnerConversationId ?? null,
+                              }
+                            : null
+                        }
+                        onSwitchConversation={(convId) => {
+                          setActiveId(convId);
+                        }}
+                        draftText={draftText}
+                        onTyping={() => notifyTyping(activeId)}
+                        onSent={() => {
+                          setDraftText("");
+                          void (async () => {
+                            const d = await apiGet<Detail>(`/api/v1/whatsapp-automation/inbox/${activeId}`);
+                            setDetail(d);
+                            scrollToBottom(true);
+                            await loadList();
+                          })();
+                        }}
+                      />
+                    </div>
+                  );
+                })() : null}
               </>
             )}
           </section>
@@ -1075,14 +1125,31 @@ export default function WhatsAppInboxPage() {
                 )}
 
                 {context?.couple && (
-                  <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs space-y-1.5">
-                    <p className="font-bold text-gray-900">Fertility Couple Details</p>
-                    <p className="text-gray-500">ID: {context.couple.slug}</p>
+                  <div className="bg-white rounded-xl p-3 border border-gray-100 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-gray-900">Fertility Couple Details</p>
+                      <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                        {context.couple.slug}
+                      </span>
+                    </div>
                     {context.couple.doctor && (
                       <p className="text-gray-700">Doctor: {context.couple.doctor.name}</p>
                     )}
                     {context.couple.coordinator && (
                       <p className="text-gray-700">Coordinator: {context.couple.coordinator.name}</p>
+                    )}
+                    {detail?.partnerConversationId && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveId(detail.partnerConversationId!)}
+                        className="w-full mt-1.5 py-1.5 px-2.5 rounded-lg bg-emerald-50 text-emerald-800 hover:bg-emerald-100 text-xs font-semibold flex items-center justify-between transition-colors border border-emerald-200/60"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <Users className="size-3.5 text-emerald-600" />
+                          Open Partner Chat
+                        </span>
+                        <span>→</span>
+                      </button>
                     )}
                   </div>
                 )}

@@ -129,6 +129,11 @@ export const clinicApi = {
       status?: string;
     },
   ) => apiPatch<ClinicCouple>(`/api/v1/couples/${id}`, body),
+  treatment: (id: string) => apiGet<any>(`/api/v1/treatments/${id}`),
+  patchTreatment: (id: string, body: unknown) => apiPatch<any>(`/api/v1/treatments/${id}`, body),
+  createTreatment: (body: unknown) => apiPost<any>("/api/v1/treatments", body),
+  coupleTreatment: (coupleId: string) => apiGet<any>(`/api/v1/couples/${coupleId}/treatment`),
+  patchCoupleTreatment: (coupleId: string, body: unknown) => apiPatch<any>(`/api/v1/couples/${coupleId}/treatment`, body),
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
   patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),
@@ -275,6 +280,8 @@ export const clinicApi = {
   getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
   createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
   updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
+  deleteDoctor: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/doctors/${id.replace(/^doc_/, "")}`),
   // WhatsApp Inbox & Conversations
   whatsappInbox: (params?: { filter?: string; q?: string }) => {
     const q = params
@@ -286,6 +293,16 @@ export const clinicApi = {
     apiGet<any>(`/api/v1/whatsapp-automation/inbox/${id}`),
   sendWhatsappMessage: (conversationId: string, body: string) =>
     apiPost<any>(`/api/v1/whatsapp-automation/inbox/${conversationId}/reply`, { body }),
+  sendWhatsappCoupleMessage: (coupleId: string, body: string) =>
+    apiPost<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/reply`, { body }),
+  whatsappCoupleMessages: (coupleId: string) =>
+    apiGet<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/messages`),
+  sendWhatsappToRecipient: (body: {
+    patientId?: string | undefined;
+    coupleId?: string | undefined;
+    phone?: string | undefined;
+    body: string;
+  }) => apiPost<any>("/api/v1/whatsapp-automation/send-to-recipient", body),
   // Clinic Profile & Location Settings
   getCurrentClinic: () => apiGet<ClinicProfile>("/api/v1/clinics/current"),
   updateCurrentClinic: (body: Partial<ClinicProfile> & { hours?: string | null }) =>

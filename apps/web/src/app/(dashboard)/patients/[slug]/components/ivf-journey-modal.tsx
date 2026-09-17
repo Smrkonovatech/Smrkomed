@@ -7,11 +7,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { User, Activity, Calendar, CheckCircle2, Clock, Plus, Loader2 } from "lucide-react";
+import { User, Activity, Calendar, CheckCircle2, Clock, Plus, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { clinicApi, type ClinicTask } from "@/lib/clinic-api";
+import { EditTreatmentModal } from "./edit-treatment-modal";
 import { toast } from "sonner";
 
 const fallbackSteps = [
@@ -39,6 +40,7 @@ interface IvfJourneyModalProps {
   steps?: string[];
   couple?: any;
   p360?: any;
+  onTreatmentUpdated?: (() => void) | undefined;
 }
 
 export function IvfJourneyModal({
@@ -48,8 +50,10 @@ export function IvfJourneyModal({
   steps,
   couple,
   p360,
+  onTreatmentUpdated,
 }: IvfJourneyModalProps) {
   const activeSteps = steps && steps.length > 0 ? steps : fallbackSteps;
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   
   // Normalize and find current step index
   const normalizedStage = (currentStage || "").replace(/^\d+\.\s*/, "").toLowerCase();
@@ -123,9 +127,22 @@ export function IvfJourneyModal({
             <DialogTitle className="text-xl font-bold text-gray-900">
               IVF Cycle Journey & Clinical Milestones
             </DialogTitle>
-            <span className="text-xs font-semibold px-3 py-1 bg-[#866BE3]/10 text-[#866BE3] rounded-full">
-              {couple?.treatment || p360?.header?.currentTreatment?.label || "IVF"} • Stage {selectedStepIdx + 1} of {activeSteps.length}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-3 py-1 bg-[#866BE3]/10 text-[#866BE3] rounded-full">
+                {couple?.treatment || p360?.header?.currentTreatment?.label || "IVF"} • Stage {selectedStepIdx + 1} of {activeSteps.length}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setIsEditModalOpen(true)}
+                className="text-xs h-7 gap-1 border-[#866BE3]/30 text-[#866BE3] hover:bg-[#866BE3]/10 rounded-lg cursor-pointer"
+                title="Doctor: Edit Treatment Protocol & Stage"
+              >
+                <Pencil className="w-3 h-3" />
+                Edit Treatment
+              </Button>
+            </div>
           </div>
         </DialogHeader>
 
@@ -341,6 +358,17 @@ export function IvfJourneyModal({
           </div>
         </div>
       </DialogContent>
+
+      <EditTreatmentModal
+        isOpen={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        coupleId={couple?.id || couple?.slug}
+        patientName={p360?.header?.patientName}
+        currentTreatment={p360?.header?.currentTreatment}
+        onSaved={() => {
+          onTreatmentUpdated?.();
+        }}
+      />
     </Dialog>
   );
 }

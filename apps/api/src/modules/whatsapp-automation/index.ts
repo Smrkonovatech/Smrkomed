@@ -1445,6 +1445,334 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
     return ok(c, result, 201);
   })
 
+  .post(
+    "/couples/:coupleId/reply",
+    validate("param", z.object({ coupleId: z.string().min(1) })),
+    validate("json", sessionTextSchema),
+    async (c) => {
+      const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_SEND, PERMISSIONS.PATIENTS_READ]);
+      const { coupleId } = c.req.valid("param");
+      const { body } = c.req.valid("json");
+
+      const couple = await prisma.couple.findFirst({
+        where: { id: coupleId, clinicId: tenant.clinicId },
+        include: {
+          primaryPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+          partnerPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        },
+      });
+      if (!couple) throw new HttpError(404, "NOT_FOUND", "Couple not found");
+
+      const targets: Array<{ patientId: string; name: string; phone: string }> = [];
+      if (couple.primaryPatient && couple.primaryPatient.phone) {
+        targets.push({
+          patientId: couple.primaryPatient.id,
+          name: `${couple.primaryPatient.firstName || ""} ${couple.primaryPatient.lastName || ""}`.trim() || "Primary Patient",
+          phone: couple.primaryPatient.phone,
+        });
+      }
+      if (couple.partnerPatient && couple.partnerPatient.phone) {
+        targets.push({
+          patientId: couple.partnerPatient.id,
+          name: `${couple.partnerPatient.firstName || ""} ${couple.partnerPatient.lastName || ""}`.trim() || "Partner",
+          phone: couple.partnerPatient.phone,
+        });
+      }
+
+      if (targets.length === 0) {
+        throw new HttpError(422, "NO_PHONE_NUMBERS", "Neither primary nor partner patient has a valid phone number.");
+      }
+
+      const results: Array<{
+        patientId: string;
+        name: string;
+        phone: string;
+        conversationId: string;
+        messageId?: string;
+        status?: string;
+      }> = [];
+
+      for (const target of targets) {
+        const normPhone = normalizeWhatsAppPhone(target.phone);
+        let conv = await prisma.conversation.findFirst({
+          where: {
+            clinicId: tenant.clinicId,
+            channel: "WHATSAPP",
+            OR: [
+              { patientId: target.patientId },
+              ...(normPhone ? [{ contactPhone: normPhone }, { contactPhone: `+${normPhone}` }] : []),
+            ],
+          },
+          orderBy: { updatedAt: "desc" },
+        });
+
+        if (!conv) {
+          conv = await prisma.conversation.create({
+            data: {
+              clinicId: tenant.clinicId,
+              patientId: target.patientId,
+              coupleId: couple.id,
+              contactPhone: normPhone || target.phone,
+              unmatched: false,
+              channel: "WHATSAPP",
+              status: "OPEN",
+            },
+          });
+        } else if (!conv.coupleId || !conv.patientId) {
+          conv = await prisma.conversation.update({
+            where: { id: conv.id },
+            data: {
+              coupleId: couple.id,
+              patientId: conv.patientId || target.patientId,
+              unmatched: false,
+            },
+          });
+        }
+
+        try {
+          const sendRes = await sendWhatsAppSessionText(tenant, {
+            conversationId: conv.id,
+            body,
+          });
+          results.push({
+            patientId: target.patientId,
+            name: target.name,
+            phone: target.phone,
+            conversationId: conv.id,
+            messageId: sendRes.id,
+            status: sendRes.status,
+          });
+        } catch (sendErr) {
+          console.error(`[Couple Reply] Failed to send to ${target.name} (${target.phone}):`, sendErr);
+          results.push({
+            patientId: target.patientId,
+            name: target.name,
+            phone: target.phone,
+            conversationId: conv.id,
+            status: "FAILED",
+          });
+        }
+      }
+
+      const { triggerRemoteOutboundDispatch } = await import("./outbound-bridge");
+      void triggerRemoteOutboundDispatch().catch(() => undefined);
+
+      return ok(
+        c,
+        {
+          ok: true,
+          coupleId: couple.id,
+          sentCount: results.filter((r) => r.status !== "FAILED").length,
+          totalTargets: targets.length,
+          results,
+        },
+        201,
+      );
+    },
+  )
+
+  .get(
+    "/couples/:coupleId/messages",
+    validate("param", z.object({ coupleId: z.string().min(1) })),
+    async (c) => {
+      const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_VIEW, PERMISSIONS.PATIENTS_READ]);
+      const { coupleId } = c.req.valid("param");
+
+      const couple = await prisma.couple.findFirst({
+        where: { id: coupleId, clinicId: tenant.clinicId },
+        include: {
+          primaryPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+          partnerPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        },
+      });
+      if (!couple) throw new HttpError(404, "NOT_FOUND", "Couple not found");
+
+      const patientIds = [couple.primaryPatientId, couple.partnerPatientId].filter(Boolean) as string[];
+
+      const convs = await prisma.conversation.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          channel: "WHATSAPP",
+          OR: [{ coupleId: couple.id }, { patientId: { in: patientIds } }],
+        },
+        select: {
+          id: true,
+          patientId: true,
+          contactPhone: true,
+        },
+      });
+
+      if (convs.length === 0) {
+        return ok(c, { coupleId: couple.id, messages: [] });
+      }
+
+      const convMap = new Map<string, (typeof convs)[number]>();
+      convs.forEach((cv) => convMap.set(cv.id, cv));
+
+      const rawMessages = await prisma.message.findMany({
+        where: {
+          conversationId: { in: convs.map((cv) => cv.id) },
+        },
+        orderBy: { createdAt: "asc" },
+        include: {
+          whatsappMedia: true,
+        },
+        take: 150,
+      });
+
+      const primaryName = couple.primaryPatient
+        ? `${couple.primaryPatient.firstName || ""} ${couple.primaryPatient.lastName || ""}`.trim() || "Primary Patient"
+        : "Primary Patient";
+      const partnerName = couple.partnerPatient
+        ? `${couple.partnerPatient.firstName || ""} ${couple.partnerPatient.lastName || ""}`.trim() || "Partner"
+        : "Partner";
+
+      const messages = rawMessages.map((m) => {
+        const conv = convMap.get(m.conversationId);
+        const isPrimary = conv?.patientId === couple.primaryPatientId;
+        const isPartner = conv?.patientId === couple.partnerPatientId;
+
+        let senderName = "Staff";
+        let partnerRole: "PRIMARY" | "PARTNER" | "STAFF" = "STAFF";
+
+        if (m.direction === "INBOUND") {
+          if (isPrimary) {
+            senderName = primaryName;
+            partnerRole = "PRIMARY";
+          } else if (isPartner) {
+            senderName = partnerName;
+            partnerRole = "PARTNER";
+          } else {
+            senderName = conv?.contactPhone || "Patient";
+            partnerRole = "PRIMARY";
+          }
+        } else {
+          senderName =
+            m.senderType === "AI" ? "✦ Smrko AI" : tenant.clinicName ? `${tenant.clinicName} Staff` : "Staff";
+          partnerRole = "STAFF";
+        }
+
+        return {
+          id: m.id,
+          conversationId: m.conversationId,
+          direction: m.direction,
+          sender: m.direction === "INBOUND" ? "patient" : "staff",
+          senderType: m.senderType,
+          senderName,
+          partnerRole,
+          isAi: m.senderType === "AI",
+          content: m.content,
+          text: m.content,
+          messageType: m.messageType,
+          status: m.status,
+          createdAt: m.createdAt.toISOString(),
+          media: m.whatsappMedia
+            ? {
+                id: m.whatsappMedia.id,
+                type: m.whatsappMedia.type,
+                filename: m.whatsappMedia.filename,
+                sizeBytes: m.whatsappMedia.sizeBytes,
+              }
+            : null,
+        };
+      });
+
+      return ok(c, {
+        coupleId: couple.id,
+        primaryName,
+        partnerName,
+        messages,
+      });
+    },
+  )
+
+  .post(
+    "/send-to-recipient",
+    validate(
+      "json",
+      z.object({
+        patientId: z.string().optional(),
+        coupleId: z.string().optional(),
+        phone: z.string().optional(),
+        body: z.string().min(1).max(4096),
+      }),
+    ),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.WHATSAPP_SEND);
+      const reqBody = c.req.valid("json");
+
+      let resolvedPatientId = reqBody.patientId;
+      let rawPhone = reqBody.phone;
+
+      if (resolvedPatientId && !rawPhone) {
+        const pt = await prisma.patient.findFirst({
+          where: { id: resolvedPatientId, clinicId: tenant.clinicId },
+          select: { phone: true, whatsappNumber: true },
+        });
+        rawPhone = pt?.phone || pt?.whatsappNumber || undefined;
+      }
+
+      if (!resolvedPatientId && !rawPhone) {
+        throw new HttpError(422, "MISSING_RECIPIENT", "Either patientId or phone is required.");
+      }
+
+      const normPhone = rawPhone ? normalizeWhatsAppPhone(rawPhone) : "";
+
+      let conv = await prisma.conversation.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          channel: "WHATSAPP",
+          OR: [
+            ...(resolvedPatientId ? [{ patientId: resolvedPatientId }] : []),
+            ...(normPhone ? [{ contactPhone: normPhone }, { contactPhone: `+${normPhone}` }] : []),
+          ],
+        },
+        orderBy: { updatedAt: "desc" },
+      });
+
+      if (!conv) {
+        conv = await prisma.conversation.create({
+          data: {
+            clinicId: tenant.clinicId,
+            patientId: resolvedPatientId ?? null,
+            coupleId: reqBody.coupleId ?? null,
+            contactPhone: normPhone || rawPhone || "",
+            unmatched: !resolvedPatientId,
+            channel: "WHATSAPP",
+            status: "OPEN",
+          },
+        });
+      } else if ((resolvedPatientId && !conv.patientId) || (reqBody.coupleId && !conv.coupleId)) {
+        conv = await prisma.conversation.update({
+          where: { id: conv.id },
+          data: {
+            ...(resolvedPatientId ? { patientId: resolvedPatientId, unmatched: false } : {}),
+            ...(reqBody.coupleId ? { coupleId: reqBody.coupleId } : {}),
+          },
+        });
+      }
+
+      const result = await sendWhatsAppSessionText(tenant, {
+        conversationId: conv.id,
+        body: reqBody.body,
+      });
+
+      if (typeof result.providerMessageId === "string" && result.providerMessageId.startsWith("pending_meta_")) {
+        const { triggerRemoteOutboundDispatch } = await import("./outbound-bridge");
+        void triggerRemoteOutboundDispatch().catch(() => undefined);
+      }
+
+      return ok(
+        c,
+        {
+          ...result,
+          conversationId: conv.id,
+        },
+        201,
+      );
+    },
+  )
+
   .get("/inbox/:id/patient-documents", validate("param", idParam), async (c) => {
     const tenant = requireAnyPermission(c, [PERMISSIONS.WHATSAPP_SEND, PERMISSIONS.PATIENTS_READ]);
     const { id } = c.req.valid("param");

@@ -1,5 +1,6 @@
 "use client";
 
+import { clinicApi } from "@/lib/clinic-api";
 import { clinics } from "@/lib/demo-data";
 
 import {
@@ -192,6 +193,23 @@ export const doctorsStore = {
           ? "Doctor activated for appointments"
           : "Doctor marked as on leave";
     return this.upsert({ ...doctor, status, isDraft: false }, { kind, message });
+  },
+  async deleteDoctor(id: string): Promise<boolean> {
+    const cleanId = (id || "").replace(/^doc_/, "");
+    const list = getAll();
+    const filtered = list.filter(
+      (d) => d.id !== id && d.id !== `doc_${cleanId}`
+    );
+    writeStorage(filtered);
+
+    if (typeof window !== "undefined") {
+      try {
+        await clinicApi.deleteDoctor(cleanId || id);
+      } catch (err) {
+        console.warn("API doctor deletion warning/error:", err);
+      }
+    }
+    return true;
   },
   updateSchedule(id: string, weeklySchedule: WeeklySchedule) {
     const doctor = this.get(id);

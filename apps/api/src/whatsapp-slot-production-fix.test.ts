@@ -108,23 +108,37 @@ test.before(async () => {
   const { ensureDirectWhatsAppConnection } = await import("./integrations/providers/whatsapp/service");
   await ensureDirectWhatsAppConnection(tenant);
 
-  const integration = await prisma.integration.create({
-    data: {
+  const integration = await prisma.integration.upsert({
+    where: {
+      clinicId_provider: {
+        clinicId: clinic.id,
+        provider: "WHATSAPP_CLOUD",
+      },
+    },
+    update: { status: "ACTIVE" },
+    create: {
       clinicId: clinic.id,
       organizationId: org.id,
       provider: "WHATSAPP_CLOUD",
       status: "ACTIVE",
     },
   });
-  await prisma.whatsAppAccount.create({
-    data: {
+  await prisma.whatsAppAccount.upsert({
+    where: {
+      clinicId_phoneNumberId: {
+        clinicId: clinic.id,
+        phoneNumberId: "1234567890",
+      },
+    },
+    update: { isActive: true },
+    create: {
       clinicId: clinic.id,
       integrationId: integration.id,
       phoneNumberId: "1234567890",
       displayPhoneNumber: "+919876543210",
       isActive: true,
     },
-  });
+  }).catch(() => undefined);
 
   const conv = await prisma.conversation.create({
     data: {

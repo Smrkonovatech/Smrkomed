@@ -34,6 +34,7 @@ import { parseNaturalDate, parseNaturalTime } from "./nlp-parser";
 import {
   getClinicDoctors,
   getDoctorDaySlots,
+  getTimezoneOffsetString,
   recheckSlotAvailability,
 } from "./slot-engine";
 import { bookingSessionStore } from "./session-store";
@@ -574,6 +575,46 @@ export class AppointmentBookingMachine {
     }
 
     try {
+      // Find or create clinic reference
+      let clinic = await prisma.clinic.findFirst({ where: { id: ctx.clinicId } });
+      if (!clinic) {
+        clinic = await prisma.clinic.findFirst();
+      }
+      const clinicId = clinic?.id || ctx.clinicId;
+      const tz = clinic?.timezone || "Asia/Kolkata";
+      const tzOffset = getTimezoneOffsetString(tz);
+
+      let doctorName = session.doctorName;
+      if (!doctorName && session.doctorId) {
+        const doctors = await getClinicDoctors(clinicId);
+        const matched = doctors.find((d) => d.id === session.doctorId);
+        if (matched) doctorName = matched.displayName;
+      }
+      if (!doctorName) {
+        const doctors = await getClinicDoctors(clinicId);
+        if (doctors.length > 0) doctorName = doctors[0]?.displayName;
+      }
+      if (doctorName && !doctorName.startsWith("Dr.") && !doctorName.startsWith("Dr ")) {
+        doctorName = `Dr. ${doctorName.trim()}`;
+      }
+
+      // Live revalidation to prevent double-booking or expired slots
+      const reval = await recheckSlotAvailability(
+        clinicId,
+        doctorName || "Doctor",
+        session.selectedDate!,
+        session.selectedSlot || "",
+      );
+      if (!reval.available) {
+        return {
+          session,
+          responseMessage:
+            `⚠️ That appointment slot is no longer available (${reval.reason === "SLOT_IN_PAST" ? "time has passed" : "already booked by another patient"}).\n\nPlease reply with another time or reply *CHANGE DATE* to view other days.`,
+          requiresInput: true,
+          ...(reval.reason ? { error: reval.reason } : {}),
+        };
+      }
+
       const [h, m] = (session.selectedSlot || "10:00 AM")
         .replace(/[^0-9:]/g, "")
         .split(":")
@@ -583,15 +624,18 @@ export class AppointmentBookingMachine {
       if (isPM && realH < 12) realH += 12;
       if (!isPM && realH === 12) realH = 0;
 
-      const startsAt = new Date(`${session.selectedDate}T00:00:00.000Z`);
-      startsAt.setUTCHours(realH, m || 0, 0, 0);
+      const timeFormatted = `${String(realH).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
+      const startsAt = new Date(`${session.selectedDate}T${timeFormatted}:00${tzOffset}`);
 
-      // Find or create clinic reference
-      let clinic = await prisma.clinic.findFirst({ where: { id: ctx.clinicId } });
-      if (!clinic) {
-        clinic = await prisma.clinic.findFirst();
+      if (startsAt.getTime() <= Date.now()) {
+        return {
+          session,
+          responseMessage:
+            "⚠️ That appointment slot is in the past. Please reply with another time or reply *CHANGE DATE* to view other days.",
+          requiresInput: true,
+          error: "SLOT_IN_PAST",
+        };
       }
-      const clinicId = clinic?.id || ctx.clinicId;
 
       // Find or attach couple
       let couple = await prisma.couple.findFirst({
@@ -606,20 +650,6 @@ export class AppointmentBookingMachine {
 
       if (!couple) {
         couple = await prisma.couple.findFirst({ where: { clinicId } });
-      }
-
-      let doctorName = session.doctorName;
-      if (!doctorName && session.doctorId) {
-        const doctors = await getClinicDoctors(clinicId);
-        const matched = doctors.find((d) => d.id === session.doctorId);
-        if (matched) doctorName = matched.displayName;
-      }
-      if (!doctorName) {
-        const doctors = await getClinicDoctors(clinicId);
-        if (doctors.length > 0) doctorName = doctors[0]?.displayName;
-      }
-      if (doctorName && !doctorName.startsWith("Dr.") && !doctorName.startsWith("Dr ")) {
-        doctorName = `Dr. ${doctorName.trim()}`;
       }
 
       // Create appointment in database

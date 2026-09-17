@@ -11,6 +11,7 @@ import type { AppEnv } from "../../types";
 import { serializeCouple, serializeAppointment, serializeTask } from "../clinic-dto";
 import { createCoupleSchema, idParam, updateCoupleSchema } from "./schemas";
 import { createCoupleRecord, deleteCoupleRecord, listCouples, loadCouple } from "./service";
+import { serializeTreatment, updateTreatmentSchema } from "../treatments";
 
 export const coupleRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
@@ -81,6 +82,183 @@ export const coupleRoutes = new Hono<AppEnv>()
       return ok(c, serializeCouple(loaded));
     }
     return ok(c, serializeCouple(couple));
+  })
+  .get("/:id/treatment", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const { id } = c.req.valid("param");
+
+    let couple = await prisma.couple.findFirst({
+      where: {
+        OR: [{ id }, { slug: id }],
+        clinicId: tenant.clinicId,
+      },
+      select: { id: true },
+    });
+    if (!couple) throw notFound();
+
+    const treatment = await prisma.treatment.findFirst({
+      where: { coupleId: couple.id, clinicId: tenant.clinicId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        ivfCycle: true,
+        iuiCycle: true,
+        carePlan: true,
+        couple: {
+          include: {
+            primaryPatient: true,
+            partnerPatient: true,
+            assignedDoctor: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    if (!treatment) {
+      return ok(c, { treatment: null });
+    }
+    return ok(c, serializeTreatment(treatment));
+  })
+  .patch("/:id/treatment", validate("param", idParam), validate("json", updateTreatmentSchema), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    let couple = await prisma.couple.findFirst({
+      where: {
+        OR: [{ id }, { slug: id }],
+        clinicId: tenant.clinicId,
+      },
+      include: {
+        primaryPatient: true,
+        partnerPatient: true,
+        assignedDoctor: { select: { id: true, name: true } },
+      },
+    });
+    if (!couple) throw notFound();
+
+    let treatment = await prisma.treatment.findFirst({
+      where: { coupleId: couple.id, clinicId: tenant.clinicId },
+      orderBy: { createdAt: "desc" },
+      include: {
+        ivfCycle: true,
+        iuiCycle: true,
+      },
+    });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      if (!treatment) {
+        // Create initial treatment for couple
+        treatment = await tx.treatment.create({
+          data: {
+            clinicId: tenant.clinicId,
+            coupleId: couple.id,
+            kind: body.kind ?? "IVF",
+            label: body.label ?? (body.kind === "EVALUATION" ? "Fertility Evaluation" : `${body.kind ?? "IVF"} Cycle 1`),
+            status: body.status ?? "ACTIVE",
+            stageIndex: body.stageIndex ?? 0,
+            stageName: body.stageName ?? "Consultation",
+            startedAt: body.startedAt ? new Date(body.startedAt) : new Date(),
+          },
+          include: {
+            ivfCycle: true,
+            iuiCycle: true,
+          },
+        });
+      } else {
+        await tx.treatment.update({
+          where: { id: treatment.id },
+          data: {
+            ...(body.kind ? { kind: body.kind } : {}),
+            ...(body.label ? { label: body.label } : {}),
+            ...(body.status ? { status: body.status } : {}),
+            ...(body.stageIndex !== undefined ? { stageIndex: body.stageIndex } : {}),
+            ...(body.stageName !== undefined ? { stageName: body.stageName } : {}),
+            ...(body.startedAt !== undefined
+              ? { startedAt: body.startedAt ? new Date(body.startedAt) : null }
+              : {}),
+          },
+        });
+      }
+
+      const effectiveKind = body.kind ?? treatment.kind;
+
+      if (body.cycleNumber !== undefined || body.notes !== undefined) {
+        if (effectiveKind === "IVF") {
+          await tx.iVFCycle.upsert({
+            where: { treatmentId: treatment.id },
+            create: {
+              treatmentId: treatment.id,
+              cycleNumber: body.cycleNumber ?? 1,
+              notes: body.notes ?? null,
+            },
+            update: {
+              ...(body.cycleNumber !== undefined ? { cycleNumber: body.cycleNumber } : {}),
+              ...(body.notes !== undefined ? { notes: body.notes } : {}),
+            },
+          });
+        } else if (effectiveKind === "IUI") {
+          await tx.iUICycle.upsert({
+            where: { treatmentId: treatment.id },
+            create: {
+              treatmentId: treatment.id,
+              cycleNumber: body.cycleNumber ?? 1,
+              notes: body.notes ?? null,
+            },
+            update: {
+              ...(body.cycleNumber !== undefined ? { cycleNumber: body.cycleNumber } : {}),
+              ...(body.notes !== undefined ? { notes: body.notes } : {}),
+            },
+          });
+        }
+      }
+
+      if (treatment.carePlanId && body.status) {
+        const planStatus =
+          body.status === "COMPLETED"
+            ? "COMPLETED"
+            : body.status === "CANCELLED"
+              ? "CANCELLED"
+              : "ACTIVE";
+        await tx.carePlan.update({
+          where: { id: treatment.carePlanId },
+          data: {
+            status: planStatus,
+          },
+        }).catch(() => undefined);
+      }
+
+      return tx.treatment.findUnique({
+        where: { id: treatment.id },
+        include: {
+          ivfCycle: true,
+          iuiCycle: true,
+          couple: {
+            include: {
+              primaryPatient: true,
+              partnerPatient: true,
+              assignedDoctor: { select: { id: true, name: true } },
+            },
+          },
+        },
+      });
+    });
+
+    if (!updated) throw notFound();
+
+    try {
+      await audit(tenant, "treatment.update", "Treatment", updated.id, {
+        clinicId: tenant.clinicId,
+        coupleId: couple.id,
+        kind: updated.kind,
+        status: updated.status,
+        label: updated.label,
+        stageName: updated.stageName,
+      });
+    } catch {
+      // Non-fatal
+    }
+
+    return ok(c, serializeTreatment(updated));
   })
   .post("/", validate("json", createCoupleSchema), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_WRITE);

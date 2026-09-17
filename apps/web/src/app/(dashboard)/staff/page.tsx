@@ -22,12 +22,20 @@ import {
   Building2,
   GraduationCap,
   Award,
+  Trash2,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { clinicApi } from "@/lib/clinic-api";
 import { doctorsStore } from "@/lib/doctors";
 
@@ -276,6 +284,24 @@ export default function StaffDirectoryPage() {
                             </Link>
                           </DropdownMenuItem>
                         )}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-xs text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer"
+                          onClick={async () => {
+                            if (!confirm(`Are you sure you want to remove ${member.name} from this clinic?`)) return;
+                            try {
+                              await clinicApi.deleteDoctor(member.id);
+                              doctorsStore.deleteDoctor(member.id);
+                              setStaff((prev) => prev.filter((s) => s.id !== member.id));
+                              toast.success(`${member.name} removed from clinic.`);
+                            } catch (err: any) {
+                              toast.error(err?.message || "Failed to remove staff member.");
+                            }
+                          }}
+                        >
+                          <Trash2 className="size-3.5 mr-1" />
+                          {member.role === "DOCTOR" ? "Delete Doctor" : "Remove Staff"}
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

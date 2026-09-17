@@ -383,6 +383,20 @@ export async function dispatchStageToWhatsApp(
     }
 
     if (coupleId) {
+      const activeTreatment = await prisma.treatment.findFirst({
+        where: { coupleId, status: "ACTIVE" },
+        orderBy: { updatedAt: "desc" },
+      });
+      if (activeTreatment) {
+        await prisma.treatment.update({
+          where: { id: activeTreatment.id },
+          data: {
+            stageIndex: stageNum - 1,
+            stageName: spec.name,
+          },
+        });
+      }
+
       const plan = await prisma.carePlan.findFirst({
         where: { clinicId: tenant.clinicId, coupleId, status: "ACTIVE" },
         include: { steps: { orderBy: { sortOrder: "asc" } } },
@@ -555,6 +569,9 @@ async function dispatchSingleStage(
       }).catch(() => undefined);
     }
   }
+
+  const { triggerRemoteOutboundDispatch } = await import("../whatsapp-automation/outbound-bridge");
+  void triggerRemoteOutboundDispatch().catch(() => undefined);
 }
 
 async function sendSingleTaskWhatsApp(

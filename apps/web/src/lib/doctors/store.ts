@@ -239,6 +239,25 @@ export const doctorsStore = {
           : "Doctor marked as on leave";
     return this.upsert({ ...doctor, status, isDraft: false }, { kind, message });
   },
+  async deleteDoctor(id: string): Promise<boolean> {
+    const cleanId = (id || "").replace(/^doc_/, "");
+    // 1. Remove from local store cache immediately
+    const list = getAll();
+    const filtered = list.filter(
+      (d) => d.id !== id && d.id !== `doc_${cleanId}` && d.staffUserId !== cleanId && d.staffUserId !== id
+    );
+    writeStorage(filtered);
+
+    // 2. Call API to delete doctor and all related assignments from backend DB
+    if (typeof window !== "undefined") {
+      try {
+        await clinicApi.deleteDoctor(cleanId || id);
+      } catch (err) {
+        console.warn("API doctor deletion warning/error:", err);
+      }
+    }
+    return true;
+  },
   updateSchedule(id: string, weeklySchedule: WeeklySchedule) {
     const doctor = this.get(id);
     if (!doctor) return null;

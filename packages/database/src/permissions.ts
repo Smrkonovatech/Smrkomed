@@ -269,14 +269,31 @@ export const ROLE_DEFS = [
 ] as const;
 
 export function roleHasPermission(
-  role: keyof typeof ROLE_PERMISSIONS,
+  role: keyof typeof ROLE_PERMISSIONS | string | undefined | null,
   permission: PermissionKey,
 ) {
-  return (ROLE_PERMISSIONS[role] as readonly PermissionKey[]).includes(permission);
+  if (!role) return false;
+  const direct = (ROLE_PERMISSIONS as Record<string, readonly PermissionKey[]>)[role];
+  if (direct) {
+    return direct.includes(permission);
+  }
+  const normalized = String(role).trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (
+    normalized === "ADMIN" ||
+    normalized === "SUPER_ADMIN" ||
+    normalized === "OWNER" ||
+    normalized === "CLINIC_ADMIN" ||
+    normalized === "ORGANIZATION_ADMIN" ||
+    normalized === "PLATFORM_ADMIN"
+  ) {
+    return ALL_PERMISSIONS.includes(permission);
+  }
+  const mapped = (ROLE_PERMISSIONS as Record<string, readonly PermissionKey[]>)[normalized];
+  return mapped ? mapped.includes(permission) : false;
 }
 
 export function assertPermission(
-  role: keyof typeof ROLE_PERMISSIONS,
+  role: keyof typeof ROLE_PERMISSIONS | string | undefined | null,
   permission: PermissionKey,
 ) {
   if (!roleHasPermission(role, permission)) {

@@ -208,4 +208,72 @@ export const adminUserRoutes = new Hono<AppEnv>()
       },
     });
     return ok(c, user);
+  })
+  .delete("/users/:id", validate("param", idParam), async (c) => {
+    const tenant = tenantOf(c);
+    const { id } = c.req.valid("param");
+
+    const existing = await prisma.user.findUnique({
+      where: { id },
+      include: { memberships: { include: { role: true } } },
+    });
+    if (!existing) throw notFound("User not found.");
+
+    if (existing.memberships.some((row) => row.role.key === "PLATFORM_ADMIN")) {
+      throw forbidden("Platform administrator accounts cannot be deleted here.");
+    }
+
+    // 1. Unassign from couples
+    await prisma.couple.updateMany({
+      where: { assignedDoctorId: id },
+      data: { assignedDoctorId: null },
+    });
+    await prisma.couple.updateMany({
+      where: { assignedCoordinatorId: id },
+      data: { assignedCoordinatorId: null },
+    });
+
+    // 2. Unassign from care plans
+    await prisma.carePlan.updateMany({
+      where: { assignedDoctorId: id },
+      data: { assignedDoctorId: null },
+    });
+    await prisma.carePlan.updateMany({
+      where: { assignedCoordinatorId: id },
+      data: { assignedCoordinatorId: null },
+    });
+
+    // 3. Remove doctor profile rules
+    await prisma.automationRule.deleteMany({
+      where: {
+        trigger: "DOCTOR_PROFILE",
+        OR: [{ name: id }, { name: `doc_${id}` }],
+      },
+    });
+
+    // 4. Delete clinic memberships
+    await prisma.clinicMembership.deleteMany({
+      where: { userId: id },
+    });
+
+    // 5. Delete user or set isActive: false if foreign keys prevent deletion
+    try {
+      await prisma.user.delete({ where: { id } });
+    } catch {
+      await prisma.user.update({
+        where: { id },
+        data: { isActive: false },
+      });
+    }
+
+    // 6. Audit log
+    await writeAuditLog({
+      actorId: tenant.userId,
+      action: "admin.user.delete",
+      entityType: "User",
+      entityId: id,
+      metadata: { name: existing.name, email: existing.email },
+    });
+
+    return ok(c, { success: true, deletedId: id, message: `User ${existing.name} has been deleted.` });
   });

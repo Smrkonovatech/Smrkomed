@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { ArrowRight, User } from "lucide-react";
+import { ArrowRight, User, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IvfJourneyModal } from "./ivf-journey-modal";
+import { EditTreatmentModal } from "./edit-treatment-modal";
 
 const carePlanSteps = [
   "01. Baseline",
@@ -21,8 +22,17 @@ const carePlanSteps = [
   "12. Beta HCG",
 ];
 
-export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | any; p360?: any }) {
+export function IvfCycleWidget({
+  couple,
+  p360,
+  onTreatmentUpdated,
+}: {
+  couple: { stage: string } | any;
+  p360?: any;
+  onTreatmentUpdated?: () => void;
+}) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [targetModalStage, setTargetModalStage] = useState<string | undefined>(undefined);
 
   let currentStageName = couple?.stage || "Consultation";
@@ -66,13 +76,23 @@ export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | a
       <div className="bg-[#F8F9FA] rounded-2xl border border-gray-100 shadow-sm p-5 relative overflow-hidden h-full flex flex-col">
         <div className="flex justify-between items-start mb-6 z-10 relative">
           <h2 className="text-lg font-bold text-gray-900">IVF Cycle</h2>
-          <button 
-            type="button"
-            onClick={() => handleOpenStage(currentStageName)}
-            className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] transition-colors active:scale-98"
-          >
-            View full timeline <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(true)}
+              className="text-gray-500 hover:text-[#866BE3] text-xs font-semibold flex items-center gap-1 transition-colors active:scale-98 cursor-pointer"
+              title="Doctor: Edit Treatment Protocol"
+            >
+              <Pencil className="w-3.5 h-3.5" /> Edit
+            </button>
+            <button 
+              type="button"
+              onClick={() => handleOpenStage(currentStageName)}
+              className="text-[#866BE3] text-xs font-semibold flex items-center gap-1 hover:text-[#7254d1] transition-colors active:scale-98 cursor-pointer"
+            >
+              View full timeline <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 flex justify-center items-center gap-10 relative z-10 w-full max-w-[700px] mx-auto mt-2">
@@ -174,6 +194,18 @@ export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | a
         steps={carePlanStepsArr}
         couple={couple}
         p360={p360}
+        onTreatmentUpdated={onTreatmentUpdated}
+      />
+
+      <EditTreatmentModal
+        isOpen={isEditModalOpen}
+        onOpenChange={setIsEditModalOpen}
+        coupleId={couple?.id || couple?.slug}
+        patientName={p360?.header?.patientName}
+        currentTreatment={p360?.header?.currentTreatment}
+        onSaved={() => {
+          onTreatmentUpdated?.();
+        }}
       />
     </>
   );

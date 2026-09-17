@@ -5,7 +5,7 @@ import type { TenantContext } from "@smrkomed/database";
 import { metaConfig } from "../../integrations/providers/whatsapp/config";
 import { normalizeWhatsAppPhone } from "../../integrations/providers/whatsapp/phone";
 import { resolveWhatsAppSenderCredentials } from "../../integrations/providers/whatsapp/service";
-import { sendTextMessage } from "../../integrations/providers/whatsapp/graph";
+import { sendTextMessage, sendTemplateMessage } from "../../integrations/providers/whatsapp/graph";
 
 async function clinicTenant(clinicId: string): Promise<TenantContext | null> {
   const clinic = await prisma.clinic.findUnique({
@@ -155,6 +155,67 @@ export async function processPendingOutboundMessages(limit = 25, clinicId?: stri
     } catch (metaErr) {
       const errStr = metaErr instanceof Error ? metaErr.message : String(metaErr);
       console.error(`[WhatsApp Outbound Bridge] Meta dispatch failed for message ${msg.id}:`, errStr);
+
+      const is24hWindowError =
+        errStr.includes("131047") ||
+        errStr.includes("24 hours") ||
+        errStr.includes("SESSION_WINDOW_EXPIRED") ||
+        errStr.includes("Re-engagement");
+
+      if (is24hWindowError) {
+        console.log(`[WhatsApp Outbound Bridge] 24h window closed for ${recipient}. Attempting approved template fallback...`);
+        const template = await prisma.whatsAppTemplate.findFirst({
+          where: { clinicId: conv.clinicId, status: "APPROVED", parameterCount: 0 },
+        });
+        if (template) {
+          try {
+            const tmplResult = await sendTemplateMessage({
+              phoneNumberId: creds.phoneNumberId,
+              accessToken: creds.token,
+              to: recipient,
+              name: template.name,
+              language: template.language || "en_US",
+            });
+            const tmplMessages = tmplResult["messages"];
+            const metaId =
+              Array.isArray(tmplMessages) && tmplMessages[0] && typeof tmplMessages[0] === "object"
+                ? String((tmplMessages[0] as { id?: string }).id ?? "")
+                : "";
+            if (metaId) {
+              await prisma.message.update({
+                where: { id: msg.id },
+                data: {
+                  providerMessageId: metaId,
+                  status: "SENT",
+                },
+              });
+              await prisma.auditLog.create({
+                data: {
+                  organizationId: tenant.organizationId,
+                  clinicId: tenant.clinicId,
+                  actorId: tenant.userId,
+                  action: "whatsapp.message.send.template.fallback",
+                  entityType: "Message",
+                  entityId: msg.id,
+                  metadata: {
+                    source: "WHATSAPP_STAFF",
+                    bridge: "worker_outbound_fallback",
+                    metaMessageId: metaId,
+                    template: template.name,
+                  },
+                },
+              }).catch(() => undefined);
+              dispatched += 1;
+              results.push({ id: msg.id, success: true, metaId });
+              console.log(`[WhatsApp Outbound Bridge] Fallback template ${template.name} sent to ${recipient} -> Meta ${metaId}`);
+              continue;
+            }
+          } catch (tmplErr) {
+            console.error(`[WhatsApp Outbound Bridge] Template fallback failed:`, tmplErr);
+          }
+        }
+      }
+
       results.push({ id: msg.id, success: false, error: errStr });
 
       // If attempts exceed, mark failed

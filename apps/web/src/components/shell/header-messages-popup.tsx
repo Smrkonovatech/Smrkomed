@@ -27,6 +27,8 @@ import { toast } from "sonner";
 export type ChatMessage = {
   id: string;
   sender: "patient" | "staff";
+  senderName?: string | undefined;
+  partnerRole?: "PRIMARY" | "PARTNER" | "STAFF" | undefined;
   isAi?: boolean | undefined;
   text?: string | undefined;
   time?: string | undefined;
@@ -41,6 +43,10 @@ export type ChatMessage = {
 export type ActiveChat = {
   id: string;
   conversationId?: string | undefined;
+  patientId?: string | undefined;
+  coupleId?: string | undefined;
+  recipientPhone?: string | undefined;
+  isJointCouple?: boolean | undefined;
   name: string;
   avatar?: string | undefined;
   avatarBg?: string | undefined;
@@ -57,6 +63,10 @@ export type ActiveChat = {
 export type CouplePartnerChat = {
   id: string;
   conversationId?: string | undefined;
+  patientId?: string | undefined;
+  coupleId?: string | undefined;
+  recipientPhone?: string | undefined;
+  isJointCouple?: boolean | undefined;
   name: string;
   avatar?: string | undefined;
   avatarBg?: string | undefined;
@@ -181,39 +191,82 @@ export function HeaderMessagesPopup() {
 
     const pollChats = async () => {
       for (const chat of openChats) {
-        if (!chat.conversationId || chat.minimized) continue;
-        try {
-          const detail = await clinicApi.whatsappConversation(chat.conversationId);
-          if (detail && Array.isArray(detail.messages)) {
-            const mapped: ChatMessage[] = detail.messages.map((m: any) => ({
-              id: m.id || `msg-${Math.random()}`,
-              sender: m.direction === "INBOUND" ? "patient" : "staff",
-              isAi: m.senderType === "AI",
-              text: m.content || "",
-              time: formatTimeOnly(m.createdAt),
-              attachment: m.whatsappMedia
-                ? {
-                    type: m.whatsappMedia.type === "DOCUMENT" ? "PDF" : "JPG",
-                    name: m.whatsappMedia.filename || "Attachment",
-                    size: m.whatsappMedia.sizeBytes
-                      ? `${(m.whatsappMedia.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                      : "1.2 MB",
+        if (chat.minimized) continue;
+        if (chat.isJointCouple && chat.coupleId) {
+          try {
+            const jointData = await clinicApi.whatsappCoupleMessages(chat.coupleId);
+            if (jointData && Array.isArray(jointData.messages)) {
+              const mapped: ChatMessage[] = jointData.messages.map((m: any) => ({
+                id: m.id || `msg-${Math.random()}`,
+                sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
+                senderName: m.senderName,
+                partnerRole: m.partnerRole,
+                isAi: m.isAi,
+                text: m.text || m.content || "",
+                time: formatTimeOnly(m.createdAt),
+                attachment: m.media
+                  ? {
+                      type: m.media.type === "DOCUMENT" ? "PDF" : "JPG",
+                      name: m.media.filename || "Attachment",
+                      size: m.media.sizeBytes
+                        ? `${(m.media.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                        : "1.2 MB",
+                    }
+                  : undefined,
+              }));
+              setOpenChats((prev) =>
+                prev.map((c) => {
+                  if (c.id !== chat.id) return c;
+                  if (
+                    c.messages.length !== mapped.length ||
+                    (mapped.length > 0 && c.messages[c.messages.length - 1]?.id !== mapped[mapped.length - 1]?.id)
+                  ) {
+                    return { ...c, messages: mapped, isLoading: false };
                   }
-                : undefined,
-            }));
-
-            setOpenChats((prev) =>
-              prev.map((c) => {
-                if (c.id !== chat.id) return c;
-                if (c.messages.length !== mapped.length) {
-                  return { ...c, messages: mapped, isLoading: false };
-                }
-                return c;
-              })
-            );
+                  return c;
+                })
+              );
+            }
+          } catch {
+            // Keep prior state
           }
-        } catch {
-          // Keep prior state
+        } else if (chat.conversationId) {
+          try {
+            const detail = await clinicApi.whatsappConversation(chat.conversationId);
+            if (detail && Array.isArray(detail.messages)) {
+              const mapped: ChatMessage[] = detail.messages.map((m: any) => ({
+                id: m.id || `msg-${Math.random()}`,
+                sender: m.direction === "INBOUND" ? "patient" : "staff",
+                isAi: m.senderType === "AI",
+                text: m.content || "",
+                time: formatTimeOnly(m.createdAt),
+                attachment: m.whatsappMedia
+                  ? {
+                      type: m.whatsappMedia.type === "DOCUMENT" ? "PDF" : "JPG",
+                      name: m.whatsappMedia.filename || "Attachment",
+                      size: m.whatsappMedia.sizeBytes
+                        ? `${(m.whatsappMedia.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                        : "1.2 MB",
+                    }
+                  : undefined,
+              }));
+
+              setOpenChats((prev) =>
+                prev.map((c) => {
+                  if (c.id !== chat.id) return c;
+                  if (
+                    c.messages.length !== mapped.length ||
+                    (mapped.length > 0 && c.messages[c.messages.length - 1]?.id !== mapped[mapped.length - 1]?.id)
+                  ) {
+                    return { ...c, messages: mapped, isLoading: false };
+                  }
+                  return c;
+                })
+              );
+            }
+          } catch {
+            // Keep prior state
+          }
         }
       }
     };
@@ -236,14 +289,22 @@ export function HeaderMessagesPopup() {
         const primaryConv = inboxRows.find(
           (cv) =>
             (c.primary?.id && cv.patient?.id === c.primary.id) ||
-            (pPhone && cleanPhone(cv.contactPhone) === pPhone)
+            (cv.coupleId && cv.coupleId === c.id && cv.patient?.id === c.primary?.id) ||
+            (pPhone &&
+              (cleanPhone(cv.rawPhone) === pPhone ||
+                cleanPhone(cv.contactPhone) === pPhone ||
+                cleanPhone(cv.patient?.phone) === pPhone))
         );
         if (primaryConv) matchedConvIds.add(primaryConv.id);
 
         const partnerConv = inboxRows.find(
           (cv) =>
             (c.partner?.id && cv.patient?.id === c.partner.id) ||
-            (partPhone && cleanPhone(cv.contactPhone) === partPhone)
+            (cv.coupleId && cv.coupleId === c.id && cv.patient?.id === c.partner?.id) ||
+            (partPhone &&
+              (cleanPhone(cv.rawPhone) === partPhone ||
+                cleanPhone(cv.contactPhone) === partPhone ||
+                cleanPhone(cv.patient?.phone) === partPhone))
         );
         if (partnerConv) matchedConvIds.add(partnerConv.id);
 
@@ -255,6 +316,9 @@ export function HeaderMessagesPopup() {
           {
             id: `partner-primary-${c.id}`,
             conversationId: primaryConv?.id,
+            patientId: c.primary?.id,
+            coupleId: c.id,
+            recipientPhone: c.primary?.phone,
             name: c.primary?.name || "Primary Patient",
             relation: "Primary Patient",
             avatarBg: "#866BE3",
@@ -263,7 +327,14 @@ export function HeaderMessagesPopup() {
             unreadCount: primaryConv?.unreadCount || undefined,
             isOnline: true,
             initialMessages: primaryLast
-              ? [{ id: "m-p-1", sender: primaryConv?.lastMessage?.direction === "INBOUND" ? "patient" : "staff", text: primaryLast, time: formatTimeOnly(primaryConv?.lastMessage?.createdAt) }]
+              ? [
+                  {
+                    id: "m-p-1",
+                    sender: primaryConv?.lastMessage?.direction === "INBOUND" ? "patient" : "staff",
+                    text: primaryLast,
+                    time: formatTimeOnly(primaryConv?.lastMessage?.createdAt),
+                  },
+                ]
               : undefined,
           },
         ];
@@ -272,6 +343,9 @@ export function HeaderMessagesPopup() {
           partnerChats.push({
             id: `partner-spouse-${c.id}`,
             conversationId: partnerConv?.id,
+            patientId: c.partner.id,
+            coupleId: c.id,
+            recipientPhone: c.partner.phone,
             name: c.partner.name,
             relation: "Partner · Spouse",
             avatarBg: "#E85D5D",
@@ -280,15 +354,23 @@ export function HeaderMessagesPopup() {
             unreadCount: partnerConv?.unreadCount || undefined,
             isOnline: true,
             initialMessages: partnerLast
-              ? [{ id: "m-s-1", sender: partnerConv?.lastMessage?.direction === "INBOUND" ? "patient" : "staff", text: partnerLast, time: formatTimeOnly(partnerConv?.lastMessage?.createdAt) }]
+              ? [
+                  {
+                    id: "m-s-1",
+                    sender: partnerConv?.lastMessage?.direction === "INBOUND" ? "patient" : "staff",
+                    text: partnerLast,
+                    time: formatTimeOnly(partnerConv?.lastMessage?.createdAt),
+                  },
+                ]
               : undefined,
           });
         }
 
-        // Joint care thread
+        // Joint care thread: Broadcasts to BOTH partners on WhatsApp
         partnerChats.push({
           id: `partner-joint-${c.id}`,
-          conversationId: primaryConv?.id || partnerConv?.id,
+          isJointCouple: true,
+          coupleId: c.id,
           name: `${c.primary?.name || "Primary"} & ${c.partner?.name ? c.partner.name.split(" ")[0] : "Partner"} (Joint Thread)`,
           relation: "Both Partners · Care Loop",
           avatarBg: "#00A89D",
@@ -296,7 +378,14 @@ export function HeaderMessagesPopup() {
           lastMessage: `${c.treatment || "IVF"} Journey · ${c.stage || "Active Stage"}`,
           isOnline: true,
           initialMessages: [
-            { id: "mj-1", sender: "staff", text: `Care loop active for ${c.primary?.name} & ${c.partner?.name || "Partner"}.`, time: "Today" },
+            {
+              id: "mj-1",
+              sender: "staff",
+              senderName: "Staff",
+              partnerRole: "STAFF",
+              text: `Joint care thread active for ${c.primary?.name} & ${c.partner?.name || "Partner"}. Broadcasts to both numbers.`,
+              time: "Today",
+            },
           ],
         });
 
@@ -369,6 +458,10 @@ export function HeaderMessagesPopup() {
   const openOrFocusChat = async (chatData: {
     id: string;
     conversationId?: string | undefined;
+    patientId?: string | undefined;
+    coupleId?: string | undefined;
+    recipientPhone?: string | undefined;
+    isJointCouple?: boolean | undefined;
     name: string;
     avatar?: string | undefined;
     avatarBg?: string | undefined;
@@ -389,18 +482,23 @@ export function HeaderMessagesPopup() {
     const newChat: ActiveChat = {
       id: chatData.id,
       conversationId: chatData.conversationId,
+      patientId: chatData.patientId,
+      coupleId: chatData.coupleId,
+      recipientPhone: chatData.recipientPhone,
+      isJointCouple: chatData.isJointCouple,
       name: chatData.name,
       avatar: chatData.avatar,
       avatarBg: chatData.avatarBg,
-      roleSubtitle: chatData.roleSubtitle || "Active on WhatsApp",
+      roleSubtitle: chatData.roleSubtitle || (chatData.isJointCouple ? "Joint Thread · Both Partners" : "Active on WhatsApp"),
       isOnline: chatData.isOnline ?? true,
       minimized: false,
       isExpanded: false,
       inputText: "",
-      isLoading: Boolean(chatData.conversationId),
-      messages: chatData.initialMessages && chatData.initialMessages.length > 0
-        ? [...chatData.initialMessages]
-        : [],
+      isLoading: Boolean(chatData.conversationId || chatData.isJointCouple),
+      messages:
+        chatData.initialMessages && chatData.initialMessages.length > 0
+          ? [...chatData.initialMessages]
+          : [],
     };
 
     setOpenChats((prev) => {
@@ -409,6 +507,51 @@ export function HeaderMessagesPopup() {
       }
       return [...prev, newChat];
     });
+
+    // If Joint Couple Thread, load combined message history
+    if (chatData.isJointCouple && chatData.coupleId) {
+      try {
+        const jointData = await clinicApi.whatsappCoupleMessages(chatData.coupleId);
+        if (jointData && Array.isArray(jointData.messages)) {
+          const mapped: ChatMessage[] = jointData.messages.map((m: any) => ({
+            id: m.id || `msg-${Math.random()}`,
+            sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
+            senderName: m.senderName,
+            partnerRole: m.partnerRole,
+            isAi: m.isAi,
+            text: m.text || m.content || "",
+            time: formatTimeOnly(m.createdAt),
+            attachment: m.media
+              ? {
+                  type: m.media.type === "DOCUMENT" ? "PDF" : "JPG",
+                  name: m.media.filename || "Attachment",
+                  size: m.media.sizeBytes
+                    ? `${(m.media.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                    : "1.2 MB",
+                }
+              : undefined,
+          }));
+
+          setOpenChats((prev) =>
+            prev.map((c) =>
+              c.id === chatData.id
+                ? {
+                    ...c,
+                    isLoading: false,
+                    messages: mapped.length > 0 ? mapped : c.messages,
+                  }
+                : c
+            )
+          );
+        }
+      } catch (err) {
+        console.warn("Could not load joint couple messages:", err);
+        setOpenChats((prev) =>
+          prev.map((c) => (c.id === chatData.id ? { ...c, isLoading: false } : c))
+        );
+      }
+      return;
+    }
 
     // If real conversationId, load full message history from backend
     if (chatData.conversationId) {
@@ -483,6 +626,8 @@ export function HeaderMessagesPopup() {
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: "staff",
+      senderName: "Staff",
+      partnerRole: "STAFF",
       text: messageText,
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
@@ -500,12 +645,44 @@ export function HeaderMessagesPopup() {
       )
     );
 
-    // Call real API if conversationId exists
+    // Case 1: Joint Couple Thread -> Dispatches to BOTH primary and partner mobile numbers
+    if (chat.isJointCouple && chat.coupleId) {
+      try {
+        const res = await clinicApi.sendWhatsappCoupleMessage(chat.coupleId, messageText);
+        toast.success(`Dispatched to both partners (${res?.sentCount ?? 2} recipients)`);
+        setTimeout(async () => {
+          try {
+            const jointData = await clinicApi.whatsappCoupleMessages(chat.coupleId!);
+            if (jointData && Array.isArray(jointData.messages)) {
+              const mapped: ChatMessage[] = jointData.messages.map((m: any) => ({
+                id: m.id,
+                sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
+                senderName: m.senderName,
+                partnerRole: m.partnerRole,
+                isAi: m.isAi,
+                text: m.text || m.content || "",
+                time: formatTimeOnly(m.createdAt),
+              }));
+              setOpenChats((prev) =>
+                prev.map((c) => (c.id === id ? { ...c, messages: mapped } : c))
+              );
+            }
+          } catch {
+            // Keep optimistic
+          }
+        }, 800);
+      } catch (err) {
+        console.error("Failed to send joint couple message:", err);
+        toast.error("Could not broadcast to couple. Queued for delivery.");
+      }
+      return;
+    }
+
+    // Case 2: Chat has existing conversationId
     if (chat.conversationId) {
       try {
         await clinicApi.sendWhatsappMessage(chat.conversationId, messageText);
         toast.success("WhatsApp message dispatched");
-        // Refetch fresh messages after slight delay
         setTimeout(async () => {
           try {
             const detail = await clinicApi.whatsappConversation(chat.conversationId!);
@@ -538,8 +715,26 @@ export function HeaderMessagesPopup() {
         console.error("Failed to send WhatsApp message via API:", err);
         toast.error("Message queued for delivery");
       }
-    } else {
-      toast.success("Message recorded");
+      return;
+    }
+
+    // Case 3: Chat does not have conversationId yet -> resolve/create conversation directly!
+    try {
+      const res = await clinicApi.sendWhatsappToRecipient({
+        patientId: chat.patientId,
+        coupleId: chat.coupleId,
+        phone: chat.recipientPhone,
+        body: messageText,
+      });
+      if (res?.conversationId) {
+        setOpenChats((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, conversationId: res.conversationId } : c))
+        );
+      }
+      toast.success("WhatsApp message dispatched");
+    } catch (err) {
+      console.error("Failed to send via sendWhatsappToRecipient:", err);
+      toast.error("Failed to dispatch WhatsApp message.");
     }
   };
 
@@ -661,6 +856,10 @@ export function HeaderMessagesPopup() {
                       void openOrFocusChat({
                         id: partner.id,
                         conversationId: partner.conversationId,
+                        patientId: partner.patientId,
+                        coupleId: partner.coupleId,
+                        recipientPhone: partner.recipientPhone,
+                        isJointCouple: partner.isJointCouple,
                         name: partner.name,
                         avatar: partner.avatar,
                         avatarBg: partner.avatarBg,
@@ -876,6 +1075,13 @@ export function HeaderMessagesPopup() {
                 {/* Chat Window Body */}
                 {!isMin && (
                   <>
+                    {chat.isJointCouple && (
+                      <div className="px-3 py-1.5 bg-emerald-50 border-b border-emerald-100 text-[11px] text-emerald-800 flex items-center gap-1.5 shrink-0">
+                        <span className="size-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                        <span><strong className="font-semibold">Joint Thread:</strong> Dispatches simultaneously to both partner phone numbers.</span>
+                      </div>
+                    )}
+
                     <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-[#F8F7FC]">
                       {/* Loading state */}
                       {chat.isLoading && (
@@ -936,6 +1142,12 @@ export function HeaderMessagesPopup() {
                                 <Bot className="size-3" /> AI Automation
                               </span>
                             )}
+                            {!isStaff && (m.senderName || m.partnerRole) && (
+                              <span className="text-[10px] font-semibold text-gray-500 mb-1 px-1 flex items-center gap-1">
+                                <span className={`size-1.5 rounded-full ${m.partnerRole === "PARTNER" ? "bg-[#E85D5D]" : "bg-[#866BE3]"}`} />
+                                {m.senderName || (m.partnerRole === "PARTNER" ? "Partner" : "Primary Patient")}
+                              </span>
+                            )}
                             <div
                               className={`p-3 text-[13px] leading-relaxed shadow-sm max-w-[85%] ${
                                 isStaff
@@ -968,7 +1180,7 @@ export function HeaderMessagesPopup() {
                     >
                       <div className="flex-1 relative">
                         <Input
-                          placeholder="Send WhatsApp message..."
+                          placeholder={chat.isJointCouple ? "Broadcast to both partners on WhatsApp..." : "Send WhatsApp message..."}
                           value={chat.inputText}
                           onChange={(e) => updateInputText(chat.id, e.target.value)}
                           className="h-10 w-full rounded-xl border-gray-200 pr-10 text-sm focus-visible:ring-1 focus-visible:ring-[#866BE3]/30"

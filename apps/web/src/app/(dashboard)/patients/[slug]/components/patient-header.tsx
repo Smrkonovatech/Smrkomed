@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowLeft, UserPlus, Pencil, Copy, Check, CreditCard, Pill } from "lucide-react";
 import { AssignTeamModal } from "./assign-team-modal";
 import { BillingSummaryModal } from "./billing-summary-modal";
+import { EditTreatmentModal } from "./edit-treatment-modal";
 import { toast } from "sonner";
 
 export function PatientHeader({
@@ -20,6 +21,7 @@ export function PatientHeader({
 }) {
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
+  const [isEditTreatmentOpen, setIsEditTreatmentOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
 
   const [doctorName, setDoctorName] = useState(
@@ -73,17 +75,38 @@ export function PatientHeader({
 
       <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl bg-white/60 border border-gray-100 shadow-sm mt-2 backdrop-blur-md">
         <div className="flex flex-wrap gap-8 items-center">
-          {/* Treatment Button */}
+          {/* Treatment Button & Doctor Edit Trigger */}
           <div>
-            <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wider mb-1">Treatment:</p>
-            <button
-              type="button"
-              onClick={onOpenTreatmentJourney}
-              className="bg-[#F8F5FF] hover:bg-[#866BE3]/15 text-[#866BE3] text-xs font-semibold px-3 py-1 rounded-full border border-[#866BE3]/20 transition-colors cursor-pointer active:scale-95 text-left"
-              title="Click to view IVF cycle journey"
-            >
-              {p360?.header?.currentTreatment?.label || couple?.treatment || "Fertility Evaluation"}
-            </button>
+            <div className="flex items-center gap-1.5 mb-1">
+              <p className="text-[11px] text-gray-500 font-medium uppercase tracking-wider">Treatment:</p>
+              <button
+                type="button"
+                onClick={() => setIsEditTreatmentOpen(true)}
+                className="text-gray-400 hover:text-[#866BE3] transition-colors p-0.5 rounded cursor-pointer"
+                title="Doctor: Edit Treatment Protocol"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onOpenTreatmentJourney}
+                className="bg-[#F8F5FF] hover:bg-[#866BE3]/15 text-[#866BE3] text-xs font-semibold px-3 py-1 rounded-full border border-[#866BE3]/20 transition-colors cursor-pointer active:scale-95 text-left"
+                title="Click to view IVF cycle journey"
+              >
+                {p360?.header?.currentTreatment?.label || couple?.treatment || "Fertility Evaluation"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsEditTreatmentOpen(true)}
+                className="bg-white hover:bg-gray-50 text-gray-600 hover:text-[#866BE3] text-[11px] font-medium px-2 py-0.5 rounded-full border border-gray-200 transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Doctor: Edit Treatment"
+              >
+                <Pencil className="w-2.5 h-2.5" />
+                Edit
+              </button>
+            </div>
           </div>
 
           {/* Billing & Payment Button */}
@@ -206,6 +229,17 @@ export function PatientHeader({
         onOpenChange={setIsBillingModalOpen}
         p360={p360}
         coupleId={coupleId}
+      />
+
+      <EditTreatmentModal
+        isOpen={isEditTreatmentOpen}
+        onOpenChange={setIsEditTreatmentOpen}
+        coupleId={couple.id || couple.slug}
+        patientName={p360?.header?.patientName}
+        currentTreatment={p360?.header?.currentTreatment}
+        onSaved={() => {
+          onTeamUpdated?.();
+        }}
       />
     </div>
   );

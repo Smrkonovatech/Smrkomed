@@ -1,12 +1,12 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { ErrorState, LoadingState, PageHeader, StatusBadge } from "@/components/page-state";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchUser, patchUser } from "@/lib/api/admin";
+import { deleteUser, fetchUser, patchUser } from "@/lib/api/admin";
 import { useAsync } from "@/lib/use-async";
 
 const ROLES = [
@@ -23,7 +23,10 @@ const ROLES = [
 
 export default function UserDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [tick, setTick] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false);
   const { data, error, loading } = useAsync(() => fetchUser(params.id), [params.id, tick]);
   if (loading) return <LoadingState />;
   if (error) return <ErrorState error={error} />;
@@ -50,6 +53,18 @@ export default function UserDetailPage() {
     setTick((n) => n + 1);
   }
 
+  async function handleDelete() {
+    setIsDeleting(true);
+    try {
+      await deleteUser(user.id);
+      router.push("/users");
+    } catch (err: any) {
+      alert(err?.message || "Failed to delete user");
+      setIsDeleting(false);
+      setShowConfirmDelete(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader title={user.name} description={user.email} />
@@ -58,7 +73,39 @@ export default function UserDetailPage() {
         <Button variant="outline" size="sm" onClick={() => void toggleActive()}>
           {user.isActive ? "Disable user" : "Enable user"}
         </Button>
+        <Button variant="destructive" size="sm" onClick={() => setShowConfirmDelete(true)}>
+          Delete user
+        </Button>
       </div>
+
+      {showConfirmDelete && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm space-y-3">
+          <p className="font-semibold text-destructive">
+            Are you sure you want to permanently delete {user.name} ({user.email})?
+          </p>
+          <p className="text-muted-foreground text-xs">
+            This will remove clinic memberships and unassign any active doctor or coordinator duties. Historical audit records will be retained.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isDeleting}
+              onClick={() => void handleDelete()}
+            >
+              {isDeleting ? "Deleting..." : "Yes, permanently delete"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isDeleting}
+              onClick={() => setShowConfirmDelete(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Membership</CardTitle>

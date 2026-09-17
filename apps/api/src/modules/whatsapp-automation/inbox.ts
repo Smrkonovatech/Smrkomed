@@ -2,7 +2,7 @@ import type { Prisma, TenantContext } from "@smrkomed/database";
 import { prisma } from "@smrkomed/database";
 
 import { HttpError } from "../../lib/errors";
-import { maskPhone } from "../../integrations/providers/whatsapp/phone";
+import { maskPhone, normalizeWhatsAppPhone } from "../../integrations/providers/whatsapp/phone";
 
 export type InboxFilter =
   | "all"
@@ -128,13 +128,16 @@ export async function listInboxConversations(
       status: row.status,
       priority: row.priority,
       unmatched: row.unmatched,
+      coupleId: row.coupleId ?? null,
       contactPhone: maskPhone(row.contactPhone),
+      rawPhone: row.contactPhone ?? null,
       contactState: row.unmatched ? "UNMATCHED_CONTACT" : "MATCHED_PATIENT",
       patient: row.patient
         ? {
             id: row.patient.id,
             firstName: row.patient.firstName,
             lastName: row.patient.lastName,
+            phone: row.patient.phone,
             status: row.patient.status,
             initials: initials(row.patient.firstName, row.patient.lastName),
           }
@@ -198,6 +201,10 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
           id: true,
           slug: true,
           status: true,
+          primaryPatientId: true,
+          partnerPatientId: true,
+          primaryPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+          partnerPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
           assignedDoctorId: true,
           assignedCoordinatorId: true,
           assignedDoctor: { select: { id: true, name: true } },
@@ -263,6 +270,61 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
     }
   }
 
+  let resolvedCouple = conversation.couple;
+  if (!resolvedCouple && conversation.patientId) {
+    resolvedCouple = await prisma.couple.findFirst({
+      where: {
+        clinicId: tenant.clinicId,
+        OR: [{ primaryPatientId: conversation.patientId }, { partnerPatientId: conversation.patientId }],
+      },
+      select: {
+        id: true,
+        slug: true,
+        status: true,
+        primaryPatientId: true,
+        partnerPatientId: true,
+        primaryPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        partnerPatient: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        assignedDoctorId: true,
+        assignedCoordinatorId: true,
+        assignedDoctor: { select: { id: true, name: true } },
+        assignedCoordinator: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  let partnerConversationId: string | null = null;
+  if (resolvedCouple) {
+    const otherPatientId =
+      conversation.patientId === resolvedCouple.partnerPatientId
+        ? resolvedCouple.primaryPatientId
+        : resolvedCouple.partnerPatientId;
+    const otherPatient =
+      conversation.patientId === resolvedCouple.partnerPatientId
+        ? resolvedCouple.primaryPatient
+        : resolvedCouple.partnerPatient;
+
+    if (otherPatientId) {
+      const otherConv = await prisma.conversation.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          channel: "WHATSAPP",
+          OR: [
+            { patientId: otherPatientId },
+            ...(otherPatient?.phone
+              ? [
+                  { contactPhone: normalizeWhatsAppPhone(otherPatient.phone) },
+                  { contactPhone: otherPatient.phone },
+                ]
+              : []),
+          ],
+        },
+        select: { id: true },
+      });
+      partnerConversationId = otherConv?.id ?? null;
+    }
+  }
+
   return {
     id: conversation.id,
     status: conversation.status,
@@ -275,7 +337,8 @@ export async function getInboxConversationDetail(tenant: TenantContext, conversa
     aiPausedAt: conversation.aiPausedAt?.toISOString() ?? null,
     assignedStaff: conversation.assignedStaff,
     patient: conversation.patient,
-    couple: conversation.couple,
+    couple: resolvedCouple,
+    partnerConversationId,
     clinicName: tenant.clinicName,
     messages: conversation.messages.map((m) => ({
       id: m.id,

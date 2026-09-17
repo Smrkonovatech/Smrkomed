@@ -58,9 +58,42 @@ const STANDARD_SLOT_TIMES = [
   "17:00",
 ];
 
+export function isMockDoctorEmail(email?: string | null, name?: string | null): boolean {
+  const e = (email || "").toLowerCase().trim();
+  const n = (name || "").toLowerCase().trim();
+  return (
+    e === "ananya@abcfertility.demo" ||
+    e === "ravi@abcfertility.demo" ||
+    e === "priya@abcfertility.demo" ||
+    e === "rajesh@abcfertility.demo" ||
+    (e.endsWith("@abcfertility.demo") && (n.includes("ananya") || n.includes("rahul") || n.includes("priya") || n.includes("rajesh"))) ||
+    n.includes("ananya rao") ||
+    n.includes("rahul menon") ||
+    n.includes("priya nair") ||
+    n.includes("rajesh sharma")
+  );
+}
+
+export function getTimezoneOffsetString(timezone = "Asia/Kolkata", date = new Date()): string {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      timeZoneName: "longOffset",
+    });
+    const parts = formatter.formatToParts(date);
+    const tzPart = parts.find((p) => p.type === "timeZoneName");
+    if (tzPart?.value && tzPart.value.startsWith("GMT")) {
+      const offset = tzPart.value.replace("GMT", "");
+      if (!offset) return "+00:00";
+      if (/^[+-]\d{2}:\d{2}$/.test(offset)) return offset;
+      if (/^[+-]\d{2}$/.test(offset)) return `${offset}:00`;
+    }
+  } catch {}
+  return "+05:30";
+}
+
 export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorSummary[]> {
   try {
-    // Check if real staff exists in DB
     const memberships = await prisma.clinicMembership.findMany({
       where: {
         clinicId,
@@ -79,7 +112,10 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
       orderBy: { createdAt: "asc" },
     });
 
-    if (memberships.length > 0) {
+    // Strictly filter out any mock/seed demo doctors
+    const realMemberships = memberships.filter((m) => !isMockDoctorEmail(m.user?.email, m.user?.name));
+
+    if (realMemberships.length > 0) {
       const profileRules = await prisma.automationRule.findMany({
         where: {
           clinicId,
@@ -92,7 +128,7 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
         if (rule.name) profileMap.set(rule.name, rule.config);
       }
 
-      return memberships.map((m, idx) => {
+      return realMemberships.map((m, idx) => {
         const u = m.user;
         const saved = (profileMap.get(u.id) || profileMap.get(`doc_${u.id}`) || {}) as any;
         const rawName = saved.displayName || u.name || `Doctor ${idx + 1}`;
@@ -123,29 +159,37 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
       });
     }
   } catch {
-    // Graceful fallback to default doctors
+    // Graceful fallback
   }
 
-  return DEFAULT_DOCTORS.map((doc) => ({
-    ...doc,
-    availableDates: getUpcomingDates(7),
-  }));
+  // If no doctors exist in this clinic, return empty array rather than injecting fake doctors
+  return [];
 }
 
 export function getUpcomingDates(count = 7): string[] {
   const dates: string[] = [];
   const cur = new Date();
-  cur.setHours(0, 0, 0, 0);
+  const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(cur);
+  const [y, m, d] = todayIso.split("-").map(Number);
+  const base = new Date(Date.UTC(y!, m! - 1, d!, 0, 0, 0));
 
-  for (let i = 1; i <= count; i++) {
-    const d = new Date(cur);
-    d.setDate(d.getDate() + i);
+  // Include i = 0 (today) through count days ahead
+  for (let i = 0; i <= count; i++) {
+    const target = new Date(base.getTime() + i * 86_400_000);
+    const dateIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(target);
+    const dayOfWeek = new Date(`${dateIso}T12:00:00+05:30`).getDay();
     // Exclude Sundays (0)
-    if (d.getDay() !== 0) {
-      dates.push(formatDateIso(d));
+    if (dayOfWeek !== 0) {
+      dates.push(dateIso);
     }
   }
   return dates;
+}
+
+function formatSlotTimeLabel(h: number, m: number): string {
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
 export async function getDoctorDaySlots(
@@ -153,62 +197,91 @@ export async function getDoctorDaySlots(
   doctorId: string,
   dateIso: string,
 ): Promise<BookingSlot[]> {
-  const dateObj = new Date(`${dateIso}T00:00:00`);
+  const dateObj = new Date(`${dateIso}T12:00:00+05:30`);
   if (dateObj.getDay() === 0) {
     // Sunday closed
     return [];
   }
 
-  // Fetch all confirmed appointments for this doctor on this day
-  const dayStart = new Date(`${dateIso}T00:00:00.000Z`);
-  const dayEnd = new Date(`${dateIso}T23:59:59.999Z`);
+  const clinic = await prisma.clinic.findUnique({
+    where: { id: clinicId },
+    select: { timezone: true },
+  });
+  const tz = clinic?.timezone || "Asia/Kolkata";
+  const tzOffset = getTimezoneOffsetString(tz);
+  const now = new Date();
 
-  let bookedAppointments: Array<{ startsAt: Date; durationMin: number; doctorName?: string | null }> = [];
+  // Fetch all active, confirmed, waiting appointments in this clinic on this day
+  const dayStart = new Date(`${dateIso}T00:00:00${tzOffset}`);
+  const dayEnd = new Date(`${dateIso}T23:59:59.999${tzOffset}`);
+
+  let bookedAppointments: Array<{ startsAt: Date; durationMin: number; doctorName?: string | null; couple?: { assignedDoctorId: string | null } | null }> = [];
   try {
     bookedAppointments = await prisma.appointment.findMany({
       where: {
         ...(clinicId && clinicId !== "clinic_default" ? { clinicId } : {}),
-        status: "CONFIRMED",
+        status: { in: ["CONFIRMED", "WAITING"] },
         startsAt: {
-          gte: dayStart,
-          lte: dayEnd,
+          gte: new Date(dayStart.getTime() - 60 * 60 * 1000),
+          lte: new Date(dayEnd.getTime() + 60 * 60 * 1000),
         },
       },
-      select: { startsAt: true, durationMin: true, doctorName: true },
+      select: {
+        startsAt: true,
+        durationMin: true,
+        doctorName: true,
+        couple: { select: { assignedDoctorId: true } },
+      },
     });
   } catch {
     bookedAppointments = [];
   }
 
-  const cleanDoc = doctorId.replace(/^doc_/, "").replace(/^dr\.?\s*/i, "").trim().toLowerCase();
-  if (cleanDoc) {
-    bookedAppointments = bookedAppointments.filter((a) => {
-      const doc = (a.doctorName || "").toLowerCase();
-      return doc.includes(cleanDoc) || cleanDoc.includes(doc);
-    });
-  }
+  const cleanDocId = doctorId.replace(/^doc_/, "");
+  const doctorUser = await prisma.user.findFirst({
+    where: {
+      OR: [{ id: cleanDocId }, { id: doctorId }],
+    },
+    select: { id: true, name: true },
+  });
+  const doctorName = doctorUser?.name?.trim() || doctorId;
+  const docNameClean = doctorName.replace(/^dr\s*\.?\s*/i, "").trim().toLowerCase();
+
+  const doctorAppts = bookedAppointments.filter((a) => {
+    if (doctorUser && a.couple?.assignedDoctorId === doctorUser.id) return true;
+    const nameInAppt = (a.doctorName || "").replace(/^dr\s*\.?\s*/i, "").trim().toLowerCase();
+    if (!nameInAppt || !docNameClean) return true;
+    return nameInAppt.includes(docNameClean) || docNameClean.includes(nameInAppt);
+  });
 
   const slots: BookingSlot[] = [];
 
   for (const timeStr of STANDARD_SLOT_TIMES) {
     const [h, m] = timeStr.split(":").map(Number);
-    const slotStart = new Date(`${dateIso}T00:00:00.000Z`);
-    slotStart.setUTCHours(h!, m!, 0, 0);
+    const slotStart = new Date(`${dateIso}T${timeStr}:00${tzOffset}`);
     const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
 
-    // Check collision with existing appointments
-    const isBooked = bookedAppointments.some((appt) => {
+    // 1. PAST TIME CHECK:
+    // If the slot is in the past (e.g. current time is 3:00 PM, slots at 09:00 - 15:00 are past)
+    // We add a 10-minute grace window so patients cannot book immediately expiring slots
+    const isPast = slotStart.getTime() <= (now.getTime() + 10 * 60 * 1000);
+
+    // 2. OVERLAP CONFLICT CHECK:
+    // Ensure no overlapping booking exists for this doctor during slot window
+    const isConflict = doctorAppts.some((appt) => {
       const apptStart = new Date(appt.startsAt).getTime();
       const apptEnd = apptStart + (appt.durationMin || 30) * 60 * 1000;
       return slotStart.getTime() < apptEnd && slotEnd.getTime() > apptStart;
     });
 
+    const isAvailable = !isPast && !isConflict;
+
     slots.push({
       time: timeStr,
-      timeLabel: formatTimeLabel(timeStr),
+      timeLabel: formatSlotTimeLabel(h!, m!),
       start: timeStr,
       end: `${String(m === 30 ? h! + 1 : h!).padStart(2, "0")}:${m === 30 ? "00" : "30"}`,
-      status: isBooked ? "booked" : "available",
+      status: isAvailable ? "available" : "booked",
     });
   }
 
@@ -217,7 +290,7 @@ export async function getDoctorDaySlots(
 
 /**
  * Critical live re-validation before committing appointment.
- * Returns true if slot is still free, false if collision exists.
+ * Returns true if slot is still free, false if collision exists or slot in past.
  */
 export async function recheckSlotAvailability(
   clinicId: string,
@@ -226,30 +299,60 @@ export async function recheckSlotAvailability(
   timeStr: string,
 ): Promise<{ available: boolean; reason?: string }> {
   try {
-    const [h, m] = timeStr.split(":").map(Number);
-    const reqStart = new Date(`${dateIso}T00:00:00.000Z`);
-    reqStart.setUTCHours(h!, m!, 0, 0);
+    const clinic = await prisma.clinic.findUnique({
+      where: { id: clinicId },
+      select: { timezone: true },
+    });
+    const tz = clinic?.timezone || "Asia/Kolkata";
+    const tzOffset = getTimezoneOffsetString(tz);
+    const now = new Date();
+
+    const normalizedTime = timeStr.trim().replace(/\s+(AM|PM)/i, "");
+    const parts = normalizedTime.split(":");
+    let h = parseInt(parts[0] ?? "10", 10);
+    const m = parseInt(parts[1] ?? "0", 10);
+    if (/PM/i.test(timeStr) && h < 12) h += 12;
+    if (/AM/i.test(timeStr) && h === 12) h = 0;
+
+    const timeFormatted = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const reqStart = new Date(`${dateIso}T${timeFormatted}:00${tzOffset}`);
     const reqEnd = new Date(reqStart.getTime() + 30 * 60 * 1000);
 
-    const conflict = await prisma.appointment.findFirst({
+    // 1. Check if slot has already passed
+    if (reqStart.getTime() <= now.getTime()) {
+      return { available: false, reason: "SLOT_IN_PAST" };
+    }
+
+    // 2. Check for overlapping appointment for this doctor
+    const cleanDoc = doctorName.replace(/^dr\s*\.?\s*/i, "").trim().toLowerCase();
+    const existing = await prisma.appointment.findMany({
       where: {
         clinicId,
-        status: "CONFIRMED",
-        doctorName: { contains: doctorName.replace("Dr. ", "").trim(), mode: "insensitive" },
+        status: { in: ["CONFIRMED", "WAITING"] },
         startsAt: {
-          lt: reqEnd,
-          gte: new Date(reqStart.getTime() - 30 * 60 * 1000),
+          gte: new Date(reqStart.getTime() - 120 * 60 * 1000),
+          lte: new Date(reqEnd.getTime() + 120 * 60 * 1000),
         },
       },
+      select: { startsAt: true, durationMin: true, doctorName: true },
     });
 
-    if (conflict) {
+    const hasConflict = existing.some((appt) => {
+      const doc = (appt.doctorName || "").replace(/^dr\s*\.?\s*/i, "").trim().toLowerCase();
+      if (cleanDoc && doc && !doc.includes(cleanDoc) && !cleanDoc.includes(doc)) {
+        return false;
+      }
+      const apptStart = new Date(appt.startsAt).getTime();
+      const apptEnd = apptStart + (appt.durationMin || 30) * 60 * 1000;
+      return reqStart.getTime() < apptEnd && reqEnd.getTime() > apptStart;
+    });
+
+    if (hasConflict) {
       return { available: false, reason: "SLOT_TAKEN" };
     }
 
     return { available: true };
   } catch {
-    // If DB is offline or check fails, allow booking to proceed to transactional commit
     return { available: true };
   }
 }

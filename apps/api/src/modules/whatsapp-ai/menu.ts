@@ -753,8 +753,8 @@ export async function handleCareLoopMenuAction(input: {
       })
     : null;
 
-  // Check for explicit stage command: "stage 7", "step 9", "trigger", etc.
-  const stageMatch = clean.match(/(?:stage|step|test\s*stage)\s*(\d+)/i);
+  // Check for explicit stage command: "stage 7", "step 9", "stage_7_test", "trigger", etc.
+  const stageMatch = clean.match(/(?:stage|step|test[_\s]*stage)[_\s]*(\d+)/i);
   let explicitStageNum: number | null = stageMatch && stageMatch[1] ? parseInt(stageMatch[1], 10) : null;
   if (!explicitStageNum) {
     if (/\b(lead|appointment\s*booking)\b/i.test(clean)) explicitStageNum = 1;
@@ -780,6 +780,7 @@ export async function handleCareLoopMenuAction(input: {
       stageNumber: explicitStageNum,
       phoneNumber: input.contactPhone,
       ...(coupleId ? { coupleId } : {}),
+      targetRole: "BOTH",
       syncPlanStage: true,
     });
     return {
@@ -977,6 +978,53 @@ export async function handleCareLoopMenuAction(input: {
   }
 
   if (!plan) {
+    const activeTreatment = coupleId
+      ? await prisma.treatment.findFirst({
+          where: { coupleId, status: "ACTIVE" },
+          orderBy: { updatedAt: "desc" },
+          include: {
+            couple: {
+              include: {
+                primaryPatient: { select: { firstName: true, lastName: true } },
+                partnerPatient: { select: { firstName: true, lastName: true } },
+              },
+            },
+          },
+        })
+      : null;
+
+    if (activeTreatment) {
+      const coupleName =
+        [activeTreatment.couple?.primaryPatient?.firstName, activeTreatment.couple?.partnerPatient?.firstName]
+          .filter(Boolean)
+          .join(" & ") || "Patient";
+      const currentStageName = activeTreatment.stageName || "IVF Protocol";
+      const currentStageNum = (activeTreatment.stageIndex ?? 0) + 1;
+      const msg =
+        `🧬 *IVF Care Desk — ${clinicName}*\n\n` +
+        `Hello ${coupleName} 👋\n\n` +
+        `You are enrolled in *${activeTreatment.label || "IVF Treatment"}*.\n` +
+        `• Current Stage: *Step ${currentStageNum} — ${currentStageName}*\n\n` +
+        `Would you like to receive today's directives or speak with your care team?\n` +
+        `• Tap *Step Directives* to dispatch today's tasks.\n` +
+        `• Tap *Care Coordinator* for immediate clinical assistance.`;
+
+      await sendWhatsAppInteractiveButtons(input.tenant, {
+        conversationId: input.conversationId,
+        body: msg,
+        footer: `${clinicName} • Step ${currentStageNum} Active`,
+        buttons: [
+          { id: `stage_${currentStageNum}_test`, title: `💉 Step ${currentStageNum} Directives` },
+          { id: MENU_ACTIONS.COORDINATOR, title: "📞 Coordinator" },
+          { id: "main_menu", title: "🏠 Main Menu" },
+        ],
+      }).catch(async () => {
+        await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+      });
+
+      return { handled: true, action: "CARE_LOOP_TREATMENT_ACTIVE", responseText: msg };
+    }
+
     const msg =
       `🧬 *IVF Care Desk — ${clinicName}*\n\n` +
       `You are currently not enrolled in an active IVF treatment protocol on this number.\n\n` +

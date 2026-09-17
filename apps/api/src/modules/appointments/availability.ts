@@ -13,6 +13,7 @@ import {
   type WorkingHoursMap,
   getClinicCommSettings,
 } from "../whatsapp-automation/safety";
+import { getTimezoneOffsetString } from "../appointment-booking/slot-engine";
 
 export type AppointmentSlot = {
   slotId: string;
@@ -70,6 +71,15 @@ function overlaps(
 ): boolean {
   return aStart < bEnd && bStart < aEnd;
 }
+
+export function doctorNamesMatch(docA?: string | null, docB?: string | null): boolean {
+  if (!docA || !docB) return true;
+  const cleanA = docA.replace(/^dr\.?\s*/i, "").trim().toLowerCase();
+  const cleanB = docB.replace(/^dr\.?\s*/i, "").trim().toLowerCase();
+  if (!cleanA || !cleanB) return true;
+  return cleanA === cleanB || cleanA.includes(cleanB) || cleanB.includes(cleanA);
+}
+
 
 /**
  * Build available slots for the next `days` days using clinic WhatsApp working hours
@@ -149,26 +159,31 @@ export async function getAvailableAppointmentSlots(input: {
       if (prefStr !== localIso && prefStr !== dayIso) continue;
     }
 
-    const key = DAY_KEYS[day.getUTCDay()]!;
-    const window = hours[key];
+    const tzDayStr = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" })
+      .format(day)
+      .toLowerCase()
+      .slice(0, 3) as keyof WorkingHoursMap;
+    const window = hours[tzDayStr] ?? hours[DAY_KEYS[day.getUTCDay()]!];
     if (!window) continue;
 
     const { h: sh, m: sm } = parseHm(window.start);
     const { h: eh, m: em } = parseHm(window.end);
-    const open = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), sh, sm, 0, 0));
-    const close = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate(), eh, em, 0, 0));
+    const dateIso = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(day);
+    const tzOffset = getTimezoneOffsetString(timezone, day);
+    const open = new Date(`${dateIso}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00${tzOffset}`);
+    const close = new Date(`${dateIso}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00${tzOffset}`);
 
     for (
       let cursor = new Date(open);
       cursor.getTime() + durationMin * 60_000 <= close.getTime() && slots.length < limit;
       cursor = new Date(cursor.getTime() + durationMin * 60_000)
     ) {
-      if (cursor <= now) continue;
+      if (cursor.getTime() <= now.getTime() + 10 * 60_000) continue;
       const end = new Date(cursor.getTime() + durationMin * 60_000);
       const conflict = existing.some((appt) => {
         const aStart = appt.startsAt;
         const aEnd = new Date(aStart.getTime() + (appt.durationMin || 30) * 60_000);
-        if (doctorName && appt.doctorName && appt.doctorName.toLowerCase() !== doctorName.toLowerCase()) {
+        if (!doctorNamesMatch(doctorName, appt.doctorName)) {
           return false;
         }
         return overlaps(cursor, end, aStart, aEnd);
@@ -220,14 +235,28 @@ export async function validateSlotStillAvailable(input: {
 
   const settings = await getClinicCommSettings(input.clinicId);
   const hours = settings.workingHours ?? DEFAULT_HOURS;
-  const key = DAY_KEYS[input.startTime.getUTCDay()]!;
-  const window = hours[key];
+  const timezone = settings.timezone || "Asia/Kolkata";
+  const tzDayStr = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" })
+    .format(input.startTime)
+    .toLowerCase()
+    .slice(0, 3) as keyof WorkingHoursMap;
+  const window = hours[tzDayStr] ?? hours[DAY_KEYS[input.startTime.getUTCDay()]!];
   if (!window) return { ok: false, reason: "CLINIC_CLOSED" };
   const { h: sh, m: sm } = parseHm(window.start);
   const { h: eh, m: em } = parseHm(window.end);
-  const open = new Date(Date.UTC(input.startTime.getUTCFullYear(), input.startTime.getUTCMonth(), input.startTime.getUTCDate(), sh, sm, 0, 0));
-  const close = new Date(Date.UTC(input.startTime.getUTCFullYear(), input.startTime.getUTCMonth(), input.startTime.getUTCDate(), eh, em, 0, 0));
-  if (input.startTime < open || end > close) {
+
+  const dateIso = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(input.startTime);
+  const tzOffset = getTimezoneOffsetString(timezone, input.startTime);
+  const openLocal = new Date(`${dateIso}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00${tzOffset}`);
+  const closeLocal = new Date(`${dateIso}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00${tzOffset}`);
+
+  const openUtc = new Date(Date.UTC(input.startTime.getUTCFullYear(), input.startTime.getUTCMonth(), input.startTime.getUTCDate(), sh, sm, 0, 0));
+  const closeUtc = new Date(Date.UTC(input.startTime.getUTCFullYear(), input.startTime.getUTCMonth(), input.startTime.getUTCDate(), eh, em, 0, 0));
+
+  const isWithinClinic = input.startTime >= openLocal && end <= closeLocal;
+  const isWithinUtc = input.startTime >= openUtc && end <= closeUtc;
+
+  if (!isWithinClinic && !isWithinUtc) {
     return { ok: false, reason: "OUTSIDE_WORKING_HOURS" };
   }
 
@@ -247,11 +276,7 @@ export async function validateSlotStillAvailable(input: {
   for (const appt of conflicts) {
     const aStart = appt.startsAt;
     const aEnd = new Date(aStart.getTime() + (appt.durationMin || 30) * 60_000);
-    if (
-      input.doctorName &&
-      appt.doctorName &&
-      appt.doctorName.toLowerCase() !== input.doctorName.toLowerCase()
-    ) {
+    if (!doctorNamesMatch(input.doctorName, appt.doctorName)) {
       continue;
     }
     if (overlaps(input.startTime, end, aStart, aEnd)) {

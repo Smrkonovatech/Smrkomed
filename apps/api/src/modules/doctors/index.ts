@@ -800,8 +800,12 @@ export const doctorRoutes = new Hono<AppEnv>()
       where: {
         clinicId: tenant.clinicId,
         status: "ACTIVE",
-        role: { key: "DOCTOR" },
-        user: { isActive: true },
+        role: {
+          OR: [
+            { key: "DOCTOR" },
+            { name: { contains: "Doctor", mode: "insensitive" } },
+          ],
+        },
       },
       include: {
         user: true,
@@ -1045,4 +1049,122 @@ export const doctorRoutes = new Hono<AppEnv>()
     }
 
     return ok(c, formatDoctorProfile(tenant.clinicId, updatedUser, mergedConfig));
+  })
+
+  // ─── 12. Doctor Management: Delete Doctor Profile & Membership ──────────────
+  .delete("/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.USERS_MANAGE);
+    const { id } = c.req.valid("param");
+    const cleanId = id.replace(/^doc_/, "");
+
+    const membership = await prisma.clinicMembership.findFirst({
+      where: {
+        clinicId: tenant.clinicId,
+        OR: [
+          { userId: cleanId },
+          { userId: id },
+          { user: { email: cleanId } },
+          { user: { email: id } },
+          { user: { name: cleanId } },
+          { user: { name: id } },
+        ],
+      },
+      include: {
+        user: true,
+        role: true,
+      },
+    });
+
+    if (!membership) {
+      // Check if there is a standalone profile automation rule to clean up
+      const deletedRules = await prisma.automationRule.deleteMany({
+        where: {
+          clinicId: tenant.clinicId,
+          trigger: "DOCTOR_PROFILE",
+          OR: [{ name: cleanId }, { name: id }, { name: `doc_${cleanId}` }],
+        },
+      });
+      if (deletedRules.count > 0) {
+        return ok(c, { success: true, deletedId: id, message: "Doctor profile removed." });
+      }
+      return fail(c, 404, "NOT_FOUND", "Doctor not found in this clinic.");
+    }
+
+    const doctorUserId = membership.user.id;
+    const doctorName = membership.user.name;
+
+    // 1. Unassign active couples assigned to this doctor in this clinic
+    await prisma.couple.updateMany({
+      where: {
+        clinicId: tenant.clinicId,
+        assignedDoctorId: doctorUserId,
+      },
+      data: {
+        assignedDoctorId: null,
+      },
+    });
+
+    // 2. Unassign active care plans in this clinic
+    await prisma.carePlan.updateMany({
+      where: {
+        clinicId: tenant.clinicId,
+        assignedDoctorId: doctorUserId,
+      },
+      data: {
+        assignedDoctorId: null,
+      },
+    });
+
+    // 3. Remove doctor profile automation rules in this clinic
+    await prisma.automationRule.deleteMany({
+      where: {
+        clinicId: tenant.clinicId,
+        trigger: "DOCTOR_PROFILE",
+        OR: [
+          { name: doctorUserId },
+          { name: `doc_${doctorUserId}` },
+          { name: id },
+          { name: cleanId },
+        ],
+      },
+    });
+
+    // 4. Delete clinic membership
+    await prisma.clinicMembership.deleteMany({
+      where: {
+        clinicId: tenant.clinicId,
+        userId: doctorUserId,
+      },
+    });
+
+    // 5. If this doctor has no remaining clinic memberships anywhere, delete user or set isActive: false
+    const otherMemberships = await prisma.clinicMembership.count({
+      where: { userId: doctorUserId },
+    });
+    if (otherMemberships === 0) {
+      try {
+        await prisma.user.delete({
+          where: { id: doctorUserId },
+        });
+      } catch {
+        await prisma.user.update({
+          where: { id: doctorUserId },
+          data: { isActive: false },
+        });
+      }
+    }
+
+    // 6. Audit log
+    await audit(tenant, "doctor.delete", "User", doctorUserId, {
+      clinicId: tenant.clinicId,
+      name: doctorName,
+      email: membership.user.email,
+    });
+
+    return ok(c, {
+      success: true,
+      deletedId: id,
+      userId: doctorUserId,
+      message: `Doctor ${doctorName} has been deleted from this clinic.`,
+    });
   });

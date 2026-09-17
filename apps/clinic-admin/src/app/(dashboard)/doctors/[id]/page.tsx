@@ -6,6 +6,7 @@ import {
   CalendarClock,
   MoreHorizontal,
   Pencil,
+  Trash2,
   UserCheck,
   UserX,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { useSession } from "next-auth/react";
 import { DoctorAvailabilityPanel } from "@/components/doctors/availability-calendar";
 import { DoctorPhoto, DoctorStatusBadge } from "@/components/doctors/doctor-card";
 import { DeactivateDoctorDialog, LeaveDialog } from "@/components/doctors/leave-dialog";
+import { DeleteDoctorDialog } from "@/components/doctors/delete-doctor-dialog";
 import { EmptyState, StatusBadge } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
 import {
@@ -61,12 +63,20 @@ export default function DoctorProfilePage() {
   const { data: session } = useSession();
   const role = session?.user?.role as StaffRole | undefined;
   const canManage =
-    !role || roleHasPermission(role, PERMISSIONS.USERS_MANAGE) || role === "CLINIC_ADMIN";
+    !role ||
+    role === "CLINIC_ADMIN" ||
+    role === "ORGANIZATION_ADMIN" ||
+    role === "PLATFORM_ADMIN" ||
+    (role as string) === "ADMIN" ||
+    (role as string) === "Clinic Admin" ||
+    roleHasPermission(role, PERMISSIONS.USERS_MANAGE) ||
+    roleHasPermission(role, PERMISSIONS.CLINIC_MANAGE);
 
   const initialTab = (searchParams.get("tab") as TabId) || "overview";
   const [tab, setTab] = useState<TabId>(TABS.includes(initialTab) ? initialTab : "overview");
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   useEffect(() => {
     const fromUrl = searchParams.get("tab") as TabId | null;
@@ -198,13 +208,20 @@ export default function DoctorProfilePage() {
                     <>
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
+                        className="text-amber-600 focus:text-amber-600 focus:bg-amber-50 dark:focus:bg-amber-950/20"
                         onClick={() => setDeactivateOpen(true)}
                       >
                         <UserX className="size-4" /> Deactivate
                       </DropdownMenuItem>
                     </>
                   )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="size-4" /> Delete Doctor
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
@@ -514,6 +531,18 @@ export default function DoctorProfilePage() {
           toast.success(`${name} deactivated.`);
         }}
       />
+      {deleteOpen && (
+        <DeleteDoctorDialog
+          open={deleteOpen}
+          onOpenChange={setDeleteOpen}
+          doctor={doctor}
+          onConfirm={async () => {
+            await doctorsStore.deleteDoctor(doctor.id);
+            toast.success(`${name} deleted.`);
+            router.push("/doctors");
+          }}
+        />
+      )}
     </div>
   );
 }

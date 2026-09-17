@@ -140,7 +140,14 @@ async function resolveCouple(tenant: TenantContext, coupleIdOrSlug: string) {
     partnerPatient: true,
     assignedDoctor: { select: { id: true, name: true } },
     assignedCoordinator: { select: { id: true, name: true } },
-    treatments: { orderBy: { createdAt: "desc" as const }, take: 1 },
+    treatments: {
+      orderBy: { createdAt: "desc" as const },
+      take: 1,
+      include: {
+        ivfCycle: true,
+        iuiCycle: true,
+      },
+    },
   } as const;
 
   const byId = await prisma.couple.findFirst({
@@ -413,6 +420,11 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
             label: treatment.label,
             kind: treatment.kind,
             status: treatment.status,
+            stageIndex: treatment.stageIndex,
+            stageName: treatment.stageName,
+            startedAt: treatment.startedAt ? treatment.startedAt.toISOString() : null,
+            cycleNumber: (treatment as any).ivfCycle?.cycleNumber ?? (treatment as any).iuiCycle?.cycleNumber ?? 1,
+            notes: (treatment as any).ivfCycle?.notes ?? (treatment as any).iuiCycle?.notes ?? null,
           }
         : null,
       currentCarePlan: activeCarePlan

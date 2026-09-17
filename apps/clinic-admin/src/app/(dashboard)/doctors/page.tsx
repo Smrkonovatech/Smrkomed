@@ -5,8 +5,9 @@ import { LayoutGrid, List, Plus, Search, Stethoscope } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { DoctorCard, DoctorPhoto, DoctorStatusBadge } from "@/components/doctors/doctor-card";
+import { DoctorActions, DoctorCard, DoctorPhoto, DoctorStatusBadge } from "@/components/doctors/doctor-card";
 import { DeactivateDoctorDialog, LeaveDialog } from "@/components/doctors/leave-dialog";
+import { DeleteDoctorDialog } from "@/components/doctors/delete-doctor-dialog";
 import { MdTableWrap, MobileCards, RecordCard } from "@/components/responsive-data";
 import { EmptyState, PageHeader } from "@/components/ui-kit";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,14 @@ export default function DoctorsPage() {
   const { data: session } = useSession();
   const role = session?.user?.role as StaffRole | undefined;
   const canManage =
-    !role || roleHasPermission(role, PERMISSIONS.USERS_MANAGE) || role === "CLINIC_ADMIN";
+    !role ||
+    role === "CLINIC_ADMIN" ||
+    role === "ORGANIZATION_ADMIN" ||
+    role === "PLATFORM_ADMIN" ||
+    (role as string) === "ADMIN" ||
+    (role as string) === "Clinic Admin" ||
+    roleHasPermission(role, PERMISSIONS.USERS_MANAGE) ||
+    roleHasPermission(role, PERMISSIONS.CLINIC_MANAGE);
 
   const [q, setQ] = useState("");
   const [specialty, setSpecialty] = useState("all");
@@ -47,6 +55,7 @@ export default function DoctorsPage() {
 
   const [leaveDoctor, setLeaveDoctor] = useState<DoctorProfile | null>(null);
   const [deactivateDoctor, setDeactivateDoctor] = useState<DoctorProfile | null>(null);
+  const [deleteDoctor, setDeleteDoctor] = useState<DoctorProfile | null>(null);
 
   const today = useMemo(() => new Date(), []);
 
@@ -188,6 +197,7 @@ export default function DoctorsPage() {
               appointmentsToday={appointmentsTodayCount(doctor)}
               onDeactivate={() => setDeactivateDoctor(doctor)}
               onAddLeave={() => setLeaveDoctor(doctor)}
+              onDelete={() => setDeleteDoctor(doctor)}
             />
           ))}
         </div>
@@ -196,15 +206,23 @@ export default function DoctorsPage() {
           <MobileCards>
             {rows.map((doctor) => (
               <RecordCard key={doctor.id}>
-                <Link href={`/doctors/${doctor.id}`} className="flex items-center gap-3">
-                  <DoctorPhoto doctor={doctor} size="sm" />
-                  <div className="min-w-0">
-                    <p className="font-semibold">{displayNameOf(doctor)}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {doctor.primarySpecialty} · {doctor.department}
-                    </p>
-                  </div>
-                </Link>
+                <div className="flex items-center justify-between gap-3">
+                  <Link href={`/doctors/${doctor.id}`} className="flex items-center gap-3 min-w-0">
+                    <DoctorPhoto doctor={doctor} size="sm" />
+                    <div className="min-w-0">
+                      <p className="font-semibold">{displayNameOf(doctor)}</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        {doctor.primarySpecialty} · {doctor.department}
+                      </p>
+                    </div>
+                  </Link>
+                  <DoctorActions
+                    doctor={doctor}
+                    onDeactivate={() => setDeactivateDoctor(doctor)}
+                    onAddLeave={() => setLeaveDoctor(doctor)}
+                    onDelete={() => setDeleteDoctor(doctor)}
+                  />
+                </div>
               </RecordCard>
             ))}
           </MobileCards>
@@ -219,6 +237,7 @@ export default function DoctorsPage() {
                   <th className="px-3 py-2.5 font-medium">Next slot</th>
                   <th className="px-3 py-2.5 font-medium">Today</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
+                  <th className="px-3 py-2.5 font-medium text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -245,6 +264,14 @@ export default function DoctorsPage() {
                     <td className="px-3 py-3">
                       <DoctorStatusBadge status={doctor.status} />
                     </td>
+                    <td className="px-3 py-3 text-right">
+                      <DoctorActions
+                        doctor={doctor}
+                        onDeactivate={() => setDeactivateDoctor(doctor)}
+                        onAddLeave={() => setLeaveDoctor(doctor)}
+                        onDelete={() => setDeleteDoctor(doctor)}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -270,6 +297,18 @@ export default function DoctorsPage() {
             doctorsStore.setStatus(deactivateDoctor.id, "inactive");
             toast.success(`${displayNameOf(deactivateDoctor)} deactivated.`);
             setDeactivateDoctor(null);
+          }}
+        />
+      )}
+      {deleteDoctor && (
+        <DeleteDoctorDialog
+          open={Boolean(deleteDoctor)}
+          onOpenChange={(open) => !open && setDeleteDoctor(null)}
+          doctor={deleteDoctor}
+          onConfirm={async () => {
+            await doctorsStore.deleteDoctor(deleteDoctor.id);
+            toast.success(`${displayNameOf(deleteDoctor)} deleted.`);
+            setDeleteDoctor(null);
           }}
         />
       )}

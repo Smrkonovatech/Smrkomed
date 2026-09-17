@@ -211,7 +211,11 @@ export default function PatientProfile() {
                     />
                 </div>
                 <div className="xl:col-span-5">
-                    <IvfCycleWidget couple={effectiveCouple} p360={p360} />
+                    <IvfCycleWidget
+                        couple={effectiveCouple}
+                        p360={p360}
+                        onTreatmentUpdated={reload360}
+                    />
                 </div>
                 <div className="xl:col-span-3">
                     <FertilityEstimateWidget couple={effectiveCouple} p360={p360} />
@@ -294,6 +298,7 @@ export default function PatientProfile() {
                 currentStage={p360?.header?.currentCarePlan?.stageName || effectiveCouple?.stage}
                 couple={effectiveCouple}
                 p360={p360}
+                onTreatmentUpdated={reload360}
             />
 
             <AddCareTaskModal
