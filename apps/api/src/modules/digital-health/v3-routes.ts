@@ -346,4 +346,370 @@ export const abdmV3Routes = new Hono<AppEnv>()
       const msg = err instanceof Error ? err.message : String(err);
       throw new HttpError(500, "ABHA_V3_QR_FAILED", msg);
     }
+  })
+
+  // ─── 6. Milestone 2: HIP Care Context Linking & Bridge Management ──────────
+  .post(
+    "/m2/link-token",
+    validate(
+      "json",
+      z.object({
+        patientId: z.string().optional(),
+        abhaAddress: z.string().optional(),
+        abhaNumber: z.union([z.string(), z.number()]).optional(),
+        name: z.string().min(1),
+        gender: z.enum(["M", "F", "O", "D"]),
+        yearOfBirth: z.number().int().min(1900).max(2200),
+      }),
+    ),
+    async (c) => {
+      requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const body = c.req.valid("json");
+      try {
+        const result = await abdmV3Service.generateLinkToken(body);
+        return ok(c, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(500, "ABDM_LINK_TOKEN_FAILED", msg);
+      }
+    },
+  )
+
+  .get("/m2/patient/:patientId/care-contexts", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    const patientId = c.req.param("patientId");
+    if (!patientId) throw new HttpError(400, "PATIENT_ID_REQUIRED", "patientId is required");
+
+    try {
+      const groups = await abdmV3Service.buildCareContextsForPatient(patientId, tenant.clinicId);
+      return ok(c, groups);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpError(500, "ABDM_BUILD_CARE_CONTEXTS_FAILED", msg);
+    }
+  })
+
+  .post(
+    "/m2/link/care-context",
+    validate(
+      "json",
+      z.object({
+        patientId: z.string().min(1),
+        abhaAddress: z.string().min(3),
+        abhaNumber: z.string().optional(),
+        linkToken: z.string().min(1),
+        hiType: z.string().optional(),
+        patientDisplay: z.string().optional(),
+        careContexts: z
+          .array(
+            z.object({
+              referenceNumber: z.string().min(1),
+              display: z.string().min(1),
+            }),
+          )
+          .optional(),
+      }),
+    ),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.ABHA_LINK);
+      const body = c.req.valid("json");
+      try {
+        const result = await abdmV3Service.linkCareContexts({
+          ...body,
+          clinicId: tenant.clinicId,
+        });
+        return ok(c, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(500, "ABDM_LINK_CARE_CONTEXT_FAILED", msg);
+      }
+    },
+  )
+
+  .get("/m2/patient/links", async (c) => {
+    requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    const limit = Number(c.req.query("limit")) || 100;
+    const xAuthToken = c.req.query("xAuthToken") || c.req.header("X-AUTH-TOKEN");
+    try {
+      const result = await abdmV3Service.getPatientLinks(limit, xAuthToken);
+      return ok(c, result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpError(500, "ABDM_GET_PATIENT_LINKS_FAILED", msg);
+    }
+  })
+
+  .post(
+    "/m2/patient/notify",
+    validate(
+      "json",
+      z.object({
+        patientId: z.string().min(1),
+        abhaAddress: z.string().min(3),
+        patientReference: z.string().min(1),
+        careContextReference: z.string().min(1),
+        hiTypes: z.array(z.string()).optional(),
+      }),
+    ),
+    async (c) => {
+      const tenant = requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+      const body = c.req.valid("json");
+      try {
+        const result = await abdmV3Service.notifyCareContext({
+          ...body,
+          clinicId: tenant.clinicId,
+        });
+        return ok(c, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(500, "ABDM_CARE_CONTEXT_NOTIFY_FAILED", msg);
+      }
+    },
+  )
+
+  .post(
+    "/m2/patient/sms-notify",
+    validate(
+      "json",
+      z.object({
+        phoneNo: z.string().min(10),
+        hipName: z.string().optional(),
+      }),
+    ),
+    async (c) => {
+      requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+      const body = c.req.valid("json");
+      try {
+        const result = await abdmV3Service.sendPatientSmsNotification(body);
+        return ok(c, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(500, "ABDM_SMS_NOTIFY_FAILED", msg);
+      }
+    },
+  )
+
+  .get("/m2/bridge/status", async (c) => {
+    requirePermission(c, PERMISSIONS.ABDM_SETTINGS);
+    try {
+      const status = await abdmV3Service.getBridgeStatus();
+      return ok(c, status);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpError(500, "ABDM_BRIDGE_STATUS_FAILED", msg);
+    }
+  })
+
+  .patch(
+    "/m2/bridge/url",
+    validate("json", z.object({ url: z.string().url() })),
+    async (c) => {
+      requirePermission(c, PERMISSIONS.ABDM_SETTINGS);
+      const body = c.req.valid("json");
+      try {
+        const result = await abdmV3Service.updateBridgeUrl(body.url);
+        return ok(c, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new HttpError(500, "ABDM_UPDATE_BRIDGE_URL_FAILED", msg);
+      }
+    },
+  )
+
+  // ─── 7. Milestone 3: HIU Gateway, Consent, Data Flow & Subscription ────────
+  .get("/m3/openid-configuration", async (c) => {
+    requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    try {
+      const result = await abdmV3Service.getOpenIdConfiguration();
+      return ok(c, result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpError(500, "ABDM_M3_OPENID_FAILED", msg);
+    }
+  })
+
+  .get("/m3/certs", async (c) => {
+    requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    try {
+      const result = await abdmV3Service.getCerts();
+      return ok(c, result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpError(500, "ABDM_M3_CERTS_FAILED", msg);
+    }
+  })
+
+  .post("/m3/consent/init", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CONSENT_MANAGE);
+    const body = await c.req.json();
+    try {
+      const result = await abdmV3Service.initiateHiuConsentRequest(body, tenant.clinicId);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_CONSENT_INIT_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .get("/m3/consent/status/:consentRequestId", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_VIEW);
+    const consentRequestId = c.req.param("consentRequestId");
+    try {
+      const result = await abdmV3Service.getHiuConsentStatus(consentRequestId);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_CONSENT_STATUS_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .post("/m3/consent/fetch/:consentId", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_VIEW);
+    const consentId = c.req.param("consentId");
+    try {
+      const result = await abdmV3Service.fetchHiuConsentArtifact(consentId);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_CONSENT_FETCH_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .post(
+    "/m3/data/request",
+    validate(
+      "json",
+      z.object({
+        consentId: z.string().min(1),
+        dateRange: z.object({
+          from: z.string().min(1),
+          to: z.string().min(1),
+        }),
+        dataPushUrl: z.string().url().optional(),
+      }),
+    ),
+    async (c) => {
+      requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+      const body = c.req.valid("json");
+      try {
+        const result = await abdmV3Service.initiateHiuDataRequest(body);
+        return ok(c, result);
+      } catch (err: any) {
+        if (err instanceof HttpError) throw err;
+        const code = err.code || "ABDM_M3_DATA_REQUEST_FAILED";
+        const msg = err.message || String(err);
+        const status = err.statusCode || 400;
+        throw new HttpError(status, code, msg);
+      }
+    },
+  )
+
+  .get("/m3/data/records/:transactionId", async (c) => {
+    requirePermission(c, PERMISSIONS.DIGITAL_HEALTH_VIEW);
+    const transactionId = c.req.param("transactionId");
+    const exchange = abdmV3Service.hiuDataExchanges.get(transactionId);
+    if (!exchange) {
+      throw new HttpError(404, "TRANSACTION_NOT_FOUND", "Data exchange transaction not found.");
+    }
+    return ok(c, {
+      transactionId,
+      consentId: exchange.consentId,
+      status: exchange.status,
+      count: exchange.records.length,
+      records: exchange.records,
+    });
+  })
+
+  .post("/m3/subscription/init", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_MANAGE);
+    const body = await c.req.json();
+    try {
+      const result = await abdmV3Service.initiateSubscriptionRequest(body);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_SUBSCRIPTION_INIT_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .get("/m3/subscription/requests", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_VIEW);
+    const status = c.req.query("status") || "ALL";
+    const limit = Number(c.req.query("limit")) || 10;
+    const offset = Number(c.req.query("offset")) || 0;
+    const xAuthToken = c.req.query("xAuthToken") || c.req.header("X-AUTHTOKEN");
+    try {
+      const result = await abdmV3Service.getSubscriptionRequests({ status, limit, offset }, xAuthToken);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_SUBSCRIPTION_GET_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .post("/m3/subscription/:id/approve", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_MANAGE);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    const xAuthToken = c.req.header("X-AUTHTOKEN");
+    try {
+      const result = await abdmV3Service.approveSubscriptionRequest(id, body, xAuthToken);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_SUBSCRIPTION_APPROVE_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .post("/m3/subscription/:id/deny", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_MANAGE);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    const xAuthToken = c.req.header("X-AUTHTOKEN");
+    try {
+      const result = await abdmV3Service.denySubscriptionRequest(id, body.reason, xAuthToken);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_SUBSCRIPTION_DENY_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
+  })
+
+  .put("/m3/subscription/:id/edit", async (c) => {
+    requirePermission(c, PERMISSIONS.CONSENT_MANAGE);
+    const id = c.req.param("id");
+    const body = await c.req.json();
+    const xAuthToken = c.req.header("X-AUTH-TOKEN");
+    try {
+      const result = await abdmV3Service.editSubscriptionRequest(id, body, xAuthToken);
+      return ok(c, result);
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      const code = err.code || "ABDM_M3_SUBSCRIPTION_EDIT_FAILED";
+      const msg = err.message || String(err);
+      const status = err.statusCode || 400;
+      throw new HttpError(status, code, msg);
+    }
   });
+

@@ -84,3 +84,77 @@ export function clearPublicKeyCache(): void {
   cachedPublicKeyPem = null;
   cachedKeyExpiresAt = 0;
 }
+
+let cachedHprPublicKeyPem: string | null = null;
+let cachedHprKeyExpiresAt = 0;
+
+/**
+ * Encrypts sensitive HPR data (Aadhaar, Mobile, OTP, Password, Email)
+ * conforming to ABDM HPR spec: RSA/ECB/PKCS1Padding (RS512)
+ */
+export function encryptWithHprPublicKey(publicKeyPem: string, plainText: string): string {
+  const pem = formatPublicKeyPem(publicKeyPem);
+  const buffer = Buffer.from(plainText, "utf-8");
+  const encrypted = publicEncrypt(
+    {
+      key: pem,
+      padding: constants.RSA_PKCS1_PADDING,
+    },
+    buffer,
+  );
+  return encrypted.toString("base64");
+}
+
+/**
+ * Fetches and caches the ABDM HPR public certificate from:
+ * GET {HSP_BASE_URL}/v4/int/api/v1/auth/cert
+ */
+export async function getHprPublicKey(getGatewayToken: () => Promise<string>): Promise<string> {
+  const now = Date.now();
+  if (cachedHprPublicKeyPem && cachedHprKeyExpiresAt - now > 60_000) {
+    return cachedHprPublicKeyPem;
+  }
+
+  const config = getAbdmConfig();
+  const token = await getGatewayToken();
+
+  const hspBaseUrl =
+    config.environment === "production"
+      ? "https://apihsp.abdm.gov.in"
+      : "https://apihspsbx.abdm.gov.in";
+
+  const certUrl = `${hspBaseUrl}/v4/int/api/v1/auth/cert`;
+  const response = await fetch(certUrl, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "REQUEST-ID": randomUUID(),
+      TIMESTAMP: new Date().toISOString(),
+      "X-CM-ID": config.environment === "production" ? "abdm" : "sbx",
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(`Failed to fetch ABDM HPR public certificate (HTTP ${response.status}): ${errorText}`);
+  }
+
+  const rawText = await response.text();
+  let pubKey: string;
+  try {
+    const parsed = JSON.parse(rawText) as { publicKey?: string; cert?: string };
+    pubKey = parsed.publicKey || parsed.cert || rawText;
+  } catch {
+    pubKey = rawText;
+  }
+
+  cachedHprPublicKeyPem = formatPublicKeyPem(pubKey);
+  cachedHprKeyExpiresAt = now + 60 * 60 * 1000;
+
+  return cachedHprPublicKeyPem;
+}
+
+export function clearHprPublicKeyCache(): void {
+  cachedHprPublicKeyPem = null;
+  cachedHprKeyExpiresAt = 0;
+}
+
