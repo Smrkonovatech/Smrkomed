@@ -1120,7 +1120,7 @@ export default function WhatsAppFlowBuilderPage() {
                     </div>
 
                     <WhatsAppPhoneSimulator
-                      clinicName="ABC Fertility Centre"
+                      clinicName="Hospex"
                       onSimulateStep={(step) => {
                         const targetNode = definition.nodes.find((n) => n.type === step);
                         if (targetNode) setSelectedId(targetNode.id);

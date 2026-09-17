@@ -43,7 +43,7 @@ export async function sendMainMenu(
     where: { id: tenant.clinicId },
     select: { name: true, phone: true, city: true },
   });
-  const clinicName = clinic?.name ?? tenant.clinicName ?? "ABC Fertility Centre";
+  const clinicName = clinic?.name ?? tenant.clinicName ?? "Hospex";
 
   const greetingBody =
     options?.customBody ||
@@ -210,7 +210,7 @@ export async function handleMenuAction(input: {
     where: { id: input.tenant.clinicId },
     select: { name: true, phone: true, address: true, city: true, slug: true },
   });
-  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "ABC Fertility Centre";
+  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "Hospex";
 
   // Check if user requested the Main Menu itself or greeted
   if (
@@ -713,7 +713,7 @@ export async function handleCareLoopMenuAction(input: {
     where: { id: input.tenant.clinicId },
     select: { name: true, phone: true },
   });
-  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "ABC Fertility Centre";
+  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "Hospex";
 
   // Resolve couple ID
   let coupleId = conversation.coupleId;

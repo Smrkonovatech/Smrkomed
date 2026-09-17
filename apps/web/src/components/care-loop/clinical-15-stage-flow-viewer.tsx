@@ -584,7 +584,7 @@ export function Clinical15StageFlowViewer({
                   🧬
                 </div>
                 <div>
-                  <p className="text-xs font-bold leading-tight">ABC Fertility Centre</p>
+                  <p className="text-xs font-bold leading-tight">Hospex</p>
                   <p className="text-[10px] text-emerald-100/90 leading-none mt-0.5 flex items-center gap-1">
                     <span className="inline-block size-1.5 rounded-full bg-emerald-400" /> online
                   </p>

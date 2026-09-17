@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
 import { MediaBubble } from "@/components/whatsapp/media-bubble";
 import { ChatComposer } from "@/components/whatsapp/chat-composer";
+import { parseOrderMessage, WhatsAppOrderCard } from "@/components/whatsapp/whatsapp-order-card";
 import {
   useRealtimeInbox,
   type RealtimeConversationUpdatedPayload,
@@ -186,7 +187,7 @@ export default function WhatsAppInboxPage() {
         ...prev,
         {
           role: "assistant",
-          text: `Suggested draft for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, thank you for contacting ${detail?.clinicName || "ABC Fertility Centre"}. We are reviewing your record and our medical team will update you shortly with details."`,
+          text: `Suggested draft for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, thank you for contacting ${detail?.clinicName || "Hospex"}. We are reviewing your record and our medical team will update you shortly with details."`,
         },
       ]);
     } finally {
@@ -820,6 +821,8 @@ export default function WhatsAppInboxPage() {
                       const showDate =
                         !prev ||
                         new Date(m.createdAt).toDateString() !== new Date(prev.createdAt).toDateString();
+                      const orderData = parseOrderMessage(m.content);
+
                       return (
                         <div key={m.id} className="space-y-4">
                           {showDate && (
@@ -831,54 +834,76 @@ export default function WhatsAppInboxPage() {
                               })}
                             </div>
                           )}
-                          <div
-                            className={cn(
-                              "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
-                              m.direction === "INBOUND"
-                                ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
-                                : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
-                            )}
-                          >
-                            {m.label && m.direction === "OUTBOUND" && (
-                              <div className="text-[10px] font-bold text-white/80 mb-1 flex items-center gap-1">
-                                {m.label}
-                              </div>
-                            )}
-                            {m.media ? (
-                              <div className="my-1.5">
-                                <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
-                              </div>
-                            ) : (
-                              <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                            )}
-
-                            <p
-                              className={cn(
-                                "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
-                                m.direction === "INBOUND" ? "text-gray-400" : "text-white/70",
+                          {orderData ? (
+                            <div className={cn("transition-all duration-150 animate-in fade-in slide-in-from-bottom-1", m.direction === "INBOUND" ? "" : "ml-auto flex flex-col items-end")}>
+                              {m.label && m.direction === "OUTBOUND" && (
+                                <div className="text-[10px] font-bold text-gray-500 mb-1 flex items-center gap-1">
+                                  {m.label}
+                                </div>
                               )}
-                            >
-                              <span>
-                                {new Date(m.createdAt).toLocaleTimeString([], {
+                              <WhatsAppOrderCard
+                                orderNumber={orderData.orderNumber}
+                                itemTitle={orderData.itemTitle}
+                                quantity={orderData.quantity}
+                                total={orderData.total}
+                                payUrl={orderData.payUrl}
+                                timestamp={new Date(m.createdAt).toLocaleTimeString([], {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 })}
-                              </span>
-                              {m.direction === "OUTBOUND" && (
-                                <span className="font-bold">
-                                  {m.status === "READ"
-                                    ? "✓✓"
-                                    : m.status === "DELIVERED"
-                                      ? "✓✓"
-                                      : m.status === "SENT"
-                                        ? "✓"
-                                        : m.status === "FAILED"
-                                          ? "⚠ Failed"
-                                          : ""}
-                                </span>
+                                status={m.status}
+                              />
+                            </div>
+                          ) : (
+                            <div
+                              className={cn(
+                                "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
+                                m.direction === "INBOUND"
+                                  ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
+                                  : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
                               )}
-                            </p>
-                          </div>
+                            >
+                              {m.label && m.direction === "OUTBOUND" && (
+                                <div className="text-[10px] font-bold text-white/80 mb-1 flex items-center gap-1">
+                                  {m.label}
+                                </div>
+                              )}
+                              {m.media ? (
+                                <div className="my-1.5">
+                                  <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
+                                </div>
+                              ) : (
+                                <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                              )}
+
+                              <p
+                                className={cn(
+                                  "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
+                                  m.direction === "INBOUND" ? "text-gray-400" : "text-white/70",
+                                )}
+                              >
+                                <span>
+                                  {new Date(m.createdAt).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                                {m.direction === "OUTBOUND" && (
+                                  <span className="font-bold">
+                                    {m.status === "READ"
+                                      ? "✓✓"
+                                      : m.status === "DELIVERED"
+                                        ? "✓✓"
+                                        : m.status === "SENT"
+                                          ? "✓"
+                                          : m.status === "FAILED"
+                                            ? "⚠ Failed"
+                                            : ""}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       );
                     })

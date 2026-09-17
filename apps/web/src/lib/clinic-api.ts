@@ -302,6 +302,10 @@ export const clinicApi = {
     coupleId?: string | undefined;
     phone?: string | undefined;
     body: string;
+    buttons?: Array<{ id: string; title: string }> | undefined;
+    ctaUrl?: { displayText: string; url: string } | undefined;
+    header?: string | undefined;
+    footer?: string | undefined;
   }) => apiPost<any>("/api/v1/whatsapp-automation/send-to-recipient", body),
   // Clinic Profile & Location Settings
   getCurrentClinic: () => apiGet<ClinicProfile>("/api/v1/clinics/current"),

@@ -82,13 +82,7 @@ async function main() {
       website: "https://abcfertility.demo",
       timezone: "Asia/Kolkata",
     },
-    update: {
-      name: "ABC Fertility Centre",
-      city: "Bangalore",
-      address: "12 Lavelle Road, Bangalore 560001",
-      phone: "+91 80 4000 1200",
-      email: "hello@abcfertility.demo",
-    },
+    update: {},
   });
 
   await prisma.clinicBranch.deleteMany({ where: { clinicId: clinic.id } });

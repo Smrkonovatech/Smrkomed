@@ -68,7 +68,7 @@ export const appointmentBookingRoutes = new Hono<AppEnv>()
         ? formatVoiceGreeting(
             session.registrationDraft.patientName || "Patient",
             "Dr. Ananya Rao",
-            clinic?.name || "ABC Fertility Centre",
+            clinic?.name || "Hospex",
             body.language,
           )
         : session.currentStep === "SELECT_CHANNEL"
@@ -111,7 +111,7 @@ export const appointmentBookingRoutes = new Hono<AppEnv>()
     const result = await AppointmentBookingMachine.processMessage(session, body.content, {
       clinicId,
       organizationId: orgId,
-      clinicName: clinic?.name || "ABC Fertility Centre",
+      clinicName: clinic?.name || "Hospex",
     });
 
     return ok(c, {

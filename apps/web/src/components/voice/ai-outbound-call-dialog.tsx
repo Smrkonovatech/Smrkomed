@@ -48,7 +48,7 @@ export function AiOutboundCallDialog({
   treatment = "IVF",
   stage = "Consultation",
   doctorName = "Dr. Ananya Rao",
-  clinicName = "ABC Fertility Centre",
+  clinicName = "Hospex",
   upcomingAppointment,
   coupleId,
 }: AiOutboundCallDialogProps) {

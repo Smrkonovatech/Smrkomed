@@ -187,7 +187,7 @@ export default function Dashboard() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-semibold text-primary shadow-sm">
-                ABC Fertility Centre · Bangalore
+                Hospex · Bangalore
               </span>
               <span className="text-xs text-muted-foreground">
                 {(from ?? new Date()).toLocaleDateString(undefined, {

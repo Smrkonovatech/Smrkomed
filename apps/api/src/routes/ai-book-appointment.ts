@@ -417,7 +417,7 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       where: { id: couple.clinicId },
       select: { name: true },
     });
-    const clinicName = clinic?.name || "ABC Fertility Centre";
+    const clinicName = clinic?.name || "Hospex";
 
     if (conv) {
       let confirmationText = `You're all set, ${patientDisplayName}! 🎉\n\nYour appointment is confirmed:\n\n👩‍⚕️ ${doctorName}\n📅 ${formattedDate}\n⏰ ${formattedTime}\n📍 ${clinicName}\n\nWe'll remind you before your appointment!`;

@@ -61,7 +61,7 @@ import {
   materializeCampaignRecipients,
   processCampaignBatch,
 } from "./campaigns";
-import { sendWhatsAppSessionText } from "../../integrations/providers/whatsapp/messaging";
+import { sendWhatsAppSessionText, sendWhatsAppInteractiveButtons, sendWhatsAppInteractiveCtaUrl } from "../../integrations/providers/whatsapp/messaging";
 import { normalizeWhatsAppPhone, maskPhone } from "../../integrations/providers/whatsapp/phone";
 import {
   retryWhatsAppSessionMedia,
@@ -1695,6 +1695,23 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         coupleId: z.string().optional(),
         phone: z.string().optional(),
         body: z.string().min(1).max(4096),
+        buttons: z
+          .array(
+            z.object({
+              id: z.string().min(1).max(256),
+              title: z.string().min(1).max(20),
+            }),
+          )
+          .max(3)
+          .optional(),
+        ctaUrl: z
+          .object({
+            displayText: z.string().min(1).max(20),
+            url: z.string().url(),
+          })
+          .optional(),
+        header: z.string().max(60).optional(),
+        footer: z.string().max(60).optional(),
       }),
     ),
     async (c) => {
@@ -1752,10 +1769,48 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
         });
       }
 
-      const result = await sendWhatsAppSessionText(tenant, {
-        conversationId: conv.id,
-        body: reqBody.body,
-      });
+      let result;
+      // 1. Try sending interactive CTA URL if available and https
+      if (reqBody.ctaUrl && reqBody.ctaUrl.url.startsWith("https://")) {
+        try {
+          result = await sendWhatsAppInteractiveCtaUrl(tenant, {
+            conversationId: conv.id,
+            body: reqBody.body,
+            displayText: reqBody.ctaUrl.displayText,
+            url: reqBody.ctaUrl.url,
+            ...(reqBody.header ? { header: { type: "text" as const, text: reqBody.header } } : {}),
+            ...(reqBody.footer ? { footer: reqBody.footer } : {}),
+            senderType: "STAFF",
+          });
+        } catch (ctaErr) {
+          console.warn("[send-to-recipient] interactive CTA URL failed, falling back to buttons/text:", ctaErr);
+        }
+      }
+
+      // 2. Try sending interactive Quick Reply buttons
+      if (!result && reqBody.buttons && reqBody.buttons.length > 0) {
+        try {
+          result = await sendWhatsAppInteractiveButtons(tenant, {
+            conversationId: conv.id,
+            body: reqBody.body,
+            buttons: reqBody.buttons,
+            ...(reqBody.header ? { header: { type: "text" as const, text: reqBody.header } } : {}),
+            ...(reqBody.footer ? { footer: reqBody.footer } : {}),
+            senderType: "STAFF",
+          });
+        } catch (interactiveErr) {
+          console.warn("[send-to-recipient] interactive buttons failed, falling back to text:", interactiveErr);
+          result = await sendWhatsAppSessionText(tenant, {
+            conversationId: conv.id,
+            body: reqBody.body,
+          });
+        }
+      } else if (!result) {
+        result = await sendWhatsAppSessionText(tenant, {
+          conversationId: conv.id,
+          body: reqBody.body,
+        });
+      }
 
       if (typeof result.providerMessageId === "string" && result.providerMessageId.startsWith("pending_meta_")) {
         const { triggerRemoteOutboundDispatch } = await import("./outbound-bridge");

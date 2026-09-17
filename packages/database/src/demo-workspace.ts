@@ -1,4 +1,4 @@
-﻿import { hash } from "bcryptjs";
+import { hash } from "bcryptjs";
 import type { StaffRole } from "@prisma/client";
 
 import { prisma } from "./client";
@@ -164,8 +164,6 @@ export async function ensureDemoWorkspace() {
     },
     update: {
       organizationId: organization.id,
-      name: "ABC Fertility Centre",
-      city: "Bangalore",
     },
   });
 

@@ -121,7 +121,7 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
     experience: profileConfig?.experience || [
       {
         id: "e1",
-        organization: "ABC Fertility Centre",
+        organization: "Hospex",
         position: user.title || "Consultant Fertility Specialist",
         department: profileConfig?.department || "Reproductive Medicine",
         startDate: "2021-01",

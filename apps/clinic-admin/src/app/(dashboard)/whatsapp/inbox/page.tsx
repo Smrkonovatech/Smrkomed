@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError, apiGet, apiPatch, apiPost } from "@/lib/api/client";
 import { MediaBubble } from "@/components/whatsapp/media-bubble";
 import { ChatComposer } from "@/components/whatsapp/chat-composer";
+import { parseOrderMessage, WhatsAppOrderCard } from "@/components/whatsapp/whatsapp-order-card";
 import {
   useRealtimeInbox,
   type RealtimeConversationUpdatedPayload,
@@ -741,42 +742,69 @@ export default function WhatsAppInboxPage() {
                   className="flex-1 space-y-4 overflow-y-auto bg-[#FAFAFA] p-6 pb-8"
                 >
                   <div className="text-center text-[10px] text-gray-400 font-medium mb-6">Today 2:20pm</div>
-                  {detail.messages.map((m) => (
-                    <div
-                      key={m.id}
-                      className={cn(
-                        "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
-                        m.direction === "INBOUND"
-                          ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
-                          : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
-                      )}
-                    >
-                      {m.media ? (
-                        <div className="my-1.5">
-                          <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
+                  {detail.messages.map((m) => {
+                    const orderData = parseOrderMessage(m.content);
+                    if (orderData) {
+                      return (
+                        <div
+                          key={m.id}
+                          className={cn(
+                            "transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
+                            m.direction === "INBOUND" ? "" : "ml-auto flex flex-col items-end",
+                          )}
+                        >
+                          <WhatsAppOrderCard
+                            orderNumber={orderData.orderNumber}
+                            itemTitle={orderData.itemTitle}
+                            quantity={orderData.quantity}
+                            total={orderData.total}
+                            payUrl={orderData.payUrl}
+                            timestamp={new Date(m.createdAt).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                            status={m.status}
+                          />
                         </div>
-                      ) : (
-                        <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                      )}
-                      
-                      <p className={cn(
-                        "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
-                        m.direction === "INBOUND" ? "text-gray-400" : "text-white/70"
-                      )}>
-                        <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                        {m.direction === "OUTBOUND" &&
-                          (m.status === "FAILED" || m.media?.status === "FAILED") ? (
-                          <button
-                            type="button"
-                            className="font-semibold text-rose-200 underline"
-                            onClick={() => void retryMedia(m.id)}
-                          >
-                            Retry
-                          </button>
-                        ) : null}
-                      </p>
-                    </div>
-                  ))}
+                      );
+                    }
+                    return (
+                      <div
+                        key={m.id}
+                        className={cn(
+                          "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
+                          m.direction === "INBOUND"
+                            ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
+                            : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
+                        )}
+                      >
+                        {m.media ? (
+                          <div className="my-1.5">
+                            <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
+                        )}
+                        
+                        <p className={cn(
+                          "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
+                          m.direction === "INBOUND" ? "text-gray-400" : "text-white/70"
+                        )}>
+                          <span>{new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          {m.direction === "OUTBOUND" &&
+                            (m.status === "FAILED" || m.media?.status === "FAILED") ? (
+                            <button
+                              type="button"
+                              className="font-semibold text-rose-200 underline"
+                              onClick={() => void retryMedia(m.id)}
+                            >
+                              Retry
+                            </button>
+                          ) : null}
+                        </p>
+                      </div>
+                    );
+                  })}
                   <div className="text-center text-[10px] text-gray-400 font-medium my-6">2:35 pm</div>
                   <div className="max-w-[70%] ml-auto text-[15px] bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3">
                     <p className="whitespace-pre-wrap leading-relaxed">Sure thing, I'll have a look today.</p>

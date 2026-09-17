@@ -13,7 +13,7 @@ const requestSchema = z.object({
   treatment: z.string().optional().default("IVF"),
   stage: z.string().optional().default("Consultation"),
   doctorName: z.string().optional().default("Dr. Ananya Rao"),
-  clinicName: z.string().optional().default("ABC Fertility Centre"),
+  clinicName: z.string().optional().default("Hospex"),
   upcomingAppointment: z.string().optional(),
   language: z.enum(["kn", "hi", "en", "ta", "te"]).optional().default("kn"),
   customGreeting: z.string().optional(),

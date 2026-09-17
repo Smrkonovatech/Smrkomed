@@ -69,9 +69,9 @@ export function authorizeDemoUser(email: string, password: string) {
     email: staff.email,
     name: staff.name,
     organizationId: "demo-org",
-    organizationName: "ABC Fertility Group",
+    organizationName: "Hospex",
     clinicId: "demo-clinic",
-    clinicName: "ABC Fertility Centre",
+    clinicName: "Hospex",
     role: staff.role,
   };
 }

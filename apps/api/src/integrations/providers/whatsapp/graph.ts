@@ -360,6 +360,58 @@ export async function sendInteractiveButtons(input: {
   });
 }
 
+export async function sendInteractiveCtaUrl(input: {
+  phoneNumberId: string;
+  accessToken: string;
+  to: string;
+  body: string;
+  displayText: string;
+  url: string;
+  header?: { type: "text"; text: string } | { type: "image"; link?: string; id?: string };
+  footer?: string;
+}) {
+  const interactive: GraphJson = {
+    type: "cta_url",
+    body: { text: input.body.slice(0, 1024) },
+    action: {
+      name: "cta_url",
+      parameters: {
+        display_text: input.displayText.slice(0, 20),
+        url: input.url,
+      },
+    },
+  };
+
+  if (input.header) {
+    if (input.header.type === "text") {
+      interactive["header"] = { type: "text", text: input.header.text.slice(0, 60) };
+    } else if (input.header.type === "image") {
+      interactive["header"] = {
+        type: "image",
+        image: input.header.id ? { id: input.header.id } : { link: input.header.link },
+      };
+    }
+  }
+
+  if (input.footer) {
+    interactive["footer"] = { text: input.footer.slice(0, 60) };
+  }
+
+  return graphRequest(`/${input.phoneNumberId}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${input.accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: input.to,
+      type: "interactive",
+      interactive,
+    }),
+  });
+}
+
 export type InteractiveListRow = {
   id: string;
   title: string;

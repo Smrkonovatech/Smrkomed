@@ -67,12 +67,14 @@ function parseClaims(payload: Record<string, unknown> | null): AuthClaims | null
   if (typeof role !== "string" || !STAFF_ROLES.has(role as StaffRole)) return null;
   const name = typeof payload["name"] === "string" ? payload["name"] : null;
   const email = typeof payload["email"] === "string" ? payload["email"] : null;
+  const finalClinicName = clinicName === "ABC Fertility Centre" ? "Hospex" : clinicName;
+  const finalOrgName = organizationName === "ABC Fertility Group" ? "Hospex" : organizationName;
   return {
     id,
     organizationId,
-    organizationName,
+    organizationName: finalOrgName,
     clinicId,
-    clinicName,
+    clinicName: finalClinicName,
     role: role as StaffRole,
     ...(name === null ? {} : { name }),
     ...(email === null ? {} : { email }),

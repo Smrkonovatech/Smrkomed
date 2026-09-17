@@ -92,7 +92,7 @@ const threads: Record<string, ChatMessage[]> = {
     { from: "patient", text: "Yes, please", time: "09:16" },
     {
       from: "loop",
-      text: "Done — Meera from ABC Fertility Centre will call you shortly. Meanwhile, here's a short video from your clinic explaining what to expect during the scan.",
+      text: "Done — Meera from Hospex will call you shortly. Meanwhile, here's a short video from your clinic explaining what to expect during the scan.",
       time: "09:17",
       media: { kind: "video", title: "What to expect during your scan", meta: "1:48 · English" },
     },

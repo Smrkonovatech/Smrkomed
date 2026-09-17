@@ -453,7 +453,7 @@ export const doctorsStore = {
       experience: [
         {
           id: newId("e1"),
-          organization: clinic.name || "ABC Fertility Centre",
+          organization: clinic.name || "Hospex",
           position: member.title || "Consultant Fertility Specialist",
           department: member.department || "Reproductive Medicine",
           startDate: "2021-01",

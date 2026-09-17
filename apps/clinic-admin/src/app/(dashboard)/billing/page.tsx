@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, IndianRupee, Link2, Plus, Receipt } from "lucide-react";
+import { Eye, IndianRupee, Link2, MessageSquare, Plus, Receipt, Send } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useEffect, useState, type FormEvent } from "react";
@@ -36,11 +36,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ApiError, apiGet, apiPost } from "@/lib/api/client";
+import { clinicApi } from "@/lib/clinic-api";
 import { PERMISSIONS, roleHasPermission } from "@/lib/permissions/rbac";
 
 type BillingErrors = {
   title?: string;
   amount?: string;
+  patient?: string;
+};
+
+type PatientOption = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  phone?: string | null;
+  whatsappNumber?: string | null;
+  email?: string | null;
+  primaryCouples?: Array<{ id: string; slug?: string }>;
+  partnerCouples?: Array<{ id: string; slug?: string }>;
 };
 
 export default function BillingPage() {
@@ -56,6 +69,13 @@ export default function BillingPage() {
   const [data, setData] = useState<PageResult<InvoiceRow> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Patients state for selection
+  const [patients, setPatients] = useState<PatientOption[]>([]);
+  const [loadingPatients, setLoadingPatients] = useState(false);
+  const [selectedPatientId, setSelectedPatientId] = useState("");
+  const [sendWhatsApp, setSendWhatsApp] = useState(true);
+  const [sendingWhatsappId, setSendingWhatsappId] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<InvoiceRow | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -99,6 +119,43 @@ export default function BillingPage() {
     void load();
   }, [canView, page, status, query]);
 
+  // Load patients list for dropdown
+  useEffect(() => {
+    if (!canView) return;
+    setLoadingPatients(true);
+    apiGet<PatientOption[]>("/api/v1/patients")
+      .then((res) => {
+        if (Array.isArray(res)) setPatients(res);
+      })
+      .catch((err) => {
+        console.warn("Could not load patients for billing:", err);
+      })
+      .finally(() => {
+        setLoadingPatients(false);
+      });
+  }, [canView]);
+
+  const handleSelectPatient = (patientId: string) => {
+    setSelectedPatientId(patientId);
+    const pt = patients.find((p) => p.id === patientId);
+    if (pt) {
+      const coupleId = pt.primaryCouples?.[0]?.id || pt.partnerCouples?.[0]?.id || "";
+      setForm((prev) => ({
+        ...prev,
+        patientId: pt.id,
+        coupleId: coupleId,
+      }));
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        patientId: "",
+        coupleId: "",
+      }));
+    }
+  };
+
+  const selectedPatient = patients.find((p) => p.id === selectedPatientId);
+
   const metrics = {
     collected: data?.items.filter((i) => i.status === "PAID").reduce((s, i) => s + i.paidAmount, 0) ?? 0,
     pending:
@@ -123,7 +180,7 @@ export default function BillingPage() {
 
     setSaving(true);
     try {
-      await apiPost("/api/v1/payments/invoices", {
+      const created = await apiPost<InvoiceRow>("/api/v1/payments/invoices", {
         title: form.title.trim(),
         description: form.description.trim() || null,
         coupleId: form.coupleId.trim() || null,
@@ -138,7 +195,41 @@ export default function BillingPage() {
           },
         ],
       });
-      toast.success("Invoice created.");
+
+      const selPt = patients.find((p) => p.id === form.patientId);
+      const targetPhone = selPt?.phone || selPt?.whatsappNumber || undefined;
+
+      // Send payment link to patient WhatsApp
+      if (sendWhatsApp && created?.id) {
+        const payUrl = `${window.location.origin}/pay/${created.id}`;
+        const waMsg = `ORDER #${created.invoiceNumber}\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n*${form.title.trim()}*\nQuantity 1\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n*Total*                            *${formatINR(Number(form.amount))}*\n${form.dueDate ? `Due Date: ${form.dueDate}\n` : ""}┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n👉 *Pay Online with Razorpay:*\n${payUrl}`;
+
+        try {
+          await clinicApi.sendWhatsappToRecipient({
+            patientId: form.patientId || undefined,
+            coupleId: form.coupleId || undefined,
+            phone: targetPhone,
+            body: waMsg,
+            header: `ORDER #${created.invoiceNumber}`,
+            footer: "Hospex Healthcare • Secured by Razorpay",
+            buttons: [
+              { id: `pay_inv_${created.id}`, title: "Review and pay" },
+            ],
+            ctaUrl: {
+              displayText: "Review and pay",
+              url: payUrl,
+            },
+          });
+          await navigator.clipboard.writeText(payUrl).catch(() => undefined);
+          toast.success(`Invoice created & "Review and pay" card sent to patient on WhatsApp!`);
+        } catch (waErr) {
+          console.warn("Could not dispatch WhatsApp message:", waErr);
+          toast.success("Invoice created. WhatsApp could not be sent.");
+        }
+      } else {
+        toast.success("Invoice created.");
+      }
+
       setNewOpen(false);
       setForm({
         coupleId: "",
@@ -148,6 +239,7 @@ export default function BillingPage() {
         dueDate: "",
         description: "",
       });
+      setSelectedPatientId("");
       setErrors({});
       void load();
     } catch (err) {
@@ -157,10 +249,39 @@ export default function BillingPage() {
     }
   }
 
+  async function sendInvoiceWhatsApp(invoice: InvoiceRow) {
+    setSendingWhatsappId(invoice.id);
+    const payUrl = `${window.location.origin}/pay/${invoice.id}`;
+    const waMsg = `ORDER #${invoice.invoiceNumber}\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n*${invoice.title}*\nQuantity 1\n┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n*Total*                            *${formatINR(invoice.outstandingAmount)}*\n${invoice.dueDate ? `Due Date: ${formatDate(invoice.dueDate)}\n` : ""}┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄\n👉 *Pay Online with Razorpay:*\n${payUrl}`;
+
+    try {
+      await clinicApi.sendWhatsappToRecipient({
+        patientId: invoice.patientId ?? undefined,
+        coupleId: invoice.coupleId ?? undefined,
+        body: waMsg,
+        header: `ORDER #${invoice.invoiceNumber}`,
+        footer: "Hospex Healthcare • Secured by Razorpay",
+        buttons: [
+          { id: `pay_inv_${invoice.id}`, title: "Review and pay" },
+        ],
+        ctaUrl: {
+          displayText: "Review and pay",
+          url: payUrl,
+        },
+      });
+      await navigator.clipboard.writeText(payUrl).catch(() => undefined);
+      toast.success(`"Review and pay" card sent on WhatsApp & link copied!`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to send WhatsApp message.");
+    } finally {
+      setSendingWhatsappId(null);
+    }
+  }
+
   function openCollect(invoice: InvoiceRow) {
     setSelected(invoice);
     setPayAmount(String(invoice.outstandingAmount));
-    setPayProvider("CASH");
+    setPayProvider("RAZORPAY");
     setPayOpen(true);
   }
 
@@ -172,6 +293,15 @@ export default function BillingPage() {
       toast.error("Enter a valid amount.");
       return;
     }
+
+    if (payProvider === "RAZORPAY") {
+      // Redirect or open Razorpay Standard Checkout payment page
+      window.open(`/pay/${selected.id}`, "_blank");
+      setPayOpen(false);
+      setSelected(null);
+      return;
+    }
+
     setSaving(true);
     try {
       const payment = await apiPost<PaymentRow>(
@@ -198,38 +328,9 @@ export default function BillingPage() {
   }
 
   async function generateLink(invoice: InvoiceRow) {
-    if (!canCreate || !canLink) {
-      toast.error("You need payments create and link permissions.");
-      return;
-    }
-    setLinkBusy(invoice.id);
-    try {
-      const payment = await apiPost<PaymentRow>(
-        `/api/v1/payments/invoices/${invoice.id}/payments`,
-        {
-          amount: invoice.outstandingAmount,
-          provider: "RAZORPAY",
-        },
-      );
-      let linkUrl = payment.paymentLinkUrl;
-      if (!linkUrl) {
-        const linked = await apiPost<PaymentRow>(`/api/v1/payments/payments/${payment.id}/link`, {
-          description: invoice.title,
-        });
-        linkUrl = linked.paymentLinkUrl;
-      }
-      if (linkUrl) {
-        await navigator.clipboard.writeText(linkUrl).catch(() => undefined);
-        toast.success("Payment link created and copied.");
-      } else {
-        toast.success("Payment created. Connect a gateway in Settings → Payment Gateways.");
-      }
-      void load();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Unable to generate payment link.");
-    } finally {
-      setLinkBusy(null);
-    }
+    const payUrl = `${window.location.origin}/pay/${invoice.id}`;
+    await navigator.clipboard.writeText(payUrl).catch(() => undefined);
+    toast.success("Razorpay payment link copied to clipboard.");
   }
 
   if (!canView) {
@@ -366,9 +467,21 @@ export default function BillingPage() {
                       <Eye className="size-3.5" /> View
                     </Button>
                     {invoice.outstandingAmount > 0 && canCreate && (
-                      <Button size="sm" variant="outline" onClick={() => openCollect(invoice)}>
-                        Pay Now
-                      </Button>
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => openCollect(invoice)}>
+                          Pay Now
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-emerald-700 hover:bg-emerald-50"
+                          disabled={sendingWhatsappId === invoice.id}
+                          onClick={() => void sendInvoiceWhatsApp(invoice)}
+                        >
+                          <MessageSquare className="size-3.5" />
+                          WhatsApp
+                        </Button>
+                      </>
                     )}
                   </div>
                 </RecordCard>
@@ -433,16 +546,26 @@ export default function BillingPage() {
                               >
                                 Pay Now
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50"
+                                title="Send payment link on WhatsApp"
+                                disabled={sendingWhatsappId === invoice.id}
+                                onClick={() => void sendInvoiceWhatsApp(invoice)}
+                              >
+                                <MessageSquare className="size-3.5" />
+                                {sendingWhatsappId === invoice.id ? "…" : "WhatsApp"}
+                              </Button>
                               {canLink && (
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  title="Generate payment link"
-                                  disabled={linkBusy === invoice.id}
+                                  title="Copy Razorpay payment link"
                                   onClick={() => void generateLink(invoice)}
                                 >
                                   <Link2 className="size-3.5" />
-                                  {linkBusy === invoice.id ? "…" : "Link"}
+                                  Link
                                 </Button>
                               )}
                             </>
@@ -481,52 +604,70 @@ export default function BillingPage() {
         )}
       </section>
 
+      {/* New Invoice Dialog */}
       <Dialog open={newOpen} onOpenChange={setNewOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <form onSubmit={createInvoice}>
             <DialogHeader>
-              <DialogTitle>New invoice</DialogTitle>
-              <DialogDescription>Create a clinic invoice with a clear due date.</DialogDescription>
+              <DialogTitle>New Invoice</DialogTitle>
+              <DialogDescription>
+                Select a patient to generate a bill with Razorpay checkout & WhatsApp link.
+              </DialogDescription>
             </DialogHeader>
             <div className="my-5 grid gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="grid gap-1.5">
-                  <Label htmlFor="invoice-couple">Couple ID (optional)</Label>
-                  <Input
-                    id="invoice-couple"
-                    value={form.coupleId}
-                    onChange={(e) => setForm({ ...form, coupleId: e.target.value })}
-                    placeholder="Couple record ID"
-                  />
-                </div>
-                <div className="grid gap-1.5">
-                  <Label htmlFor="invoice-patient">Patient ID (optional)</Label>
-                  <Input
-                    id="invoice-patient"
-                    value={form.patientId}
-                    onChange={(e) => setForm({ ...form, patientId: e.target.value })}
-                    placeholder="Patient record ID"
-                  />
-                </div>
-              </div>
+              {/* Patient Selector */}
               <div className="grid gap-1.5">
-                <Label htmlFor="invoice-title">Title</Label>
+                <Label htmlFor="invoice-patient-select">Patient</Label>
+                <Select
+                  value={selectedPatientId}
+                  onValueChange={handleSelectPatient}
+                  disabled={loadingPatients}
+                >
+                  <SelectTrigger id="invoice-patient-select" className="w-full">
+                    <SelectValue placeholder={loadingPatients ? "Loading patients…" : "Select a patient"} />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    {patients.map((pt) => {
+                      const name = `${pt.firstName} ${pt.lastName || ""}`.trim();
+                      const contact = pt.phone || pt.whatsappNumber || "";
+                      return (
+                        <SelectItem key={pt.id} value={pt.id}>
+                          <span className="font-medium">{name}</span>
+                          {contact && <span className="ml-2 text-xs text-muted-foreground">({contact})</span>}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                {selectedPatient && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/40 px-2.5 py-1.5 rounded-lg border border-border/50">
+                    <span>📱 Contact: <span className="font-medium text-foreground">{selectedPatient.phone || selectedPatient.whatsappNumber || "Not provided"}</span></span>
+                    {form.coupleId && <span className="text-muted-foreground/60">• Couple linked</span>}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-1.5">
+                <Label htmlFor="invoice-title">Invoice Title / Treatment</Label>
                 <Input
                   id="invoice-title"
                   value={form.title}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
-                  placeholder="e.g. IVF Cycle 02 — Instalment 1"
+                  placeholder="e.g. IVF Stimulation Protocol / Consultation Fee"
                 />
                 {errors.title && <p className="text-xs text-danger">{errors.title}</p>}
               </div>
+
               <div className="grid gap-1.5">
                 <Label htmlFor="invoice-description">Description (optional)</Label>
                 <Input
                   id="invoice-description"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  placeholder="Additional notes or package inclusions"
                 />
               </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="invoice-amount">Amount (₹)</Label>
@@ -536,6 +677,7 @@ export default function BillingPage() {
                     min="1"
                     value={form.amount}
                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    placeholder="e.g. 50000"
                   />
                   {errors.amount && <p className="text-xs text-danger">{errors.amount}</p>}
                 </div>
@@ -549,19 +691,41 @@ export default function BillingPage() {
                   />
                 </div>
               </div>
+
+              {/* WhatsApp Notification Toggle */}
+              <div className="rounded-lg border bg-emerald-50/50 border-emerald-200/60 p-3">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={sendWhatsApp}
+                    onChange={(e) => setSendWhatsApp(e.target.checked)}
+                    className="mt-0.5 size-4 rounded border-gray-300 text-emerald-600 accent-emerald-600"
+                  />
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold text-emerald-950 flex items-center gap-1.5">
+                      <MessageSquare className="size-4 text-emerald-600" />
+                      Send invoice & payment link to patient on WhatsApp
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Patient will instantly receive an interactive WhatsApp message with a link to pay securely online via Razorpay.
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setNewOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" disabled={saving || !canCreate}>
-                {saving ? "Creating…" : "Create invoice"}
+                {saving ? "Creating…" : "Create & Send Invoice"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
+      {/* Invoice Details Dialog */}
       <Dialog
         open={Boolean(selected) && !payOpen}
         onOpenChange={(open) => !open && setSelected(null)}
@@ -596,7 +760,7 @@ export default function BillingPage() {
           )}
           <DialogFooter>
             {selected && selected.outstandingAmount > 0 && canCreate && (
-              <Button onClick={() => openCollect(selected)}>Pay Now</Button>
+              <Button onClick={() => openCollect(selected)}>Pay with Razorpay</Button>
             )}
             <Button variant="outline" onClick={() => setSelected(null)}>
               Close
@@ -605,11 +769,12 @@ export default function BillingPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Collect Payment Dialog */}
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
         <DialogContent>
           <form onSubmit={collectPayment}>
             <DialogHeader>
-              <DialogTitle>Collect payment</DialogTitle>
+              <DialogTitle>Collect Payment</DialogTitle>
               <DialogDescription>
                 {selected
                   ? `${selected.invoiceNumber} · outstanding ${formatINR(selected.outstandingAmount)}`
@@ -628,15 +793,15 @@ export default function BillingPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>Provider</Label>
+                <Label>Payment Mode / Gateway</Label>
                 <Select value={payProvider} onValueChange={setPayProvider}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="RAZORPAY">Razorpay (Standard Checkout)</SelectItem>
                     <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="MANUAL">Manual</SelectItem>
-                    <SelectItem value="RAZORPAY">Razorpay</SelectItem>
+                    <SelectItem value="MANUAL">Manual / Card POS</SelectItem>
                     <SelectItem value="CASHFREE">Cashfree</SelectItem>
                     <SelectItem value="PAYU">PayU</SelectItem>
                   </SelectContent>
@@ -648,7 +813,7 @@ export default function BillingPage() {
                 Cancel
               </Button>
               <Button type="submit" disabled={saving || !canCreate}>
-                {saving ? "Saving…" : "Collect"}
+                {payProvider === "RAZORPAY" ? "Open Razorpay Checkout" : saving ? "Saving…" : "Collect"}
               </Button>
             </DialogFooter>
           </form>

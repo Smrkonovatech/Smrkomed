@@ -4,8 +4,9 @@ import Link from "next/link";
 import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Eye, EyeOff, Key, MessageSquare, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { clinicApi } from "@/lib/clinic-api";
+import { useAppState } from "@/lib/app-state";
+import { toast } from "sonner";
 
 import {
   AppointmentSettingsForm,
@@ -68,6 +69,7 @@ export function DoctorWizard({
   mode: "create" | "edit";
 }) {
   const router = useRouter();
+  const { clinicName } = useAppState();
   const [step, setStep] = useState(0);
   const [doctor, setDoctor] = useState<DoctorProfile>(initial);
   const [password, setPassword] = useState("Doctor@12345");
@@ -209,7 +211,7 @@ export function DoctorWizard({
 
   if (createdCredentials) {
     const message = `Hello ${createdCredentials.name},
-Your doctor clinical workspace account at ABC Fertility Centre is active.
+Your doctor clinical workspace account at ${clinicName || "Hospex"} is active.
 
 Login URL: ${typeof window !== "undefined" ? window.location.origin : ""}/login
 Username: ${createdCredentials.email}
