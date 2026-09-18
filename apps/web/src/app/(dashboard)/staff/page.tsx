@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { clinicApi } from "@/lib/clinic-api";
 import { doctorsStore } from "@/lib/doctors";
+import { useAppState } from "@/lib/app-state";
 
 type StaffMember = {
   id: string;
@@ -91,6 +92,8 @@ function formatJoined(date?: string) {
 }
 
 export default function StaffDirectoryPage() {
+  const { clinicId } = useAppState();
+  const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [staff, setStaff] = useState<StaffMember[]>([]);
@@ -99,12 +102,14 @@ export default function StaffDirectoryPage() {
 
   useEffect(() => {
     async function load() {
+      setLoading(true);
       try {
-        const data = await clinicApi.getStaff();
+        const targetClinic = isBangalore ? "cmt0exo9n000vl804rbaabh32" : "cmu3nmx310026jy04gsi21hxl";
+        const data = await clinicApi.getStaff(targetClinic);
         const list = Array.isArray(data) ? data : [];
         for (const s of list) {
           if (s.role === "DOCTOR" || s.roleName?.toLowerCase().includes("doctor")) {
-            doctorsStore.ensureFromStaff(s);
+            doctorsStore.ensureFromStaff(s, clinicId);
           }
         }
         setStaff(list);
@@ -115,7 +120,7 @@ export default function StaffDirectoryPage() {
       }
     }
     load();
-  }, []);
+  }, [clinicId, isBangalore]);
 
   const roleGroups = Array.from(new Set(staff.map((s) => ROLE_META[s.role]?.label ?? s.role)));
   const filterOptions = ["All", ...roleGroups];

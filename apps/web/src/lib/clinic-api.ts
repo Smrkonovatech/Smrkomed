@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut, apiUpload } from "@/lib/api/client";
 
 export type ClinicPerson = {
   id: string;
@@ -268,12 +268,14 @@ export const clinicApi = {
   deletePrescription: (id: string) =>
     apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/pharmacy/prescriptions/${id}`),
   // Staff Management
-  getStaff: () => apiGet<any[]>("/api/v1/users/staff"),
+  getStaff: (clinicId?: string) => apiGet<any[]>(`/api/v1/users/staff${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
   createStaffMember: (body: {
     name: string;
     email: string;
     password: string;
     role: string;
+    clinicId?: string | undefined;
+    locationId?: string | undefined;
     title?: string | undefined;
     phone?: string | undefined;
     department?: string | undefined;
@@ -283,7 +285,7 @@ export const clinicApi = {
     languages?: string | undefined;
   }) => apiPost<any>("/api/v1/users/staff", body),
   // Doctor Management (Full Profiles & Real DB Persisted)
-  getDoctors: () => apiGet<any[]>("/api/v1/doctors"),
+  getDoctors: (clinicId?: string) => apiGet<any[]>(`/api/v1/doctors${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
   getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
   createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
   updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
@@ -304,11 +306,19 @@ export const clinicApi = {
     apiPost<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/reply`, { body }),
   whatsappCoupleMessages: (coupleId: string) =>
     apiGet<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/messages`),
+  sendWhatsappMedia: (conversationId: string, formData: FormData) =>
+    apiUpload<any>(`/api/v1/whatsapp-automation/inbox/${conversationId}/media`, formData),
+  sendWhatsappCoupleMedia: (coupleId: string, formData: FormData) =>
+    apiUpload<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/media`, formData),
   sendWhatsappToRecipient: (body: {
     patientId?: string | undefined;
     coupleId?: string | undefined;
     phone?: string | undefined;
     body: string;
+    buttons?: Array<{ id: string; title: string }> | undefined;
+    ctaUrl?: { displayText: string; url: string } | undefined;
+    header?: string | undefined;
+    footer?: string | undefined;
   }) => apiPost<any>("/api/v1/whatsapp-automation/send-to-recipient", body),
   // Clinic Profile & Location Settings
   getCurrentClinic: () => apiGet<ClinicProfile>("/api/v1/clinics/current"),

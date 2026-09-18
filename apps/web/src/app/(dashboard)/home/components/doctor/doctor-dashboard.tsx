@@ -13,12 +13,16 @@ export function stripDrPrefix(name: string): string {
   return name.replace(/^(?:Dr\.?|DR)\s+/i, "").replace(/^(?:Dr\.?|DR)\s+/i, "").trim();
 }
 
-/** Fuzzy match: does one cleaned name contain the other? */
+/** Fuzzy match: does one cleaned name contain the other, or share the same primary name token? */
 function nameMatch(a: string, b: string): boolean {
   if (!a || !b) return false;
-  const ca = a.toLowerCase();
-  const cb = b.toLowerCase();
-  return ca.includes(cb) || cb.includes(ca);
+  const ca = a.toLowerCase().trim();
+  const cb = b.toLowerCase().trim();
+  if (ca.includes(cb) || cb.includes(ca)) return true;
+  const firstA = ca.split(/\s+/)[0];
+  const firstB = cb.split(/\s+/)[0];
+  if (firstA && firstB && firstA.length >= 3 && firstA === firstB) return true;
+  return false;
 }
 
 const DoctorAppointmentsCtx = createContext<AppAppointment[]>([]);

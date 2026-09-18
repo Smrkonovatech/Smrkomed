@@ -1404,11 +1404,14 @@ async function executeNode(
         sections = [
           {
             title: "Available Doctors",
-            rows: (doctors as any[]).slice(0, 10).map((d: any) => ({
-              id: `appt_doctor_${d.id}`,
-              title: String(d.name).slice(0, 24),
-              description: String(d.specialty || "Fertility Specialist").slice(0, 72),
-            })),
+            rows: (doctors as any[]).slice(0, 10).map((d: any) => {
+              const locPrefix = d.location ? `📍 ${d.location} · ` : "";
+              return {
+                id: `appt_doctor_${d.id}`,
+                title: String(d.displayName || d.name).slice(0, 24),
+                description: `${locPrefix}${String(d.specialty || "Fertility Specialist")}`.slice(0, 72),
+              };
+            }),
           },
         ];
       } else if (dataSource === "dates") {
@@ -1541,17 +1544,23 @@ async function executeNode(
       const doc = (targetDoctorId ? doctors.find((d) => d.id === targetDoctorId) : null) ?? doctors[0];
 
       const docName = doc?.name || vars["doctor.name"] || "Specialist";
+      const docLocation = doc?.location || vars["doctor.location"] || "";
       const docSpecialty = doc?.specialty || vars["doctor.specialty"] || "Fertility & Reproductive Medicine";
       const docExp = doc?.experience || vars["doctor.experience"] || "10+ years experience";
       const docBio = doc?.bio || vars["doctor.bio"] || "Compassionate, personalized patient care.";
       const docLangs = doc?.languages?.join(" • ") || vars["doctor.languages"] || "English • Hindi";
       const docPhoto = doc?.photoUrl || vars["doctor.photoUrl"] || (doc?.id ? getDoctorPhotoUrl(doc.id) : null) || getDoctorPhotoUrl("doc_1");
 
+      const defaultTemplate = docLocation
+        ? `👨‍⚕️ Dr. {{doctor.name}} (📍 {{doctor.location}})\n{{doctor.specialty}}\n\n⏳ {{doctor.experience}}\n🗣️ Languages: {{doctor.languages}}\n\n"${docBio}"`
+        : `👨‍⚕️ Dr. {{doctor.name}}\n{{doctor.specialty}}\n\n⏳ {{doctor.experience}}\n🗣️ Languages: {{doctor.languages}}\n\n"${docBio}"`;
+
       const bodyText = interpolateVariables(
-        String(node.config["body"] || `👨‍⚕️ Dr. {{doctor.name}}\n{{doctor.specialty}}\n\n⏳ {{doctor.experience}}\n🗣️ Languages: {{doctor.languages}}\n\n"${docBio}"`),
+        String(node.config["body"] || defaultTemplate),
         {
           ...vars,
           "doctor.name": docName,
+          "doctor.location": docLocation,
           "doctor.specialty": docSpecialty,
           "doctor.experience": docExp,
           "doctor.languages": docLangs,
@@ -1675,6 +1684,8 @@ async function executeNode(
         vars["doctor.specialty"] = doc.specialty;
         vars["doctor.experience"] = doc.experience;
         vars["doctor.bio"] = doc.bio;
+        vars["doctor.location"] = doc.location || "";
+        vars["doctor.clinicId"] = doc.clinicId || "";
         if (doc.photoUrl) vars["doctor.photoUrl"] = doc.photoUrl;
         vars["doctor.languages"] = Array.isArray(doc.languages) ? doc.languages.join(" • ") : String(doc.languages || "English • Hindi");
       }

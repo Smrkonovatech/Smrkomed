@@ -1,4 +1,4 @@
-﻿import { hash } from "bcryptjs";
+import { hash } from "bcryptjs";
 import type { StaffRole } from "@prisma/client";
 
 import { prisma } from "./client";
@@ -164,8 +164,6 @@ export async function ensureDemoWorkspace() {
     },
     update: {
       organizationId: organization.id,
-      name: "ABC Fertility Centre",
-      city: "Bangalore",
     },
   });
 
@@ -205,6 +203,29 @@ export async function ensureDemoWorkspace() {
         status: "ACTIVE",
       },
     });
+  }
+
+  // Ensure admin user also has active CLINIC_ADMIN membership in Kochi clinic if present
+  const kochiClinic = await prisma.clinic.findFirst({
+    where: { OR: [{ id: "cmu3nmx310026jy04gsi21hxl" }, { slug: "hoispex-kochi" }] },
+  });
+  if (kochiClinic) {
+    const adminUser = await prisma.user.findUnique({ where: { email: "admin@abcfertility.demo" } });
+    if (adminUser) {
+      await prisma.clinicMembership.upsert({
+        where: { clinicId_userId: { clinicId: kochiClinic.id, userId: adminUser.id } },
+        create: {
+          clinicId: kochiClinic.id,
+          userId: adminUser.id,
+          roleId: adminRole.id,
+          status: "ACTIVE",
+        },
+        update: {
+          roleId: adminRole.id,
+          status: "ACTIVE",
+        },
+      });
+    }
   }
 
   // Populate demo pharmacy catalogue when inventory is missing (Vercel migrate does not seed).

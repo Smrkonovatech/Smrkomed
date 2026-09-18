@@ -58,7 +58,7 @@ export function RegisterShowcase() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-bold tracking-[0.14em] text-primary">SMRKOMED</p>
-              <p className="mt-0.5 text-sm font-semibold">ABC Fertility Centre</p>
+              <p className="mt-0.5 text-sm font-semibold">Hospex</p>
             </div>
             <span className="rounded-full bg-success-soft px-2 py-0.5 text-[10px] font-semibold text-success">
               Live

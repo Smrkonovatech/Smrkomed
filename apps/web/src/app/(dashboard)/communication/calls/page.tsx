@@ -623,7 +623,7 @@ export default function AiCallLogsPage() {
         treatment="IVF Care"
         stage="Consultation"
         doctorName="Dr. Ananya Rao"
-        clinicName="ABC Fertility Centre"
+        clinicName="Hospex"
       />
     </div>
   );

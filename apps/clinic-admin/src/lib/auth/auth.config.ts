@@ -34,17 +34,26 @@ export const authConfig = {
       if (isAuthPage) return true;
       return isLoggedIn;
     },
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user?.id) {
         token.sub = user.id;
         token.id = user.id;
         if (user.email) token.email = user.email;
         if (user.name) token.name = user.name;
         token.organizationId = user.organizationId;
-        token.organizationName = user.organizationName;
+        token.organizationName = user.organizationName === "ABC Fertility Group" ? "Hospex" : user.organizationName;
         token.clinicId = user.clinicId;
-        token.clinicName = user.clinicName;
+        token.clinicName = user.clinicName === "ABC Fertility Centre" ? "Hospex" : user.clinicName;
         token.role = user.role;
+      }
+      if (trigger === "update" && (session as any)?.clinicName) {
+        token.clinicName = (session as any).clinicName;
+      }
+      if (token.clinicName === "ABC Fertility Centre") {
+        token.clinicName = "Hospex";
+      }
+      if (token.organizationName === "ABC Fertility Group") {
+        token.organizationName = "Hospex";
       }
       return token;
     },
@@ -62,9 +71,9 @@ export const authConfig = {
         session.user.email = token.email ?? "";
         session.user.name = token.name ?? "";
         session.user.organizationId = token.organizationId;
-        session.user.organizationName = token.organizationName;
+        session.user.organizationName = token.organizationName === "ABC Fertility Group" ? "Hospex" : token.organizationName;
         session.user.clinicId = token.clinicId;
-        session.user.clinicName = token.clinicName;
+        session.user.clinicName = token.clinicName === "ABC Fertility Centre" ? "Hospex" : token.clinicName;
         session.user.role = token.role as StaffRole;
       }
       return session;

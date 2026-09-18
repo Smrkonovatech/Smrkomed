@@ -267,6 +267,16 @@ export const clinicApi = {
     apiPost<any>(`/api/v1/pharmacy/prescriptions/${id}/cancel`, {}),
   deletePrescription: (id: string) =>
     apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/pharmacy/prescriptions/${id}`),
+  sendWhatsappToRecipient: (body: {
+    patientId?: string | undefined;
+    coupleId?: string | undefined;
+    phone?: string | undefined;
+    body: string;
+    buttons?: Array<{ id: string; title: string }> | undefined;
+    ctaUrl?: { displayText: string; url: string } | undefined;
+    header?: string | undefined;
+    footer?: string | undefined;
+  }) => apiPost<any>("/api/v1/whatsapp-automation/send-to-recipient", body),
 };
 
 

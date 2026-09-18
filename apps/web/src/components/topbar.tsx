@@ -6,6 +6,7 @@ import {
   Bell,
   Building2,
   CalendarPlus,
+  Check,
   ChevronDown,
   FilePlus2,
   ListPlus,
@@ -275,14 +276,24 @@ export function Topbar() {
                 <ChevronDown className="size-3.5 opacity-60" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Clinic location</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-56 rounded-xl">
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Clinic location</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {clinics.map((c) => (
-                <DropdownMenuItem key={c.id} onSelect={() => setClinicId(c.id)}>
-                  {c.city}
-                </DropdownMenuItem>
-              ))}
+              {clinics.map((c) => {
+                const isSelected = c.id === clinicId;
+                return (
+                  <DropdownMenuItem
+                    key={c.id}
+                    onSelect={() => setClinicId(c.id)}
+                    className={`flex items-center justify-between cursor-pointer ${
+                      isSelected ? "font-semibold bg-primary/10 text-primary" : ""
+                    }`}
+                  >
+                    <span>{c.name} · {c.city}</span>
+                    {isSelected && <Check className="size-4 text-primary shrink-0" />}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 

@@ -34,6 +34,7 @@ import {
   Workflow,
   Bell,
   Mail,
+  QrCode,
 } from "lucide-react";
 
 export type AppNavLink = {
@@ -81,6 +82,7 @@ export const APP_NAV_CATEGORIES: AppNavCategory[] = [
     items: [
       { href: "/patients", label: "Patients", icon: Users },
       { href: "/patients", label: "Couples", icon: Heart },
+      { href: "/qr-generator", label: "QR Check-in", icon: QrCode },
       { href: "/ivf-cycles", label: "IVF Journeys", icon: Sparkles },
       { href: "/care-plans", label: "Treatments", icon: Activity },
     ],

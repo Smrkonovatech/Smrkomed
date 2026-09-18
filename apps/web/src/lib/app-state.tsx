@@ -61,6 +61,44 @@ export interface AppCouple extends Omit<Couple, "primary" | "partner"> {
   partner?: AppPerson;
   whatsappConsent?: boolean;
   carePlanTemplate?: string;
+  clinicId?: string;
+}
+
+export function isQrCheckinCouple(couple: AppCouple): boolean {
+  const primaryName = (couple.primary?.name || "").trim().toLowerCase();
+  const slug = (couple.slug || "").toLowerCase();
+  const tags = (couple.tags || []).map((t) => t.toLowerCase());
+
+  if (
+    primaryName.includes("hospextest") ||
+    primaryName === "manideep c" ||
+    primaryName === "priya hospextest" ||
+    primaryName.includes("walk-in")
+  ) {
+    return true;
+  }
+
+  if (
+    slug.startsWith("qr-") ||
+    slug.includes("hospextest") ||
+    slug.includes("qr-checkin") ||
+    slug.includes("walkin")
+  ) {
+    return true;
+  }
+
+  if (
+    tags.some(
+      (t) =>
+        t.includes("qr") ||
+        t.includes("walk-in") ||
+        t.includes("hospextest"),
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export interface AppAppointment extends Appointment {
@@ -211,6 +249,7 @@ function toCouple(row: ClinicCouple): AppCouple {
   return {
     id: row.id,
     slug: row.slug,
+    clinicId: row.clinicId,
     primary: row.primary,
     ...(row.partner ? { partner: row.partner } : {}),
     treatment: row.treatment,
@@ -275,7 +314,20 @@ function toDocument(row: ClinicDocument): AppDocument {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>("doctor");
-  const [clinicId, setClinicId] = useState(clinics[0]!.id);
+  const [clinicId, setClinicIdState] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("smrkomed_active_clinic_id");
+      if (stored && clinics.some((c) => c.id === stored)) return stored;
+    }
+    return "kochi";
+  });
+
+  const setClinicId = useCallback((id: string) => {
+    setClinicIdState(id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("smrkomed_active_clinic_id", id);
+    }
+  }, []);
   const [currentClinic, setCurrentClinic] = useState<ClinicProfile | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -388,9 +440,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load clinic records from the API after mount
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load clinic records from the API after mount and clinic change
     void reload();
-  }, [reload]);
+    void reloadStaff();
+  }, [reload, reloadStaff, clinicId]);
 
   const addCouple = useCallback(async (input: AddCoupleInput) => {
     const partner =
@@ -429,6 +482,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         : {}),
       whatsappConsent: input.whatsappConsent,
       carePlanTemplate: input.carePlanTemplate,
+      clinicId: clinicId === "blr" ? "cmt0exo9n000vl804rbaabh32" : clinicId === "kochi" ? "cmu3nmx310026jy04gsi21hxl" : clinicId,
     });
     // Use the real API create response, then refetch the clinic couple list.
     // Never wipe the list if the follow-up refetch fails.
@@ -648,6 +702,49 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const visibleCouples = useMemo(() => {
+    const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    if (isBangalore) {
+      // In Bangalore, show Bangalore data including QR check-in records and explicit Bangalore clinic records
+      return coupleList.filter(
+        (c) =>
+          c.clinicId === "cmt0exo9n000vl804rbaabh32" ||
+          c.clinicId === "blr" ||
+          isQrCheckinCouple(c),
+      );
+    }
+    // In Kochi or other locations, strictly hide Bangalore and QR check-in data
+    return coupleList.filter(
+      (c) =>
+        !isQrCheckinCouple(c) &&
+        c.clinicId !== "cmt0exo9n000vl804rbaabh32" &&
+        c.clinicId !== "blr",
+    );
+  }, [coupleList, clinicId]);
+
+  // The backend already scopes appointments correctly per user role (including cross-clinic for doctors),
+  // so we show all API-returned appointments without further couple-based filtering.
+  const visibleAppointments = appointmentList;
+
+  const visibleTasks = useMemo(() => {
+    const visibleCoupleIds = new Set(visibleCouples.map((c) => c.id));
+    return tasks.filter((t) => !t.coupleId || visibleCoupleIds.has(t.coupleId));
+  }, [tasks, visibleCouples]);
+
+  const visibleStaff = useMemo(() => {
+    const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    return staff.filter((s: any) => {
+      const loc = (s.locationId || s.clinicId || "").toLowerCase();
+      if (isBangalore) {
+        if (loc === "kochi" || loc === "cmu3nmx310026jy04gsi21hxl") return false;
+        return true;
+      } else {
+        if (loc === "blr" || loc === "cmt0exo9n000vl804rbaabh32" || loc.includes("bangalore")) return false;
+        return true;
+      }
+    });
+  }, [staff, clinicId]);
+
   const value = useMemo<AppState>(
     () => ({
       role,
@@ -660,16 +757,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       loadState,
       loadError,
       reload,
-      staff,
+      staff: visibleStaff,
       staffError,
       staffLoading,
       reloadStaff,
-      couples: coupleList,
+      couples: visibleCouples,
       addCouple,
       updatePatient,
       deleteCouple,
       deletePatient,
-      appointments: appointmentList,
+      appointments: visibleAppointments,
       addAppointment,
       patchAppointmentStatus,
       cycles: cycleList,
@@ -680,7 +777,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       enquiries: enquiryList,
       addEnquiry,
       careContent: careContentList,
-      tasks,
+      tasks: visibleTasks,
       createTask,
       setTaskStatus,
       activity,
@@ -688,7 +785,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       exceptions: exceptionList,
       resolveException,
       addException,
-      kpis,
+      kpis: {
+        ...kpis,
+        active: visibleCouples.length,
+      },
       bumpKpis,
     }),
     [
@@ -699,16 +799,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       loadState,
       loadError,
       reload,
-      staff,
+      visibleStaff,
       staffError,
       staffLoading,
       reloadStaff,
-      coupleList,
+      visibleCouples,
       addCouple,
       updatePatient,
       deleteCouple,
       deletePatient,
-      appointmentList,
+      visibleAppointments,
       addAppointment,
       patchAppointmentStatus,
       cycleList,
@@ -719,7 +819,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       enquiryList,
       addEnquiry,
       careContentList,
-      tasks,
+      visibleTasks,
       createTask,
       setTaskStatus,
       activity,

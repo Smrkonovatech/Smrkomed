@@ -164,9 +164,15 @@ export const doctorsStore = {
   getServerSnapshot(): DoctorProfile[] {
     return EMPTY_DOCTORS;
   },
-  async syncFromApi(): Promise<DoctorProfile[]> {
+  async syncFromApi(clinicId?: string): Promise<DoctorProfile[]> {
     try {
-      const apiDoctors = await clinicApi.getDoctors();
+      const resolvedClinic =
+        clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32"
+          ? "cmt0exo9n000vl804rbaabh32"
+          : clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl"
+            ? "cmu3nmx310026jy04gsi21hxl"
+            : clinicId;
+      const apiDoctors = await clinicApi.getDoctors(resolvedClinic);
       if (Array.isArray(apiDoctors)) {
         const cleanList = apiDoctors.filter((d) => !isMockDoctor(d));
         writeStorage(cleanList);
@@ -174,11 +180,17 @@ export const doctorsStore = {
       }
     } catch {
       try {
-        const staff = await clinicApi.getStaff();
+        const resolvedClinic =
+          clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32"
+            ? "cmt0exo9n000vl804rbaabh32"
+            : clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl"
+              ? "cmu3nmx310026jy04gsi21hxl"
+              : clinicId;
+        const staff = await clinicApi.getStaff(resolvedClinic);
         if (Array.isArray(staff)) {
           for (const s of staff) {
             if (s.role === "DOCTOR" || s.roleName?.toLowerCase().includes("doctor")) {
-              this.ensureFromStaff(s);
+              this.ensureFromStaff(s, clinicId);
             }
           }
         }
@@ -347,28 +359,51 @@ export const doctorsStore = {
       { kind: "document_removed", message: "Document removed" },
     );
   },
-  ensureFromStaff(member: {
-    id: string;
-    name: string;
-    email: string;
-    phone?: string | null | undefined;
-    title?: string | null | undefined;
-    role?: string | undefined;
-    department?: string | null | undefined;
-    registrationNumber?: string | null | undefined;
-    qualifications?: string | null | undefined;
-    yearsExperience?: number | null | undefined;
-  }): DoctorProfile {
+  ensureFromStaff(
+    member: {
+      id: string;
+      name: string;
+      email: string;
+      phone?: string | null | undefined;
+      title?: string | null | undefined;
+      role?: string | undefined;
+      department?: string | undefined;
+      registrationNumber?: string | undefined;
+      qualifications?: string | undefined;
+      yearsExperience?: number | string | undefined;
+      clinicId?: string | undefined;
+      locationId?: string | undefined;
+    },
+    targetClinicId?: string,
+  ): DoctorProfile {
     const list = getAll();
     const existing = list.find(
       (d) =>
+        d.id === member.id ||
         d.staffUserId === member.id ||
         (d.email && d.email.toLowerCase() === member.email.toLowerCase()) ||
         d.id === `doc_${member.id}`,
     );
-    if (existing) return existing;
 
-    const clinic = clinics[0]!;
+    const isKochi =
+      targetClinicId === "kochi" ||
+      targetClinicId === "cmu3nmx310026jy04gsi21hxl" ||
+      member.clinicId === "cmu3nmx310026jy04gsi21hxl" ||
+      member.locationId === "kochi";
+
+    const clinic = isKochi
+      ? clinics.find((c) => c.id === "kochi") || clinics[1]!
+      : clinics.find((c) => c.id === "blr") || clinics[0]!;
+
+    if (existing) {
+      const correctLocId = clinic.id;
+      if (existing.locationId !== correctLocId) {
+        existing.locationId = correctLocId;
+        existing.locationName = clinic.city;
+        this.upsert(existing);
+      }
+      return existing;
+    }
     const now = new Date().toISOString();
     const rawName = member.name.trim();
     const displayName = rawName.startsWith("Dr.") ? rawName : `Dr. ${rawName}`;
@@ -402,8 +437,8 @@ export const doctorsStore = {
       department: member.department || "Reproductive Medicine",
       primarySpecialty: member.title || "Reproductive Medicine",
       subSpecialties: ["IVF", "IUI", "FET", "Fertility Evaluation"],
-      yearsExperience: member.yearsExperience || 10,
-      yearsInSpecialty: Math.max(1, (member.yearsExperience || 10) - 3),
+      yearsExperience: Number(member.yearsExperience) || 10,
+      yearsInSpecialty: Math.max(1, (Number(member.yearsExperience) || 10) - 3),
       consultationTypes: ["In-clinic", "Online"],
       languages: ["English", "Hindi"],
       professionalBio: `${displayName} is a certified specialist in Reproductive Medicine, committed to clinical excellence, evidence-based IVF protocols, and compassionate patient care.`,
@@ -453,7 +488,7 @@ export const doctorsStore = {
       experience: [
         {
           id: newId("e1"),
-          organization: clinic.name || "ABC Fertility Centre",
+          organization: clinic.name || "Hospex",
           position: member.title || "Consultant Fertility Specialist",
           department: member.department || "Reproductive Medicine",
           startDate: "2021-01",

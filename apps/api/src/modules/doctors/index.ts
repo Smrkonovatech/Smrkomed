@@ -44,6 +44,15 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
     profileConfig?.registrationNumber ||
     `KMC-${(Math.abs(user.id.split("").reduce((a: number, b: string) => (a << 5) - a + b.charCodeAt(0), 0)) % 89999 + 10000)}`;
 
+  const defaultCity = clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore";
+  const defaultState = clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kerala" : "Karnataka";
+  const resolvedLocId =
+    clinicId === "cmt0exo9n000vl804rbaabh32"
+      ? "blr"
+      : clinicId === "cmu3nmx310026jy04gsi21hxl"
+        ? "kochi"
+        : (clinicId || "blr");
+
   return {
     id: `doc_${user.id}`,
     staffUserId: user.id,
@@ -61,8 +70,8 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
     registrationNumber: regNum,
     registrationAuthority: profileConfig?.registrationAuthority || "State Medical Council",
     country: profileConfig?.country || "India",
-    state: profileConfig?.state || "Karnataka",
-    city: profileConfig?.city || "Bangalore",
+    state: profileConfig?.state || defaultState,
+    city: profileConfig?.city || defaultCity,
     designation: user.title || profileConfig?.designation || "Senior Fertility Consultant",
     department: profileConfig?.department || "Reproductive Medicine",
     primarySpecialty: profileConfig?.primarySpecialty || user.title || "Reproductive Medicine",
@@ -121,7 +130,7 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
     experience: profileConfig?.experience || [
       {
         id: "e1",
-        organization: "ABC Fertility Centre",
+        organization: "Hospex",
         position: user.title || "Consultant Fertility Specialist",
         department: profileConfig?.department || "Reproductive Medicine",
         startDate: "2021-01",
@@ -158,8 +167,8 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
         at: user.createdAt?.toISOString?.() ?? new Date().toISOString(),
       },
     ],
-    locationId: clinicId,
-    locationName: profileConfig?.locationName || "Bangalore",
+    locationId: resolvedLocId,
+    locationName: profileConfig?.locationName || defaultCity,
     createdAt: user.createdAt?.toISOString?.() ?? new Date().toISOString(),
     updatedAt: user.updatedAt?.toISOString?.() ?? new Date().toISOString(),
   };
@@ -796,9 +805,17 @@ export const doctorRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
 
+    const requestedClinic = c.req.query("clinicId") || c.req.header("x-clinic-id");
+    const targetClinicId =
+      requestedClinic === "cmt0exo9n000vl804rbaabh32" || requestedClinic === "blr"
+        ? "cmt0exo9n000vl804rbaabh32"
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" || requestedClinic === "kochi"
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
+
     const memberships = await prisma.clinicMembership.findMany({
       where: {
-        clinicId: tenant.clinicId,
+        clinicId: targetClinicId,
         status: "ACTIVE",
         role: {
           OR: [
@@ -815,7 +832,7 @@ export const doctorRoutes = new Hono<AppEnv>()
 
     const profileRules = await prisma.automationRule.findMany({
       where: {
-        clinicId: tenant.clinicId,
+        clinicId: targetClinicId,
         trigger: "DOCTOR_PROFILE",
       },
     });
@@ -827,7 +844,7 @@ export const doctorRoutes = new Hono<AppEnv>()
 
     const doctors = memberships.map((m) => {
       const savedConfig = profileMap.get(m.user.id) || profileMap.get(`doc_${m.user.id}`);
-      return formatDoctorProfile(tenant.clinicId, m.user, savedConfig);
+      return formatDoctorProfile(targetClinicId, m.user, savedConfig);
     });
 
     return ok(c, doctors);
@@ -887,22 +904,48 @@ export const doctorRoutes = new Hono<AppEnv>()
       return fail(c, 400, "ROLE_NOT_FOUND", "Doctor role not found in system.");
     }
 
+    const requestedClinic = body.clinicId || body.locationId || c.req.header("x-clinic-id");
+    const targetClinicId =
+      requestedClinic === "cmt0exo9n000vl804rbaabh32" ||
+      requestedClinic === "blr" ||
+      body.locationName?.toLowerCase?.().includes("bangalore")
+        ? "cmt0exo9n000vl804rbaabh32"
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" ||
+          requestedClinic === "kochi" ||
+          body.locationName?.toLowerCase?.().includes("kochi")
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
+
     let user = await prisma.user.findUnique({ where: { email } });
     if (user) {
-      const existingMembership = await prisma.clinicMembership.findUnique({
-        where: { clinicId_userId: { clinicId: tenant.clinicId, userId: user.id } },
-      });
-      if (existingMembership) {
-        return fail(c, 409, "DOCTOR_EXISTS", "A doctor with this email already belongs to this clinic.");
-      }
-      await prisma.clinicMembership.create({
+      user = await prisma.user.update({
+        where: { id: user.id },
         data: {
-          clinicId: tenant.clinicId,
-          userId: user.id,
-          roleId: doctorRole.id,
-          status: "ACTIVE",
+          name,
+          title,
+          phone: phone || user.phone,
+          isActive: true,
         },
       });
+
+      const existingMembership = await prisma.clinicMembership.findUnique({
+        where: { clinicId_userId: { clinicId: targetClinicId, userId: user.id } },
+      });
+      if (!existingMembership) {
+        await prisma.clinicMembership.create({
+          data: {
+            clinicId: targetClinicId,
+            userId: user.id,
+            roleId: doctorRole.id,
+            status: "ACTIVE",
+          },
+        });
+      } else if (existingMembership.status !== "ACTIVE") {
+        await prisma.clinicMembership.update({
+          where: { id: existingMembership.id },
+          data: { status: "ACTIVE" },
+        });
+      }
     } else {
       const initials = name
         .replace(/^Dr\.\s*/i, "")
@@ -926,7 +969,7 @@ export const doctorRoutes = new Hono<AppEnv>()
         });
         await tx.clinicMembership.create({
           data: {
-            clinicId: tenant.clinicId,
+            clinicId: targetClinicId,
             userId: u.id,
             roleId: doctorRole.id,
             status: "ACTIVE",
@@ -954,9 +997,9 @@ export const doctorRoutes = new Hono<AppEnv>()
 
     const existingRule = await prisma.automationRule.findFirst({
       where: {
-        clinicId: tenant.clinicId,
+        clinicId: targetClinicId,
         trigger: "DOCTOR_PROFILE",
-        name: user.id,
+        OR: [{ name: user.id }, { name: `doc_${user.id}` }],
       },
     });
 
@@ -968,7 +1011,7 @@ export const doctorRoutes = new Hono<AppEnv>()
     } else {
       await prisma.automationRule.create({
         data: {
-          clinicId: tenant.clinicId,
+          clinicId: targetClinicId,
           trigger: "DOCTOR_PROFILE",
           name: user.id,
           config: profileData,
@@ -977,7 +1020,7 @@ export const doctorRoutes = new Hono<AppEnv>()
     }
 
     return ok(c, {
-      ...formatDoctorProfile(tenant.clinicId, user, profileData),
+      ...formatDoctorProfile(targetClinicId, user, profileData),
       credentials: {
         email,
         password,

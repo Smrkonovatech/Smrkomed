@@ -7,6 +7,7 @@ import {
   sendTemplateMessage,
   sendTextMessage,
   sendInteractiveButtons,
+  sendInteractiveCtaUrl,
   sendInteractiveList,
   type TemplateSendComponentParameters,
   type InteractiveButton,
@@ -814,6 +815,129 @@ export async function sendWhatsAppInteractiveButtons(
           direction: "OUTBOUND",
           senderType,
           content: `${body.slice(0, 200)} — failed: ${failReason}`,
+          messageType: "interactive",
+          status: "FAILED",
+        },
+      })
+      .catch(() => undefined);
+    throw error instanceof IntegrationError
+      ? error
+      : new IntegrationError("MESSAGE_SEND_FAILED", failReason, 500);
+  }
+}
+
+export async function sendWhatsAppInteractiveCtaUrl(
+  ctx: TenantContext,
+  input: {
+    conversationId: string;
+    body: string;
+    displayText: string;
+    url: string;
+    header?: { type: "text"; text: string } | { type: "image"; link?: string; id?: string };
+    footer?: string;
+    senderType?: "AI" | "STAFF";
+  },
+): Promise<{ id: string; status: string; providerMessageId: string | null }> {
+  assertRateLimit(ctx.userId, ctx.clinicId);
+
+  const integration = await prisma.integration.findFirst({
+    where: {
+      clinicId: ctx.clinicId,
+      provider: "WHATSAPP_CLOUD",
+      status: "ACTIVE",
+    },
+  });
+
+  if (!integration) {
+    throw new IntegrationError(
+      "WHATSAPP_NOT_CONNECTED",
+      "No active WhatsApp Cloud integration configured for this clinic.",
+      404,
+    );
+  }
+
+  const conversation = await resolveConversation(ctx, { conversationId: input.conversationId }, integration.id);
+  const recipient = conversation.contactPhone;
+  if (!recipient) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No WhatsApp number is associated with this conversation.", 422);
+  }
+
+  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  const normalizedRecipient = normalizeWhatsAppPhone(recipient);
+  if (!normalizedRecipient || normalizedRecipient.length < 10) {
+    throw new IntegrationError("INVALID_RECIPIENT", "No valid WhatsApp number is associated with this conversation.", 422);
+  }
+
+  const senderType = input.senderType ?? "AI";
+
+  try {
+    const result = await sendInteractiveCtaUrl({
+      phoneNumberId: senderCreds.phoneNumberId,
+      accessToken: senderCreds.token,
+      to: normalizedRecipient,
+      body: input.body,
+      displayText: input.displayText,
+      url: input.url,
+      ...(input.header ? { header: input.header } : {}),
+      ...(input.footer ? { footer: input.footer } : {}),
+    });
+
+    const messages = result["messages"];
+    const providerMessageId =
+      Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
+        ? String((messages[0] as { id?: string }).id ?? "")
+        : "";
+    if (!providerMessageId) {
+      throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
+    }
+
+    const stored = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: `${input.body}\n\n[${input.displayText}](${input.url})`,
+        messageType: "interactive",
+        providerMessageId,
+        status: "SENT",
+      },
+    });
+
+    realtimeBus.publish({
+      type: "MESSAGE_CREATED",
+      clinicId: ctx.clinicId,
+      conversationId: conversation.id,
+      message: {
+        id: stored.id,
+        direction: "OUTBOUND",
+        senderType: stored.senderType,
+        content: stored.content,
+        messageType: "interactive",
+        createdAt: stored.createdAt.toISOString(),
+        status: stored.status,
+        label: senderType === "AI" ? "✦ Smrko AI" : "STAFF",
+      },
+      conversation: {
+        id: conversation.id,
+        status: conversation.status,
+        unreadCount: 0,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    return { id: stored.id, status: stored.status, providerMessageId: stored.providerMessageId };
+  } catch (error) {
+    const failReason =
+      error instanceof IntegrationError
+        ? error.message.slice(0, 400)
+        : "WhatsApp could not send interactive CTA URL.";
+    await prisma.message
+      .create({
+        data: {
+          conversationId: conversation.id,
+          direction: "OUTBOUND",
+          senderType,
+          content: `${input.body.slice(0, 200)} — failed: ${failReason}`,
           messageType: "interactive",
           status: "FAILED",
         },

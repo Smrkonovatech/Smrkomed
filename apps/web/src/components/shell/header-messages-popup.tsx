@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { useAppState } from "@/lib/app-state";
 import { clinicApi } from "@/lib/clinic-api";
 import { toast } from "sonner";
+import { MediaBubble } from "@/components/whatsapp/media-bubble";
 
 export type ChatMessage = {
   id: string;
@@ -32,8 +33,9 @@ export type ChatMessage = {
   isAi?: boolean | undefined;
   text?: string | undefined;
   time?: string | undefined;
+  media?: any | undefined;
   attachment?: {
-    type: "JPG" | "PDF";
+    type: "JPG" | "PDF" | "PNG" | "DOC";
     name: string;
     size: string;
     url?: string | undefined;
@@ -58,6 +60,14 @@ export type ActiveChat = {
   inputText: string;
   isTyping?: boolean | undefined;
   isLoading?: boolean | undefined;
+  isUploading?: boolean | undefined;
+  pendingAttachment?: {
+    file: File;
+    name: string;
+    size: string;
+    previewUrl?: string | undefined;
+    isImage: boolean;
+  } | null | undefined;
 };
 
 export type CouplePartnerChat = {
@@ -129,6 +139,63 @@ function formatTimeOnly(iso?: string | null): string {
   }
 }
 
+function mapBackendMedia(m: any) {
+  const raw = m.media || m.whatsappMedia;
+  if (!raw) return undefined;
+  const id = raw.id || `media-${Math.random()}`;
+  const rawType = String(raw.type || "").toUpperCase();
+  const type =
+    rawType === "IMAGE" || rawType === "DOCUMENT" || rawType === "AUDIO" || rawType === "VIDEO" || rawType === "STICKER"
+      ? rawType
+      : raw.mimeType?.startsWith("image/")
+        ? "IMAGE"
+        : raw.mimeType?.startsWith("video/")
+          ? "VIDEO"
+          : raw.mimeType?.startsWith("audio/")
+            ? "AUDIO"
+            : "DOCUMENT";
+  const url = raw.url || `/api/v1/whatsapp-automation/inbox/media/${id}`;
+  return {
+    id,
+    type,
+    mimeType: raw.mimeType || (type === "IMAGE" ? "image/jpeg" : "application/pdf"),
+    filename: raw.filename || (type === "IMAGE" ? "Photo.jpg" : "Document.pdf"),
+    caption: raw.caption || null,
+    sizeBytes: raw.sizeBytes ?? null,
+    durationSeconds: raw.durationSeconds ?? null,
+    isVoice: Boolean(raw.isVoice),
+    status: raw.status || "READY",
+    url,
+    error: raw.error || null,
+  };
+}
+
+function mapChatMessage(m: any): ChatMessage {
+  const media = mapBackendMedia(m);
+  const rawText = m.text || m.content || "";
+  const isPlaceholder = /^(📷\s*Photo|📄\s*Document|📹\s*Video|🎤\s*Voice message|🎵\s*Audio message|Sticker|Image attachment|Document attachment)$/i.test(rawText.trim());
+  const displayText = media && isPlaceholder ? "" : rawText;
+
+  return {
+    id: m.id || `msg-${Math.random()}`,
+    sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
+    senderName: m.senderName,
+    partnerRole: m.partnerRole,
+    isAi: Boolean(m.isAi || m.senderType === "AI"),
+    text: displayText,
+    time: formatTimeOnly(m.createdAt),
+    media,
+    attachment: media
+      ? {
+          type: media.type === "IMAGE" ? "JPG" : "PDF",
+          name: media.filename || (media.type === "IMAGE" ? "Photo.jpg" : "Document.pdf"),
+          size: media.sizeBytes ? `${(media.sizeBytes / (1024 * 1024)).toFixed(1)} MB` : "1.2 MB",
+          url: media.url,
+        }
+      : undefined,
+  };
+}
+
 export function HeaderMessagesPopup() {
   const { couples } = useAppState();
   const [mounted, setMounted] = useState(false);
@@ -138,6 +205,43 @@ export function HeaderMessagesPopup() {
   const [openChats, setOpenChats] = useState<ActiveChat[]>([]);
   const [inboxRows, setInboxRows] = useState<any[]>([]);
   const chatBottomRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const chatContainerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileTargetChatIdRef = useRef<string | null>(null);
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetId = fileTargetChatIdRef.current;
+    if (!file || !targetId) return;
+
+    const isImage = file.type.startsWith("image/");
+    const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+    const sizeStr = `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
+
+    setOpenChats((prev) =>
+      prev.map((c) =>
+        c.id === targetId
+          ? {
+              ...c,
+              pendingAttachment: { file, name: file.name, size: sizeStr, previewUrl, isImage },
+            }
+          : c
+      )
+    );
+    e.target.value = "";
+  };
+
+  const removePendingAttachment = (chatId: string) => {
+    setOpenChats((prev) =>
+      prev.map((c) => {
+        if (c.id !== chatId) return c;
+        if (c.pendingAttachment?.previewUrl) {
+          URL.revokeObjectURL(c.pendingAttachment.previewUrl);
+        }
+        return { ...c, pendingAttachment: null };
+      })
+    );
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -176,14 +280,27 @@ export function HeaderMessagesPopup() {
   }, [messagesOpen, fetchInbox]);
 
   // Auto-scroll chat body on new messages
+  const scrollToBottom = useCallback((chatId: string, smooth = false) => {
+    const container = chatContainerRefs.current[chatId];
+    if (container) {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: smooth ? "smooth" : "auto",
+      });
+    }
+    const el = chatBottomRefs.current[chatId];
+    if (el) {
+      el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "end" });
+    }
+  }, []);
+
   useEffect(() => {
     openChats.forEach((chat) => {
-      const el = chatBottomRefs.current[chat.id];
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-      }
+      scrollToBottom(chat.id, false);
+      const timer = setTimeout(() => scrollToBottom(chat.id, true), 80);
+      return () => clearTimeout(timer);
     });
-  }, [openChats]);
+  }, [openChats, scrollToBottom]);
 
   // Poll active chat messages from real backend
   useEffect(() => {
@@ -196,24 +313,7 @@ export function HeaderMessagesPopup() {
           try {
             const jointData = await clinicApi.whatsappCoupleMessages(chat.coupleId);
             if (jointData && Array.isArray(jointData.messages)) {
-              const mapped: ChatMessage[] = jointData.messages.map((m: any) => ({
-                id: m.id || `msg-${Math.random()}`,
-                sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
-                senderName: m.senderName,
-                partnerRole: m.partnerRole,
-                isAi: m.isAi,
-                text: m.text || m.content || "",
-                time: formatTimeOnly(m.createdAt),
-                attachment: m.media
-                  ? {
-                      type: m.media.type === "DOCUMENT" ? "PDF" : "JPG",
-                      name: m.media.filename || "Attachment",
-                      size: m.media.sizeBytes
-                        ? `${(m.media.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                        : "1.2 MB",
-                    }
-                  : undefined,
-              }));
+              const mapped: ChatMessage[] = jointData.messages.map(mapChatMessage);
               setOpenChats((prev) =>
                 prev.map((c) => {
                   if (c.id !== chat.id) return c;
@@ -234,22 +334,7 @@ export function HeaderMessagesPopup() {
           try {
             const detail = await clinicApi.whatsappConversation(chat.conversationId);
             if (detail && Array.isArray(detail.messages)) {
-              const mapped: ChatMessage[] = detail.messages.map((m: any) => ({
-                id: m.id || `msg-${Math.random()}`,
-                sender: m.direction === "INBOUND" ? "patient" : "staff",
-                isAi: m.senderType === "AI",
-                text: m.content || "",
-                time: formatTimeOnly(m.createdAt),
-                attachment: m.whatsappMedia
-                  ? {
-                      type: m.whatsappMedia.type === "DOCUMENT" ? "PDF" : "JPG",
-                      name: m.whatsappMedia.filename || "Attachment",
-                      size: m.whatsappMedia.sizeBytes
-                        ? `${(m.whatsappMedia.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                        : "1.2 MB",
-                    }
-                  : undefined,
-              }));
+              const mapped: ChatMessage[] = detail.messages.map(mapChatMessage);
 
               setOpenChats((prev) =>
                 prev.map((c) => {
@@ -513,24 +598,7 @@ export function HeaderMessagesPopup() {
       try {
         const jointData = await clinicApi.whatsappCoupleMessages(chatData.coupleId);
         if (jointData && Array.isArray(jointData.messages)) {
-          const mapped: ChatMessage[] = jointData.messages.map((m: any) => ({
-            id: m.id || `msg-${Math.random()}`,
-            sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
-            senderName: m.senderName,
-            partnerRole: m.partnerRole,
-            isAi: m.isAi,
-            text: m.text || m.content || "",
-            time: formatTimeOnly(m.createdAt),
-            attachment: m.media
-              ? {
-                  type: m.media.type === "DOCUMENT" ? "PDF" : "JPG",
-                  name: m.media.filename || "Attachment",
-                  size: m.media.sizeBytes
-                    ? `${(m.media.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                    : "1.2 MB",
-                }
-              : undefined,
-          }));
+          const mapped: ChatMessage[] = jointData.messages.map(mapChatMessage);
 
           setOpenChats((prev) =>
             prev.map((c) =>
@@ -558,22 +626,7 @@ export function HeaderMessagesPopup() {
       try {
         const detail = await clinicApi.whatsappConversation(chatData.conversationId);
         if (detail && Array.isArray(detail.messages)) {
-          const mapped: ChatMessage[] = detail.messages.map((m: any) => ({
-            id: m.id || `msg-${Math.random()}`,
-            sender: m.direction === "INBOUND" ? "patient" : "staff",
-            isAi: m.senderType === "AI",
-            text: m.content || "",
-            time: formatTimeOnly(m.createdAt),
-            attachment: m.whatsappMedia
-              ? {
-                  type: m.whatsappMedia.type === "DOCUMENT" ? "PDF" : "JPG",
-                  name: m.whatsappMedia.filename || "Attachment",
-                  size: m.whatsappMedia.sizeBytes
-                    ? `${(m.whatsappMedia.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                    : "1.2 MB",
-                }
-              : undefined,
-          }));
+          const mapped: ChatMessage[] = detail.messages.map(mapChatMessage);
 
           setOpenChats((prev) =>
             prev.map((c) =>
@@ -620,9 +673,128 @@ export function HeaderMessagesPopup() {
 
   const sendMessage = async (id: string) => {
     const chat = openChats.find((c) => c.id === id);
-    if (!chat || !chat.inputText.trim()) return;
+    if (!chat || chat.isUploading) return;
 
     const messageText = chat.inputText.trim();
+    const pendingFile = chat.pendingAttachment;
+
+    if (!messageText && !pendingFile) return;
+
+    // Handle Media Attachment Send
+    if (pendingFile) {
+      setOpenChats((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, isUploading: true } : c))
+      );
+
+      const formData = new FormData();
+      formData.append("file", pendingFile.file);
+      if (messageText) {
+        formData.append("caption", messageText);
+      }
+      formData.append("kind", pendingFile.isImage ? "IMAGE" : "DOCUMENT");
+
+      const optimisticMediaId = `opt-${Date.now()}`;
+      const optimisticMsg: ChatMessage = {
+        id: `msg-${Date.now()}`,
+        sender: "staff",
+        senderName: "Staff",
+        partnerRole: "STAFF",
+        text: messageText,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        media: {
+          id: optimisticMediaId,
+          type: pendingFile.isImage ? "IMAGE" : "DOCUMENT",
+          mimeType: pendingFile.file.type,
+          filename: pendingFile.name,
+          caption: messageText || null,
+          sizeBytes: pendingFile.file.size,
+          durationSeconds: null,
+          isVoice: false,
+          status: "READY",
+          url: pendingFile.previewUrl,
+        },
+      };
+
+      setOpenChats((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                inputText: "",
+                pendingAttachment: null,
+                messages: [...c.messages, optimisticMsg],
+              }
+            : c
+        )
+      );
+
+      try {
+        if (chat.isJointCouple && chat.coupleId) {
+          await clinicApi.sendWhatsappCoupleMedia(chat.coupleId, formData);
+          toast.success("Attachment dispatched to both partners on WhatsApp");
+          setTimeout(async () => {
+            try {
+              const jointData = await clinicApi.whatsappCoupleMessages(chat.coupleId!);
+              if (jointData && Array.isArray(jointData.messages)) {
+                const mapped: ChatMessage[] = jointData.messages.map(mapChatMessage);
+                setOpenChats((prev) =>
+                  prev.map((c) => (c.id === id ? { ...c, isUploading: false, messages: mapped } : c))
+                );
+              }
+            } catch {
+              setOpenChats((prev) =>
+                prev.map((c) => (c.id === id ? { ...c, isUploading: false } : c))
+              );
+            }
+          }, 1000);
+        } else if (chat.conversationId) {
+          await clinicApi.sendWhatsappMedia(chat.conversationId, formData);
+          toast.success("Attachment dispatched on WhatsApp");
+          setTimeout(async () => {
+            try {
+              const detail = await clinicApi.whatsappConversation(chat.conversationId!);
+              if (detail && Array.isArray(detail.messages)) {
+                const mapped: ChatMessage[] = detail.messages.map(mapChatMessage);
+                setOpenChats((prev) =>
+                  prev.map((c) => (c.id === id ? { ...c, isUploading: false, messages: mapped } : c))
+                );
+              }
+            } catch {
+              setOpenChats((prev) =>
+                prev.map((c) => (c.id === id ? { ...c, isUploading: false } : c))
+              );
+            }
+          }, 1000);
+        } else {
+          const res = await clinicApi.sendWhatsappToRecipient({
+            patientId: chat.patientId,
+            coupleId: chat.coupleId,
+            phone: chat.recipientPhone,
+            body: messageText || "Sent an attachment",
+          });
+          if (res?.conversationId) {
+            await clinicApi.sendWhatsappMedia(res.conversationId, formData);
+            toast.success("Attachment dispatched on WhatsApp");
+            setOpenChats((prev) =>
+              prev.map((c) => (c.id === id ? { ...c, conversationId: res.conversationId, isUploading: false } : c))
+            );
+          } else {
+            setOpenChats((prev) =>
+              prev.map((c) => (c.id === id ? { ...c, isUploading: false } : c))
+            );
+          }
+        }
+      } catch (err) {
+        console.error("Failed to send WhatsApp media:", err);
+        toast.error("Could not send attachment over WhatsApp");
+        setOpenChats((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, isUploading: false } : c))
+        );
+      }
+      return;
+    }
+
+    // Standard Text Message Send
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       sender: "staff",
@@ -654,15 +826,7 @@ export function HeaderMessagesPopup() {
           try {
             const jointData = await clinicApi.whatsappCoupleMessages(chat.coupleId!);
             if (jointData && Array.isArray(jointData.messages)) {
-              const mapped: ChatMessage[] = jointData.messages.map((m: any) => ({
-                id: m.id,
-                sender: m.sender || (m.direction === "INBOUND" ? "patient" : "staff"),
-                senderName: m.senderName,
-                partnerRole: m.partnerRole,
-                isAi: m.isAi,
-                text: m.text || m.content || "",
-                time: formatTimeOnly(m.createdAt),
-              }));
+              const mapped: ChatMessage[] = jointData.messages.map(mapChatMessage);
               setOpenChats((prev) =>
                 prev.map((c) => (c.id === id ? { ...c, messages: mapped } : c))
               );
@@ -687,22 +851,7 @@ export function HeaderMessagesPopup() {
           try {
             const detail = await clinicApi.whatsappConversation(chat.conversationId!);
             if (detail && Array.isArray(detail.messages)) {
-              const mapped: ChatMessage[] = detail.messages.map((m: any) => ({
-                id: m.id,
-                sender: m.direction === "INBOUND" ? "patient" : "staff",
-                isAi: m.senderType === "AI",
-                text: m.content || "",
-                time: formatTimeOnly(m.createdAt),
-                attachment: m.whatsappMedia
-                  ? {
-                      type: m.whatsappMedia.type === "DOCUMENT" ? "PDF" : "JPG",
-                      name: m.whatsappMedia.filename || "Attachment",
-                      size: m.whatsappMedia.sizeBytes
-                        ? `${(m.whatsappMedia.sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-                        : "1.2 MB",
-                    }
-                  : undefined,
-              }));
+              const mapped: ChatMessage[] = detail.messages.map(mapChatMessage);
               setOpenChats((prev) =>
                 prev.map((c) => (c.id === id ? { ...c, messages: mapped } : c))
               );
@@ -1082,7 +1231,12 @@ export function HeaderMessagesPopup() {
                       </div>
                     )}
 
-                    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-[#F8F7FC]">
+                    <div
+                      ref={(el) => {
+                        chatContainerRefs.current[chat.id] = el;
+                      }}
+                      className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-[#F8F7FC]"
+                    >
                       {/* Loading state */}
                       {chat.isLoading && (
                         <div className="flex items-center justify-center py-6 text-gray-400 gap-2 text-xs">
@@ -1104,34 +1258,6 @@ export function HeaderMessagesPopup() {
                       {chat.messages.map((m) => {
                         const isStaff = m.sender === "staff";
 
-                        if (m.attachment) {
-                          return (
-                            <div
-                              key={m.id}
-                              className={`bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-3 shadow-sm w-[230px] flex items-center gap-3 ${
-                                isStaff ? "self-end rounded-tl-2xl rounded-tr-sm" : "self-start"
-                              }`}
-                            >
-                              <div
-                                className={`size-10 rounded-lg flex flex-col items-center justify-center font-bold text-[10px] shrink-0 ${
-                                  m.attachment.type === "PDF"
-                                    ? "bg-[#FCE8E6] text-[#D93025]"
-                                    : "bg-[#E6F4EA] text-[#1E8E3E]"
-                                }`}
-                              >
-                                {m.attachment.type}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[13px] font-semibold text-gray-800 truncate">
-                                  {m.attachment.name}
-                                </p>
-                                <p className="text-[11px] text-gray-400">{m.attachment.size}</p>
-                              </div>
-                              <Download className="size-4 text-[#866BE3] cursor-pointer hover:opacity-80 transition-opacity shrink-0" />
-                            </div>
-                          );
-                        }
-
                         return (
                           <div
                             key={m.id}
@@ -1148,15 +1274,62 @@ export function HeaderMessagesPopup() {
                                 {m.senderName || (m.partnerRole === "PARTNER" ? "Partner" : "Primary Patient")}
                               </span>
                             )}
-                            <div
-                              className={`p-3 text-[13px] leading-relaxed shadow-sm max-w-[85%] ${
-                                isStaff
-                                  ? "bg-[#866BE3] text-white rounded-2xl rounded-tr-sm"
-                                  : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm"
-                              }`}
-                            >
-                              {m.text}
-                            </div>
+
+                            {/* Media Attachment View */}
+                            {m.media ? (
+                              <div className="max-w-[85%] my-0.5">
+                                <MediaBubble media={m.media} isOutbound={isStaff} />
+                              </div>
+                            ) : m.attachment ? (
+                              <div
+                                className={`bg-white border border-gray-100 rounded-2xl rounded-tl-sm p-3 shadow-sm w-[230px] flex items-center gap-3 ${
+                                  isStaff ? "self-end rounded-tl-2xl rounded-tr-sm" : "self-start"
+                                }`}
+                              >
+                                <div
+                                  className={`size-10 rounded-lg flex flex-col items-center justify-center font-bold text-[10px] shrink-0 ${
+                                    m.attachment.type === "PDF" || m.attachment.type === "DOC"
+                                      ? "bg-[#FCE8E6] text-[#D93025]"
+                                      : "bg-[#E6F4EA] text-[#1E8E3E]"
+                                  }`}
+                                >
+                                  {m.attachment.type}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-[13px] font-semibold text-gray-800 truncate">
+                                    {m.attachment.name}
+                                  </p>
+                                  <p className="text-[11px] text-gray-400">{m.attachment.size}</p>
+                                </div>
+                                {m.attachment.url ? (
+                                  <a
+                                    href={m.attachment.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    download={m.attachment.name}
+                                    className="size-7 rounded-full flex items-center justify-center hover:bg-gray-100 text-[#866BE3] transition-colors shrink-0"
+                                  >
+                                    <Download className="size-4" />
+                                  </a>
+                                ) : (
+                                  <Download className="size-4 text-[#866BE3] cursor-pointer hover:opacity-80 transition-opacity shrink-0" />
+                                )}
+                              </div>
+                            ) : null}
+
+                            {/* Text message bubble */}
+                            {m.text && m.text.trim() ? (
+                              <div
+                                className={`p-3 text-[13px] leading-relaxed shadow-sm max-w-[85%] ${
+                                  isStaff
+                                    ? "bg-[#866BE3] text-white rounded-2xl rounded-tr-sm mt-0.5"
+                                    : "bg-white border border-gray-100 text-gray-800 rounded-2xl rounded-tl-sm mt-0.5"
+                                }`}
+                              >
+                                {m.text}
+                              </div>
+                            ) : null}
+
                             {m.time && (
                               <span className="text-[9px] text-gray-400 mt-1 px-1 flex items-center gap-1">
                                 {m.time}
@@ -1176,35 +1349,87 @@ export function HeaderMessagesPopup() {
                         e.preventDefault();
                         void sendMessage(chat.id);
                       }}
-                      className="p-3 bg-white border-t border-gray-100 flex items-center gap-2 shrink-0"
+                      className="p-3 bg-white border-t border-gray-100 flex flex-col gap-2 shrink-0"
                     >
-                      <div className="flex-1 relative">
-                        <Input
-                          placeholder={chat.isJointCouple ? "Broadcast to both partners on WhatsApp..." : "Send WhatsApp message..."}
-                          value={chat.inputText}
-                          onChange={(e) => updateInputText(chat.id, e.target.value)}
-                          className="h-10 w-full rounded-xl border-gray-200 pr-10 text-sm focus-visible:ring-1 focus-visible:ring-[#866BE3]/30"
-                        />
+                      {/* Pending Attachment Preview Chip */}
+                      {chat.pendingAttachment && (
+                        <div className="p-2 bg-purple-50 border border-purple-100 rounded-xl flex items-center justify-between gap-2 text-xs animate-in fade-in">
+                          <div className="flex items-center gap-2 min-w-0">
+                            {chat.pendingAttachment.isImage && chat.pendingAttachment.previewUrl ? (
+                              <img
+                                src={chat.pendingAttachment.previewUrl}
+                                alt="Preview"
+                                className="size-9 rounded-lg object-cover border border-purple-200 shrink-0"
+                              />
+                            ) : (
+                              <div className="size-9 rounded-lg bg-[#866BE3]/15 text-[#866BE3] flex items-center justify-center font-bold text-[10px] shrink-0">
+                                {chat.pendingAttachment.isImage ? "IMG" : "DOC"}
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-800 truncate max-w-[200px]">
+                                {chat.pendingAttachment.name}
+                              </p>
+                              <p className="text-[10px] text-gray-400">{chat.pendingAttachment.size}</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removePendingAttachment(chat.id)}
+                            className="p-1 text-gray-400 hover:text-gray-700 transition-colors"
+                            title="Remove attachment"
+                          >
+                            <X className="size-4" />
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 relative">
+                          <Input
+                            placeholder={
+                              chat.pendingAttachment
+                                ? "Add a caption (optional)..."
+                                : chat.isJointCouple
+                                  ? "Broadcast to both partners on WhatsApp..."
+                                  : "Send WhatsApp message..."
+                            }
+                            value={chat.inputText}
+                            onChange={(e) => updateInputText(chat.id, e.target.value)}
+                            disabled={chat.isUploading}
+                            className="h-10 w-full rounded-xl border-gray-200 pr-10 text-sm focus-visible:ring-1 focus-visible:ring-[#866BE3]/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              fileTargetChatIdRef.current = chat.id;
+                              fileInputRef.current?.click();
+                            }}
+                            disabled={chat.isUploading}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#866BE3] transition-colors"
+                            title="Attach document or photo"
+                          >
+                            <Paperclip className="size-4" />
+                          </button>
+                        </div>
                         <button
-                          type="button"
-                          onClick={() => toast.info("Document upload available")}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                          title="Attach document or report"
+                          type="submit"
+                          disabled={chat.isUploading || (!chat.inputText.trim() && !chat.pendingAttachment)}
+                          className={`size-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            chat.isUploading
+                              ? "bg-[#866BE3]/70 text-white cursor-wait"
+                              : chat.inputText.trim() || chat.pendingAttachment
+                                ? "bg-[#866BE3] hover:bg-[#7254d1] text-white shadow-sm"
+                                : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          }`}
                         >
-                          <Paperclip className="size-4" />
+                          {chat.isUploading ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Send className="size-4 ml-0.5" />
+                          )}
                         </button>
                       </div>
-                      <button
-                        type="submit"
-                        disabled={!chat.inputText.trim()}
-                        className={`size-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                          chat.inputText.trim()
-                            ? "bg-[#866BE3] hover:bg-[#7254d1] text-white shadow-sm"
-                            : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                        }`}
-                      >
-                        <Send className="size-4 ml-0.5" />
-                      </button>
                     </form>
                   </>
                 )}
@@ -1214,6 +1439,15 @@ export function HeaderMessagesPopup() {
         </div>,
         document.body
       )}
+
+      {/* Hidden file input for document and image uploads from chat */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt"
+        onChange={handleFileSelect}
+      />
     </>
   );
 }

@@ -347,7 +347,7 @@ function scheduleSarvamPostCallSync(params: {
             });
             const timeStr = "09:00 AM";
             const patientName = `${patient.firstName} ${patient.lastName || ""}`.trim();
-            const text = `You're all set, ${patientName}! 🎉\n\nYour appointment is confirmed from your phone call:\n\n👩‍⚕️ ${doctorName}\n📅 ${dateStr}\n⏰ ${timeStr}\n📍 ${patient.clinic?.name || "ABC Fertility Centre"}\n\nWe'll remind you before your appointment!`;
+            const text = `You're all set, ${patientName}! 🎉\n\nYour appointment is confirmed from your phone call:\n\n👩‍⚕️ ${doctorName}\n📅 ${dateStr}\n⏰ ${timeStr}\n📍 ${patient.clinic?.name || "Hospex"}\n\nWe'll remind you before your appointment!`;
 
             await prisma.message.create({
               data: {

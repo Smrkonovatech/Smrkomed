@@ -727,7 +727,7 @@ export default function PatientProfile() {
           treatment={couple.treatment}
           stage={couple.stage}
           doctorName="Dr. Ananya Rao"
-          clinicName="ABC Fertility Centre"
+          clinicName="Hospex"
           upcomingAppointment={
             coupleAppointments[0]
               ? `${coupleAppointments[0].date} ${coupleAppointments[0].time}`

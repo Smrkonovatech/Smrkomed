@@ -4,8 +4,9 @@ import Link from "next/link";
 import { Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Eye, EyeOff, Key, MessageSquare, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { clinicApi } from "@/lib/clinic-api";
+import { useAppState } from "@/lib/app-state";
+import { toast } from "sonner";
 
 import {
   AppointmentSettingsForm,
@@ -68,6 +69,7 @@ export function DoctorWizard({
   mode: "create" | "edit";
 }) {
   const router = useRouter();
+  const { clinicName } = useAppState();
   const [step, setStep] = useState(0);
   const [doctor, setDoctor] = useState<DoctorProfile>(initial);
   const [password, setPassword] = useState("Doctor@12345");
@@ -120,8 +122,17 @@ export function DoctorWizard({
     setSaving(true);
     try {
       if (mode === "create") {
+        const targetClinic =
+          doctor.locationId === "blr" || doctor.locationId === "cmt0exo9n000vl804rbaabh32"
+            ? "cmt0exo9n000vl804rbaabh32"
+            : doctor.locationId === "kochi" || doctor.locationId === "cmu3nmx310026jy04gsi21hxl"
+              ? "cmu3nmx310026jy04gsi21hxl"
+              : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
         const res = await clinicApi.createDoctor({
           ...withName,
+          clinicId: targetClinic,
+          locationId: targetClinic,
+          locationName: targetClinic === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore",
           password: password || "Doctor@12345",
           isDraft: true,
           status: "inactive",
@@ -162,8 +173,17 @@ export function DoctorWizard({
     setSaving(true);
     try {
       if (mode === "create") {
+        const targetClinic =
+          doctor.locationId === "blr" || doctor.locationId === "cmt0exo9n000vl804rbaabh32"
+            ? "cmt0exo9n000vl804rbaabh32"
+            : doctor.locationId === "kochi" || doctor.locationId === "cmu3nmx310026jy04gsi21hxl"
+              ? "cmu3nmx310026jy04gsi21hxl"
+              : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
         const res = await clinicApi.createDoctor({
           ...withName,
+          clinicId: targetClinic,
+          locationId: targetClinic,
+          locationName: targetClinic === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore",
           password: password || "Doctor@12345",
           isDraft: false,
           status: "active",
@@ -209,7 +229,7 @@ export function DoctorWizard({
 
   if (createdCredentials) {
     const message = `Hello ${createdCredentials.name},
-Your doctor clinical workspace account at ABC Fertility Centre is active.
+Your doctor clinical workspace account at ${clinicName || "Hospex"} is active.
 
 Login URL: ${typeof window !== "undefined" ? window.location.origin : ""}/login
 Username: ${createdCredentials.email}

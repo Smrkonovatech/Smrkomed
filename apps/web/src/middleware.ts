@@ -14,6 +14,8 @@ export default auth((req) => {
   const isPublicPage =
     isMarketingHome ||
     pathname.startsWith("/book/") ||
+    pathname.startsWith("/pay/") ||
+    pathname.startsWith("/qr-register") ||
     pathname.startsWith("/privacy-policy") ||
     pathname.startsWith("/data-deletion") ||
     pathname === "/sitemap.xml" ||
@@ -30,7 +32,9 @@ export default auth((req) => {
     pathname.startsWith("/api/create-order") ||
     pathname.startsWith("/api/verify-payment") ||
     pathname.startsWith("/api/razorpay") ||
+    pathname.startsWith("/api/pay") ||
     pathname.startsWith("/api/payments") ||
+    pathname.startsWith("/api/qr") ||
     pathname.startsWith("/api/consultations");
 
   if (isPublicApi || isPublicPage || isOnboarding) {

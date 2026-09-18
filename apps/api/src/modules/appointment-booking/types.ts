@@ -43,6 +43,8 @@ export interface BookingDoctorSummary {
   bio: string;
   photoUrl?: string;
   availableDates: string[]; // ["2026-09-09", "2026-09-10"]
+  clinicId?: string;
+  location?: string;
 }
 
 export interface BookingRegistrationDraft {

@@ -127,19 +127,20 @@ export function AppointmentsTimeline() {
 
    const getMinutesFrom8AM = (timeStr: string) => {
       if (!timeStr) return 0;
-      const parts = timeStr.split(" ");
-      const timePart = parts[0] || "08:00";
-      const periodPart = parts[1] || "AM";
-      
-      const timeSplit = timePart.split(":");
-      const h = parseInt(timeSplit[0] || "8", 10);
-      const m = parseInt(timeSplit[1] || "0", 10);
-      
-      let hours24 = h;
-      if (periodPart === "PM" && h !== 12) hours24 += 12;
-      if (periodPart === "AM" && h === 12) hours24 = 0;
-      
-      return (hours24 - 8) * 60 + m;
+      const trimmed = timeStr.trim();
+      // Robust regex: handles "01:30 pm", "1:30 PM", "13:30", "01:30pm", "1:30:00 pm"
+      const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([a-zA-Z]{2})?/);
+      if (!match) return 0;
+      let h = parseInt(match[1]!, 10);
+      const m = parseInt(match[2]!, 10);
+      const meridiem = match[3] ? match[3].toUpperCase() : undefined;
+      if (meridiem === "PM") {
+         if (h < 12) h += 12;    // 1:30 PM → 13:30
+      } else if (meridiem === "AM") {
+         if (h === 12) h = 0;    // 12:30 AM → 0:30
+      }
+      // h is now in 24-hour format (also works for "13:30" with no meridiem)
+      return (h - 8) * 60 + m;
    };
 
    const getLeftPercentage = (timeStr: string) => {

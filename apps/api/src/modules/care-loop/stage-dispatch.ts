@@ -292,7 +292,7 @@ export async function dispatchStageToWhatsApp(
     where: { id: tenant.clinicId },
     include: { organization: true },
   });
-  const clinicName = clinic?.name || "ABC Fertility Centre";
+  const clinicName = clinic?.name || tenant.clinicName || "Hospex";
   const enrichedTenant: TenantContext = {
     ...tenant,
     clinicId: clinic?.id || tenant.clinicId,

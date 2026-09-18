@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   Building2,
   CalendarPlus,
+  Check,
   ChevronDown,
   FilePlus2,
   ListPlus,
@@ -76,8 +77,8 @@ export function AppHeader() {
       .slice(0, 2)
       .toUpperCase() ?? currentUser.initials;
   const sessionRoleLabel = session?.user?.role?.replaceAll("_", " ") ?? roleLabels[role];
-  const clinic = clinics.find((c) => c.id === clinicId) ?? clinics[0]!;
-  const displayClinicName = currentClinic?.name || clinicName || clinic.name;
+  const clinic = clinics.find((c) => c.id === clinicId) ?? clinics.find((c) => c.id === "kochi") ?? clinics[0]!;
+  const displayClinicName = `${currentClinic?.name || clinicName || clinic.name} · ${clinic.city}`;
 
   const results = useMemo<SearchResult[]>(() => {
     const pool: SearchResult[] = [
@@ -193,7 +194,7 @@ export function AppHeader() {
               <Button
                 variant="outline"
                 size="sm"
-                className="h-9 max-w-[min(40vw,14rem)] rounded-full border border-gray-200 bg-white text-primary hover:bg-primary-soft/40 hover:text-primary px-3"
+                className="h-9 max-w-[min(45vw,16rem)] rounded-full border border-gray-200 bg-white text-primary hover:bg-primary-soft/40 hover:text-primary px-3 shadow-xs"
                 aria-label="Clinic selector"
               >
                 <Building2 className="size-4 shrink-0" />
@@ -201,14 +202,28 @@ export function AppHeader() {
                 <ChevronDown className="size-3.5 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="rounded-xl">
-              <DropdownMenuLabel>Clinic location</DropdownMenuLabel>
+            <DropdownMenuContent align="end" className="w-56 rounded-xl">
+              <DropdownMenuLabel className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">
+                Clinic location
+              </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {clinics.map((c) => (
-                <DropdownMenuItem key={c.id} onSelect={() => setClinicId(c.id)}>
-                  {currentClinic?.name || c.name} · {c.city}
-                </DropdownMenuItem>
-              ))}
+              {clinics.map((c) => {
+                const isSelected = c.id === clinicId;
+                return (
+                  <DropdownMenuItem
+                    key={c.id}
+                    onSelect={() => setClinicId(c.id)}
+                    className={`flex items-center justify-between cursor-pointer ${
+                      isSelected ? "font-semibold bg-primary/10 text-primary" : ""
+                    }`}
+                  >
+                    <span>
+                      {currentClinic?.name || c.name} · {c.city}
+                    </span>
+                    {isSelected && <Check className="size-4 text-primary shrink-0" />}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
 

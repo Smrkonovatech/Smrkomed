@@ -383,6 +383,7 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["doctor.experience"] = matched.experience;
           mergedVars["doctor.bio"] = matched.bio || "";
           mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          mergedVars["doctor.location"] = matched.location || "";
           if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
         }
         replyAction = "btn_see_slots";
@@ -401,6 +402,7 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["doctor.experience"] = matched.experience;
           mergedVars["doctor.bio"] = matched.bio || "";
           mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          mergedVars["doctor.location"] = matched.location || "";
           if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
         }
         replyAction = rawReply;
@@ -430,6 +432,7 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["doctor.experience"] = matched.experience;
           mergedVars["doctor.bio"] = matched.bio || "";
           mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          mergedVars["doctor.location"] = matched.location || "";
           if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
           replyAction = `appt_doctor_${matched.id}`;
         } else if (!rawReply.startsWith("appt_")) {
@@ -887,6 +890,54 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
       ? { skipped: true as const, reason: "already_ran_in_webhook" }
       : await runInboundWhatsAppAi(input);
     return { resumed, dispatched: null, ai };
+  }
+
+  // 1.5. Check for Payment Intent or "Pay Now" button reply
+  const lowerMsg = (input.messageText || "").toLowerCase().trim();
+  const isPayIntent =
+    lowerMsg.startsWith("pay_") ||
+    lowerMsg === "pay now" ||
+    lowerMsg === "💳 pay now" ||
+    lowerMsg.includes("pay bill") ||
+    lowerMsg.includes("pay invoice");
+
+  if (isPayIntent) {
+    let invoice = null;
+    if (lowerMsg.startsWith("pay_inv_")) {
+      const targetInvId = input.messageText.replace(/^pay_inv_/i, "").trim();
+      invoice = await prisma.billingInvoice.findFirst({
+        where: { id: targetInvId, clinicId: tenant.clinicId },
+      });
+    }
+    if (!invoice && (input.patientId || coupleId)) {
+      invoice = await prisma.billingInvoice.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          ...(input.patientId ? { patientId: input.patientId } : { coupleId }),
+          status: { in: ["ISSUED", "PARTIALLY_PAID", "OVERDUE"] },
+        },
+        orderBy: { createdAt: "desc" },
+      });
+    }
+
+    if (invoice) {
+      const baseUrl = process.env["APP_URL"] || process.env["NEXT_PUBLIC_APP_URL"] || "http://localhost:3000";
+      const payUrl = `${baseUrl}/pay/${invoice.id}`;
+      const outstanding = Math.max(0, Number(invoice.totalAmount) - Number(invoice.paidAmount));
+      const outstandingStr = outstanding.toLocaleString("en-IN");
+      const { sendWhatsAppSessionText } = await import("../../integrations/providers/whatsapp/messaging");
+
+      await sendWhatsAppSessionText(tenant, {
+        conversationId: input.conversationId,
+        body: `💳 *Hospex Razorpay Checkout*\n\nHere is your direct payment link for invoice *#${invoice.invoiceNumber}* (${invoice.title}):\n\n💰 *Amount Due:* ₹${outstandingStr}\n\n👉 *Click here to pay:* ${payUrl}\n\nAccepted: UPI (Google Pay, PhonePe, Paytm), Cards & Net Banking.`,
+      });
+
+      return {
+        resumed: false,
+        dispatched: null,
+        ai: { skipped: true as const, reason: "payment_button_handled" },
+      };
+    }
   }
 
   // 2. Check if this is an appointment intent or interactive appointment button

@@ -10,6 +10,7 @@ export interface ChatMedia {
   kind: "video" | "image" | "voice" | "document";
   title: string;
   meta: string;
+  url?: string;
 }
 
 export interface ChatMessage {
@@ -92,7 +93,7 @@ const threads: Record<string, ChatMessage[]> = {
     { from: "patient", text: "Yes, please", time: "09:16" },
     {
       from: "loop",
-      text: "Done — Meera from ABC Fertility Centre will call you shortly. Meanwhile, here's a short video from your clinic explaining what to expect during the scan.",
+      text: "Done — Meera from Hospex will call you shortly. Meanwhile, here's a short video from your clinic explaining what to expect during the scan.",
       time: "09:17",
       media: { kind: "video", title: "What to expect during your scan", meta: "1:48 · English" },
     },
@@ -194,7 +195,17 @@ function MediaCard({ media }: { media: ChatMedia }) {
           <p className="truncate text-xs font-medium">{media.title}</p>
           <p className="text-[10px] text-muted-foreground">{media.meta}</p>
         </div>
-        <Button size="sm" variant="ghost" onClick={() => toast.info("Opening document")}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            if (media.url) {
+              window.open(media.url, "_blank");
+            } else {
+              toast.info("Opening document");
+            }
+          }}
+        >
           View
         </Button>
       </div>
@@ -203,16 +214,27 @@ function MediaCard({ media }: { media: ChatMedia }) {
 
   return (
     <div className="mt-2 overflow-hidden rounded-xl bg-card/80">
-      <div className="relative grid h-28 place-items-center bg-primary-soft">
+      <div className="relative grid h-32 place-items-center bg-primary-soft overflow-hidden">
         {media.kind === "video" ? (
           <Button
             size="icon"
             className="size-10 rounded-full"
-            onClick={() => toast.info("Playing clinic video")}
+            onClick={() => {
+              if (media.url) window.open(media.url, "_blank");
+              else toast.info("Playing clinic video");
+            }}
             aria-label="Play video"
           >
             <Play className="size-4" />
           </Button>
+        ) : media.url ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={media.url}
+            alt={media.title}
+            className="h-full w-full object-cover cursor-pointer hover:scale-105 transition-transform"
+            onClick={() => window.open(media.url, "_blank")}
+          />
         ) : (
           <ImageIcon className="size-7 text-primary" />
         )}

@@ -112,8 +112,8 @@ export async function getWhatsAppConversation(ctx: TenantContext, conversationId
     include: {
       patient: { select: { id: true, firstName: true, lastName: true } },
       messages: {
-        orderBy: { createdAt: "asc" },
-        take: 200,
+        orderBy: { createdAt: "desc" },
+        take: 300,
         select: {
           id: true,
           direction: true,
@@ -122,6 +122,20 @@ export async function getWhatsAppConversation(ctx: TenantContext, conversationId
           messageType: true,
           content: true,
           createdAt: true,
+          whatsappMedia: {
+            select: {
+              id: true,
+              type: true,
+              mimeType: true,
+              filename: true,
+              caption: true,
+              sizeBytes: true,
+              durationSeconds: true,
+              isVoice: true,
+              status: true,
+              error: true,
+            },
+          },
         },
       },
     },
@@ -129,6 +143,7 @@ export async function getWhatsAppConversation(ctx: TenantContext, conversationId
   if (!conversation) {
     throw new IntegrationError("INVALID_RECIPIENT", "Conversation was not found.", 404);
   }
+  conversation.messages.reverse();
   return {
     id: conversation.id,
     channel: conversation.channel,
@@ -137,7 +152,21 @@ export async function getWhatsAppConversation(ctx: TenantContext, conversationId
     contactPhone: maskPhone(conversation.contactPhone),
     contactState: conversation.unmatched ? "UNMATCHED_CONTACT" : "MATCHED_PATIENT",
     patient: conversation.patient,
-    messages: conversation.messages,
+    messages: conversation.messages.map((m) => ({
+      id: m.id,
+      direction: m.direction,
+      senderType: m.senderType,
+      status: m.status,
+      messageType: m.messageType,
+      content: m.content,
+      createdAt: m.createdAt,
+      media: m.whatsappMedia
+        ? {
+            ...m.whatsappMedia,
+            url: `/api/v1/whatsapp-automation/inbox/media/${m.whatsappMedia.id}`,
+          }
+        : null,
+    })),
   };
 }
 

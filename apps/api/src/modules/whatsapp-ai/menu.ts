@@ -43,7 +43,7 @@ export async function sendMainMenu(
     where: { id: tenant.clinicId },
     select: { name: true, phone: true, city: true },
   });
-  const clinicName = clinic?.name ?? tenant.clinicName ?? "ABC Fertility Centre";
+  const clinicName = clinic?.name ?? tenant.clinicName ?? "Hospex";
 
   const greetingBody =
     options?.customBody ||
@@ -210,7 +210,7 @@ export async function handleMenuAction(input: {
     where: { id: input.tenant.clinicId },
     select: { name: true, phone: true, address: true, city: true, slug: true },
   });
-  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "ABC Fertility Centre";
+  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "Hospex";
 
   // Check if user requested the Main Menu itself or greeted
   if (
@@ -353,8 +353,9 @@ export async function handleMenuAction(input: {
     msg += `Here are the upcoming open slots with our fertility specialists:\n\n`;
 
     let totalSlotsShown = 0;
-    for (const doc of doctors.slice(0, 3)) {
-      msg += `🩺 *${doc.displayName}*\n`;
+    for (const doc of doctors.slice(0, 5)) {
+      const locText = doc.location ? ` [📍 ${doc.location}]` : "";
+      msg += `🩺 *${doc.displayName}*${locText}\n`;
       msg += `   _${doc.specialty} (${doc.experienceYears}+ yrs exp)_\n`;
 
       for (const dateIso of upcomingDates.slice(0, 2)) {
@@ -391,11 +392,14 @@ export async function handleMenuAction(input: {
         sections: [
           {
             title: "Available Specialists",
-            rows: doctors.slice(0, 10).map((d) => ({
-              id: `appt_doctor_${d.id}`,
-              title: d.displayName.slice(0, 24),
-              description: `${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
-            })),
+            rows: doctors.slice(0, 10).map((d) => {
+              const locPrefix = d.location ? `📍 ${d.location} · ` : "";
+              return {
+                id: `appt_doctor_${d.id}`,
+                title: d.displayName.slice(0, 24),
+                description: `${locPrefix}${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
+              };
+            }),
           },
         ],
       }).catch((err) => {
@@ -415,7 +419,9 @@ export async function handleMenuAction(input: {
     const doc = doctors.find((d) => d.id === docId || d.displayName.toLowerCase().includes(docId.toLowerCase())) || doctors[0];
     if (doc) {
       const upcomingDates = getUpcomingDates(3);
-      let msg = `🩺 *${doc.displayName}*\n`;
+      const locText = doc.location ? ` (📍 ${doc.location})` : "";
+      let msg = `🩺 *${doc.displayName}*${locText}\n`;
+      if (doc.location) msg += `📍 *Branch:* ${doc.location}\n`;
       msg += `_${doc.specialty} (${doc.experienceYears}+ yrs exp)_\n\n`;
       if (doc.bio) msg += `"${doc.bio}"\n\n`;
       msg += `📅 *Available Consultation Slots:*\n\n`;
@@ -515,11 +521,14 @@ export async function handleMenuAction(input: {
           sections: [
             {
               title: "Fertility Specialists",
-              rows: doctors.slice(0, 10).map((d) => ({
-                id: `appt_doctor_${d.id}`,
-                title: d.displayName.slice(0, 24),
-                description: `${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
-              })),
+              rows: doctors.slice(0, 10).map((d) => {
+                const locPrefix = d.location ? `📍 ${d.location} · ` : "";
+                return {
+                  id: `appt_doctor_${d.id}`,
+                  title: d.displayName.slice(0, 24),
+                  description: `${locPrefix}${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
+                };
+              }),
             },
           ],
         }).catch(() => undefined);
@@ -560,7 +569,9 @@ export async function handleMenuAction(input: {
     const doctors = await getClinicDoctors(input.tenant.clinicId);
     let msg = `🩺 *Our Fertility Specialists — ${clinicName}*\n\n`;
     for (const doc of doctors.slice(0, 5)) {
-      msg += `👩‍⚕️ *${doc.displayName}*\n`;
+      const locText = doc.location ? ` (📍 ${doc.location})` : "";
+      msg += `👩‍⚕️ *${doc.displayName}*${locText}\n`;
+      if (doc.location) msg += `   • Location: 📍 ${doc.location}\n`;
       msg += `   • Specialty: ${doc.specialty}\n`;
       msg += `   • Experience: ${doc.experienceYears}+ years\n`;
       if (doc.languages?.length) msg += `   • Languages: ${doc.languages.join(", ")}\n`;
@@ -713,7 +724,7 @@ export async function handleCareLoopMenuAction(input: {
     where: { id: input.tenant.clinicId },
     select: { name: true, phone: true },
   });
-  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "ABC Fertility Centre";
+  const clinicName = clinic?.name ?? input.tenant.clinicName ?? "Hospex";
 
   // Resolve couple ID
   let coupleId = conversation.coupleId;

@@ -33,7 +33,8 @@ import { useSession } from "next-auth/react";
 
 export default function DoctorsPage() {
   const doctors = useDoctors();
-  const { appointments } = useAppState();
+  const { appointments, clinicId } = useAppState();
+  const activeLocation = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32" ? "blr" : "kochi";
   const { data: session } = useSession();
   const role = session?.user?.role as StaffRole | undefined;
   const canManage =
@@ -47,13 +48,17 @@ export default function DoctorsPage() {
     roleHasPermission(role, PERMISSIONS.CLINIC_MANAGE);
 
   useEffect(() => {
-    doctorsStore.syncFromApi();
-  }, []);
+    doctorsStore.syncFromApi(clinicId);
+  }, [clinicId]);
 
   const [q, setQ] = useState("");
   const [specialty, setSpecialty] = useState("all");
   const [department, setDepartment] = useState("all");
-  const [location, setLocation] = useState("all");
+  const [location, setLocation] = useState(activeLocation);
+
+  useEffect(() => {
+    setLocation(activeLocation);
+  }, [activeLocation]);
   const [status, setStatus] = useState<DoctorStatus | "all">("all");
   const [availability, setAvailability] = useState<"all" | "today" | "unavailable">("all");
   const [view, setView] = useState<"cards" | "list">("cards");

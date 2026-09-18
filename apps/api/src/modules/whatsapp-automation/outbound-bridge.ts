@@ -5,7 +5,7 @@ import type { TenantContext } from "@smrkomed/database";
 import { metaConfig } from "../../integrations/providers/whatsapp/config";
 import { normalizeWhatsAppPhone } from "../../integrations/providers/whatsapp/phone";
 import { resolveWhatsAppSenderCredentials } from "../../integrations/providers/whatsapp/service";
-import { sendTextMessage, sendTemplateMessage } from "../../integrations/providers/whatsapp/graph";
+import { sendTextMessage, sendTemplateMessage, sendInteractiveButtons, sendInteractiveCtaUrl } from "../../integrations/providers/whatsapp/graph";
 
 async function clinicTenant(clinicId: string): Promise<TenantContext | null> {
   const clinic = await prisma.clinic.findUnique({
@@ -108,12 +108,58 @@ export async function processPendingOutboundMessages(limit = 25, clinicId?: stri
     }
 
     try {
-      const graphResult = await sendTextMessage({
-        phoneNumberId: creds.phoneNumberId,
-        accessToken: creds.token,
-        to: recipient,
-        body: msg.content,
-      });
+      let graphResult;
+
+      // 1. Try sending as interactive CTA URL if markdown link like [Review and pay](https://...) is present
+      const ctaMatch = msg.content.match(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/);
+      if (ctaMatch && ctaMatch[1] && ctaMatch[2] && ctaMatch[2].startsWith("https://")) {
+        const displayText = ctaMatch[1].slice(0, 20);
+        const url = ctaMatch[2];
+        const cleanBody = msg.content.replace(/\n*\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)\s*$/, "").trim();
+        graphResult = await sendInteractiveCtaUrl({
+          phoneNumberId: creds.phoneNumberId,
+          accessToken: creds.token,
+          to: recipient,
+          body: cleanBody,
+          displayText,
+          url,
+        }).catch((err) => {
+          console.warn("[WhatsApp Outbound Bridge] CTA URL send failed, falling back to buttons:", err);
+          return null;
+        });
+      }
+
+      // 2. Otherwise try sending interactive quick reply buttons
+      if (!graphResult) {
+        const buttonMatches = [...msg.content.matchAll(/\[([^\]]+)\](?!\()/g)]
+          .map((m) => m[1])
+          .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+        if (msg.messageType === "interactive" && buttonMatches.length > 0 && buttonMatches.length <= 3) {
+          const cleanBody = msg.content.replace(/\n*(\[[^\]]+\]\s*)+$/, "").trim();
+          graphResult = await sendInteractiveButtons({
+            phoneNumberId: creds.phoneNumberId,
+            accessToken: creds.token,
+            to: recipient,
+            body: cleanBody,
+            buttons: buttonMatches.map((title, idx) => ({
+              id: `btn_${idx}_${title.toLowerCase().replace(/[^a-z0-9]/g, "_")}`,
+              title: title.slice(0, 20),
+            })),
+          }).catch((err) => {
+            console.warn("[WhatsApp Outbound Bridge] Interactive send failed, falling back to text:", err);
+            return null;
+          });
+        }
+      }
+
+      if (!graphResult) {
+        graphResult = await sendTextMessage({
+          phoneNumberId: creds.phoneNumberId,
+          accessToken: creds.token,
+          to: recipient,
+          body: msg.content,
+        });
+      }
 
       const messages = graphResult["messages"];
       const metaId =

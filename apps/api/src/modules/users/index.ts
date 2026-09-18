@@ -45,6 +45,9 @@ const createStaffSchema = z.object({
   qualifications: z.string().max(500).optional(),
   yearsExperience: z.union([z.number(), z.string()]).optional(),
   languages: z.string().max(200).optional(),
+  clinicId: z.string().optional(),
+  locationId: z.string().optional(),
+  location: z.string().optional(),
 });
 
 export const userRoutes = new Hono<AppEnv>()
@@ -70,12 +73,19 @@ export const userRoutes = new Hono<AppEnv>()
   })
   .get("/staff", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const requestedClinic = c.req.query("clinicId") || c.req.header("x-clinic-id");
+    const targetClinicId =
+      requestedClinic === "cmt0exo9n000vl804rbaabh32" || requestedClinic === "blr"
+        ? "cmt0exo9n000vl804rbaabh32"
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" || requestedClinic === "kochi"
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
+
     try {
       const [memberships, profileRules] = await Promise.all([
         prisma.clinicMembership.findMany({
           where: {
-            clinicId: tenant.clinicId,
-            clinic: { organizationId: tenant.organizationId },
+            clinicId: targetClinicId,
             status: "ACTIVE",
             user: { isActive: true },
           },
@@ -88,7 +98,7 @@ export const userRoutes = new Hono<AppEnv>()
         }),
         prisma.automationRule.findMany({
           where: {
-            clinicId: tenant.clinicId,
+            clinicId: targetClinicId,
             trigger: "DOCTOR_PROFILE",
           },
         }),
@@ -148,16 +158,93 @@ export const userRoutes = new Hono<AppEnv>()
     const body = c.req.valid("json");
     const email = body.email.toLowerCase().trim();
 
-    // Check email is not already taken
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      return fail(c, 409, "EMAIL_TAKEN", "An account with this email already exists.");
-    }
-
     // Find the role
     const role = await prisma.role.findUnique({ where: { key: body.role as any } });
     if (!role) {
       return fail(c, 400, "ROLE_NOT_FOUND", `Role ${body.role} does not exist. Run demo setup first.`);
+    }
+
+    const requestedClinic = body.clinicId || body.locationId || c.req.header("x-clinic-id");
+    const targetClinicId =
+      requestedClinic === "cmt0exo9n000vl804rbaabh32" ||
+      requestedClinic === "blr" ||
+      body.location?.toLowerCase?.().includes("bangalore")
+        ? "cmt0exo9n000vl804rbaabh32"
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" ||
+          requestedClinic === "kochi" ||
+          body.location?.toLowerCase?.().includes("kochi")
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
+
+    // If account with this email already exists, update user and ensure membership in target clinic
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      const existingMembership = await prisma.clinicMembership.findUnique({
+        where: { clinicId_userId: { clinicId: targetClinicId, userId: existing.id } },
+      });
+      if (!existingMembership) {
+        await prisma.clinicMembership.create({
+          data: {
+            clinicId: targetClinicId,
+            userId: existing.id,
+            roleId: role.id,
+            status: "ACTIVE",
+          },
+        });
+      } else if (existingMembership.status !== "ACTIVE" || existingMembership.roleId !== role.id) {
+        await prisma.clinicMembership.update({
+          where: { id: existingMembership.id },
+          data: { status: "ACTIVE", roleId: role.id },
+        });
+      }
+
+      const updated = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: body.name || existing.name,
+          title: body.title ?? existing.title,
+          phone: body.phone ?? existing.phone,
+          isActive: true,
+        },
+        select: userSelect,
+      });
+
+      if (body.role === "DOCTOR" || body.department || body.registrationNumber || body.qualifications) {
+        const qualificationsText = typeof body.qualifications === "string" ? body.qualifications : undefined;
+        const profileData = {
+          displayName: body.name,
+          department: body.department || "Reproductive Medicine",
+          registrationNumber: body.registrationNumber || undefined,
+          qualificationsText,
+          yearsExperience: body.yearsExperience ? Number(body.yearsExperience) : 10,
+          languages: body.languages ? body.languages.split(",").map((s: string) => s.trim()) : ["English", "Hindi"],
+          primarySpecialty: body.title || "Reproductive Medicine",
+        };
+        const existingRule = await prisma.automationRule.findFirst({
+          where: {
+            clinicId: targetClinicId,
+            trigger: "DOCTOR_PROFILE",
+            OR: [{ name: existing.id }, { name: `doc_${existing.id}` }],
+          },
+        });
+        if (existingRule) {
+          await prisma.automationRule.update({
+            where: { id: existingRule.id },
+            data: { config: profileData },
+          });
+        } else {
+          await prisma.automationRule.create({
+            data: {
+              clinicId: targetClinicId,
+              trigger: "DOCTOR_PROFILE",
+              name: existing.id,
+              config: profileData,
+            },
+          });
+        }
+      }
+
+      return ok(c, updated, 201);
     }
 
     const passwordHash = await hash(body.password, 10);
@@ -185,7 +272,7 @@ export const userRoutes = new Hono<AppEnv>()
       // Add to clinic
       await tx.clinicMembership.create({
         data: {
-          clinicId: tenant.clinicId,
+          clinicId: targetClinicId,
           userId: user.id,
           roleId: role.id,
           status: "ACTIVE",
@@ -208,7 +295,7 @@ export const userRoutes = new Hono<AppEnv>()
       };
       await prisma.automationRule.create({
         data: {
-          clinicId: tenant.clinicId,
+          clinicId: targetClinicId,
           trigger: "DOCTOR_PROFILE",
           name: result.id,
           config: profileData,
@@ -217,7 +304,7 @@ export const userRoutes = new Hono<AppEnv>()
     }
 
     console.info("STAFF_CREATED", {
-      clinicId: tenant.clinicId,
+      clinicId: targetClinicId,
       createdBy: tenant.userId,
       newUserId: result.id,
       role: body.role,

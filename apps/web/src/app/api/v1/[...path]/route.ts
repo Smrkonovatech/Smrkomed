@@ -28,6 +28,8 @@ async function proxy(req: NextRequest, path: string[]) {
   if (accept) headers.set("accept", accept);
   const range = req.headers.get("range");
   if (range) headers.set("range", range);
+  const clinicId = req.headers.get("x-clinic-id");
+  if (clinicId) headers.set("x-clinic-id", clinicId);
 
   const method = req.method.toUpperCase();
   const hasBody = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";

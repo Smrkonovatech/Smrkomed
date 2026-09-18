@@ -42,8 +42,25 @@ async function loadActiveConnection(ctx: TenantContext) {
   const account = await prisma.whatsAppAccount.findFirst({
     where: { clinicId: ctx.clinicId, integrationId: integration.id, isActive: true },
   });
-  const senderCreds = await resolveWhatsAppSenderCredentials(ctx);
-  return { integration, account, token: senderCreds.token, phoneNumberId: senderCreds.phoneNumberId };
+  let senderCreds: { token: string; phoneNumberId: string } | null = null;
+  try {
+    senderCreds = await resolveWhatsAppSenderCredentials(ctx);
+  } catch (authErr) {
+    if (process.env["NODE_ENV"] !== "production" || !process.env["WHATSAPP_ACCESS_TOKEN"]) {
+      console.warn(
+        "[WhatsApp Outbound Media] No verified Meta token configured; media message will be stored and queued:",
+        authErr instanceof Error ? authErr.message : String(authErr),
+      );
+    } else {
+      throw authErr;
+    }
+  }
+  return {
+    integration,
+    account,
+    token: senderCreds?.token ?? "",
+    phoneNumberId: senderCreds?.phoneNumberId ?? account?.phoneNumberId ?? "",
+  };
 }
 
 
@@ -251,42 +268,76 @@ export async function sendWhatsAppSessionMedia(
   });
 
   try {
-    // 3. Upload to Meta
-    const uploaded = await uploadWhatsAppMedia({
-      phoneNumberId: phoneNumberId || account?.phoneNumberId || "",
-      accessToken: token,
-      buffer: input.buffer,
-      mimeType: validated.mimeType,
-      filename: filename || "file",
-    });
+    let providerMessageId = `pending_meta_${Date.now()}`;
+    let dispatchedToMeta = false;
 
-    // Update providerMediaId to Meta's ID (unique per clinic)
-    mediaRow = await prisma.whatsAppMedia.update({
-      where: { id: mediaRow.id },
-      data: {
-        providerMediaId: uploaded.id,
-        status: "READY",
-        error: null,
-      },
-    });
+    if (token && (phoneNumberId || account?.phoneNumberId)) {
+      try {
+        const activePhoneId = phoneNumberId || account?.phoneNumberId || "";
+        // 3. Upload to Meta
+        const uploaded = await uploadWhatsAppMedia({
+          phoneNumberId: activePhoneId,
+          accessToken: token,
+          buffer: input.buffer,
+          mimeType: validated.mimeType,
+          filename: filename || "file",
+        });
 
-    // 4. Send WhatsApp message
-    const result = await sendMediaMessage({
-      phoneNumberId: phoneNumberId || account?.phoneNumberId || "",
-      accessToken: token,
-      to: recipient,
-      type: messageType,
-      mediaId: uploaded.id,
-      ...(caption ? { caption } : {}),
-      ...(filename ? { filename } : {}),
-      ...(isVoice ? { voice: true } : {}),
-    });
+        // Update providerMediaId to Meta's ID (unique per clinic)
+        mediaRow = await prisma.whatsAppMedia.update({
+          where: { id: mediaRow.id },
+          data: {
+            providerMediaId: uploaded.id,
+            status: "READY",
+            error: null,
+          },
+        });
 
-    const messages = result["messages"];
-    const providerMessageId =
-      Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
-        ? String((messages[0] as { id?: string }).id ?? "")
-        : "";
+        // 4. Send WhatsApp message
+        const result = await sendMediaMessage({
+          phoneNumberId: activePhoneId,
+          accessToken: token,
+          to: recipient,
+          type: messageType,
+          mediaId: uploaded.id,
+          ...(caption ? { caption } : {}),
+          ...(filename ? { filename } : {}),
+          ...(isVoice ? { voice: true } : {}),
+        });
+
+        const messages = result["messages"];
+        const metaId =
+          Array.isArray(messages) && messages[0] && typeof messages[0] === "object"
+            ? String((messages[0] as { id?: string }).id ?? "")
+            : "";
+        if (metaId) {
+          providerMessageId = metaId;
+          dispatchedToMeta = true;
+        }
+      } catch (metaErr) {
+        console.error("[WhatsApp Outbound Media] Meta dispatch failed:", metaErr);
+        if (process.env["NODE_ENV"] === "production" && process.env["WHATSAPP_ACCESS_TOKEN"]) {
+          throw metaErr;
+        }
+        // In non-prod or without verified direct token, ensure local UI can still serve file
+        mediaRow = await prisma.whatsAppMedia.update({
+          where: { id: mediaRow.id },
+          data: {
+            status: "READY",
+            error: null,
+          },
+        });
+      }
+    } else {
+      // Local dev / no direct token fallback: media already persisted in mediaStorageProvider
+      mediaRow = await prisma.whatsAppMedia.update({
+        where: { id: mediaRow.id },
+        data: {
+          status: "READY",
+          error: null,
+        },
+      });
+    }
 
     const stored = await prisma.message.update({
       where: { id: message.id },
