@@ -244,30 +244,47 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
     prisma.couple.count({ where: { clinicId } }),
     prisma.couple.count({ where: { clinicId, assignedDoctorId: doctorUser.id } }),
   ]);
-  const inCareCount = assignedCouplesCount > 0 ? assignedCouplesCount : (couplesCount > 0 ? couplesCount : 42);
+  const inCareCount = assignedCouplesCount > 0 ? assignedCouplesCount : couplesCount;
 
   const tzOffset = "+05:30";
   const startOfTargetDate = new Date(`${requestedDate}T00:00:00${tzOffset}`);
   const endOfTargetDate = new Date(`${requestedDate}T23:59:59.999${tzOffset}`);
 
+  const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+  const todayStart = new Date(`${todayIso}T00:00:00${tzOffset}`);
+  const todayEnd = new Date(`${todayIso}T23:59:59.999${tzOffset}`);
+
   const docCleanName = doctorUser.name.replace(/^Dr\.\s*/i, "").trim();
-  const dateAppointments = await prisma.appointment.findMany({
-    where: {
-      clinicId,
-      status: { not: "CANCELLED" },
-      startsAt: { gte: startOfTargetDate, lte: endOfTargetDate },
-      OR: [
-        { doctorName: { contains: docCleanName, mode: "insensitive" } },
-        { couple: { assignedDoctorId: doctorUser.id } },
-      ],
-    },
-    include: {
-      couple: {
-        include: { primaryPatient: true },
+  const [dateAppointments, todayApptsCount] = await Promise.all([
+    prisma.appointment.findMany({
+      where: {
+        clinicId,
+        status: { not: "CANCELLED" },
+        startsAt: { gte: startOfTargetDate, lte: endOfTargetDate },
+        OR: [
+          { doctorName: { contains: docCleanName, mode: "insensitive" } },
+          { couple: { assignedDoctorId: doctorUser.id } },
+        ],
       },
-    },
-    orderBy: { startsAt: "asc" },
-  });
+      include: {
+        couple: {
+          include: { primaryPatient: true },
+        },
+      },
+      orderBy: { startsAt: "asc" },
+    }),
+    prisma.appointment.count({
+      where: {
+        clinicId,
+        status: { not: "CANCELLED" },
+        startsAt: { gte: todayStart, lte: todayEnd },
+        OR: [
+          { doctorName: { contains: docCleanName, mode: "insensitive" } },
+          { couple: { assignedDoctorId: doctorUser.id } },
+        ],
+      },
+    }),
+  ]);
 
   const overrideRule = await prisma.automationRule.findFirst({
     where: {
@@ -397,10 +414,11 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
       dailyMaxPatients: cfg.dailyMaxPatients || 15,
     },
     metrics: {
-      inCareCount: inCareCount || 42,
-      todayAppointmentsCount: dateAppointments.length || (requestedDate.includes("19") ? 2 : 8),
-      slotUtilization: utilizationPct || 67,
-      utilizationStatus: "Optimal",
+      inCareCount,
+      todayAppointmentsCount: todayApptsCount,
+      selectedDateAppointmentsCount: dateAppointments.length,
+      slotUtilization: utilizationPct,
+      utilizationStatus: utilizationPct > 80 ? "High" : utilizationPct > 40 ? "Optimal" : "Available",
     },
     selectedDate: requestedDate,
     morningSession: {
@@ -414,10 +432,10 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
       slots: afternoonSlots,
     },
     utilization: {
-      bookedPercent: utilizationPct || 67,
-      bookedCount: bookedCount || 8,
-      availableCount: availableCount || 4,
-      blockedCount: blockedCount || 2,
+      bookedPercent: utilizationPct,
+      bookedCount,
+      availableCount,
+      blockedCount,
     },
     weeklySchedule,
     safeguards,
@@ -515,6 +533,7 @@ async function saveSlotManagementData(tenant: any, targetDoctorId: string | null
       ...currentConfig,
       ...(body.weeklySchedule ? { weeklyScheduleStructured: body.weeklySchedule } : {}),
       ...(body.safeguards ? { safeguards: body.safeguards } : {}),
+      ...(body.doctorDetails ? { ...body.doctorDetails } : {}),
       ...(body.room ? { room: body.room } : {}),
     };
 

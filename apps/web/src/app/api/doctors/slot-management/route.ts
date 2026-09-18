@@ -117,36 +117,54 @@ export async function GET(request: NextRequest) {
     });
     const cfg = (profileRule?.config as any) || {};
 
-    // In Care couples count
+    // In Care couples count (strictly from database)
     const [totalCouples, assignedCouples] = await Promise.all([
       prisma.couple.count({ where: { clinicId } }),
       prisma.couple.count({ where: { clinicId, assignedDoctorId: doctorUser.id } }),
     ]);
-    const inCareCount = assignedCouples > 0 ? assignedCouples : (totalCouples > 0 ? totalCouples : 42);
+    const inCareCount = assignedCouples > 0 ? assignedCouples : totalCouples;
 
-    // Appointments on requested date
+    // Appointments on requested date & today
     const tzOffset = "+05:30";
     const dayStart = new Date(`${requestedDate}T00:00:00${tzOffset}`);
     const dayEnd = new Date(`${requestedDate}T23:59:59.999${tzOffset}`);
 
+    const todayIso = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const todayStart = new Date(`${todayIso}T00:00:00${tzOffset}`);
+    const todayEnd = new Date(`${todayIso}T23:59:59.999${tzOffset}`);
+
     const docCleanName = doctorUser.name.replace(/^Dr\.\s*/i, "").trim();
-    const dateAppointments = await prisma.appointment.findMany({
-      where: {
-        clinicId,
-        status: { not: "CANCELLED" },
-        startsAt: { gte: dayStart, lte: dayEnd },
-        OR: [
-          { doctorName: { contains: docCleanName, mode: "insensitive" } },
-          { couple: { assignedDoctorId: doctorUser.id } },
-        ],
-      },
-      include: {
-        couple: {
-          include: { primaryPatient: true },
+
+    const [dateAppointments, todayApptsCount] = await Promise.all([
+      prisma.appointment.findMany({
+        where: {
+          clinicId,
+          status: { not: "CANCELLED" },
+          startsAt: { gte: dayStart, lte: dayEnd },
+          OR: [
+            { doctorName: { contains: docCleanName, mode: "insensitive" } },
+            { couple: { assignedDoctorId: doctorUser.id } },
+          ],
         },
-      },
-      orderBy: { startsAt: "asc" },
-    });
+        include: {
+          couple: {
+            include: { primaryPatient: true },
+          },
+        },
+        orderBy: { startsAt: "asc" },
+      }),
+      prisma.appointment.count({
+        where: {
+          clinicId,
+          status: { not: "CANCELLED" },
+          startsAt: { gte: todayStart, lte: todayEnd },
+          OR: [
+            { doctorName: { contains: docCleanName, mode: "insensitive" } },
+            { couple: { assignedDoctorId: doctorUser.id } },
+          ],
+        },
+      }),
+    ]);
 
     // Overrides
     const overrideRule = await prisma.automationRule.findFirst({
@@ -252,10 +270,11 @@ export async function GET(request: NextRequest) {
         dailyMaxPatients: cfg.dailyMaxPatients || 15,
       },
       metrics: {
-        inCareCount: inCareCount || 42,
-        todayAppointmentsCount: dateAppointments.length || (requestedDate.includes("19") ? 2 : 8),
-        slotUtilization: utilizationPct || 67,
-        utilizationStatus: "Optimal",
+        inCareCount,
+        todayAppointmentsCount: todayApptsCount,
+        selectedDateAppointmentsCount: dateAppointments.length,
+        slotUtilization: utilizationPct,
+        utilizationStatus: utilizationPct > 80 ? "High" : utilizationPct > 40 ? "Optimal" : "Available",
       },
       selectedDate: requestedDate,
       morningSession: {
@@ -269,10 +288,10 @@ export async function GET(request: NextRequest) {
         slots: afternoonSlots,
       },
       utilization: {
-        bookedPercent: utilizationPct || 67,
-        bookedCount: bookedCount || 8,
-        availableCount: availableCount || 4,
-        blockedCount: blockedCount || 2,
+        bookedPercent: utilizationPct,
+        bookedCount,
+        availableCount,
+        blockedCount,
       },
       weeklySchedule,
       safeguards,
@@ -291,7 +310,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     const body = await request.json();
-    const { doctorId, date, selectedSlots, weeklySchedule, safeguards, room } = body;
+    const { doctorId, date, selectedSlots, weeklySchedule, safeguards, doctorDetails, room } = body;
 
     const doctorUser = await resolveTargetDoctor(doctorId, session?.user?.id);
     if (!doctorUser) {
@@ -341,8 +360,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 2. Save weeklySchedule, safeguards, room in DOCTOR_PROFILE rule
-    if (weeklySchedule || safeguards || room) {
+    // 2. Save weeklySchedule, safeguards, doctorDetails, room in DOCTOR_PROFILE rule
+    if (weeklySchedule || safeguards || doctorDetails || room) {
       const existingProfile = await prisma.automationRule.findFirst({
         where: {
           trigger: "DOCTOR_PROFILE",
@@ -358,6 +377,7 @@ export async function POST(request: NextRequest) {
         ...currentConfig,
         ...(weeklySchedule ? { weeklyScheduleStructured: weeklySchedule } : {}),
         ...(safeguards ? { safeguards } : {}),
+        ...(doctorDetails ? { ...doctorDetails } : {}),
         ...(room ? { room } : {}),
       };
 
