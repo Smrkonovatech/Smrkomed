@@ -222,7 +222,7 @@ export default function PatientProfile() {
 
                 {/* Row 2: Care Calendar (12) */}
                 <div className="lg:col-span-12">
-                    <CareCalendarWidget couple={effectiveCouple} />
+                    <CareCalendarWidget couple={effectiveCouple} p360={p360} />
                 </div>
 
                 {/* Row 3: Medications (8) | Last Consultation Summary (4) */}

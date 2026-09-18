@@ -187,14 +187,14 @@ export function AddPrescriptionModal({
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <input
-                list="medication-search-list"
+                list="medication-search-list-admin"
                 placeholder="Choose from list of medicines"
                 value={medicationName}
                 onChange={(e) => setMedicationName(e.target.value)}
                 required
                 className="w-full h-11 pl-10 pr-4 text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#866BE3]/20 focus:border-[#866BE3] placeholder:text-gray-400 transition-all shadow-2xs"
               />
-              <datalist id="medication-search-list">
+              <datalist id="medication-search-list-admin">
                 {COMMON_FERTILITY_MEDICATIONS.map((med) => (
                   <option key={med} value={med} />
                 ))}

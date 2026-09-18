@@ -245,6 +245,24 @@ export const APP_NAV_CATEGORIES: AppNavCategory[] = [
 ];
 
 export function categoryMatchesPath(category: AppNavCategory, pathname: string): boolean {
+  if (category.id === "dashboard" || category.id === "doctor_home") {
+    if (pathname === "/home" || pathname === "/doctor") return true;
+  }
+  if (category.href) {
+    if (category.href === "/home") {
+      if (pathname === "/home" || pathname === "/doctor") return true;
+    } else if (pathname === category.href || pathname.startsWith(`${category.href}/`)) {
+      return true;
+    }
+  }
+  for (const item of category.items) {
+    if (item.openAi) continue;
+    if (item.href === "/home") {
+      if (pathname === "/home" || pathname === "/doctor") return true;
+    } else if (pathname === item.href || pathname.startsWith(`${item.href}/`)) {
+      return true;
+    }
+  }
   return activeCategoryId(pathname) === category.id;
 }
 

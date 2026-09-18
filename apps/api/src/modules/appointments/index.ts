@@ -3,6 +3,7 @@ import { PERMISSIONS, getAppointmentsForClinic, prisma } from "@smrkomed/databas
 
 import { audit } from "../../lib/audit";
 import { requirePermission } from "../../lib/authz";
+import { notFound } from "../../lib/errors";
 import { ok } from "../../lib/http";
 import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
@@ -167,4 +168,14 @@ export const appointmentRoutes = new Hono<AppEnv>()
         .catch(() => undefined);
     }
     return ok(c, serializeAppointment(appointment));
+  })
+  .delete("/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.APPOINTMENTS_WRITE);
+    const { id } = c.req.valid("param");
+    const existing = await prisma.appointment.findUnique({ where: { id } });
+    if (!existing) throw notFound("Appointment not found.");
+    await requireClinicOwned(tenant, existing);
+    await prisma.appointment.delete({ where: { id } });
+    await audit(tenant, "appointment.delete", "Appointment", id);
+    return ok(c, { success: true, deletedId: id });
   });

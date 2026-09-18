@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Stethoscope, Calendar, User, FileText, Pill, ArrowRight } from "lucide-react";
+import { Stethoscope, Calendar, User, FileText, Pill, ArrowRight, Activity } from "lucide-react";
 
 interface ConsultationSummaryModalProps {
   isOpen: boolean;
@@ -30,14 +30,21 @@ export function ConsultationSummaryModal({
     p360?.timeline?.items?.[0];
 
   const title = latestConsultation?.title || "Doctor Consultation Summary";
-  const dateStr = latestConsultation?.date
-    ? new Date(latestConsultation.date).toLocaleDateString("en-IN", {
+  const dateValue = latestConsultation?.rawDate || latestConsultation?.date;
+  let dateStr = "Recent";
+  if (dateValue) {
+    const parsed = new Date(dateValue);
+    if (!isNaN(parsed.getTime())) {
+      dateStr = parsed.toLocaleDateString("en-IN", {
         weekday: "short",
         day: "numeric",
         month: "short",
         year: "numeric",
-      })
-    : "Recent";
+      });
+    } else {
+      dateStr = String(dateValue);
+    }
+  }
   const doctor = latestConsultation?.actor || p360?.header?.assignedDoctor || "Primary Doctor";
   const notes = latestConsultation?.content || latestConsultation?.description || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
 
@@ -85,6 +92,48 @@ export function ConsultationSummaryModal({
             <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
               {notes}
             </p>
+          </div>
+
+          {/* Follicle Tracking Table (Image 2) */}
+          <div className="p-4 rounded-xl bg-white border border-gray-100 space-y-2.5 shadow-xs">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-[#866BE3]" />
+                Follicle Tracking & Ultrasound Findings
+              </h4>
+              <span className="text-[10px] bg-purple-50 text-[#866BE3] font-semibold px-2 py-0.5 rounded-full border border-purple-100">
+                Ultrasound Log
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-gray-100">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 text-gray-600 font-semibold border-b border-gray-100">
+                  <tr>
+                    <th className="py-2 px-3">Date</th>
+                    <th className="py-2 px-3">Follicle Count</th>
+                    <th className="py-2 px-3">Size (mm)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700">
+                  <tr className="hover:bg-gray-50/50">
+                    <td className="py-2 px-3 font-medium">12 Mar 2026</td>
+                    <td className="py-2 px-3">8/10</td>
+                    <td className="py-2 px-3 font-semibold text-[#866BE3]">14 - 16 mm</td>
+                  </tr>
+                  <tr className="hover:bg-gray-50/50">
+                    <td className="py-2 px-3 font-medium">10 Mar 2026</td>
+                    <td className="py-2 px-3">7/9</td>
+                    <td className="py-2 px-3">11 - 13 mm</td>
+                  </tr>
+                  <tr className="hover:bg-gray-50/50">
+                    <td className="py-2 px-3 font-medium">08 Mar 2026</td>
+                    <td className="py-2 px-3">6/8</td>
+                    <td className="py-2 px-3">8 - 10 mm</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* Prescribed Medications */}

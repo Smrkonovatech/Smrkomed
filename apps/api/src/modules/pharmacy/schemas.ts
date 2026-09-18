@@ -173,7 +173,7 @@ export const updateReminderStatusSchema = z
 
 export const createPrescriptionSchema = z
   .object({
-    patientId: z.string().min(1),
+    patientId: z.string().min(1).optional().nullable(),
     coupleId: z.string().min(1).optional().nullable(),
     doctorId: z.string().min(1).optional().nullable(),
     doctorName: z.string().trim().max(120).optional().nullable(),

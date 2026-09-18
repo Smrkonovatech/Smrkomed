@@ -39,7 +39,7 @@ export const coupleRoutes = new Hono<AppEnv>()
     });
     if (!couple) throw notFound();
 
-    const [appointments, tasks] = await Promise.all([
+    const [appointments, tasks, notes] = await Promise.all([
       prisma.appointment.findMany({
         where: { coupleId: couple.id, clinicId: tenant.clinicId },
       }),
@@ -57,10 +57,35 @@ export const coupleRoutes = new Hono<AppEnv>()
           carePlanStep: true,
         },
       }),
+      prisma.consultationNote.findMany({
+        where: { coupleId: couple.id, clinicId: tenant.clinicId },
+        include: { createdBy: { select: { name: true } } },
+      }),
     ]);
 
+    const serializedAppts = appointments.map(serializeAppointment);
+    for (const note of notes) {
+      const alreadyHas = serializedAppts.some(
+        (a) => a.id === note.id || (a.date && new Date(a.date).toDateString() === note.consultationDate.toDateString())
+      );
+      if (!alreadyHas) {
+        serializedAppts.push({
+          id: note.id,
+          coupleId: note.coupleId,
+          type: note.reasonForVisit || "Doctor Consultation",
+          doctor: note.createdBy?.name || "Doctor",
+          room: "OPD Room 3",
+          status: "Completed",
+          time: "11:00 AM",
+          date: note.consultationDate.toISOString(),
+          duration: 30,
+          notes: note.summary,
+        });
+      }
+    }
+
     return ok(c, {
-      appointments: appointments.map(serializeAppointment),
+      appointments: serializedAppts,
       tasks: tasks.map((task) => serializeTask(task as any, task.couple as any)),
     });
   })

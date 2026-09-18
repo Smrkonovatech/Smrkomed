@@ -30,7 +30,8 @@ export default auth((req) => {
     pathname.startsWith("/api/create-order") ||
     pathname.startsWith("/api/verify-payment") ||
     pathname.startsWith("/api/razorpay") ||
-    pathname.startsWith("/api/payments");
+    pathname.startsWith("/api/payments") ||
+    pathname.startsWith("/api/consultations");
 
   if (isPublicApi || isPublicPage || isOnboarding) {
     return NextResponse.next();

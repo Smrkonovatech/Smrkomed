@@ -49,6 +49,14 @@ export default function PatientProfile() {
 
     const targetId = matchedCouple?.id || slug;
 
+    const reload360 = () => {
+        if (!targetId) return;
+        clinicApi
+            .patient360(targetId)
+            .then(setP360)
+            .catch((err) => console.error("Failed to reload patient 360 profile:", err));
+    };
+
     useEffect(() => {
         let isMounted = true;
         if (!targetId) {
@@ -180,7 +188,11 @@ export default function PatientProfile() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Row 1 */}
                 <div className="lg:col-span-4">
-                    <PatientProfileCards couple={effectiveCouple} p360={p360} />
+                    <PatientProfileCards
+                        couple={effectiveCouple}
+                        p360={p360}
+                        onPatientUpdated={reload360}
+                    />
                 </div>
                 <div className="lg:col-span-5">
                     <IvfCycleWidget couple={effectiveCouple} p360={p360} />
@@ -196,7 +208,11 @@ export default function PatientProfile() {
 
                 {/* Row 3 */}
                 <div className="lg:col-span-7 xl:col-span-8">
-                    <MedicationsWidget coupleId={effectiveCouple.id} p360={p360} />
+                    <MedicationsWidget
+                        coupleId={effectiveCouple.id}
+                        p360={p360}
+                        onMedicationAdded={reload360}
+                    />
                 </div>
                 <div className="lg:col-span-5 xl:col-span-4">
                     <LastSessionSummaryWidget p360={p360} />

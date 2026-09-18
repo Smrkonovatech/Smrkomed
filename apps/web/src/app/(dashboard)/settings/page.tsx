@@ -17,10 +17,18 @@ import {
   ShieldCheck,
   Users,
   Wallet,
+  User,
+  Lock,
+  Mail,
+  Globe,
+  HandHeart,
+  LogOut,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { signOut, useSession } from "next-auth/react";
 import { toast } from "sonner";
 
 import { PageHeader, StatusBadge } from "@/components/ui-kit";
@@ -34,20 +42,44 @@ import { useAppState } from "@/lib/app-state";
 import { clinics, team } from "@/lib/demo-data";
 import { cn } from "@/lib/utils";
 
+type DoctorSectionId =
+  | "profile"
+  | "notifications"
+  | "security"
+  | "communication"
+  | "language"
+  | "privacy"
+  | "help";
+
 type SectionId =
+  | DoctorSectionId
   | "clinic"
   | "team"
   | "roles"
   | "care-loop"
   | "whatsapp"
   | "ai"
-  | "notifications"
   | "appointments"
   | "billing"
   | "integrations"
   | "audit";
 
 type ToggleMap = Record<string, boolean>;
+
+const doctorSections: Array<{
+  id: DoctorSectionId;
+  label: string;
+  description: string;
+  icon: LucideIcon;
+}> = [
+  { id: "profile", label: "Profile", description: "Doctor credentials & details", icon: User },
+  { id: "notifications", label: "Notifications", description: "Alerts, escalations & sounds", icon: Bell },
+  { id: "security", label: "Security", description: "Password, 2FA & sessions", icon: Lock },
+  { id: "communication", label: "Communication Preferences", description: "Consultations & WhatsApp messaging", icon: Mail },
+  { id: "language", label: "Language", description: "English (US)", icon: Globe },
+  { id: "privacy", label: "Terms and Privacy", description: "HIPAA, NABH & clinical privacy", icon: FileText },
+  { id: "help", label: "Help & Support", description: "Doctor desk & emergency hotline", icon: HandHeart },
+];
 
 const sections: Array<{
   id: SectionId;
@@ -220,12 +252,64 @@ function SaveActions({ saved, loading }: { saved: boolean; loading?: boolean }) 
 }
 
 export default function SettingsPage() {
+  const { data: session } = useSession();
   const { role, clinicId, currentClinic, updateClinic } = useAppState();
+  const isDoctor = session?.user?.role === "DOCTOR" || (role as string).toUpperCase() === "DOCTOR";
   const clinic = clinics.find((item) => item.id === clinicId) ?? clinics[0]!;
-  const [activeSection, setActiveSection] = useState<SectionId>("clinic");
+  const [activeSection, setActiveSection] = useState<SectionId>("profile");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [savedSection, setSavedSection] = useState<SectionId | null>(null);
   const [isSavingClinic, setIsSavingClinic] = useState(false);
+
+  // Doctor Settings State
+  const [doctorProfile, setDoctorProfile] = useState({
+    name: "Dr. Suresh Sharma",
+    license: "KMC-45920",
+    specialty: "Reproductive Medicine & Clinical Embryology",
+    qualifications: "MBBS, MS (OBG), Fellowship in Reproductive Medicine",
+    email: "dr.suresh@smrkomed.clinic",
+    phone: "+91 98450 12345",
+    consultationHours: "09:00 AM – 04:00 PM (Mon – Sat)",
+    bio: "Senior Fertility Specialist with 14+ years of clinical IVF experience specializing in poor ovarian reserve and recurrent implantation failure.",
+  });
+
+  const [doctorNotifications, setDoctorNotifications] = useState<ToggleMap>({
+    "Critical Care Loop Escalations": true,
+    "Patient Consultation Reminders": true,
+    "WhatsApp Clinical Inquiries": true,
+    "Audio Chime on Critical Alerts": true,
+    "Daily Morning Digest": true,
+  });
+
+  const [doctorSecurity, setDoctorSecurity] = useState({
+    twoFactorEnabled: true,
+  });
+
+  const [doctorCommunication, setDoctorCommunication] = useState<ToggleMap>({
+    "WhatsApp Direct Clinical Messaging": true,
+    "AI Audio Transcription Auto-Start": true,
+    "Emergency Care Loop Call Forwarding": true,
+    "Automated Out-of-Office Notice": false,
+  });
+
+  const [selectedLanguage, setSelectedLanguage] = useState("English (US)");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      if (
+        tab &&
+        (doctorSections.some((s) => s.id === tab) || sections.some((s) => s.id === tab))
+      ) {
+        setActiveSection(tab as SectionId);
+      } else if (!isDoctor) {
+        setActiveSection("clinic");
+      } else {
+        setActiveSection("profile");
+      }
+    }
+  }, [isDoctor]);
+
   const [profile, setProfile] = useState({
     name: currentClinic?.name || clinic.name,
     city: currentClinic?.city || clinic.city,
@@ -290,7 +374,11 @@ export default function SettingsPage() {
     "External Lab Inbox": false,
   });
 
-  const active = sections.find((section) => section.id === activeSection)!;
+  const isDoctorSettings = doctorSections.some((s) => s.id === activeSection);
+  const active =
+    doctorSections.find((s) => s.id === activeSection) ??
+    sections.find((s) => s.id === activeSection) ??
+    sections[0]!;
   const isOwner = role === "owner";
 
   async function save(
@@ -370,62 +458,515 @@ export default function SettingsPage() {
             setErrors({});
           }}
         >
-          {sections.map((section) => (
-            <option key={section.id} value={section.id}>
-              {section.label}
-            </option>
-          ))}
+          <optgroup label="Doctor Settings">
+            {doctorSections.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Clinic Administration">
+            {sections.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
-        <nav
-          className="surface-card sticky top-20 hidden overflow-hidden p-2 lg:block"
-          aria-label="Settings"
-        >
-          {sections.map((section) => {
-            const Icon = section.icon;
-            const selected = activeSection === section.id;
-            return (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => {
-                  setActiveSection(section.id);
-                  setErrors({});
-                }}
-                className={cn(
-                  "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
-                  selected ? "bg-primary-soft text-primary" : "hover:bg-muted/70",
-                )}
-                aria-current={selected ? "page" : undefined}
-              >
-                <Icon className="size-4 shrink-0" />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{section.label}</span>
-                  <span
-                    className={cn(
-                      "block truncate text-[11px]",
-                      selected ? "text-primary/70" : "text-muted-foreground",
-                    )}
+      <div className="grid items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="sticky top-20 hidden space-y-3 lg:block">
+          {isDoctorSettings ? (
+            <div className="rounded-2xl border border-gray-200/90 bg-white shadow-sm overflow-hidden">
+              <ul className="divide-y divide-gray-100">
+                {doctorSections.map((item) => {
+                  const ItemIcon = item.icon;
+                  const selected = activeSection === item.id;
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveSection(item.id);
+                          setErrors({});
+                        }}
+                        className={cn(
+                          "w-full flex items-center justify-between px-4 py-3.5 transition-colors text-left group",
+                          selected ? "bg-purple-50/70" : "hover:bg-gray-50/80"
+                        )}
+                      >
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div
+                            className={cn(
+                              "size-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105",
+                              selected ? "bg-[#7c3aed] text-white" : "bg-[#f3f0ff] text-[#7c3aed]"
+                            )}
+                          >
+                            <ItemIcon className="size-4.5" strokeWidth={1.8} />
+                          </div>
+                          <span
+                            className={cn(
+                              "text-[13px] sm:text-sm font-semibold tracking-tight truncate",
+                              selected ? "text-[#7c3aed]" : "text-gray-900"
+                            )}
+                          >
+                            {item.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {item.id === "language" && (
+                            <span className="text-xs text-gray-400 font-normal">
+                              English (US)
+                            </span>
+                          )}
+                          <ChevronRight
+                            className={cn(
+                              "size-4 transition-transform group-hover:translate-x-0.5",
+                              selected ? "text-[#7c3aed]" : "text-gray-400/80"
+                            )}
+                            strokeWidth={2}
+                          />
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => signOut({ callbackUrl: "/login" })}
+                    className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-rose-50/60 transition-colors text-left group"
                   >
-                    {section.description}
-                  </span>
-                </span>
-                <ChevronRight
-                  className={cn("size-3.5 opacity-0", selected && "opacity-100")}
-                  aria-hidden
-                />
-              </button>
-            );
-          })}
-        </nav>
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="size-9 rounded-xl flex items-center justify-center shrink-0 bg-[#fee2e2]/70 text-[#ef4444] transition-transform group-hover:scale-105">
+                        <LogOut className="size-4.5" strokeWidth={1.8} />
+                      </div>
+                      <span className="text-[13px] sm:text-sm font-semibold tracking-tight truncate text-[#ef4444]">
+                        Logout
+                      </span>
+                    </div>
+                    <ChevronRight className="size-4 text-rose-400 transition-transform group-hover:translate-x-0.5" strokeWidth={2} />
+                  </button>
+                </li>
+              </ul>
+            </div>
+          ) : (
+            <nav
+              className="surface-card overflow-hidden p-2"
+              aria-label="Settings"
+            >
+              {sections.map((section) => {
+                const Icon = section.icon;
+                const selected = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveSection(section.id);
+                      setErrors({});
+                    }}
+                    className={cn(
+                      "group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors",
+                      selected ? "bg-primary-soft text-primary" : "hover:bg-muted/70",
+                    )}
+                    aria-current={selected ? "page" : undefined}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">{section.label}</span>
+                      <span
+                        className={cn(
+                          "block truncate text-[11px]",
+                          selected ? "text-primary/70" : "text-muted-foreground",
+                        )}
+                      >
+                        {section.description}
+                      </span>
+                    </span>
+                    <ChevronRight
+                      className={cn("size-3.5 opacity-0", selected && "opacity-100")}
+                      aria-hidden
+                    />
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+
+          <div className="px-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs text-muted-foreground"
+              onClick={() => {
+                if (isDoctorSettings) {
+                  setActiveSection("clinic");
+                } else {
+                  setActiveSection("profile");
+                }
+              }}
+            >
+              {isDoctorSettings ? "Switch to Clinic Administration" : "Switch to Doctor Settings"}
+            </Button>
+          </div>
+        </div>
 
         <main className="surface-card min-w-0 p-4 sm:p-6">
           <div className="mb-5 flex items-center gap-2 text-xs text-muted-foreground lg:hidden">
             <active.icon className="size-4" />
             <span>{active.description}</span>
           </div>
+
+          {activeSection === "profile" && (
+            <form
+              className="space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setSavedSection("profile");
+                toast.success("Doctor profile updated successfully");
+              }}
+            >
+              <SectionIntro
+                title="Profile"
+                description="Manage your professional credentials, consultation details, and clinical identity."
+                badge={<StatusBadge label="Verified Practitioner" tone="success" />}
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field id="doc-name" label="Doctor name" required>
+                  <Input
+                    id="doc-name"
+                    value={doctorProfile.name}
+                    onChange={(e) => setDoctorProfile({ ...doctorProfile, name: e.target.value })}
+                  />
+                </Field>
+                <Field id="doc-license" label="Medical License / Registration No." required>
+                  <Input
+                    id="doc-license"
+                    value={doctorProfile.license}
+                    onChange={(e) => setDoctorProfile({ ...doctorProfile, license: e.target.value })}
+                  />
+                </Field>
+                <Field id="doc-specialty" label="Department / Specialty" required>
+                  <Input
+                    id="doc-specialty"
+                    value={doctorProfile.specialty}
+                    onChange={(e) => setDoctorProfile({ ...doctorProfile, specialty: e.target.value })}
+                  />
+                </Field>
+                <Field id="doc-qual" label="Qualifications" required>
+                  <Input
+                    id="doc-qual"
+                    value={doctorProfile.qualifications}
+                    onChange={(e) => setDoctorProfile({ ...doctorProfile, qualifications: e.target.value })}
+                  />
+                </Field>
+                <Field id="doc-email" label="Contact Email" required>
+                  <Input
+                    id="doc-email"
+                    type="email"
+                    value={doctorProfile.email}
+                    onChange={(e) => setDoctorProfile({ ...doctorProfile, email: e.target.value })}
+                  />
+                </Field>
+                <Field id="doc-phone" label="Contact Phone" required>
+                  <Input
+                    id="doc-phone"
+                    value={doctorProfile.phone}
+                    onChange={(e) => setDoctorProfile({ ...doctorProfile, phone: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <Field id="doc-hours" label="OPD Consultation Hours">
+                <Input
+                  id="doc-hours"
+                  value={doctorProfile.consultationHours}
+                  onChange={(e) => setDoctorProfile({ ...doctorProfile, consultationHours: e.target.value })}
+                />
+              </Field>
+              <Field id="doc-bio" label="Professional Biography">
+                <Textarea
+                  id="doc-bio"
+                  rows={3}
+                  value={doctorProfile.bio}
+                  onChange={(e) => setDoctorProfile({ ...doctorProfile, bio: e.target.value })}
+                />
+              </Field>
+              <SaveActions saved={savedSection === "profile"} />
+            </form>
+          )}
+
+          {activeSection === "notifications" && isDoctorSettings && (
+            <form
+              className="space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setSavedSection("notifications");
+                toast.success("Notification preferences updated");
+              }}
+            >
+              <SectionIntro
+                title="Notifications"
+                description="Configure your clinical alerts, patient escalations, and notification sounds."
+              />
+              <div className="space-y-3">
+                {Object.entries(doctorNotifications).map(([label, checked]) => (
+                  <div key={label} className="flex items-center justify-between rounded-xl border p-3.5 bg-card/60">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {label.includes("Critical") && "Urgent push alerts for Care Loop exceptions and critical patient triggers."}
+                        {label.includes("Reminders") && "15-minute advance reminder before scheduled consultations and procedures."}
+                        {label.includes("WhatsApp") && "Instant notification when an assigned couple sends clinical questions."}
+                        {label.includes("Chime") && "Play distinct audio tone on urgent doctor notifications."}
+                        {label.includes("Daily") && "8:00 AM morning summary of appointments, transfers, and reviews."}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={checked}
+                      onCheckedChange={(val) =>
+                        setDoctorNotifications((prev) => ({ ...prev, [label]: val }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+              <SaveActions saved={savedSection === "notifications"} />
+            </form>
+          )}
+
+          {activeSection === "security" && (
+            <div className="space-y-6">
+              <SectionIntro
+                title="Security"
+                description="Manage your account password, authentication methods, and active sessions."
+              />
+              <div className="rounded-2xl border p-4 space-y-4 bg-card/50">
+                <h3 className="text-sm font-semibold text-foreground">Change Password</h3>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Field id="cur-pass" label="Current Password">
+                    <Input id="cur-pass" type="password" placeholder="••••••••" />
+                  </Field>
+                  <Field id="new-pass" label="New Password">
+                    <Input id="new-pass" type="password" placeholder="••••••••" />
+                  </Field>
+                  <Field id="conf-pass" label="Confirm Password">
+                    <Input id="conf-pass" type="password" placeholder="••••••••" />
+                  </Field>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="rounded-lg"
+                  onClick={() => toast.success("Password updated successfully")}
+                >
+                  Update Password
+                </Button>
+              </div>
+              <div className="rounded-2xl border p-4 flex items-center justify-between bg-card/50">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Two-Factor Authentication (2FA)</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Require an authentication code when signing into doctor workspace.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StatusBadge label={doctorSecurity.twoFactorEnabled ? "Active" : "Disabled"} tone={doctorSecurity.twoFactorEnabled ? "success" : "muted"} />
+                  <Switch
+                    checked={doctorSecurity.twoFactorEnabled}
+                    onCheckedChange={(val) => {
+                      setDoctorSecurity({ twoFactorEnabled: val });
+                      toast.success(val ? "2FA enabled" : "2FA disabled");
+                    }}
+                  />
+                </div>
+              </div>
+              <div className="rounded-2xl border p-4 space-y-3 bg-card/50">
+                <h3 className="text-sm font-semibold text-foreground">Active Sessions</h3>
+                <div className="space-y-2 text-xs">
+                  <div className="flex items-center justify-between py-1.5 border-b border-border/50">
+                    <div>
+                      <p className="font-medium text-foreground">Chrome on Windows 11 (This Device)</p>
+                      <p className="text-muted-foreground">IP: 192.168.1.4 · Active now</p>
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Current</span>
+                  </div>
+                  <div className="flex items-center justify-between py-1.5">
+                    <div>
+                      <p className="font-medium text-foreground">SmrkoMed Doctor Mobile App (iOS 18)</p>
+                      <p className="text-muted-foreground">Last active: 2 hours ago</p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50" onClick={() => toast.success("Session revoked")}>
+                      Revoke
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "communication" && (
+            <form
+              className="space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                setSavedSection("communication");
+                toast.success("Communication preferences saved");
+              }}
+            >
+              <SectionIntro
+                title="Communication Preferences"
+                description="Manage your patient communication channels, consultation recording, and quiet hours."
+              />
+              <div className="space-y-3">
+                {Object.entries(doctorCommunication).map(([label, checked]) => (
+                  <div key={label} className="flex items-center justify-between rounded-xl border p-3.5 bg-card/60">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{label}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {label.includes("WhatsApp") && "Allow patients in active cycles to message directly through verified clinic channel."}
+                        {label.includes("Transcription") && "Auto-start Sarvam AI clinical transcription when opening a patient consultation."}
+                        {label.includes("Forwarding") && "Route urgent after-hours voice escalations to on-call duty phone."}
+                        {label.includes("Out-of-Office") && "Send automated message with duty doctor contact during leave."}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={checked}
+                      onCheckedChange={(val) =>
+                        setDoctorCommunication((prev) => ({ ...prev, [label]: val }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-xl border p-4 space-y-3 bg-card/50">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Quiet Hours Schedule</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Suppress non-urgent notifications outside clinic hours.</p>
+                  </div>
+                  <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">Emergency Bypass Active</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 max-w-sm">
+                  <Field id="quiet-start" label="From">
+                    <Input id="quiet-start" defaultValue="21:00" />
+                  </Field>
+                  <Field id="quiet-end" label="Until">
+                    <Input id="quiet-end" defaultValue="07:00" />
+                  </Field>
+                </div>
+              </div>
+              <SaveActions saved={savedSection === "communication"} />
+            </form>
+          )}
+
+          {activeSection === "language" && (
+            <div className="space-y-5">
+              <SectionIntro
+                title="Language"
+                description="Choose your preferred language for the doctor workspace, medical terminology, and patient summaries."
+              />
+              <div className="rounded-xl border p-4 space-y-4 bg-card/50">
+                <Field id="lang-select" label="Interface Language">
+                  <select
+                    id="lang-select"
+                    className={selectClassName}
+                    value={selectedLanguage}
+                    onChange={(e) => {
+                      setSelectedLanguage(e.target.value);
+                      toast.success(`Language set to ${e.target.value}`);
+                    }}
+                  >
+                    <option value="English (US)">English (US) - Primary</option>
+                    <option value="English (UK)">English (UK)</option>
+                    <option value="Hindi (हिंदी)">Hindi (हिंदी)</option>
+                    <option value="Kannada (ಕನ್ನಡ)">Kannada (ಕನ್ನಡ)</option>
+                    <option value="Telugu (తెలుగు)">Telugu (తెలుగు)</option>
+                    <option value="Tamil (தமிழ்)">Tamil (தமிழ்)</option>
+                  </select>
+                </Field>
+                <div className="rounded-lg bg-muted/40 p-3 text-xs text-muted-foreground space-y-1">
+                  <p className="font-semibold text-foreground">Medical Terminology Dictionary</p>
+                  <p>Standardized to SNOMED-CT and ICD-11 for fertility diagnostics and ART protocols.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "privacy" && (
+            <div className="space-y-5">
+              <SectionIntro
+                title="Terms and Privacy"
+                description="Review clinical compliance agreements, data encryption, and confidentiality standards."
+              />
+              <div className="space-y-3">
+                <div className="rounded-xl border p-4 bg-card/50 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-foreground">Patient Health Information (PHI) & HIPAA Compliance</span>
+                    <StatusBadge label="Compliant" tone="success" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    All patient IVF records, ultrasound media, and consultation transcripts are stored with AES-256 encryption at rest and TLS 1.3 in transit.
+                  </p>
+                </div>
+                <div className="rounded-xl border p-4 bg-card/50 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-foreground">Telemedicine Practice Guidelines (NMC 2020)</span>
+                    <StatusBadge label="Certified" tone="success" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Complies with National Medical Commission statutory guidelines for digital consultations, electronic prescriptions, and verified doctor identity.
+                  </p>
+                </div>
+                <div className="rounded-xl border p-4 bg-card/50 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm text-foreground">Audio Transcription & Data Retention</span>
+                    <StatusBadge label="Audit Active" tone="info" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Consultation audio recordings via Sarvam AI are processed strictly for SOAP clinical note drafting with doctor verification required prior to finalizing.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeSection === "help" && (
+            <div className="space-y-5">
+              <SectionIntro
+                title="Help & Support"
+                description="Access clinical support, emergency hotlines, and practitioner documentation."
+              />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border p-4 bg-card/50 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="size-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                      <HandHeart className="size-4" />
+                    </div>
+                    <span className="font-semibold text-sm text-foreground">Doctor Emergency Desk</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">24/7 priority line for urgent clinical software assistance or escalation issues.</p>
+                  <p className="text-sm font-bold text-primary tabular-nums">+91 80 4567 8900</p>
+                </div>
+                <div className="rounded-xl border p-4 bg-card/50 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="size-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                      <MessageCircle className="size-4" />
+                    </div>
+                    <span className="font-semibold text-sm text-foreground">Clinical IT WhatsApp</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Direct chat with tech support for rapid device sync and template configurations.</p>
+                  <p className="text-sm font-bold text-emerald-600 tabular-nums">+91 99000 11223</p>
+                </div>
+              </div>
+              <div className="rounded-xl border p-4 bg-card/50 space-y-3">
+                <h3 className="text-sm font-semibold text-foreground">Report an Issue or Feedback</h3>
+                <Textarea placeholder="Describe the issue you encountered or suggest a feature improvement..." rows={3} />
+                <Button size="sm" className="rounded-lg" onClick={() => toast.success("Feedback submitted to clinical IT team")}>
+                  Submit Feedback
+                </Button>
+              </div>
+            </div>
+          )}
 
           {activeSection === "clinic" && (
             <form
@@ -733,7 +1274,7 @@ export default function SettingsPage() {
             </form>
           )}
 
-          {activeSection === "notifications" && (
+          {activeSection === "notifications" && !isDoctorSettings && (
             <form className="space-y-5" onSubmit={(event) => save(event, "notifications", [])}>
               <SectionIntro
                 title="Notifications"

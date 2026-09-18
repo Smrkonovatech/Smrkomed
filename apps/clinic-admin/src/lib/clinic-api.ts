@@ -132,10 +132,13 @@ export const clinicApi = {
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
   patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),
+  deleteTask: (id: string) => apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/care-tasks/${id}`),
   appointments: () => apiGet<ClinicAppointment[]>("/api/v1/appointments"),
   createAppointment: (body: unknown) => apiPost<ClinicAppointment>("/api/v1/appointments", body),
   patchAppointment: (id: string, body: unknown) =>
     apiPatch<ClinicAppointment>(`/api/v1/appointments/${id}`, body),
+  deleteAppointment: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/appointments/${id}`),
   documents: () => apiGet<ClinicDocument[]>("/api/v1/documents"),
   createDocument: (body: unknown) => apiPost<ClinicDocument>("/api/v1/documents", body),
   activity: () => apiGet<ClinicActivity[]>("/api/v1/activity"),
@@ -253,6 +256,17 @@ export const clinicApi = {
     apiPost<any>("/api/v1/ai/handoff", body),
   aiConditionalAutomation: (body: { taskId: string; event: string; responsePayload?: string }) =>
     apiPost<any>("/api/v1/ai/conditional-automation", body),
+  // Pharmacy APIs
+  pharmacyProducts: () => apiGet<any>("/api/v1/pharmacy/products"),
+  pharmacyPrescriptions: (query?: Record<string, string>) => {
+    const q = query ? "?" + new URLSearchParams(query).toString() : "";
+    return apiGet<any>(`/api/v1/pharmacy/prescriptions${q}`);
+  },
+  createPrescription: (body: unknown) => apiPost<any>("/api/v1/pharmacy/prescriptions", body),
+  cancelPrescription: (id: string) =>
+    apiPost<any>(`/api/v1/pharmacy/prescriptions/${id}/cancel`, {}),
+  deletePrescription: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/pharmacy/prescriptions/${id}`),
 };
 
 

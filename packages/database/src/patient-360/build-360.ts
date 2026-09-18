@@ -258,7 +258,7 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
     prisma.pharmacyPrescription.findMany({
       where: {
         clinicId: tenant.clinicId,
-        patientId: { in: patientIds },
+        OR: [{ coupleId: couple.id }, { patientId: { in: patientIds } }],
         status: { not: "CANCELLED" },
       },
       include: { items: true, doctor: { select: { name: true } } },

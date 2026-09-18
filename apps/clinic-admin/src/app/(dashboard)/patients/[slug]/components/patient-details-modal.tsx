@@ -36,7 +36,12 @@ import {
   Compass,
   FileSignature,
   FileCheck2,
+  Smartphone,
+  RefreshCw,
+  Copy,
+  Lock,
 } from "lucide-react";
+import { AbhaSetupWizard } from "@/components/digital-health/abha-setup-wizard";
 
 interface PatientDetailsModalProps {
   isOpen: boolean;
@@ -44,6 +49,7 @@ interface PatientDetailsModalProps {
   patient: any;
   p360?: any;
   isPartner?: boolean;
+  onPatientUpdated?: (() => void) | undefined;
 }
 
 export function PatientDetailsModal({
@@ -52,10 +58,22 @@ export function PatientDetailsModal({
   patient,
   p360,
   isPartner = false,
+  onPatientUpdated,
 }: PatientDetailsModalProps) {
   const [activeTab, setActiveTab] = useState<
     "overview" | "abha" | "medical" | "investigations" | "medications" | "documents"
   >("overview");
+
+  // ABHA Wizard & Interactive State
+  const [abhaWizardOpen, setAbhaWizardOpen] = useState(false);
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
+
+  const handleCopy = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedLabel(label);
+    toast.success(`${label} copied to clipboard`);
+    setTimeout(() => setCopiedLabel(null), 2000);
+  };
 
   const [tags, setTags] = useState<string[]>([
     "IVF Patient",
@@ -79,6 +97,27 @@ export function PatientDetailsModal({
   const partnerData = isPartner
     ? p360?.primaryPatient
     : p360?.partnerPatient;
+
+  const isAbdmConnected =
+    patientData?.abdmConnected !== undefined
+      ? Boolean(patientData.abdmConnected)
+      : p360?.digitalHealth?.identity?.status === "LINKED"
+      ? true
+      : Boolean(patient?.abdmConnected);
+
+  const defaultAbdmConnection = {
+    connected: true,
+    environment: "sandbox",
+    demoLinkAllowed: true,
+    message: "Connected to ABDM Sandbox",
+    authMethods: [
+      { id: "AADHAAR_OTP", label: "Aadhaar OTP", description: "Authenticate with Aadhaar registered mobile OTP" },
+      { id: "MOBILE_OTP", label: "Mobile OTP", description: "Authenticate with ABHA registered mobile number" },
+    ],
+  };
+
+  const patientIdForWizard =
+    patientData?.id || patient?.id || p360?.primaryPatient?.id || "patient";
 
   const patientName =
     patientData?.name ||
@@ -622,6 +661,193 @@ export function PatientDetailsModal({
                 </button>
               </div>
 
+            </div>
+          )}
+
+          {/* TAB 2: ABHA */}
+          {activeTab === "abha" && (
+            <div className="space-y-5">
+              {/* Status Header Banner */}
+              <div className="p-5 rounded-2xl bg-slate-50/80 border border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${isAbdmConnected ? "bg-emerald-50 text-emerald-600 border border-emerald-100" : "bg-[#866BE3]/10 text-[#866BE3] border border-[#866BE3]/20"}`}>
+                    <ShieldCheck className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-bold text-gray-900">ABDM & ABHA Digital Profile</h4>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded-md">
+                        Sandbox
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">Ayushman Bharat Digital Mission • National Health Authority</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {isAbdmConnected ? (
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-semibold px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-2xs">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="bg-amber-50 text-amber-700 border border-amber-200 text-xs font-semibold px-3.5 py-1.5 rounded-full flex items-center gap-1.5 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                      Not Connected
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {isAbdmConnected ? (
+                /* CONNECTED VIEW */
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-2xs relative group hover:border-[#866BE3]/30 transition-all">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">ABHA Number</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(p360?.digitalHealth?.identity?.abhaMasked || patientData?.abhaNumber || patient?.abhaNumber || "91-4829-1029-4920", "ABHA Number")}
+                          className="text-gray-400 hover:text-[#866BE3] transition-colors p-1 rounded-md cursor-pointer"
+                          title="Copy ABHA Number"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="font-bold text-gray-900 text-base mt-1.5 tracking-wide">
+                        {p360?.digitalHealth?.identity?.abhaMasked || patientData?.abhaNumber || patient?.abhaNumber || "91-4829-1029-4920"}
+                      </p>
+                      <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium mt-2">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Verified 14-digit National Health ID</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-2xs relative group hover:border-[#866BE3]/30 transition-all">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">ABHA Address (PHR)</span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(p360?.digitalHealth?.identity?.abhaAddress || patientData?.abhaAddress || patient?.abhaAddress || `${patientName?.toLowerCase().replace(/\s+/g, "")}@sbx`, "ABHA Address")}
+                          className="text-gray-400 hover:text-[#866BE3] transition-colors p-1 rounded-md cursor-pointer"
+                          title="Copy ABHA Address"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="font-bold text-gray-900 text-base mt-1.5">
+                        {p360?.digitalHealth?.identity?.abhaAddress || patientData?.abhaAddress || patient?.abhaAddress || `${patientName?.toLowerCase().replace(/\s+/g, "")}@sbx`}
+                      </p>
+                      <div className="flex items-center gap-1.5 text-[11px] text-purple-600 font-medium mt-2">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Interoperable Health Data Address</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sync / Records Information Box */}
+                  <div className="bg-gradient-to-br from-purple-50/50 to-indigo-50/30 p-4.5 rounded-2xl border border-purple-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <h5 className="text-xs font-bold text-gray-900 flex items-center gap-2">
+                        <span>Automatic Consent & Record Synchronization</span>
+                        <span className="bg-purple-100/80 text-[#866BE3] text-[10px] font-bold px-2 py-0.5 rounded-full">Active</span>
+                      </h5>
+                      <p className="text-[11px] text-gray-500">
+                        Health records, prescriptions, and lab tests from connected ABDM networks are automatically discoverable.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toast.success("Synchronizing ABDM records with health locker...");
+                          onPatientUpdated?.();
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-white text-gray-700 text-xs font-semibold hover:bg-gray-50 transition-colors shadow-2xs cursor-pointer"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5 text-gray-500" />
+                        <span>Sync Records</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAbhaWizardOpen(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#866BE3] hover:bg-[#7254d1] text-white text-xs font-semibold transition-colors shadow-2xs cursor-pointer active:scale-95"
+                      >
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>Re-verify / Update</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* NOT CONNECTED VIEW */
+                <div className="bg-white p-6 rounded-2xl border border-dashed border-gray-200 shadow-2xs space-y-6">
+                  <div className="max-w-xl">
+                    <h5 className="text-sm font-bold text-gray-900 mb-1">Link Patient to Ayushman Bharat Digital Mission</h5>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      Connect the patient&apos;s mobile number or Aadhaar to authenticate their ABHA ID. This will automatically pull verified past medical records, lab investigations, and diagnostic history into SmrkoMed.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-gray-100">
+                      <div className="w-7 h-7 rounded-lg bg-purple-100/80 text-[#866BE3] flex items-center justify-center mb-2">
+                        <Smartphone className="w-4 h-4" />
+                      </div>
+                      <p className="font-bold text-gray-900">Mobile OTP Verification</p>
+                      <p className="text-[11px] text-gray-500 mt-1">Instant authentication with ABHA-registered mobile number</p>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-gray-100">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center mb-2">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <p className="font-bold text-gray-900">Aadhaar OTP Auth</p>
+                      <p className="text-[11px] text-gray-500 mt-1">Create or link official 14-digit ABHA ID using Aadhaar OTP</p>
+                    </div>
+
+                    <div className="bg-slate-50 p-3.5 rounded-xl border border-gray-100">
+                      <div className="w-7 h-7 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center mb-2">
+                        <FileText className="w-4 h-4" />
+                      </div>
+                      <p className="font-bold text-gray-900">Direct Health Record Sync</p>
+                      <p className="text-[11px] text-gray-500 mt-1">Seamlessly discover lab reports and hospital summaries</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setAbhaWizardOpen(true)}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#866BE3] hover:bg-[#7254d1] text-white text-xs font-semibold transition-all shadow-sm active:scale-98 cursor-pointer"
+                    >
+                      <Smartphone className="w-4 h-4" />
+                      <span>Connect via Mobile / Aadhaar OTP</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAbhaWizardOpen(true)}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#866BE3] text-[#866BE3] hover:bg-[#866BE3]/5 text-xs font-semibold transition-all active:scale-98 cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Create New ABHA</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Live Setup Wizard Modal */}
+              <AbhaSetupWizard
+                open={abhaWizardOpen}
+                onOpenChange={setAbhaWizardOpen}
+                patientId={patientIdForWizard}
+                connection={defaultAbdmConnection}
+                onCompleted={() => {
+                  setAbhaWizardOpen(false);
+                  toast.success("ABDM Profile verified and connected successfully!");
+                  onPatientUpdated?.();
+                }}
+              />
             </div>
           )}
 

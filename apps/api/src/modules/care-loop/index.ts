@@ -639,6 +639,18 @@ export const careTaskRoutes = new Hono<AppEnv>()
     const body = c.req.valid("json");
     const result = await verifyTaskPayment(tenant, id, body);
     return ok(c, result);
+  })
+  .delete("/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.CARE_TASKS_WRITE);
+    const { id } = c.req.valid("param");
+    const existing = await prisma.careTask.findUnique({ where: { id } });
+    if (!existing) throw notFound("Care task not found.");
+    await requireClinicOwned(tenant, existing);
+    await prisma.taskAssignment.deleteMany({ where: { careTaskId: id } });
+    await prisma.escalation.deleteMany({ where: { careTaskId: id } });
+    await prisma.careTask.delete({ where: { id } });
+    await audit(tenant, "care_task.delete", "CareTask", id);
+    return ok(c, { success: true, deletedId: id });
   });
 
 // ─── Care Loop Exceptions & Analytics ────────────────────────────────────────
