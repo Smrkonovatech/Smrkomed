@@ -32,6 +32,79 @@ interface ChatMessage {
   timestamp: string;
 }
 
+function FormattedChatMessage({ content, isUser }: { content: string; isUser?: boolean }) {
+  const lines = content.split("\n");
+
+  const formatInline = (text: string) => {
+    // Matches **bold** or ***bold***
+    const parts = text.split(/(\*{2,3}[^*]+\*{2,3})/g);
+    return parts.map((part, idx) => {
+      const match = part.match(/^\*{2,3}([^*]+)\*{2,3}$/);
+      if (match) {
+        return (
+          <strong
+            key={idx}
+            className={`font-semibold ${isUser ? "text-primary-foreground font-bold" : "text-foreground"}`}
+          >
+            {match[1]}
+          </strong>
+        );
+      }
+      // Strip any stray asterisks
+      return part.replace(/\*{2,3}/g, "");
+    });
+  };
+
+  return (
+    <div className="space-y-1.5">
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return <div key={i} className="h-1" />;
+        }
+
+        // Bullet point
+        if (trimmed.startsWith("•") || trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+          const bulletText = trimmed.replace(/^[•\-\*]\s*/, "");
+          return (
+            <div key={i} className="flex items-start gap-2 pl-0.5">
+              <span
+                className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${
+                  isUser ? "bg-primary-foreground" : "bg-primary"
+                }`}
+              />
+              <span className="leading-relaxed">{formatInline(bulletText)}</span>
+            </div>
+          );
+        }
+
+        // Numbered list
+        const numMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+        if (numMatch) {
+          return (
+            <div key={i} className="flex items-start gap-2 pl-0.5">
+              <span
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                  isUser ? "bg-white/20 text-white" : "bg-primary/10 text-primary"
+                }`}
+              >
+                {numMatch[1]}
+              </span>
+              <span className="leading-relaxed">{formatInline(numMatch[2] || "")}</span>
+            </div>
+          );
+        }
+
+        return (
+          <p key={i} className="leading-relaxed">
+            {formatInline(trimmed)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
 export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
   const [activeModal, setActiveModal] = useState<"CALL" | "WHATSAPP" | "AI_CHAT" | null>(null);
 
@@ -49,7 +122,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
     {
       id: "m-welcome",
       role: "assistant",
-      content: `Hello **${patient.fullName}**! Welcome to Hospex Bangalore Center (12 Lavelle Road). Your registration has been saved to our reception desk.\n\nI am **Smrko AI**, your clinical care concierge. Feel free to ask me about our doctors, clinic facilities, waiting times, or what to prepare for today's consultation!`,
+      content: `Hello **${patient.fullName}**! Welcome to Hospex Bangalore Center (12 Lavelle Road).\n\nYour registration has been saved to our reception desk. I am **Smrko AI**, your clinical care concierge. Feel free to ask me about:\n• Consulting doctors and specialists\n• Current waiting times and lounge facilities\n• Documents to prepare for your consultation\n• 15-stage IVF and fertility care journey`,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     },
   ]);
@@ -485,7 +558,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                         : "bg-primary-soft/50 text-foreground border border-primary/15"
                     }`}
                   >
-                    <p className="whitespace-pre-line">{m.content}</p>
+                    <FormattedChatMessage content={m.content} isUser={m.role === "user"} />
                     <span
                       className={`mt-1.5 block text-[9px] ${
                         m.role === "user" ? "text-primary-foreground/75" : "text-muted-foreground"
