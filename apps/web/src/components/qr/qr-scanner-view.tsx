@@ -115,10 +115,21 @@ export function QrScannerView({
           <div className="h-28 w-28 animate-ping rounded-full border border-primary/30 [animation-duration:2s]" />
         </div>
 
-        {/* QR Pattern Graphic */}
-        <div className="relative z-10 flex h-44 w-44 flex-col items-center justify-center rounded-xl bg-card p-3 shadow-sm border border-border">
-          <QrCode className="h-24 w-24 text-primary/80" />
-          <p className="mt-2 text-[10px] uppercase tracking-widest text-muted-foreground font-bold">
+        {/* QR Pattern Graphic with SmrkoMed Logo */}
+        <div className="relative z-10 flex h-44 w-44 flex-col items-center justify-center rounded-2xl bg-card p-3 shadow-sm border border-primary/20">
+          <div className="relative flex items-center justify-center">
+            <QrCode className="h-28 w-28 text-primary" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md border-2 border-primary/30 p-0.5">
+                <img
+                  src="/branding/smrkomed-mark.png"
+                  alt="SmrkoMed"
+                  className="h-full w-full rounded-full object-contain"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="mt-2 text-[10px] uppercase tracking-widest text-primary font-bold">
             HOSPEX · BLR · RECEPTION
           </p>
         </div>
