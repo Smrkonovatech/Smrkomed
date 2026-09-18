@@ -722,10 +722,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     );
   }, [coupleList, clinicId]);
 
-  const visibleAppointments = useMemo(() => {
-    const visibleCoupleIds = new Set(visibleCouples.map((c) => c.id));
-    return appointmentList.filter((a) => !a.coupleId || visibleCoupleIds.has(a.coupleId));
-  }, [appointmentList, visibleCouples]);
+  // The backend already scopes appointments correctly per user role (including cross-clinic for doctors),
+  // so we show all API-returned appointments without further couple-based filtering.
+  const visibleAppointments = appointmentList;
 
   const visibleTasks = useMemo(() => {
     const visibleCoupleIds = new Set(visibleCouples.map((c) => c.id));

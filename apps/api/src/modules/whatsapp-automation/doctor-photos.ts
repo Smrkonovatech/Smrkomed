@@ -82,6 +82,7 @@ export async function resolveRealDoctorImageUrl(
     if (cleanId) whereOr.push({ name: cleanId }, { name: `doc_${cleanId}` });
     if (doctorId) whereOr.push({ name: doctorId });
 
+    // Try within clinicId first if provided
     let rule = whereOr.length > 0 ? await prisma.automationRule.findFirst({
       where: {
         ...(clinicId ? { clinicId } : {}),
@@ -90,6 +91,16 @@ export async function resolveRealDoctorImageUrl(
       },
     }) : null;
 
+    // Cross-clinic fallback: doctor may have been registered in another clinic (e.g. Kochi vs Bangalore)
+    if (!rule && whereOr.length > 0 && clinicId) {
+      rule = await prisma.automationRule.findFirst({
+        where: {
+          trigger: "DOCTOR_PROFILE",
+          OR: whereOr,
+        },
+      });
+    }
+
     if (!rule && doctorName) {
       const cleanName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
       const users = await prisma.user.findMany({
@@ -97,7 +108,7 @@ export async function resolveRealDoctorImageUrl(
           name: { contains: cleanName, mode: "insensitive" },
         },
         select: { id: true },
-        take: 3,
+        take: 5,
       });
       for (const u of users) {
         rule = await prisma.automationRule.findFirst({
@@ -107,7 +118,30 @@ export async function resolveRealDoctorImageUrl(
             OR: [{ name: u.id }, { name: `doc_${u.id}` }],
           },
         });
+        if (!rule) {
+          rule = await prisma.automationRule.findFirst({
+            where: {
+              trigger: "DOCTOR_PROFILE",
+              OR: [{ name: u.id }, { name: `doc_${u.id}` }],
+            },
+          });
+        }
         if (rule) break;
+      }
+
+      // Also search profile rules directly by displayName
+      if (!rule) {
+        const allRules = await prisma.automationRule.findMany({
+          where: { trigger: "DOCTOR_PROFILE" },
+        });
+        for (const r of allRules) {
+          const cfg = r.config as any;
+          const dName = (cfg?.displayName || "").replace(/^Dr\s*\.?\s*/i, "").trim().toLowerCase();
+          if (dName && (dName.includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(dName))) {
+            rule = r;
+            break;
+          }
+        }
       }
     }
 
@@ -122,8 +156,11 @@ export async function resolveRealDoctorImageUrl(
       // If stored as base64 data URL, the public photo endpoint serves it as a real image URL
       const dataUrl = (typeof cfg["photoDataUrl"] === "string" && cfg["photoDataUrl"].startsWith("data:image/")) ? cfg["photoDataUrl"] :
                       (typeof cfg["profileImageUrl"] === "string" && cfg["profileImageUrl"].startsWith("data:image/")) ? cfg["profileImageUrl"] : null;
-      if (dataUrl && (cleanId || doctorId)) {
-        return getDoctorPhotoUrl(cleanId || doctorId!);
+      if (dataUrl) {
+        const effectiveId = cleanId || doctorId || (rule.name ? rule.name.replace(/^doc_/, "") : null);
+        if (effectiveId) {
+          return getDoctorPhotoUrl(effectiveId);
+        }
       }
     }
   } catch {
@@ -185,11 +222,18 @@ export function getDoctorPhotoUrl(doctorId: string, baseUrl?: string): string {
  *   2. Custom HTTP/HTTPS image URL (fetched as buffer)
  *   3. Deterministic static asset fallback
  */
+export interface DoctorPhotoResult {
+  buffer: Buffer;
+  contentType: string;
+  filename: string;
+  isReal?: boolean;
+}
+
 export async function getDoctorPhotoBuffer(
   doctorId: string,
   doctorName?: string | null,
   clinicId?: string | null,
-): Promise<{ buffer: Buffer; contentType: string; filename: string } | null> {
+): Promise<DoctorPhotoResult | null> {
   const cleanId = (doctorId || "").replace(/^doc_/, "");
 
   // 1. Try resolving real uploaded photo from database config
@@ -198,6 +242,7 @@ export async function getDoctorPhotoBuffer(
     if (cleanId) whereOr.push({ name: cleanId }, { name: `doc_${cleanId}` });
     if (doctorId) whereOr.push({ name: doctorId });
 
+    // Try within clinicId first if provided
     let rule = whereOr.length > 0 ? await prisma.automationRule.findFirst({
       where: {
         ...(clinicId ? { clinicId } : {}),
@@ -206,6 +251,16 @@ export async function getDoctorPhotoBuffer(
       },
     }) : null;
 
+    // Cross-clinic fallback: doctor may have been registered in another clinic (e.g. Kochi vs Bangalore)
+    if (!rule && whereOr.length > 0 && clinicId) {
+      rule = await prisma.automationRule.findFirst({
+        where: {
+          trigger: "DOCTOR_PROFILE",
+          OR: whereOr,
+        },
+      });
+    }
+
     if (!rule && doctorName) {
       const cleanName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
       const users = await prisma.user.findMany({
@@ -213,7 +268,7 @@ export async function getDoctorPhotoBuffer(
           name: { contains: cleanName, mode: "insensitive" },
         },
         select: { id: true },
-        take: 3,
+        take: 5,
       });
       for (const u of users) {
         rule = await prisma.automationRule.findFirst({
@@ -223,14 +278,37 @@ export async function getDoctorPhotoBuffer(
             OR: [{ name: u.id }, { name: `doc_${u.id}` }],
           },
         });
+        if (!rule) {
+          rule = await prisma.automationRule.findFirst({
+            where: {
+              trigger: "DOCTOR_PROFILE",
+              OR: [{ name: u.id }, { name: `doc_${u.id}` }],
+            },
+          });
+        }
         if (rule) break;
+      }
+
+      // Also search profile rules directly by displayName
+      if (!rule) {
+        const allRules = await prisma.automationRule.findMany({
+          where: { trigger: "DOCTOR_PROFILE" },
+        });
+        for (const r of allRules) {
+          const cfg = r.config as any;
+          const dName = (cfg?.displayName || "").replace(/^Dr\s*\.?\s*/i, "").trim().toLowerCase();
+          if (dName && (dName.includes(cleanName.toLowerCase()) || cleanName.toLowerCase().includes(dName))) {
+            rule = r;
+            break;
+          }
+        }
       }
     }
 
     if (rule?.config && typeof rule.config === "object") {
       const cfg = rule.config as any;
 
-      // Check for base64 data URL
+      // Check for base64 data URL (uploaded real photo)
       const dataUrl = (typeof cfg["photoDataUrl"] === "string" && cfg["photoDataUrl"].startsWith("data:image/")) ? cfg["photoDataUrl"] :
                       (typeof cfg["profileImageUrl"] === "string" && cfg["profileImageUrl"].startsWith("data:image/")) ? cfg["profileImageUrl"] : null;
       if (dataUrl) {
@@ -243,6 +321,7 @@ export async function getDoctorPhotoBuffer(
             buffer,
             contentType,
             filename: `doctor-${cleanId || "photo"}.${ext}`,
+            isReal: true,
           };
         }
       }
@@ -262,6 +341,7 @@ export async function getDoctorPhotoBuffer(
               buffer: Buffer.from(arrayBuf),
               contentType,
               filename: `doctor-${cleanId || "photo"}.${ext}`,
+              isReal: true,
             };
           }
         } catch {
@@ -273,22 +353,30 @@ export async function getDoctorPhotoBuffer(
     // DB error, continue to static fallback
   }
 
-  // 2. Static asset fallback
+  // 2. Static asset fallback (only if no real uploaded photo exists)
   const asset = resolveDoctorPhotoAsset(doctorId, doctorName);
   const assetsDir = getDoctorAssetsDir();
   const filePath = path.join(assetsDir, asset.filename);
   if (!fs.existsSync(filePath)) return null;
   const buffer = await fs.promises.readFile(filePath);
-  return { buffer, contentType: asset.contentType, filename: asset.filename };
+  return { buffer, contentType: asset.contentType, filename: asset.filename, isReal: false };
 }
 
 interface CachedMetaMedia {
   mediaId: string;
   uploadedAt: number;
+  isReal?: boolean;
 }
 
 const doctorMetaMediaCache = new Map<string, CachedMetaMedia>();
 const MEDIA_CACHE_TTL_MS = 25 * 24 * 60 * 60_000; // 25 days (Meta media IDs expire after 30 days)
+
+/**
+ * Clear cached Meta media IDs to allow refreshed doctor uploads.
+ */
+export function clearDoctorMetaMediaCache(): void {
+  doctorMetaMediaCache.clear();
+}
 
 /**
  * Upload doctor photo to Meta Cloud API and cache media ID for instant, native rendering.
@@ -300,12 +388,16 @@ export async function getOrUploadDoctorMetaMediaId(
 ): Promise<string | null> {
   const cacheKey = `${tenant.clinicId}_${doctorId}`;
   const cached = doctorMetaMediaCache.get(cacheKey);
-  if (cached && Date.now() - cached.uploadedAt < MEDIA_CACHE_TTL_MS) {
-    return cached.mediaId;
-  }
 
   const asset = await getDoctorPhotoBuffer(doctorId, doctorName, tenant.clinicId);
   if (!asset) return null;
+
+  // If we have a cached real image, reuse it. But if cached entry was mock fallback and now we have a real photo, re-upload!
+  if (cached && Date.now() - cached.uploadedAt < MEDIA_CACHE_TTL_MS) {
+    if (cached.isReal || !asset.isReal) {
+      return cached.mediaId;
+    }
+  }
 
   try {
     const { resolveWhatsAppSenderCredentials } = await import("../../integrations/providers/whatsapp/service");
@@ -318,6 +410,7 @@ export async function getOrUploadDoctorMetaMediaId(
       clinicId: tenant.clinicId,
       doctorId,
       filename: asset.filename,
+      isReal: !!asset.isReal,
       uploadingToMeta: true,
     });
 
@@ -330,11 +423,12 @@ export async function getOrUploadDoctorMetaMediaId(
     });
 
     if (res?.id) {
-      doctorMetaMediaCache.set(cacheKey, { mediaId: res.id, uploadedAt: Date.now() });
+      doctorMetaMediaCache.set(cacheKey, { mediaId: res.id, uploadedAt: Date.now(), isReal: !!asset.isReal });
       console.log("[DOCTOR_IMAGE_SEND_RESULT]", {
         clinicId: tenant.clinicId,
         doctorId,
         metaMediaId: res.id,
+        isReal: !!asset.isReal,
         success: true,
       });
       return res.id;

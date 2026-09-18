@@ -345,10 +345,28 @@ export async function bookAppointmentFromSlot(input: {
     valid: true,
   });
 
+  // Resolve doctor's active clinic membership if doctorName is provided
+  let appointmentClinicId = input.tenant.clinicId;
+  if (doctorName) {
+    const cleanDocName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
+    const docMembership = await prisma.clinicMembership.findFirst({
+      where: {
+        user: {
+          name: { contains: cleanDocName, mode: "insensitive" },
+        },
+        status: "ACTIVE",
+      },
+      select: { clinicId: true },
+    });
+    if (docMembership?.clinicId) {
+      appointmentClinicId = docMembership.clinicId;
+    }
+  }
+
   try {
     const appointment = await prisma.appointment.create({
       data: {
-        clinicId: input.tenant.clinicId,
+        clinicId: appointmentClinicId,
         ...(coupleId ? { coupleId } : {}),
         type: decoded.appointmentType,
         startsAt: startTime,

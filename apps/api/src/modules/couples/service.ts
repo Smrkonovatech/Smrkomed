@@ -179,17 +179,64 @@ async function runStep<T>(
 }
 
 export async function loadCouple(ctx: TenantContext, id: string) {
+  let docNameCondition: Record<string, unknown> | null = null;
+  if (ctx.role === "DOCTOR" && ctx.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { name: true },
+    });
+    const cleanDocName = user?.name?.replace(/^Dr\s*\.?\s*/i, "").trim();
+    if (cleanDocName) {
+      docNameCondition = {
+        appointments: {
+          some: {
+            doctorName: { contains: cleanDocName, mode: "insensitive" },
+          },
+        },
+      };
+    }
+  }
+
   return prisma.couple.findFirst({
-    where: { id, clinicId: ctx.clinicId, clinic: { organizationId: ctx.organizationId } },
+    where: {
+      id,
+      OR: [
+        { clinicId: ctx.clinicId, clinic: { organizationId: ctx.organizationId } },
+        ...(docNameCondition ? [docNameCondition] : []),
+      ],
+    },
     include: coupleInclude,
   });
 }
 
 export async function listCouples(ctx: TenantContext) {
+  let docNameCondition: Record<string, unknown> | null = null;
+  if (ctx.role === "DOCTOR" && ctx.userId) {
+    const user = await prisma.user.findUnique({
+      where: { id: ctx.userId },
+      select: { name: true },
+    });
+    const cleanDocName = user?.name?.replace(/^Dr\s*\.?\s*/i, "").trim();
+    if (cleanDocName) {
+      docNameCondition = {
+        appointments: {
+          some: {
+            doctorName: { contains: cleanDocName, mode: "insensitive" },
+          },
+        },
+      };
+    }
+  }
+
   return prisma.couple.findMany({
     where: {
-      clinicId: ctx.clinicId,
-      clinic: { organizationId: ctx.organizationId },
+      OR: [
+        {
+          clinicId: ctx.clinicId,
+          clinic: { organizationId: ctx.organizationId },
+        },
+        ...(docNameCondition ? [docNameCondition] : []),
+      ],
       status: { not: "ARCHIVED" },
     },
     include: coupleInclude,
