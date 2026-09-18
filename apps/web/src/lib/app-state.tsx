@@ -61,6 +61,44 @@ export interface AppCouple extends Omit<Couple, "primary" | "partner"> {
   partner?: AppPerson;
   whatsappConsent?: boolean;
   carePlanTemplate?: string;
+  clinicId?: string;
+}
+
+export function isQrCheckinCouple(couple: AppCouple): boolean {
+  const primaryName = (couple.primary?.name || "").trim().toLowerCase();
+  const slug = (couple.slug || "").toLowerCase();
+  const tags = (couple.tags || []).map((t) => t.toLowerCase());
+
+  if (
+    primaryName.includes("hospextest") ||
+    primaryName === "manideep c" ||
+    primaryName === "priya hospextest" ||
+    primaryName.includes("walk-in")
+  ) {
+    return true;
+  }
+
+  if (
+    slug.startsWith("qr-") ||
+    slug.includes("hospextest") ||
+    slug.includes("qr-checkin") ||
+    slug.includes("walkin")
+  ) {
+    return true;
+  }
+
+  if (
+    tags.some(
+      (t) =>
+        t.includes("qr") ||
+        t.includes("walk-in") ||
+        t.includes("hospextest"),
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 export interface AppAppointment extends Appointment {
@@ -211,6 +249,7 @@ function toCouple(row: ClinicCouple): AppCouple {
   return {
     id: row.id,
     slug: row.slug,
+    clinicId: row.clinicId,
     primary: row.primary,
     ...(row.partner ? { partner: row.partner } : {}),
     treatment: row.treatment,
@@ -275,7 +314,20 @@ function toDocument(row: ClinicDocument): AppDocument {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>("doctor");
-  const [clinicId, setClinicId] = useState(clinics[0]!.id);
+  const [clinicId, setClinicIdState] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("smrkomed_active_clinic_id");
+      if (stored && clinics.some((c) => c.id === stored)) return stored;
+    }
+    return "kochi";
+  });
+
+  const setClinicId = useCallback((id: string) => {
+    setClinicIdState(id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("smrkomed_active_clinic_id", id);
+    }
+  }, []);
   const [currentClinic, setCurrentClinic] = useState<ClinicProfile | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -648,6 +700,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const visibleCouples = useMemo(() => {
+    const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    if (isBangalore) {
+      // In Bangalore, show Bangalore data including QR check-in records
+      return coupleList;
+    }
+    // If not Bangalore (e.g. Kochi default or Chennai), strictly hide QR data
+    return coupleList.filter((c) => !isQrCheckinCouple(c));
+  }, [coupleList, clinicId]);
+
   const value = useMemo<AppState>(
     () => ({
       role,
@@ -664,7 +726,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       staffError,
       staffLoading,
       reloadStaff,
-      couples: coupleList,
+      couples: visibleCouples,
       addCouple,
       updatePatient,
       deleteCouple,
@@ -688,7 +750,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       exceptions: exceptionList,
       resolveException,
       addException,
-      kpis,
+      kpis: {
+        ...kpis,
+        active: visibleCouples.length,
+      },
       bumpKpis,
     }),
     [
@@ -703,7 +768,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       staffError,
       staffLoading,
       reloadStaff,
-      coupleList,
+      visibleCouples,
       addCouple,
       updatePatient,
       deleteCouple,

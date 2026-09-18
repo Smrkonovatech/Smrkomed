@@ -21,7 +21,10 @@ export const authConfig = {
       const isLoggedIn = !!auth?.user;
       const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/register");
       const isOnboarding = pathname.startsWith("/onboarding");
-      const isPublicPage = pathname.startsWith("/book/") || pathname.startsWith("/pay/");
+      const isPublicPage =
+        pathname.startsWith("/book/") ||
+        pathname.startsWith("/pay/") ||
+        pathname.startsWith("/qr-register");
       const isPublicApi =
         pathname.startsWith("/api/auth") ||
         pathname.startsWith("/api/demo") ||
@@ -32,7 +35,8 @@ export const authConfig = {
         pathname === "/api/leads/ingest" ||
         pathname.startsWith("/api/create-order") ||
         pathname.startsWith("/api/verify-payment") ||
-        pathname.startsWith("/api/pay");
+        pathname.startsWith("/api/pay") ||
+        pathname.startsWith("/api/qr");
 
       if (isPublicApi || isPublicPage || isOnboarding) return true;
       if (isAuthPage) return true;
