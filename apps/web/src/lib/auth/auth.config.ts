@@ -36,6 +36,8 @@ export const authConfig = {
         pathname.startsWith("/api/create-order") ||
         pathname.startsWith("/api/verify-payment") ||
         pathname.startsWith("/api/pay") ||
+        pathname.startsWith("/api/doctors") ||
+        pathname.startsWith("/api/v1") ||
         pathname.startsWith("/api/qr");
 
       if (isPublicApi || isPublicPage || isOnboarding) return true;

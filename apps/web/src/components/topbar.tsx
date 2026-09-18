@@ -10,10 +10,13 @@ import {
   ChevronDown,
   FilePlus2,
   ListPlus,
+  LogOut,
   Menu,
   Sparkles,
   Plus,
   Search,
+  Settings,
+  User,
   UserPlus,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
@@ -80,6 +83,9 @@ export function Topbar() {
       .slice(0, 2)
       .toUpperCase() ?? currentUser.initials;
   const sessionRoleLabel = session?.user?.role?.replaceAll("_", " ") ?? roleLabels[role];
+  const doctorPhotoUrl = session?.user?.id
+    ? `/api/v1/public/doctors/${encodeURIComponent(session.user.id)}/photo`
+    : `/api/v1/public/doctors/cmu6rkn080000njfo34n9spvq/photo`;
   const clinic = clinics.find((c) => c.id === clinicId) ?? clinics[0]!;
   const filteredResults = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -303,7 +309,7 @@ export function Topbar() {
                 className="flex min-h-11 min-w-11 items-center gap-2 rounded-md p-1 transition-colors hover:bg-muted sm:min-h-0"
                 aria-label="User menu"
               >
-                <Avatar initials={sessionInitials} />
+                <Avatar initials={sessionInitials} src={doctorPhotoUrl} />
                 <span className="hidden text-left xl:block">
                   <span className="block text-sm font-semibold leading-tight">
                     {sessionName}
@@ -314,23 +320,33 @@ export function Topbar() {
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuLabel>Dashboard view</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {(Object.keys(roleLabels) as Role[]).map((r) => (
-                <DropdownMenuItem key={r} onSelect={() => setRole(r)}>
-                  {roleLabels[r]}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
+            <DropdownMenuContent align="end" className="w-52 rounded-xl p-1.5 shadow-lg">
               <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
+                <Link
+                  href="/doctor/profile"
+                  className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors hover:bg-muted"
+                >
+                  <User className="size-4 text-primary" />
+                  Profile
+                </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors hover:bg-muted"
+                >
+                  <Settings className="size-4 text-muted-foreground" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
+                className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors text-destructive focus:text-destructive hover:bg-destructive/10"
                 onSelect={() => {
                   void signOut({ callbackUrl: "/login" });
                 }}
               >
+                <LogOut className="size-4" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
