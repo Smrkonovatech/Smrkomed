@@ -205,6 +205,29 @@ export async function ensureDemoWorkspace() {
     });
   }
 
+  // Ensure admin user also has active CLINIC_ADMIN membership in Kochi clinic if present
+  const kochiClinic = await prisma.clinic.findFirst({
+    where: { OR: [{ id: "cmu3nmx310026jy04gsi21hxl" }, { slug: "hoispex-kochi" }] },
+  });
+  if (kochiClinic) {
+    const adminUser = await prisma.user.findUnique({ where: { email: "admin@abcfertility.demo" } });
+    if (adminUser) {
+      await prisma.clinicMembership.upsert({
+        where: { clinicId_userId: { clinicId: kochiClinic.id, userId: adminUser.id } },
+        create: {
+          clinicId: kochiClinic.id,
+          userId: adminUser.id,
+          roleId: adminRole.id,
+          status: "ACTIVE",
+        },
+        update: {
+          roleId: adminRole.id,
+          status: "ACTIVE",
+        },
+      });
+    }
+  }
+
   // Populate demo pharmacy catalogue when inventory is missing (Vercel migrate does not seed).
   const staffUsers = await prisma.user.findMany({
     where: { email: { in: DEMO_STAFF.map((person) => person.email) } },

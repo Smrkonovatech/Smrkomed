@@ -809,7 +809,9 @@ export const doctorRoutes = new Hono<AppEnv>()
     const targetClinicId =
       requestedClinic === "cmt0exo9n000vl804rbaabh32" || requestedClinic === "blr"
         ? "cmt0exo9n000vl804rbaabh32"
-        : (requestedClinic || tenant.clinicId);
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" || requestedClinic === "kochi"
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
 
     const memberships = await prisma.clinicMembership.findMany({
       where: {
@@ -908,7 +910,11 @@ export const doctorRoutes = new Hono<AppEnv>()
       requestedClinic === "blr" ||
       body.locationName?.toLowerCase?.().includes("bangalore")
         ? "cmt0exo9n000vl804rbaabh32"
-        : (requestedClinic || tenant.clinicId);
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" ||
+          requestedClinic === "kochi" ||
+          body.locationName?.toLowerCase?.().includes("kochi")
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
 
     let user = await prisma.user.findUnique({ where: { email } });
     if (user) {

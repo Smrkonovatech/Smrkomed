@@ -84,14 +84,19 @@ export default function AddStaffPage() {
 
     setLoading(true);
     try {
-      const targetClinic = selectedClinic === "blr" ? "cmt0exo9n000vl804rbaabh32" : selectedClinic;
+      const targetClinic =
+        selectedClinic === "blr" || selectedClinic === "cmt0exo9n000vl804rbaabh32"
+          ? "cmt0exo9n000vl804rbaabh32"
+          : selectedClinic === "kochi" || selectedClinic === "cmu3nmx310026jy04gsi21hxl"
+            ? "cmu3nmx310026jy04gsi21hxl"
+            : selectedClinic;
       const res = await clinicApi.createStaffMember({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
         role,
         clinicId: targetClinic,
-        locationId: selectedClinic,
+        locationId: targetClinic,
         title: title.trim() || (role === "DOCTOR" ? "Fertility Specialist" : undefined),
         phone: phone.trim() || undefined,
         department: role === "DOCTOR" ? (department.trim() || "Reproductive Medicine") : undefined,

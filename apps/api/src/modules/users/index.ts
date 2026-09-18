@@ -77,7 +77,9 @@ export const userRoutes = new Hono<AppEnv>()
     const targetClinicId =
       requestedClinic === "cmt0exo9n000vl804rbaabh32" || requestedClinic === "blr"
         ? "cmt0exo9n000vl804rbaabh32"
-        : (requestedClinic || tenant.clinicId);
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" || requestedClinic === "kochi"
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
 
     try {
       const [memberships, profileRules] = await Promise.all([
@@ -168,7 +170,11 @@ export const userRoutes = new Hono<AppEnv>()
       requestedClinic === "blr" ||
       body.location?.toLowerCase?.().includes("bangalore")
         ? "cmt0exo9n000vl804rbaabh32"
-        : (requestedClinic || tenant.clinicId);
+        : requestedClinic === "cmu3nmx310026jy04gsi21hxl" ||
+          requestedClinic === "kochi" ||
+          body.location?.toLowerCase?.().includes("kochi")
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : (requestedClinic || tenant.clinicId);
 
     // If account with this email already exists, update user and ensure membership in target clinic
     const existing = await prisma.user.findUnique({ where: { email } });

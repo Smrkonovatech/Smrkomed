@@ -12,6 +12,8 @@ export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
 
   let clinicId = claims.clinicId;
   let clinicName = claims.clinicName;
+  let organizationId = claims.organizationId;
+  let organizationName = claims.organizationName;
 
   const requestedClinic = c.req.header("x-clinic-id") || c.req.query("clinicId");
   if (requestedClinic) {
@@ -25,19 +27,30 @@ export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     if (targetId && targetId !== clinicId) {
       const clinic = await prisma.clinic.findUnique({
         where: { id: targetId },
-        select: { id: true, name: true, organizationId: true },
+        select: {
+          id: true,
+          name: true,
+          organizationId: true,
+          organization: { select: { id: true, name: true } },
+        },
       });
       if (clinic) {
         clinicId = clinic.id;
         clinicName = clinic.name;
+        if (clinic.organizationId) {
+          organizationId = clinic.organizationId;
+        }
+        if (clinic.organization?.name) {
+          organizationName = clinic.organization.name;
+        }
       }
     }
   }
 
   const tenant: TenantContext = {
     userId: claims.id,
-    organizationId: claims.organizationId,
-    organizationName: claims.organizationName,
+    organizationId,
+    organizationName,
     clinicId,
     clinicName,
     role: claims.role,

@@ -122,11 +122,17 @@ export function DoctorWizard({
     setSaving(true);
     try {
       if (mode === "create") {
-        const targetClinic = doctor.locationId === "blr" ? "cmt0exo9n000vl804rbaabh32" : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
+        const targetClinic =
+          doctor.locationId === "blr" || doctor.locationId === "cmt0exo9n000vl804rbaabh32"
+            ? "cmt0exo9n000vl804rbaabh32"
+            : doctor.locationId === "kochi" || doctor.locationId === "cmu3nmx310026jy04gsi21hxl"
+              ? "cmu3nmx310026jy04gsi21hxl"
+              : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
         const res = await clinicApi.createDoctor({
           ...withName,
           clinicId: targetClinic,
-          locationId: doctor.locationId || "blr",
+          locationId: targetClinic,
+          locationName: targetClinic === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore",
           password: password || "Doctor@12345",
           isDraft: true,
           status: "inactive",
@@ -167,11 +173,17 @@ export function DoctorWizard({
     setSaving(true);
     try {
       if (mode === "create") {
-        const targetClinic = doctor.locationId === "blr" ? "cmt0exo9n000vl804rbaabh32" : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
+        const targetClinic =
+          doctor.locationId === "blr" || doctor.locationId === "cmt0exo9n000vl804rbaabh32"
+            ? "cmt0exo9n000vl804rbaabh32"
+            : doctor.locationId === "kochi" || doctor.locationId === "cmu3nmx310026jy04gsi21hxl"
+              ? "cmu3nmx310026jy04gsi21hxl"
+              : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
         const res = await clinicApi.createDoctor({
           ...withName,
           clinicId: targetClinic,
-          locationId: doctor.locationId || "blr",
+          locationId: targetClinic,
+          locationName: targetClinic === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore",
           password: password || "Doctor@12345",
           isDraft: false,
           status: "active",
