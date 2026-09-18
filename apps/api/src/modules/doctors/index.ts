@@ -912,20 +912,34 @@ export const doctorRoutes = new Hono<AppEnv>()
 
     let user = await prisma.user.findUnique({ where: { email } });
     if (user) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          name,
+          title,
+          phone: phone || user.phone,
+          isActive: true,
+        },
+      });
+
       const existingMembership = await prisma.clinicMembership.findUnique({
         where: { clinicId_userId: { clinicId: targetClinicId, userId: user.id } },
       });
-      if (existingMembership) {
-        return fail(c, 409, "DOCTOR_EXISTS", "A doctor with this email already belongs to this clinic.");
+      if (!existingMembership) {
+        await prisma.clinicMembership.create({
+          data: {
+            clinicId: targetClinicId,
+            userId: user.id,
+            roleId: doctorRole.id,
+            status: "ACTIVE",
+          },
+        });
+      } else if (existingMembership.status !== "ACTIVE") {
+        await prisma.clinicMembership.update({
+          where: { id: existingMembership.id },
+          data: { status: "ACTIVE" },
+        });
       }
-      await prisma.clinicMembership.create({
-        data: {
-          clinicId: targetClinicId,
-          userId: user.id,
-          roleId: doctorRole.id,
-          status: "ACTIVE",
-        },
-      });
     } else {
       const initials = name
         .replace(/^Dr\.\s*/i, "")
@@ -979,7 +993,7 @@ export const doctorRoutes = new Hono<AppEnv>()
       where: {
         clinicId: targetClinicId,
         trigger: "DOCTOR_PROFILE",
-        name: user.id,
+        OR: [{ name: user.id }, { name: `doc_${user.id}` }],
       },
     });
 
