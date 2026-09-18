@@ -261,12 +261,14 @@ export const clinicApi = {
   },
   createPrescription: (body: unknown) => apiPost<any>("/api/v1/pharmacy/prescriptions", body),
   // Staff Management
-  getStaff: () => apiGet<any[]>("/api/v1/users/staff"),
+  getStaff: (clinicId?: string) => apiGet<any[]>(`/api/v1/users/staff${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
   createStaffMember: (body: {
     name: string;
     email: string;
     password: string;
     role: string;
+    clinicId?: string | undefined;
+    locationId?: string | undefined;
     title?: string | undefined;
     phone?: string | undefined;
     department?: string | undefined;
@@ -276,7 +278,7 @@ export const clinicApi = {
     languages?: string | undefined;
   }) => apiPost<any>("/api/v1/users/staff", body),
   // Doctor Management (Full Profiles & Real DB Persisted)
-  getDoctors: () => apiGet<any[]>("/api/v1/doctors"),
+  getDoctors: (clinicId?: string) => apiGet<any[]>(`/api/v1/doctors${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
   getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
   createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
   updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),

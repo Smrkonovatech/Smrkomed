@@ -122,8 +122,11 @@ export function DoctorWizard({
     setSaving(true);
     try {
       if (mode === "create") {
+        const targetClinic = doctor.locationId === "blr" ? "cmt0exo9n000vl804rbaabh32" : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
         const res = await clinicApi.createDoctor({
           ...withName,
+          clinicId: targetClinic,
+          locationId: doctor.locationId || "blr",
           password: password || "Doctor@12345",
           isDraft: true,
           status: "inactive",
@@ -164,8 +167,11 @@ export function DoctorWizard({
     setSaving(true);
     try {
       if (mode === "create") {
+        const targetClinic = doctor.locationId === "blr" ? "cmt0exo9n000vl804rbaabh32" : (doctor.locationId || "cmt0exo9n000vl804rbaabh32");
         const res = await clinicApi.createDoctor({
           ...withName,
+          clinicId: targetClinic,
+          locationId: doctor.locationId || "blr",
           password: password || "Doctor@12345",
           isDraft: false,
           status: "active",

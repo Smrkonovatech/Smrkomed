@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -38,6 +38,13 @@ interface QrRegisterTileProps {
   onCancel?: () => void;
 }
 
+export interface RealDoctorOption {
+  id: string;
+  doctorId: string;
+  name: string;
+  specialty: string;
+}
+
 export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -46,9 +53,39 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
   const [gender, setGender] = useState<"FEMALE" | "MALE" | "OTHER">("FEMALE");
   const [age, setAge] = useState("");
   const [purpose, setPurpose] = useState("IVF Consultation & Evaluation");
-  const [doctorPreference, setDoctorPreference] = useState("Dr. Manideep");
+  const [doctors, setDoctors] = useState<RealDoctorOption[]>([]);
+  const [loadingDoctors, setLoadingDoctors] = useState(true);
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
+  const [doctorPreference, setDoctorPreference] = useState("First Available Specialist");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCancelled = false;
+    async function loadClinicDoctors() {
+      try {
+        const res = await fetch("/api/qr/clinic-info");
+        const json = await res.json();
+        if (json.success && Array.isArray(json.clinic?.doctors) && !isCancelled) {
+          const list: RealDoctorOption[] = json.clinic.doctors;
+          setDoctors(list);
+          const first = list[0];
+          if (first) {
+            setSelectedDoctorId(first.id);
+            setDoctorPreference(first.name);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load real clinic doctors:", e);
+      } finally {
+        if (!isCancelled) setLoadingDoctors(false);
+      }
+    }
+    loadClinicDoctors();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,6 +115,7 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
           gender,
           age: age ? parseInt(age, 10) : undefined,
           purpose,
+          doctorId: selectedDoctorId || undefined,
           doctorPreference,
         }),
       });
@@ -304,15 +342,31 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
             <Stethoscope className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <select
               id="doctorPreference"
-              value={doctorPreference}
-              onChange={(e) => setDoctorPreference(e.target.value)}
+              value={selectedDoctorId}
+              onChange={(e) => {
+                const docId = e.target.value;
+                setSelectedDoctorId(docId);
+                const match = doctors.find((d) => d.id === docId);
+                if (match) {
+                  setDoctorPreference(match.name);
+                } else {
+                  setDoctorPreference("First Available Specialist");
+                }
+              }}
+              disabled={loadingDoctors}
               className="flex h-9 w-full rounded-xl border border-input bg-card pl-9 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              <option value="Dr. Manideep">Dr. Manideep (Senior Reproductive Endocrinologist)</option>
-              <option value="Dr. Ananya Rao">Dr. Ananya Rao (Chief Fertility Specialist)</option>
-              <option value="Dr. Rahul Menon">Dr. Rahul Menon (Reproductive Endocrinologist)</option>
-              <option value="Dr. Priya Nair">Dr. Priya Nair (Fertility Specialist)</option>
-              <option value="First Available Doctor">First Available Specialist at Counter 2</option>
+              {doctors.length === 0 && !loadingDoctors && (
+                <option value="first_available">First Available Specialist at Counter 2</option>
+              )}
+              {doctors.map((doc) => (
+                <option key={doc.id} value={doc.id}>
+                  {doc.name} ({doc.specialty})
+                </option>
+              ))}
+              {doctors.length > 0 && (
+                <option value="first_available">First Available Specialist at Counter 2</option>
+              )}
             </select>
           </div>
         </div>

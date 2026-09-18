@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       age: body.age || null,
       dateOfBirth: body.dateOfBirth || null,
       purpose: body.purpose || "Consultation & Check-in",
+      doctorId: body.doctorId || null,
       doctorPreference: body.doctorPreference || null,
     });
 

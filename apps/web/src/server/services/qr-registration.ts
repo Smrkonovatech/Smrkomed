@@ -10,6 +10,7 @@ export interface QrRegistrationInput {
   age?: number | string | null;
   dateOfBirth?: string | null;
   purpose?: string | null;
+  doctorId?: string | null;
   doctorPreference?: string | null;
 }
 
@@ -153,6 +154,41 @@ export async function registerPatientViaQr(input: QrRegistrationInput) {
     });
   }
 
+  // 1. Resolve selected real doctor for Bangalore clinic
+  let resolvedDoctorUser: { id: string; name: string; title: string | null } | null = null;
+  if (input.doctorId && input.doctorId !== "first_available") {
+    const cleanDocId = input.doctorId.replace(/^doc_/, "");
+    const found = await prisma.user.findFirst({
+      where: {
+        id: cleanDocId,
+        memberships: {
+          some: { clinicId: clinic.id, status: "ACTIVE" },
+        },
+      },
+      select: { id: true, name: true, title: true },
+    });
+    if (found) resolvedDoctorUser = found;
+  }
+
+  if (!resolvedDoctorUser && input.doctorPreference && input.doctorPreference !== "first_available") {
+    const cleanPref = input.doctorPreference.replace(/^Dr\.\s*/i, "").trim();
+    const found = await prisma.user.findFirst({
+      where: {
+        name: { contains: cleanPref, mode: "insensitive" },
+        memberships: {
+          some: { clinicId: clinic.id, status: "ACTIVE" },
+        },
+      },
+      select: { id: true, name: true, title: true },
+    });
+    if (found) resolvedDoctorUser = found;
+  }
+
+  // Determine standard display name for appointment & notes
+  const doctorDisplayName = resolvedDoctorUser
+    ? (resolvedDoctorUser.name.startsWith("Dr.") ? resolvedDoctorUser.name : `Dr. ${resolvedDoctorUser.name}`)
+    : (input.doctorPreference && input.doctorPreference !== "first_available" ? input.doctorPreference : "Assigned Specialist (Counter 2)");
+
   // Ensure Couple relationship exists so Care Loop, timeline & doctor dashboard work seamlessly
   let couple = await prisma.couple.findFirst({
     where: {
@@ -172,6 +208,51 @@ export async function registerPatientViaQr(input: QrRegistrationInput) {
         slug: slugName,
         status: "ACTIVE",
         careLoopActive: true,
+        assignedDoctorId: resolvedDoctorUser?.id || null,
+      },
+    });
+  } else if (resolvedDoctorUser && couple.assignedDoctorId !== resolvedDoctorUser.id) {
+    await prisma.couple.update({
+      where: { id: couple.id },
+      data: { assignedDoctorId: resolvedDoctorUser.id },
+    });
+  }
+
+  // Create or update today's Appointment for this patient and mapped doctor
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+
+  let appointment = await prisma.appointment.findFirst({
+    where: {
+      clinicId: clinic.id,
+      coupleId: couple.id,
+      startsAt: { gte: todayStart, lte: todayEnd },
+    },
+  });
+
+  if (!appointment) {
+    appointment = await prisma.appointment.create({
+      data: {
+        id: randomUUID(),
+        clinicId: clinic.id,
+        coupleId: couple.id,
+        type: input.purpose || "IVF Consultation & Evaluation",
+        doctorName: doctorDisplayName,
+        room: "Counter 2 · Consultation Room",
+        startsAt: new Date(),
+        durationMin: 30,
+        status: "WAITING",
+        notes: `QR Self Check-In. Patient registered at Bangalore reception. Preferred Specialist: ${doctorDisplayName}.`,
+      },
+    });
+  } else {
+    appointment = await prisma.appointment.update({
+      where: { id: appointment.id },
+      data: {
+        doctorName: doctorDisplayName,
+        type: input.purpose || appointment.type,
       },
     });
   }
@@ -199,7 +280,7 @@ export async function registerPatientViaQr(input: QrRegistrationInput) {
     // non-fatal
   }
 
-  // Ensure Initial consultation CareTask exists
+  // Ensure Initial consultation CareTask exists and is mapped to doctor
   try {
     const existingTask = await prisma.careTask.findFirst({
       where: { coupleId: couple.id, title: "Initial consultation" },
@@ -213,6 +294,8 @@ export async function registerPatientViaQr(input: QrRegistrationInput) {
           title: "Initial consultation",
           category: "Consultation",
           status: "WAITING",
+          targetRole: "DOCTOR",
+          description: `Patient registered via QR for ${doctorDisplayName}.`,
         },
       });
     }
@@ -233,7 +316,9 @@ export async function registerPatientViaQr(input: QrRegistrationInput) {
           clinicCity: clinic.city,
           clinicName: clinic.name,
           purpose: input.purpose || "General Consultation",
-          doctorPreference: input.doctorPreference || null,
+          doctorId: resolvedDoctorUser?.id || null,
+          doctorPreference: doctorDisplayName,
+          appointmentId: appointment.id,
           source: "QR_SCAN_BANGALORE",
         },
       },
@@ -277,6 +362,11 @@ export async function registerPatientViaQr(input: QrRegistrationInput) {
       dateOfBirth: patient.dateOfBirth,
     },
     coupleId: couple.id,
+    appointmentId: appointment.id,
+    doctor: {
+      id: resolvedDoctorUser?.id || null,
+      name: doctorDisplayName,
+    },
     clinic: {
       id: clinic.id,
       name: clinic.name,

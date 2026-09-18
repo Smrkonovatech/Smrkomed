@@ -25,6 +25,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { clinicApi } from "@/lib/clinic-api";
 import { doctorsStore } from "@/lib/doctors";
+import { useAppState } from "@/lib/app-state";
+import { Building2 } from "lucide-react";
 
 const ROLE_OPTIONS = [
   { value: "DOCTOR", label: "Doctor", description: "Full clinical access, consultations, reports", icon: Stethoscope, color: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800" },
@@ -49,6 +51,10 @@ type CreatedStaff = {
 
 export default function AddStaffPage() {
   const router = useRouter();
+  const { clinicId: activeClinicId } = useAppState();
+  const [selectedClinic, setSelectedClinic] = useState(
+    activeClinicId === "kochi" ? "kochi" : "blr",
+  );
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -78,11 +84,14 @@ export default function AddStaffPage() {
 
     setLoading(true);
     try {
+      const targetClinic = selectedClinic === "blr" ? "cmt0exo9n000vl804rbaabh32" : selectedClinic;
       const res = await clinicApi.createStaffMember({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         password,
         role,
+        clinicId: targetClinic,
+        locationId: selectedClinic,
         title: title.trim() || (role === "DOCTOR" ? "Fertility Specialist" : undefined),
         phone: phone.trim() || undefined,
         department: role === "DOCTOR" ? (department.trim() || "Reproductive Medicine") : undefined,
@@ -277,6 +286,62 @@ Clinic Admin`;
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Clinic location selection */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="size-4 text-primary" />
+              <CardTitle className="text-base">Clinic Location</CardTitle>
+            </div>
+            <CardDescription>Assign this doctor or staff member to a specific clinic branch.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setSelectedClinic("blr")}
+                className={`text-left rounded-xl border p-3.5 transition-all ${
+                  selectedClinic === "blr"
+                    ? "border-primary bg-primary/5 ring-2 ring-primary/20 shadow-xs"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="inline-flex items-center rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold text-primary mb-1">
+                      BANGALORE
+                    </span>
+                    <p className="font-semibold text-sm text-foreground">Hospex · Bangalore</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">12 Lavelle Road, Bangalore 560001</p>
+                  </div>
+                  {selectedClinic === "blr" && <Check className="size-4 text-primary ml-2 shrink-0" />}
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedClinic("kochi")}
+                className={`text-left rounded-xl border p-3.5 transition-all ${
+                  selectedClinic === "kochi"
+                    ? "border-primary bg-primary/5 ring-2 ring-primary/20 shadow-xs"
+                    : "border-border hover:border-muted-foreground/30"
+                }`}
+              >
+                <div className="flex items-start justify-between">
+                  <div>
+                    <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground mb-1">
+                      KOCHI
+                    </span>
+                    <p className="font-semibold text-sm text-foreground">Hospex · Kochi</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Panampilly Nagar, Kochi 682036</p>
+                  </div>
+                  {selectedClinic === "kochi" && <Check className="size-4 text-primary ml-2 shrink-0" />}
+                </div>
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Role selection */}
         <Card>
           <CardHeader className="pb-3">
