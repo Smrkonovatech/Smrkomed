@@ -174,6 +174,7 @@ export function DoctorProfileSlotManagement() {
     teleconsultBuffer: "15 Mins",
   });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"synced" | "saving" | "idle">("synced");
 
   // Edit Doctor Profile Modal State
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
@@ -252,32 +253,74 @@ export function DoctorProfileSlotManagement() {
     }
   };
 
-  // Toggle slot active/available
-  const handleToggleSlot = (sessionType: "morning" | "afternoon", index: number) => {
+  // Toggle slot active/available with instant auto-save to WhatsApp booking engine
+  const handleToggleSlot = async (sessionType: "morning" | "afternoon", index: number) => {
+    let updatedMorning = [...morningSlots];
+    let updatedAfternoon = [...afternoonSlots];
+    let slotTime = "";
+    let willBeActive = false;
+
     if (sessionType === "morning") {
-      setMorningSlots((prev) => {
-        const next = [...prev];
-        const slot = next[index];
-        if (!slot || slot.status === "booked") return prev;
-        next[index] = {
-          ...slot,
-          status: slot.status === "active" ? "available" : "active",
-        };
-        return next;
-      });
+      const slot = updatedMorning[index];
+      if (!slot || slot.status === "booked") return;
+      willBeActive = slot.status !== "active";
+      slotTime = slot.time;
+      updatedMorning[index] = {
+        ...slot,
+        status: willBeActive ? "active" : "available",
+      };
+      setMorningSlots(updatedMorning);
     } else {
-      setAfternoonSlots((prev) => {
-        const next = [...prev];
-        const slot = next[index];
-        if (!slot || slot.status === "booked") return prev;
-        next[index] = {
-          ...slot,
-          status: slot.status === "active" ? "available" : "active",
-        };
-        return next;
-      });
+      const slot = updatedAfternoon[index];
+      if (!slot || slot.status === "booked") return;
+      willBeActive = slot.status !== "active";
+      slotTime = slot.time;
+      updatedAfternoon[index] = {
+        ...slot,
+        status: willBeActive ? "active" : "available",
+      };
+      setAfternoonSlots(updatedAfternoon);
     }
-    setHasUnsavedChanges(true);
+
+    setSyncStatus("saving");
+
+    const allActiveSlots = [
+      ...updatedMorning.filter((s) => s.status === "active").map((s) => s.time),
+      ...updatedAfternoon.filter((s) => s.status === "active").map((s) => s.time),
+    ];
+
+    try {
+      const res = await fetch("/api/doctors/slot-management", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doctorId: data?.doctor.id,
+          date: selectedDate,
+          selectedSlots: allActiveSlots,
+          weeklySchedule,
+          safeguards,
+        }),
+      });
+      if (res.ok) {
+        setSyncStatus("synced");
+        setHasUnsavedChanges(false);
+        toast.success(
+          willBeActive
+            ? `Slot ${slotTime} activated for WhatsApp`
+            : `Slot ${slotTime} closed on WhatsApp`,
+          {
+            description: `${allActiveSlots.length} active slot${allActiveSlots.length === 1 ? "" : "s"} live for ${formatDateTabLabel(selectedDate)}.`,
+            duration: 2500,
+          },
+        );
+      } else {
+        setSyncStatus("idle");
+        setHasUnsavedChanges(true);
+      }
+    } catch {
+      setSyncStatus("idle");
+      setHasUnsavedChanges(true);
+    }
   };
 
   // Save slot changes
@@ -508,8 +551,12 @@ export function DoctorProfileSlotManagement() {
   }, [bookedCount, activeCount, totalSlotsCount]);
 
   // Session counters
-  const morningAllocatedCount = morningSlots.filter((s) => s.status === "active" || s.status === "booked").length;
-  const afternoonOpenCount = afternoonSlots.filter((s) => s.status === "available").length;
+  const morningActiveCount = morningSlots.filter((s) => s.status === "active").length;
+  const morningBookedCount = morningSlots.filter((s) => s.status === "booked").length;
+  const afternoonActiveCount = afternoonSlots.filter((s) => s.status === "active").length;
+  const afternoonBookedCount = afternoonSlots.filter((s) => s.status === "booked").length;
+  const morningAllocatedCount = morningActiveCount + morningBookedCount;
+  const afternoonAllocatedCount = afternoonActiveCount + afternoonBookedCount;
 
   const doctorInfo = data?.doctor || {
     id: "cmu6rkn080000njfo34n9spvq",
@@ -851,18 +898,18 @@ export function DoctorProfileSlotManagement() {
             {/* Legend Bar */}
             <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500 mt-4 pt-3 border-t border-gray-100">
               <div className="flex items-center gap-1.5">
-                <span className="size-3.5 rounded border border-gray-300 bg-white" />
-                <span>Available (Open)</span>
-              </div>
-              <div className="flex items-center gap-1.5">
                 <span className="size-3.5 rounded bg-purple-600 text-white grid place-items-center">
                   <Check className="size-2.5 text-white" />
                 </span>
-                <span className="font-medium text-gray-700">Selected Active</span>
+                <span className="font-semibold text-purple-900">Selected Active (Live on WhatsApp)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-3.5 rounded border border-gray-300 bg-white" />
+                <span>Closed / Off (Hidden from Patients)</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="size-3.5 rounded bg-gray-200 border border-gray-200" />
-                <span>Booked / Locked</span>
+                <span>Booked / Locked (Patient Scheduled)</span>
               </div>
             </div>
 
@@ -873,7 +920,8 @@ export function DoctorProfileSlotManagement() {
                   MORNING SESSION • 09:00 AM – 12:00 PM
                 </span>
                 <span className="text-xs font-medium text-gray-500">
-                  {morningAllocatedCount} of {morningSlots.length} Slots Allocated
+                  {morningActiveCount} of {morningSlots.length} Active for WhatsApp
+                  {morningBookedCount > 0 ? ` (${morningBookedCount} Booked)` : ""}
                 </span>
               </div>
 
@@ -916,7 +964,8 @@ export function DoctorProfileSlotManagement() {
                   AFTERNOON SESSION • 02:00 PM – 05:00 PM
                 </span>
                 <span className="text-xs font-medium text-gray-500">
-                  {afternoonOpenCount} of {afternoonSlots.length} Slots Open
+                  {afternoonActiveCount} of {afternoonSlots.length} Active for WhatsApp
+                  {afternoonBookedCount > 0 ? ` (${afternoonBookedCount} Booked)` : ""}
                 </span>
               </div>
 
@@ -954,15 +1003,27 @@ export function DoctorProfileSlotManagement() {
 
             {/* Footer with Unsaved changes & Update button */}
             <div className="mt-8 pt-4 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <p className="text-xs text-gray-400">
-                {hasUnsavedChanges ? (
-                  <span className="text-amber-600 font-medium">
-                    ● Unsaved changes detected. Click &quot;Update Available Slots&quot; to apply to booking engine.
+              <div className="flex items-center gap-2">
+                {syncStatus === "saving" ? (
+                  <span className="flex items-center gap-1.5 text-xs text-purple-600 font-medium">
+                    <RefreshCw className="size-3.5 animate-spin" />
+                    Syncing changes to WhatsApp...
+                  </span>
+                ) : syncStatus === "synced" ? (
+                  <span className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                    <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Availability is live and fully synchronized with WhatsApp booking engine
+                  </span>
+                ) : hasUnsavedChanges ? (
+                  <span className="text-xs text-amber-600 font-medium">
+                    ● Unsaved changes detected. Click &quot;Update Available Slots&quot; to apply.
                   </span>
                 ) : (
-                  <span>Availability is fully synchronized with patient WhatsApp booking engine</span>
+                  <span className="text-xs text-gray-400">
+                    Availability is fully synchronized with patient WhatsApp booking engine
+                  </span>
                 )}
-              </p>
+              </div>
 
               <Button
                 type="button"
@@ -976,7 +1037,10 @@ export function DoctorProfileSlotManagement() {
                     <span>Updating...</span>
                   </>
                 ) : (
-                  <span>Update Available Slots</span>
+                  <>
+                    <Save className="size-3.5" />
+                    <span>Update Available Slots</span>
+                  </>
                 )}
               </Button>
             </div>
@@ -1145,25 +1209,25 @@ export function DoctorProfileSlotManagement() {
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="size-2.5 rounded-full bg-purple-600" />
-                    <span className="font-medium text-gray-600">Active / Booked:</span>
+                    <span className="font-medium text-gray-600">Active (Live on WhatsApp):</span>
                   </div>
-                  <span className="font-bold text-gray-900">{activeCount + bookedCount} slots</span>
+                  <span className="font-bold text-gray-900">{activeCount} slots</span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="size-2.5 rounded-full bg-emerald-600" />
+                    <span className="font-medium text-gray-600">Booked by Patients:</span>
+                  </div>
+                  <span className="font-bold text-gray-900">{bookedCount} slots</span>
                 </div>
 
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="size-2.5 rounded-full bg-gray-300" />
-                    <span className="font-medium text-gray-600">Open Available:</span>
+                    <span className="font-medium text-gray-600">Closed / Off:</span>
                   </div>
                   <span className="font-bold text-gray-900">{availableCount} slots</span>
-                </div>
-
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="size-2.5 rounded-full bg-slate-400" />
-                    <span className="font-medium text-gray-600">Blocked / Break:</span>
-                  </div>
-                  <span className="font-bold text-gray-900">{blockedCount} slots</span>
                 </div>
               </div>
             </div>

@@ -169,12 +169,38 @@ export async function GET(request: NextRequest) {
     // Overrides
     const overrideRule = await prisma.automationRule.findFirst({
       where: {
-        clinicId,
         trigger: "DOCTOR_SLOT_OVERRIDES",
-        name: `${doctorUser.id}_${requestedDate}`,
+        OR: [
+          { name: `${doctorUser.id}_${requestedDate}` },
+          { name: `doc_${doctorUser.id}_${requestedDate}` },
+        ],
       },
     });
-    const savedOverrides = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+    let savedOverrides = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+
+    // If no override exists yet for this doctor on this date, auto-initialize with default active slots
+    // so the database and UI are always 100% in sync with the WhatsApp booking engine
+    if (!overrideRule || !savedOverrides) {
+      const initialSlots = ["09:00 - 09:30", "09:30 - 10:00", "10:00 - 10:30", "11:00 - 11:30"];
+      try {
+        await prisma.automationRule.create({
+          data: {
+            clinicId,
+            trigger: "DOCTOR_SLOT_OVERRIDES",
+            name: `${doctorUser.id}_${requestedDate}`,
+            config: {
+              date: requestedDate,
+              doctorId: doctorUser.id,
+              activeSlots: initialSlots,
+              createdAt: new Date().toISOString(),
+            },
+          },
+        });
+        savedOverrides = initialSlots;
+      } catch {
+        savedOverrides = initialSlots;
+      }
+    }
 
     // Map booked labels
     const bookedLabels = new Set<string>();
@@ -325,9 +351,11 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(selectedSlots)) {
       const existingOverride = await prisma.automationRule.findFirst({
         where: {
-          clinicId,
           trigger: "DOCTOR_SLOT_OVERRIDES",
-          name: `${doctorUser.id}_${targetDate}`,
+          OR: [
+            { name: `${doctorUser.id}_${targetDate}` },
+            { name: `doc_${doctorUser.id}_${targetDate}` },
+          ],
         },
       });
 

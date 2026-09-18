@@ -360,7 +360,7 @@ export async function handleMenuAction(input: {
 
       for (const dateIso of upcomingDates.slice(0, 2)) {
         const slots = await getDoctorDaySlots(input.tenant.clinicId, doc.id, dateIso);
-        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 4);
+        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 8);
 
         const d = new Date(`${dateIso}T00:00:00`);
         const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
@@ -429,7 +429,7 @@ export async function handleMenuAction(input: {
       let hasSlots = false;
       for (const dateIso of upcomingDates.slice(0, 2)) {
         const slots = await getDoctorDaySlots(input.tenant.clinicId, doc.id, dateIso);
-        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 4);
+        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 10);
         const d = new Date(`${dateIso}T00:00:00`);
         const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
         if (freeSlots.length > 0) {

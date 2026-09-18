@@ -124,6 +124,7 @@ export function doctorNamesMatch(docA?: string | null, docB?: string | null): bo
  */
 export async function getAvailableAppointmentSlots(input: {
   clinicId: string;
+  doctorId?: string | null;
   doctorName?: string | null;
   appointmentType?: string | null;
   preferredDate?: string | null;
@@ -182,8 +183,47 @@ export async function getAvailableAppointmentSlots(input: {
   });
 
   const appointmentType = (input.appointmentType ?? "Consultation").trim() || "Consultation";
-  const doctorName = input.doctorName?.trim() || null;
+  let doctorName = input.doctorName?.trim() || null;
   const slots: AppointmentSlot[] = [];
+
+  // Resolve target doctor to honor their date slot overrides
+  let targetDoctorUser: { id: string; name: string } | null = null;
+  const explicitDocId = (input.doctorId || "").replace(/^doc_/, "");
+  if (explicitDocId) {
+    targetDoctorUser = await prisma.user.findFirst({
+      where: {
+        OR: [{ id: explicitDocId }, { id: input.doctorId! }],
+      },
+      select: { id: true, name: true },
+    });
+    if (targetDoctorUser && !doctorName) {
+      doctorName = targetDoctorUser.name;
+    }
+  }
+
+  const cleanDocName = (doctorName || "").replace(/^dr\.?\s*/i, "").trim();
+  if (!targetDoctorUser && cleanDocName) {
+    targetDoctorUser = await prisma.user.findFirst({
+      where: {
+        name: { contains: cleanDocName, mode: "insensitive" },
+      },
+      select: { id: true, name: true },
+    });
+  }
+  if (!targetDoctorUser) {
+    const docMembership = await prisma.clinicMembership.findFirst({
+      where: {
+        clinicId: input.clinicId,
+        status: "ACTIVE",
+        role: { OR: [{ key: "DOCTOR" }, { name: { contains: "Doctor", mode: "insensitive" } }] },
+      },
+      include: { user: { select: { id: true, name: true } } },
+    });
+    if (docMembership) {
+      targetDoctorUser = docMembership.user;
+      if (!doctorName) doctorName = docMembership.user.name;
+    }
+  }
 
   for (let dayOffset = 0; dayOffset < scanDays && slots.length < limit; dayOffset++) {
     const day = new Date(baseDate.getTime() + dayOffset * 86_400_000);
@@ -196,19 +236,48 @@ export async function getAvailableAppointmentSlots(input: {
       if (prefStr !== localIso && prefStr !== dayIso) continue;
     }
 
+    const dateIso = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(day);
+    const tzOffset = getTimezoneOffsetString(timezone, day);
+
+    // Check if doctor has explicit date slot overrides
+    let savedActiveSlots: string[] | undefined = undefined;
+    if (targetDoctorUser) {
+      const overrideRule = await prisma.automationRule.findFirst({
+        where: {
+          trigger: "DOCTOR_SLOT_OVERRIDES",
+          OR: [
+            { name: `${targetDoctorUser.id}_${dateIso}` },
+            { name: `doc_${targetDoctorUser.id}_${dateIso}` },
+          ],
+        },
+      });
+      savedActiveSlots = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+    }
+
+    if (savedActiveSlots !== undefined && savedActiveSlots.length === 0) {
+      // Doctor explicitly turned off all slots for this date
+      continue;
+    }
+
     const tzDayStr = new Intl.DateTimeFormat("en-US", { timeZone: timezone, weekday: "short" })
       .format(day)
       .toLowerCase()
       .slice(0, 3) as keyof WorkingHoursMap;
     const window = hours[tzDayStr] ?? hours[DAY_KEYS[day.getUTCDay()]!];
-    if (!window) continue;
+    if (!window && (!savedActiveSlots || savedActiveSlots.length === 0)) continue;
 
-    const { h: sh, m: sm } = parseHm(window.start);
-    const { h: eh, m: em } = parseHm(window.end);
-    const dateIso = new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(day);
-    const tzOffset = getTimezoneOffsetString(timezone, day);
-    const open = new Date(`${dateIso}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00${tzOffset}`);
-    const close = new Date(`${dateIso}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00${tzOffset}`);
+    const { h: sh, m: sm } = parseHm(window?.start || "09:00");
+    const { h: eh, m: em } = parseHm(window?.end || "18:00");
+
+    let startHour = sh;
+    let endHour = eh;
+    if (savedActiveSlots && savedActiveSlots.length > 0) {
+      startHour = Math.min(startHour, 9);
+      endHour = Math.max(endHour, 18);
+    }
+
+    const open = new Date(`${dateIso}T${String(startHour).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00${tzOffset}`);
+    const close = new Date(`${dateIso}T${String(endHour).padStart(2, "0")}:${String(em).padStart(2, "0")}:00${tzOffset}`);
 
     for (
       let cursor = new Date(open);
@@ -217,6 +286,15 @@ export async function getAvailableAppointmentSlots(input: {
     ) {
       if (cursor.getTime() <= now.getTime() + 10 * 60_000) continue;
       const end = new Date(cursor.getTime() + durationMin * 60_000);
+
+      // Filter by doctor's active selected slots
+      const startStr = formatTimeIST(cursor);
+      const endStr = formatTimeIST(end);
+      const slotLabel = `${startStr} - ${endStr}`;
+      if (savedActiveSlots && !savedActiveSlots.includes(slotLabel)) {
+        continue;
+      }
+
       const conflict = existing.some((appt) => {
         const aStart = appt.startsAt;
         const aEnd = new Date(aStart.getTime() + (appt.durationMin || 30) * 60_000);
@@ -320,6 +398,36 @@ export async function validateSlotStillAvailable(input: {
       return { ok: false, reason: "SLOT_CONFLICT" };
     }
   }
+
+  // Check if doctor disabled this slot via DOCTOR_SLOT_OVERRIDES
+  if (input.doctorName) {
+    const cleanDoc = input.doctorName.replace(/^dr\.?\s*/i, "").trim();
+    const docUser = await prisma.user.findFirst({
+      where: { name: { contains: cleanDoc, mode: "insensitive" } },
+      select: { id: true },
+    });
+    if (docUser) {
+      const overrideRule = await prisma.automationRule.findFirst({
+        where: {
+          trigger: "DOCTOR_SLOT_OVERRIDES",
+          OR: [
+            { name: `${docUser.id}_${dateIso}` },
+            { name: `doc_${docUser.id}_${dateIso}` },
+          ],
+        },
+      });
+      const active = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+      if (Array.isArray(active)) {
+        const sTime = formatTimeIST(input.startTime);
+        const eTime = formatTimeIST(end);
+        const label = `${sTime} - ${eTime}`;
+        if (!active.includes(label)) {
+          return { ok: false, reason: "SLOT_CLOSED_BY_DOCTOR" };
+        }
+      }
+    }
+  }
+
   return { ok: true };
 }
 

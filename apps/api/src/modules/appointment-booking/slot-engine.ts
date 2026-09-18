@@ -288,31 +288,9 @@ export async function getDoctorDaySlots(
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const dayName = dayNames[dateObj.getDay()];
 
-  // Fetch doctor profile rule to respect doctor's weekly recurring schedule
-  const profileRule = await prisma.automationRule.findFirst({
-    where: {
-      trigger: "DOCTOR_PROFILE",
-      OR: [
-        { name: cleanDocId },
-        { name: `doc_${cleanDocId}` },
-        ...(doctorUser ? [{ name: doctorUser.id }, { name: `doc_${doctorUser.id}` }] : []),
-      ],
-    },
-  });
-  const profileCfg = (profileRule?.config as any) || {};
-
-  // If doctor toggled this day OFF in weekly schedule, return no slots
-  if (Array.isArray(profileCfg.weeklyScheduleStructured)) {
-    const dayCfg = profileCfg.weeklyScheduleStructured.find((d: any) => d.day === dayName);
-    if (dayCfg && (!dayCfg.active || dayCfg.tag === "Off Day")) {
-      return [];
-    }
-  }
-
-  // Fetch date-specific slot overrides set by doctor on the Doctor Profile & Slot Management page
+  // 1. Fetch date-specific slot overrides set by doctor on Doctor Profile & Slot Management page
   const overrideRule = await prisma.automationRule.findFirst({
     where: {
-      clinicId: effectiveClinicId,
       trigger: "DOCTOR_SLOT_OVERRIDES",
       OR: [
         { name: `${doctorUser?.id || cleanDocId}_${dateIso}` },
@@ -322,6 +300,34 @@ export async function getDoctorDaySlots(
     },
   });
   const savedActiveSlots = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+
+  // If doctor explicitly configured overrides for this specific date:
+  if (savedActiveSlots !== undefined) {
+    if (savedActiveSlots.length === 0) {
+      // Doctor explicitly set this date to have 0 available slots (day off override)
+      return [];
+    }
+  } else {
+    // 2. Fall back to doctor's weekly recurring schedule
+    const profileRule = await prisma.automationRule.findFirst({
+      where: {
+        trigger: "DOCTOR_PROFILE",
+        OR: [
+          { name: cleanDocId },
+          { name: `doc_${cleanDocId}` },
+          ...(doctorUser ? [{ name: doctorUser.id }, { name: `doc_${doctorUser.id}` }] : []),
+        ],
+      },
+    });
+    const profileCfg = (profileRule?.config as any) || {};
+
+    if (Array.isArray(profileCfg.weeklyScheduleStructured)) {
+      const dayCfg = profileCfg.weeklyScheduleStructured.find((d: any) => d.day === dayName);
+      if (dayCfg && (!dayCfg.active || dayCfg.tag === "Off Day")) {
+        return [];
+      }
+    }
+  }
 
   const slots: BookingSlot[] = [];
 
@@ -433,7 +439,6 @@ export async function recheckSlotAvailability(
     // 3. Check if slot was manually disabled by doctor in slot management
     const override = await prisma.automationRule.findFirst({
       where: {
-        clinicId,
         trigger: "DOCTOR_SLOT_OVERRIDES",
         name: { contains: dateIso },
       },
