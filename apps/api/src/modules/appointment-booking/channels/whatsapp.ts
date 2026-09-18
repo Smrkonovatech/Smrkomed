@@ -67,15 +67,18 @@ export function formatRegisterPatientPrompt(session: BookingSession, subStep = 1
 export function formatSelectDoctorPrompt(doctors: BookingDoctorSummary[]): string {
   let text = `🩺 *Select a Doctor*\n\nPlease choose a doctor for your consultation:\n\n`;
   doctors.forEach((doc, idx) => {
-    text += `${idx + 1}️⃣ *${doc.displayName}*\n   _${doc.specialty}_ (${doc.experienceYears} yrs exp)\n   Fee: ₹${doc.consultationFee ?? 1000}\n\n`;
+    const locText = doc.location ? ` (📍 ${doc.location})` : "";
+    text += `${idx + 1}️⃣ *${doc.displayName}*${locText}\n   _${doc.specialty}_ (${doc.experienceYears} yrs exp)\n   Fee: ₹${doc.consultationFee ?? 1000}\n\n`;
   });
   text += `Reply with the doctor's number to view profile and slots.` + FOOTER_NAV;
   return text;
 }
 
 export function formatViewDoctorPrompt(doctor: BookingDoctorSummary): string {
+  const locLine = doctor.location ? `• *Location:* 📍 ${doctor.location}\n` : "";
   return (
     `👨‍⚕️ *Doctor Profile: ${doctor.displayName}*\n\n` +
+    locLine +
     `• *Specialty:* ${doctor.specialty}\n` +
     `• *Experience:* ${doctor.experienceYears} years\n` +
     `• *Languages:* ${doctor.languages.join(", ")}\n` +

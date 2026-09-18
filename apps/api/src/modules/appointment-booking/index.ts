@@ -16,7 +16,7 @@ import { AppointmentBookingMachine } from "./state-machine";
 import { bookingSessionStore } from "./session-store";
 import { formatIdentifyPatientPrompt, formatSelectChannelPrompt } from "./channels/whatsapp";
 import { formatVoiceGreeting } from "./channels/voice";
-import { getClinicDoctors } from "./slot-engine";
+import { getClinicDoctors, DEFAULT_DOCTORS } from "./slot-engine";
 
 const initSessionSchema = z.object({
   channel: z.enum(["WHATSAPP", "CALL"]),
@@ -142,8 +142,25 @@ export const appointmentBookingRoutes = new Hono<AppEnv>()
    * List available clinic doctors and their upcoming open slots
    */
   .get("/doctors", async (c) => {
-    const clinic = await prisma.clinic.findFirst();
+    const clinic =
+      (await prisma.clinic.findFirst({ where: { name: { contains: "Hospex", mode: "insensitive" } } })) ||
+      (await prisma.clinic.findFirst({
+        where: {
+          memberships: {
+            some: {
+              OR: [
+                { role: { key: "DOCTOR" } },
+                { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+              ],
+            },
+          },
+        },
+      })) ||
+      (await prisma.clinic.findFirst());
     const clinicId = clinic?.id || "clinic_default";
-    const doctors = await getClinicDoctors(clinicId);
+    let doctors = await getClinicDoctors(clinicId);
+    if (!doctors || doctors.length === 0) {
+      doctors = DEFAULT_DOCTORS;
+    }
     return ok(c, doctors);
   });

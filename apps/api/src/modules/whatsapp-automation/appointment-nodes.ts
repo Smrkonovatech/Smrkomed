@@ -24,6 +24,8 @@ export type ClinicDoctor = {
   bio: string;
   languages: string[];
   photoUrl?: string | null;
+  clinicId?: string;
+  location?: string;
 };
 
 import { getDoctorPhotoUrl, resolveDoctorPhotoAsset } from "./doctor-photos";
@@ -75,12 +77,22 @@ export function isMockDoctorEmail(email?: string | null, name?: string | null): 
   );
 }
 
-/** Fetch real active doctors for the clinic, never injecting mock doctors if they were removed. */
+/** Fetch real active doctors for the clinic (or all branches for Hospex), attaching clinic location. */
 export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoctor[]> {
   try {
+    const isHospex =
+      clinicId === "cmt0exo9n000vl804rbaabh32" ||
+      clinicId === "cmu3nmx310026jy04gsi21hxl" ||
+      clinicId === "blr" ||
+      clinicId === "kochi";
+
+    const targetClinicIds = isHospex
+      ? ["cmt0exo9n000vl804rbaabh32", "cmu3nmx310026jy04gsi21hxl"]
+      : [clinicId];
+
     const memberships = await prisma.clinicMembership.findMany({
       where: {
-        clinicId,
+        clinicId: { in: targetClinicIds },
         status: "ACTIVE",
         user: { isActive: true },
         OR: [
@@ -89,11 +101,12 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
         ],
       },
       include: {
+        clinic: { select: { id: true, city: true, name: true } },
         user: {
           select: { id: true, name: true, title: true, phone: true, initials: true, email: true },
         },
       },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ clinicId: "asc" }, { createdAt: "asc" }],
     });
 
     const realMemberships = memberships.filter((m) => !isMockDoctorEmail(m.user.email, m.user.name));
@@ -101,7 +114,7 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
     if (realMemberships.length > 0) {
       const profileRules = await prisma.automationRule.findMany({
         where: {
-          clinicId,
+          clinicId: { in: targetClinicIds },
           trigger: "DOCTOR_PROFILE",
         },
       });
@@ -121,6 +134,7 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
         const experience = saved.yearsExperience ? `${saved.yearsExperience}+ years experience` : demo.experience;
         const bio = saved.professionalBio || saved.shortIntro || saved.bio || demo.bio;
         const languages = Array.isArray(saved.languages) && saved.languages.length > 0 ? saved.languages : demo.languages;
+        const location = m.clinic?.city || (m.clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore");
 
         return {
           id: m.userId,
@@ -130,6 +144,8 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
           experience,
           bio,
           languages,
+          clinicId: m.clinicId,
+          location,
           photoUrl: (typeof saved.profileImageUrl === "string" && saved.profileImageUrl.startsWith("http"))
             ? saved.profileImageUrl
             : getDoctorPhotoUrl(m.userId),

@@ -383,6 +383,7 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["doctor.experience"] = matched.experience;
           mergedVars["doctor.bio"] = matched.bio || "";
           mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          mergedVars["doctor.location"] = matched.location || "";
           if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
         }
         replyAction = "btn_see_slots";
@@ -401,6 +402,7 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["doctor.experience"] = matched.experience;
           mergedVars["doctor.bio"] = matched.bio || "";
           mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          mergedVars["doctor.location"] = matched.location || "";
           if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
         }
         replyAction = rawReply;
@@ -430,6 +432,7 @@ export async function resumeWaitForReplyExecutions(input: {
           mergedVars["doctor.experience"] = matched.experience;
           mergedVars["doctor.bio"] = matched.bio || "";
           mergedVars["doctor.languages"] = Array.isArray(matched.languages) ? matched.languages.join(" • ") : String(matched.languages || "");
+          mergedVars["doctor.location"] = matched.location || "";
           if (matched.photoUrl) mergedVars["doctor.photoUrl"] = matched.photoUrl;
           replyAction = `appt_doctor_${matched.id}`;
         } else if (!rawReply.startsWith("appt_")) {

@@ -354,6 +354,7 @@ export async function executePatientTool(
             id: d.id,
             name: d.displayName,
             specialty: d.specialty,
+            location: d.location || (d.clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore"),
             experience: `${d.experienceYears}+ years`,
             languages: d.languages.join(", "),
             fee: `₹${d.consultationFee ?? 1000}`,
@@ -361,7 +362,7 @@ export async function executePatientTool(
             photoUrl: d.photoUrl || null,
           })),
           coordinator: assignedCoord,
-          instruction: "Present the doctor and clinic specialist details clearly (name, specialty, experience, languages, bio, and fee) to the patient. Offer to schedule an appointment with them.",
+          instruction: "Present the doctor and clinic specialist details clearly (name, location/branch, specialty, experience, languages, bio, and fee) to the patient. Offer to schedule an appointment with them.",
         },
       };
     }
@@ -377,13 +378,14 @@ export async function executePatientTool(
             id: d.id,
             name: d.displayName,
             specialty: d.specialty,
+            location: d.location || (d.clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore"),
             experience: `${d.experienceYears}+ years`,
             languages: d.languages.join(", "),
             fee: `₹${d.consultationFee ?? 1000}`,
             bio: d.bio,
           })),
           count: clinicDoctors.length,
-          instruction: "List the available fertility specialists and their details (qualifications, experience, fee, languages). Ask the patient if they would like to view open slots or book a consultation.",
+          instruction: "List the available fertility specialists with their branch location (Bangalore / Kochi), qualifications, experience, fee, and languages. Ask the patient if they would like to view open slots or book a consultation.",
         },
       };
     }
