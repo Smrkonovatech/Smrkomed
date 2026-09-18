@@ -2069,16 +2069,6 @@ async function executeNode(
 
       let branch = "new_patient";
       if (foundPatient) {
-        branch = "existing_patient";
-        vars["patient.id"] = foundPatient.id;
-        vars["patientId"] = foundPatient.id;
-        vars["patient.name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
-        vars["patient.firstName"] = foundPatient.firstName;
-        vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
-        vars["patient_first_name"] = foundPatient.firstName;
-        vars["patient_exists"] = "true";
-        vars["is_new_patient"] = "false";
-
         const couple = await prisma.couple.findFirst({
           where: {
             clinicId: tenant.clinicId,
@@ -2086,24 +2076,47 @@ async function executeNode(
           },
           select: { id: true },
         });
+
         if (couple) {
+          branch = "existing_patient";
+          vars["patient.id"] = foundPatient.id;
+          vars["patientId"] = foundPatient.id;
+          vars["patient.name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+          vars["patient.firstName"] = foundPatient.firstName;
+          vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+          vars["patient_first_name"] = foundPatient.firstName;
+          vars["patient_exists"] = "true";
+          vars["is_new_patient"] = "false";
           vars["couple.id"] = couple.id;
           vars["coupleId"] = couple.id;
-        }
 
-        if (execution.conversationId) {
-          await prisma.conversation.updateMany({
-            where: { id: execution.conversationId, clinicId: tenant.clinicId },
-            data: { patientId: foundPatient.id, unmatched: false },
+          if (execution.conversationId) {
+            await prisma.conversation.updateMany({
+              where: { id: execution.conversationId, clinicId: tenant.clinicId },
+              data: { patientId: foundPatient.id, coupleId: couple.id, unmatched: false },
+            });
+          }
+
+          console.log("[PATIENT_FOUND]", {
+            clinicId: tenant.clinicId,
+            executionId: execution.id,
+            patientId: foundPatient.id,
+            coupleId: couple.id,
+          });
+        } else {
+          // Patient record exists but no registered couple file -> route to new patient registration
+          branch = "new_patient";
+          vars["patient_exists"] = "false";
+          vars["is_new_patient"] = "true";
+          vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+          vars["patient_first_name"] = foundPatient.firstName;
+
+          console.log("[PATIENT_FOUND_NO_COUPLE_REQUIRING_REGISTRATION]", {
+            clinicId: tenant.clinicId,
+            executionId: execution.id,
+            patientId: foundPatient.id,
           });
         }
-
-        console.log("[PATIENT_FOUND]", {
-          clinicId: tenant.clinicId,
-          executionId: execution.id,
-          patientId: foundPatient.id,
-          hasCouple: Boolean(couple),
-        });
       } else {
         branch = "new_patient";
         vars["patient_exists"] = "false";

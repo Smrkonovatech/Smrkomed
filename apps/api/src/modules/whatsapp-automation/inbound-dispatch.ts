@@ -840,8 +840,18 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     }
   }
 
-  // 1.5. Check if contact is unregistered/unmatched and replying to registration
-  if (input.unmatched || !input.patientId) {
+  // 1.5. Check if contact is unregistered/unmatched, asks to register, or asks to book without couple registration
+  const isExplicitRegister =
+    cleanInboundText === "menu_register" ||
+    (/\b(register|sign\s*up|new\s*patient|create\s*(my\s*)?account|registration|couple\s*registration)\b/i.test(cleanInboundText) &&
+      !cleanInboundText.includes("how"));
+  const isExplicitBooking =
+    cleanInboundText === "btn_book_wa" ||
+    cleanInboundText === "menu_book_appt" ||
+    cleanInboundText === "btn_ai_call" ||
+    /\b(book\s*(an?\s*)?(appointment|consultation)|schedule\s*(an?\s*)?(appointment|consultation)|need\s*(an?\s*)?appointment|want\s*to\s*book|book\s*doctor|book\s*appointment|book\s*consultation|book|appointment|consultation)\b/i.test(cleanInboundText);
+
+  if (input.unmatched || !input.patientId || isExplicitRegister || (isExplicitBooking && !coupleId)) {
     if (input.skipAi) {
       return { resumed, dispatched: null, ai: { skipped: true as const, reason: "already_ran_in_webhook" } };
     }
@@ -859,7 +869,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
       });
 
     if (regResult.handled) {
-      console.log("[WhatsApp inbound] unregistered contact registration handled", {
+      console.log("[WhatsApp inbound] contact registration handled", {
         conversationId: input.conversationId,
         registered: regResult.registered,
         patientId: regResult.patientId,
@@ -872,17 +882,17 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
       };
     }
 
-    // Unregistered contact message didn't contain registration data (e.g. "Hi", "Appointment", inquiry).
-    // Route directly to AI to explain they are not yet registered, prompt for registration, and answer queries.
-    // Do NOT trigger automated flows that create ghost appointments without patient records.
-    console.log("[WhatsApp inbound] unregistered contact — routing to registration AI", {
-      conversationId: input.conversationId,
-      phone: input.contactPhone,
-    });
-    const ai = input.skipAi
-      ? { skipped: true as const, reason: "already_ran_in_webhook" }
-      : await runInboundWhatsAppAi(input);
-    return { resumed, dispatched: null, ai };
+    // If contact is unregistered/unmatched, route directly to AI to explain they are not yet registered
+    if (input.unmatched || !input.patientId) {
+      console.log("[WhatsApp inbound] unregistered contact — routing to registration AI", {
+        conversationId: input.conversationId,
+        phone: input.contactPhone,
+      });
+      const ai = input.skipAi
+        ? { skipped: true as const, reason: "already_ran_in_webhook" }
+        : await runInboundWhatsAppAi(input);
+      return { resumed, dispatched: null, ai };
+    }
   }
 
   // 1.5. Check for Payment Intent or "Pay Now" button reply
