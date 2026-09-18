@@ -5,20 +5,26 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as Partial<QrRegistrationInput>;
+    const body = (await request.json()) as Partial<QrRegistrationInput> & { fullName?: string };
 
-    if (!body.firstName || !body.firstName.trim()) {
+    let firstName = (body.firstName || "").trim();
+    let lastName = (body.lastName || "").trim();
+
+    if ((!firstName || !lastName) && body.fullName?.trim()) {
+      const parts = body.fullName.trim().split(/\s+/);
+      firstName = parts[0] || "";
+      lastName = parts.slice(1).join(" ") || parts[0] || "";
+    }
+
+    if (!firstName) {
       return NextResponse.json(
-        { success: false, error: "First name is required." },
+        { success: false, error: "Full name is required." },
         { status: 400 },
       );
     }
 
-    if (!body.lastName || !body.lastName.trim()) {
-      return NextResponse.json(
-        { success: false, error: "Last name is required." },
-        { status: 400 },
-      );
+    if (!lastName) {
+      lastName = firstName;
     }
 
     if (!body.phone || !body.phone.trim()) {
@@ -29,8 +35,8 @@ export async function POST(request: Request) {
     }
 
     const result = await registerPatientViaQr({
-      firstName: body.firstName,
-      lastName: body.lastName,
+      firstName,
+      lastName,
       phone: body.phone,
       email: body.email || null,
       gender: body.gender || "UNSPECIFIED",

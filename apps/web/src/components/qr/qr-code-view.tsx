@@ -224,7 +224,7 @@ export function QrCodeView({
             </div>
             <div class="badge">HOSPEX CLINIC · BANGALORE CENTER</div>
             <h1>Patient Self Check-In</h1>
-            <p class="sub">Scan with smartphone camera to check in at reception, view your queue, or connect with Smrko AI.</p>
+            <p class="sub">Scan with smartphone camera to check in at reception, connect with Care Voice, or chat on Care Connect.</p>
             <div class="qr-wrap">
               <img class="qr-img" src="${dataUrl}" alt="Check-In QR Code" />
             </div>

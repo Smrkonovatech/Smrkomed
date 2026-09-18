@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Building2,
   CheckCircle2,
@@ -10,8 +10,6 @@ import {
   Sparkles,
   User,
   Phone,
-  Mail,
-  Stethoscope,
   ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -38,68 +36,32 @@ interface QrRegisterTileProps {
   onCancel?: () => void;
 }
 
-export interface RealDoctorOption {
-  id: string;
-  doctorId: string;
-  name: string;
-  specialty: string;
-}
-
 export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [gender, setGender] = useState<"FEMALE" | "MALE" | "OTHER">("FEMALE");
-  const [age, setAge] = useState("");
-  const [purpose, setPurpose] = useState("IVF Consultation & Evaluation");
-  const [doctors, setDoctors] = useState<RealDoctorOption[]>([]);
-  const [loadingDoctors, setLoadingDoctors] = useState(true);
-  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("");
-  const [doctorPreference, setDoctorPreference] = useState("First Available Specialist");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isCancelled = false;
-    async function loadClinicDoctors() {
-      try {
-        const res = await fetch("/api/qr/clinic-info");
-        const json = await res.json();
-        if (json.success && Array.isArray(json.clinic?.doctors) && !isCancelled) {
-          const list: RealDoctorOption[] = json.clinic.doctors;
-          setDoctors(list);
-          const first = list[0];
-          if (first) {
-            setSelectedDoctorId(first.id);
-            setDoctorPreference(first.name);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to load real clinic doctors:", e);
-      } finally {
-        if (!isCancelled) setLoadingDoctors(false);
-      }
-    }
-    loadClinicDoctors();
-    return () => {
-      isCancelled = true;
-    };
-  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!firstName.trim() || !lastName.trim()) {
-      setError("Please enter your full first and last name.");
+    const trimmedName = fullName.trim();
+    if (!trimmedName) {
+      setError("Please enter your full name.");
       return;
     }
 
-    if (!phone.trim() || phone.replace(/\D/g, "").length < 10) {
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (!phone.trim() || cleanPhone.length < 10) {
       setError("Please enter a valid 10-digit mobile number.");
       return;
     }
+
+    const parts = trimmedName.split(/\s+/);
+    const firstName = parts[0] || "Patient";
+    const lastName = parts.slice(1).join(" ") || firstName;
 
     setLoading(true);
 
@@ -108,15 +70,12 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          fullName: trimmedName,
           firstName,
           lastName,
           phone,
-          email: email || undefined,
           gender,
-          age: age ? parseInt(age, 10) : undefined,
-          purpose,
-          doctorId: selectedDoctorId || undefined,
-          doctorPreference,
+          purpose: "Consultation & Check-in",
         }),
       });
 
@@ -138,7 +97,7 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
         clinicName: res.data.clinic.name,
         clinicCity: res.data.clinic.city,
         clinicAddress: res.data.clinic.address,
-        purpose,
+        purpose: "Consultation & Check-in",
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong.");
@@ -199,7 +158,7 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
           Register at Reception
         </h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Fill in your details for immediate check-in. You will instantly receive Reception Calling, WhatsApp Concierge, and Smrko AI guidance.
+          Fill in your details for immediate check-in. You will instantly receive access to Care Voice calling and Care Connect WhatsApp.
         </p>
       </div>
 
@@ -210,165 +169,60 @@ export function QrRegisterTile({ onSuccess, onCancel }: QrRegisterTileProps) {
         </div>
       )}
 
-      {/* Registration Form */}
+      {/* Registration Form - only Full Name, Mobile Number, Gender */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="firstName" className="text-xs font-semibold text-foreground">
-              First Name *
-            </Label>
-            <div className="relative">
-              <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="firstName"
-                placeholder="Priya"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="pl-9 text-sm rounded-xl"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="lastName" className="text-xs font-semibold text-foreground">
-              Last Name *
-            </Label>
+        {/* Full Name */}
+        <div className="space-y-1.5">
+          <Label htmlFor="fullName" className="text-xs font-semibold text-foreground">
+            Full Name *
+          </Label>
+          <div className="relative">
+            <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              id="lastName"
-              placeholder="Sharma"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-              className="text-sm rounded-xl"
+              id="fullName"
+              placeholder="e.g. Priya Sharma"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="pl-9 text-sm rounded-xl"
               required
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="phone" className="text-xs font-semibold text-foreground">
-              WhatsApp / Mobile Phone *
-            </Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="phone"
-                type="tel"
-                placeholder="+91 98765 43210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="pl-9 text-sm font-medium rounded-xl"
-                required
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="email" className="text-xs font-semibold text-foreground">
-              Email Address (Optional)
-            </Label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="email"
-                type="email"
-                placeholder="patient@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="pl-9 text-sm rounded-xl"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="gender" className="text-xs font-semibold text-foreground">
-              Gender
-            </Label>
-            <select
-              id="gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value as "FEMALE" | "MALE" | "OTHER")}
-              className="flex h-9 w-full rounded-xl border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <option value="FEMALE">Female</option>
-              <option value="MALE">Male</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="age" className="text-xs font-semibold text-foreground">
-              Age (Years)
-            </Label>
+        {/* Mobile Number */}
+        <div className="space-y-1.5">
+          <Label htmlFor="phone" className="text-xs font-semibold text-foreground">
+            Mobile Number *
+          </Label>
+          <div className="relative">
+            <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
-              id="age"
-              type="number"
-              min="18"
-              max="99"
-              placeholder="e.g. 29"
-              value={age}
-              onChange={(e) => setAge(e.target.value)}
-              className="text-sm rounded-xl"
+              id="phone"
+              type="tel"
+              placeholder="+91 98765 43210"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              className="pl-9 text-sm font-medium rounded-xl"
+              required
             />
           </div>
         </div>
 
+        {/* Gender */}
         <div className="space-y-1.5">
-          <Label htmlFor="purpose" className="text-xs font-semibold text-foreground">
-            Purpose of Visit
+          <Label htmlFor="gender" className="text-xs font-semibold text-foreground">
+            Gender
           </Label>
           <select
-            id="purpose"
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
+            id="gender"
+            value={gender}
+            onChange={(e) => setGender(e.target.value as "FEMALE" | "MALE" | "OTHER")}
             className="flex h-9 w-full rounded-xl border border-input bg-card px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            <option value="IVF Consultation & Evaluation">IVF Consultation & Evaluation</option>
-            <option value="Follicular Monitoring Scan">Follicular Monitoring Ultrasound</option>
-            <option value="Semen Analysis & Andrology">Semen Analysis & Andrology Lab</option>
-            <option value="Doctor Follow-up & Prescription">Doctor Follow-up & Medication Review</option>
-            <option value="Second Opinion & Care Plan">Second Opinion on Previous Cycles</option>
+            <option value="FEMALE">Female</option>
+            <option value="MALE">Male</option>
+            <option value="OTHER">Other</option>
           </select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="doctorPreference" className="text-xs font-semibold text-foreground">
-            Preferred Specialist
-          </Label>
-          <div className="relative">
-            <Stethoscope className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <select
-              id="doctorPreference"
-              value={selectedDoctorId}
-              onChange={(e) => {
-                const docId = e.target.value;
-                setSelectedDoctorId(docId);
-                const match = doctors.find((d) => d.id === docId);
-                if (match) {
-                  setDoctorPreference(match.name);
-                } else {
-                  setDoctorPreference("First Available Specialist");
-                }
-              }}
-              disabled={loadingDoctors}
-              className="flex h-9 w-full rounded-xl border border-input bg-card pl-9 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              {doctors.length === 0 && !loadingDoctors && (
-                <option value="first_available">First Available Specialist at Counter 2</option>
-              )}
-              {doctors.map((doc) => (
-                <option key={doc.id} value={doc.id}>
-                  {doc.name} ({doc.specialty})
-                </option>
-              ))}
-              {doctors.length > 0 && (
-                <option value="first_available">First Available Specialist at Counter 2</option>
-              )}
-            </select>
-          </div>
         </div>
 
         <div className="pt-3">
