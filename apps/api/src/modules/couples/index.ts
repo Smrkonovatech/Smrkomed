@@ -71,6 +71,7 @@ export const coupleRoutes = new Hono<AppEnv>()
       if (!alreadyHas) {
         serializedAppts.push({
           id: note.id,
+          clinicId: tenant.clinicId,
           coupleId: note.coupleId,
           type: note.reasonForVisit || "Doctor Consultation",
           doctor: note.createdBy?.name || "Doctor",
