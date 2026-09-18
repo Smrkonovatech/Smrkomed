@@ -15,9 +15,11 @@ const requestSchema = z.object({
   doctorName: z.string().optional().default("Dr. Ananya Rao"),
   clinicName: z.string().optional().default("ABC Fertility Centre"),
   upcomingAppointment: z.string().optional(),
-  language: z.enum(["kn", "hi", "en", "ta", "te"]).optional().default("kn"),
+  language: z.enum(["kn", "hi", "en", "ta", "te"]).optional().default("en"),
   customGreeting: z.string().optional(),
   coupleId: z.string().optional(),
+  callType: z.enum(["CARE_VOICE_CHECKIN", "OUTBOUND", "APPOINTMENT_REMINDER"]).optional().default("OUTBOUND"),
+  maxDurationSeconds: z.number().optional().default(90),
 });
 
 function formatE164(phone: string): string {
@@ -61,6 +63,8 @@ export async function POST(request: Request) {
       treatment: parsed.treatment,
       doctorName: parsed.doctorName,
       clinicName: parsed.clinicName,
+      callType: parsed.callType,
+      maxDurationSeconds: parsed.maxDurationSeconds,
       timestamp: Date.now(),
     };
 
@@ -84,24 +88,63 @@ export async function POST(request: Request) {
       // Graceful fallback
     }
 
-    const callSummary = `Patient ${parsed.patientName}${
-      parsed.partnerName ? ` (partner: ${parsed.partnerName})` : ""
-    } undergoing ${parsed.treatment} at stage ${parsed.stage}. Clinic: ${parsed.clinicName}. Doctor: ${
-      parsed.doctorName
-    }.${parsed.upcomingAppointment ? ` Current appointment: ${parsed.upcomingAppointment}.` : ""}${
-      openSlotsSummary
-        ? ` Doctor's available open slots for tomorrow: ${openSlotsSummary}. Only book or reschedule within these exact open slots; do not allow overlapping bookings.`
-        : ""
-    }`;
+    let callSummary = "";
+    if (parsed.callType === "CARE_VOICE_CHECKIN") {
+      const langLabel =
+        parsed.language === "kn"
+          ? "Kannada"
+          : parsed.language === "hi"
+          ? "Hindi"
+          : parsed.language === "ta"
+          ? "Tamil"
+          : parsed.language === "te"
+          ? "Telugu"
+          : "English";
+
+      callSummary = `[Care Voice QR Check-in] Patient ${parsed.patientName} has just checked in via QR code at ${parsed.clinicName}.
+Language: ${langLabel}.
+STRICT TIME CONSTRAINT: MAXIMUM CALL DURATION IS ${parsed.maxDurationSeconds || 90} SECONDS.
+Role and instructions:
+You are Hospex Care Voice, the friendly AI voice assistant at ${parsed.clinicName}.
+1. Greet ${parsed.patientName} warmly in ${langLabel}.
+2. Confirm their arrival at ${parsed.clinicName} and acknowledge their reception check-in.
+3. Guide them to take a seat in the waiting lounge.
+4. Answer any quick question they have about doctor availability or hospital facilities.
+5. TIME LIMIT WARNING: Keep interactions brief, warm, and helpful. Conclude the call within ${parsed.maxDurationSeconds || 90} seconds by wishing them a pleasant consultation.`;
+    } else {
+      callSummary = `Patient ${parsed.patientName}${
+        parsed.partnerName ? ` (partner: ${parsed.partnerName})` : ""
+      } undergoing ${parsed.treatment} at stage ${parsed.stage}. Clinic: ${parsed.clinicName}. Doctor: ${
+        parsed.doctorName
+      }.${parsed.upcomingAppointment ? ` Current appointment: ${parsed.upcomingAppointment}.` : ""}${
+        openSlotsSummary
+          ? ` Doctor's available open slots for tomorrow: ${openSlotsSummary}. Only book or reschedule within these exact open slots; do not allow overlapping bookings.`
+          : ""
+      }`;
+    }
 
     let initialBotMessage = parsed.customGreeting;
     if (!initialBotMessage) {
-      if (parsed.language === "kn") {
-        initialBotMessage = `ನಮಸ್ಕಾರ ${parsed.patientName} ಅವರೇ, ನಾನು ${parsed.clinicName} ಆಸ್ಪತ್ರೆಯ AI ಕಡೆಯಿಂದ ಕರೆ ಮಾಡುತ್ತಿದ್ದೇನೆ. ನಿಮ್ಮ ${parsed.treatment} ಕನ್ಸಲ್ಟೇಶನ್ ಬಗ್ಗೆ ವಿಚಾರಿಸಲು ಕರೆ ಮಾಡಿದೆ. ನೀವು ಹೇಗಿದ್ದೀರಾ?`;
-      } else if (parsed.language === "hi") {
-        initialBotMessage = `नमस्ते ${parsed.patientName} जी, मैं ${parsed.clinicName} से कॉल कर रहा हूँ। आपके आगामी परामर्श और स्वास्थ्य के बारे में जानने के लिए कॉल किया है। आप कैसे हैं?`;
+      if (parsed.callType === "CARE_VOICE_CHECKIN") {
+        if (parsed.language === "kn") {
+          initialBotMessage = `ನಮಸ್ಕಾರ ${parsed.patientName} ಅವರೇ, ನಾನು ${parsed.clinicName} ಕ್ಲಿನಿಕ್‌ನ ಕೇರ್ ವಾಯ್ಸ್ (Care Voice) ಕಡೆಯಿಂದ ಕರೆ ಮಾಡುತ್ತಿದ್ದೇನೆ. ನಿಮ್ಮ ಕ್ಯೂಆರ್ ಚೆಕ್-ಇನ್ ಖಚಿತವಾಗಿದೆ. ಸ್ವಾಗತ! ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?`;
+        } else if (parsed.language === "hi") {
+          initialBotMessage = `नमस्ते ${parsed.patientName} जी, मैं ${parsed.clinicName} के केयर वॉइस से बोल रहा हूँ। आपका चेक-इन दर्ज हो चुका है। स्वागत है! मैं आपकी क्या सहायता कर सकता हूँ?`;
+        } else if (parsed.language === "ta") {
+          initialBotMessage = `வணக்கம் ${parsed.patientName}, நான் ${parsed.clinicName} கேர் வாய்ஸ்-லிருந்து பேசுகிறேன். உங்கள் பதிவு உறுதியானது. உங்களுக்கு எவ்வாறு உதவலாம்?`;
+        } else if (parsed.language === "te") {
+          initialBotMessage = `నమస్కారం ${parsed.patientName} గారూ, నేను ${parsed.clinicName} కేర్ వాయిస్ నుండి మాట్లాడుతున్నాను. మీ చెక్-ఇన్ పూర్తయింది. మీకు ఎలా సహాయపడగలను?`;
+        } else {
+          initialBotMessage = `Hello ${parsed.patientName}, this is Care Voice calling from ${parsed.clinicName} reception. We have received your check-in. Welcome! How can I assist you today?`;
+        }
       } else {
-        initialBotMessage = `Hello ${parsed.patientName}, this is the Care Assistant calling from ${parsed.clinicName} regarding your ${parsed.treatment} consultation with ${parsed.doctorName}. How are you feeling today?`;
+        if (parsed.language === "kn") {
+          initialBotMessage = `ನಮಸ್ಕಾರ ${parsed.patientName} ಅವರೇ, ನಾನು ${parsed.clinicName} ಆಸ್ಪತ್ರೆಯ AI ಕಡೆಯಿಂದ ಕರೆ ಮಾಡುತ್ತಿದ್ದೇನೆ. ನಿಮ್ಮ ${parsed.treatment} ಕನ್ಸಲ್ಟೇಶನ್ ಬಗ್ಗೆ ವಿಚಾರಿಸಲು ಕರೆ ಮಾಡಿದೆ. ನೀವು ಹೇಗಿದ್ದೀರಾ?`;
+        } else if (parsed.language === "hi") {
+          initialBotMessage = `नमस्ते ${parsed.patientName} जी, मैं ${parsed.clinicName} से कॉल कर रहा हूँ। आपके आगामी परामर्श और स्वास्थ्य के बारे में जानने के लिए कॉल किया है। आप कैसे हैं?`;
+        } else {
+          initialBotMessage = `Hello ${parsed.patientName}, this is the Care Assistant calling from ${parsed.clinicName} regarding your ${parsed.treatment} consultation with ${parsed.doctorName}. How are you feeling today?`;
+        }
       }
     }
 
@@ -157,6 +200,8 @@ export async function POST(request: Request) {
         agentNumber: agentPhoneNumber,
         patientName: parsed.patientName,
         language: parsed.language,
+        callType: parsed.callType,
+        maxDurationSeconds: parsed.maxDurationSeconds || 90,
       },
     });
   } catch (error) {
