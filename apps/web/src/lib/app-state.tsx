@@ -107,6 +107,7 @@ export interface AppAppointment extends Appointment {
   partner?: string;
   duration?: number;
   notes?: string;
+  startsAt?: string | undefined;
   whatsappConfirmation?: boolean;
   whatsappReminder?: boolean;
   careLoop?: boolean;
@@ -295,6 +296,7 @@ function toAppointment(row: ClinicAppointment): AppAppointment {
     date: row.date,
     duration: row.duration,
     notes: row.notes,
+    ...(row.startsAt ? { startsAt: row.startsAt } : {}),
   };
 }
 
