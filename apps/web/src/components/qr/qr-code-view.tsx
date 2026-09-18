@@ -35,7 +35,7 @@ export function QrCodeView({
           width: renderSize,
           margin: 2,
           color: {
-            dark: "#5b26cf", // SmrkoMed brand purple
+            dark: "#000000", // Standard crisp black QR modules
             light: "#ffffff",
           },
           errorCorrectionLevel: "H", // 30% recovery for clean center logo

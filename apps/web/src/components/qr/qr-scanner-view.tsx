@@ -118,7 +118,7 @@ export function QrScannerView({
         {/* QR Pattern Graphic with SmrkoMed Logo */}
         <div className="relative z-10 flex h-44 w-44 flex-col items-center justify-center rounded-2xl bg-card p-3 shadow-sm border border-primary/20">
           <div className="relative flex items-center justify-center">
-            <QrCode className="h-28 w-28 text-primary" />
+            <QrCode className="h-28 w-28 text-foreground" />
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white shadow-md border-2 border-primary/30 p-0.5">
                 <img
