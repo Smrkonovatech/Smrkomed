@@ -44,6 +44,15 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
     profileConfig?.registrationNumber ||
     `KMC-${(Math.abs(user.id.split("").reduce((a: number, b: string) => (a << 5) - a + b.charCodeAt(0), 0)) % 89999 + 10000)}`;
 
+  const defaultCity = clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kochi" : "Bangalore";
+  const defaultState = clinicId === "cmu3nmx310026jy04gsi21hxl" ? "Kerala" : "Karnataka";
+  const resolvedLocId =
+    clinicId === "cmt0exo9n000vl804rbaabh32"
+      ? "blr"
+      : clinicId === "cmu3nmx310026jy04gsi21hxl"
+        ? "kochi"
+        : (clinicId || "blr");
+
   return {
     id: `doc_${user.id}`,
     staffUserId: user.id,
@@ -61,8 +70,8 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
     registrationNumber: regNum,
     registrationAuthority: profileConfig?.registrationAuthority || "State Medical Council",
     country: profileConfig?.country || "India",
-    state: profileConfig?.state || "Karnataka",
-    city: profileConfig?.city || "Bangalore",
+    state: profileConfig?.state || defaultState,
+    city: profileConfig?.city || defaultCity,
     designation: user.title || profileConfig?.designation || "Senior Fertility Consultant",
     department: profileConfig?.department || "Reproductive Medicine",
     primarySpecialty: profileConfig?.primarySpecialty || user.title || "Reproductive Medicine",
@@ -158,8 +167,8 @@ function formatDoctorProfile(clinicId: string, user: any, profileConfig?: any) {
         at: user.createdAt?.toISOString?.() ?? new Date().toISOString(),
       },
     ],
-    locationId: clinicId,
-    locationName: profileConfig?.locationName || "Bangalore",
+    locationId: resolvedLocId,
+    locationName: profileConfig?.locationName || defaultCity,
     createdAt: user.createdAt?.toISOString?.() ?? new Date().toISOString(),
     updatedAt: user.updatedAt?.toISOString?.() ?? new Date().toISOString(),
   };

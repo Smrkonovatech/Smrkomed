@@ -37,14 +37,28 @@ type Envelope<T> =
       };
     };
 
+function getActiveClinicId(): string | undefined {
+  if (typeof window !== "undefined") {
+    const raw = window.localStorage.getItem("smrkomed_active_clinic_id");
+    if (raw) {
+      if (raw === "blr" || raw === "cmt0exo9n000vl804rbaabh32") return "cmt0exo9n000vl804rbaabh32";
+      if (raw === "kochi" || raw === "cmu3nmx310026jy04gsi21hxl") return "cmu3nmx310026jy04gsi21hxl";
+      return raw;
+    }
+  }
+  return undefined;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  const activeClinicId = getActiveClinicId();
   try {
     response = await fetch(`${apiBaseUrl()}${path}`, {
       ...init,
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...(activeClinicId ? { "x-clinic-id": activeClinicId } : {}),
         ...(init?.headers ?? {}),
       },
     });

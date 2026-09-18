@@ -113,7 +113,9 @@ export default function AddStaffPage() {
           registrationNumber: registrationNumber.trim() || undefined,
           qualifications: qualifications.trim() || undefined,
           yearsExperience: yearsExperience ? Number(yearsExperience) : 10,
-        });
+          clinicId: targetClinic,
+          locationId: selectedClinic,
+        }, selectedClinic);
       }
 
       setCreated({
