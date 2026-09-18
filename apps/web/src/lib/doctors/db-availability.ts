@@ -259,9 +259,9 @@ export async function getDoctorDaySlots(
     };
   }
 
-  // Fetch confirmed appointments for this doctor on this day
-  const dayStart = new Date(`${isoDate}T00:00:00.000Z`);
-  const dayEnd = new Date(`${isoDate}T23:59:59.999Z`);
+  // Fetch confirmed appointments for this doctor on this day (IST)
+  const dayStart = new Date(`${isoDate}T00:00:00+05:30`);
+  const dayEnd = new Date(`${isoDate}T23:59:59.999+05:30`);
 
   const bookedAppointments = await prisma.appointment.findMany({
     where: {
@@ -281,8 +281,14 @@ export async function getDoctorDaySlots(
   });
 
   const bookedWindows = bookedAppointments.map((appt) => {
-    const hours = appt.startsAt.getUTCHours();
-    const mins = appt.startsAt.getUTCMinutes();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "numeric",
+      hourCycle: "h23",
+    }).formatToParts(appt.startsAt);
+    const hours = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    const mins = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
     const startMins = hours * 60 + mins;
     const endMins = startMins + (appt.durationMin || 30);
     return { startMins, endMins };

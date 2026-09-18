@@ -5,6 +5,7 @@ import type { TenantContext } from "@smrkomed/database";
 import { prisma, writeTenantAuditLog, isSystemTenantUserId } from "@smrkomed/database";
 
 import { normalizeWhatsAppPhone, phonesMatch } from "../../integrations/providers/whatsapp/phone";
+import { formatTimeIST, formatDateIST, formatTime12IST } from "../appointments/availability";
 
 function splitName(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -1238,8 +1239,8 @@ async function executeNode(
         if (appt) {
           enriched = {
             appointment_id: appt.id,
-            appointment_date: appt.startsAt.toISOString().slice(0, 10),
-            appointment_time: appt.startsAt.toISOString().slice(11, 16),
+            appointment_date: formatDateIST(appt.startsAt),
+            appointment_time: formatTime12IST(appt.startsAt),
             doctor_name: appt.doctorName ?? "",
           };
           Object.assign(vars, enriched);
@@ -1458,7 +1459,7 @@ async function executeNode(
               title: "Available Slots",
               rows: (slots as any[]).slice(0, 10).map((s: any) => ({
                 id: `appt_slot_${s.slotId}`,
-                title: s.startTime?.slice(11, 16) || "Available Slot",
+                title: s.timeLabel || (s.startTime ? formatTime12IST(s.startTime) : "Available Slot"),
                 description: "Available consultation slot",
               })),
             },
@@ -1787,11 +1788,7 @@ async function executeNode(
         const decoded = decodeSlotId(vars["selectedSlotId"]);
         if (decoded) {
           const d = new Date(decoded.startMs);
-          const hours = d.getUTCHours();
-          const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-          const ampm = hours >= 12 ? "PM" : "AM";
-          const h12 = hours % 12 || 12;
-          time = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
+          time = formatTime12IST(d);
         }
       }
 
@@ -1905,10 +1902,10 @@ async function executeNode(
 
       vars["appointment_id"] = booked.appointmentId;
       vars["appointmentId"] = booked.appointmentId;
-      vars["appointment_date"] = booked.startsAt.slice(0, 10);
-      vars["appointment_time"] = booked.startsAt.slice(11, 16);
-      vars["appointment.date"] = booked.startsAt.slice(0, 10);
-      vars["appointment.time"] = booked.startsAt.slice(11, 16);
+      vars["appointment_date"] = formatDateIST(booked.startsAt);
+      vars["appointment_time"] = formatTime12IST(booked.startsAt);
+      vars["appointment.date"] = formatDateIST(booked.startsAt);
+      vars["appointment.time"] = formatTime12IST(booked.startsAt);
       if (booked.doctorName) {
         vars["doctor.name"] = booked.doctorName;
         vars["doctor_name"] = booked.doctorName;

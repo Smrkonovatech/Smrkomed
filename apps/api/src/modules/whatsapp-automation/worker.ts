@@ -1,4 +1,5 @@
 import { prisma } from "@smrkomed/database";
+import type { TenantContext } from "@smrkomed/database";
 
 import { env } from "../../config/env";
 import { resumeDueExecutions } from "./engine";
@@ -6,7 +7,7 @@ import { dispatchWhatsAppTrigger } from "./triggers";
 import { processDueCampaigns } from "./campaigns";
 import { processCareLoopExecutions, processPreDeadlineReminders } from "../care-loop/worker";
 import { processPendingOutboundMessages } from "./outbound-bridge";
-import type { TenantContext } from "@smrkomed/database";
+import { formatTimeIST, formatDateIST, formatTime12IST } from "../appointments/availability";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
@@ -52,8 +53,10 @@ export async function emitScheduledTriggers(limit = 50, clinicId?: string) {
         coupleId: appt.coupleId,
         vars: {
           appointment_id: appt.id,
-          appointment_date: appt.startsAt.toISOString().slice(0, 10),
-          appointment_time: appt.startsAt.toISOString().slice(11, 16),
+          appointment_date: formatDateIST(appt.startsAt),
+          appointment_time: formatTime12IST(appt.startsAt),
+          "appointment.date": formatDateIST(appt.startsAt),
+          "appointment.time": formatTime12IST(appt.startsAt),
           appointment_starts_at: appt.startsAt.toISOString(),
           doctor_name: appt.doctorName ?? "",
           clinic_name: tenant.clinicName,
@@ -91,8 +94,10 @@ export async function emitScheduledTriggers(limit = 50, clinicId?: string) {
         coupleId: appt.coupleId,
         vars: {
           appointment_id: appt.id,
-          appointment_date: appt.startsAt.toISOString().slice(0, 10),
-          appointment_time: appt.startsAt.toISOString().slice(11, 16),
+          appointment_date: formatDateIST(appt.startsAt),
+          appointment_time: formatTime12IST(appt.startsAt),
+          "appointment.date": formatDateIST(appt.startsAt),
+          "appointment.time": formatTime12IST(appt.startsAt),
           doctor_name: appt.doctorName ?? "",
           clinic_name: tenant.clinicName,
         },
@@ -190,7 +195,7 @@ export async function emitScheduledTriggers(limit = 50, clinicId?: string) {
         vars: {
           medicine_name: reminder.prescriptionItem.medicineName,
           medicine_dosage: reminder.prescriptionItem.dosage ?? "",
-          medicine_time: reminder.prescriptionItem.timeOfDay ?? reminder.scheduledAt.toISOString().slice(11, 16),
+          medicine_time: reminder.prescriptionItem.timeOfDay ?? formatTime12IST(reminder.scheduledAt),
           medicine_instructions: reminder.prescriptionItem.instructions ?? "",
           clinic_name: tenant.clinicName,
           patient_name: `${reminder.patient.firstName} ${reminder.patient.lastName}`.trim(),

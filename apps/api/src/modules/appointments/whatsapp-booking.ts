@@ -6,7 +6,7 @@ import type { TenantContext } from "@smrkomed/database";
 import { prisma, writeTenantAuditLog } from "@smrkomed/database";
 import { Prisma } from "@prisma/client";
 
-import { decodeSlotId, validateSlotStillAvailable } from "./availability";
+import { decodeSlotId, validateSlotStillAvailable, formatTimeIST, formatDateIST, formatTime12IST } from "./availability";
 
 export type PendingAction =
   | {
@@ -63,20 +63,21 @@ async function dispatchApptTrigger(input: {
         : `${input.triggerType.toLowerCase()}_${input.appointmentId}_${input.startsAt.getTime()}`,
     coupleId: input.coupleId,
     vars: {
-      appointment_date: input.startsAt.toISOString().slice(0, 10),
-      appointment_time: input.startsAt.toISOString().slice(11, 16),
+      appointment_date: formatDateIST(input.startsAt),
+      appointment_time: formatTime12IST(input.startsAt),
+      "appointment.date": formatDateIST(input.startsAt),
+      "appointment.time": formatTime12IST(input.startsAt),
       doctor_name: input.doctorName ?? "",
       "doctor.name": input.doctorName ?? "",
       clinic_name: input.tenant.clinicName,
+      "clinic.name": input.tenant.clinicName,
       source: "whatsapp_ai",
     },
   }).catch(() => undefined);
 }
 
 function appointmentCareDueTime(startsAt: Date): string {
-  const hh = String(startsAt.getUTCHours()).padStart(2, "0");
-  const mm = String(startsAt.getUTCMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return formatTimeIST(startsAt);
 }
 
 async function notifyStaffAiAppointmentAction(input: {
@@ -349,8 +350,9 @@ export async function bookAppointmentFromSlot(input: {
   let appointmentClinicId = input.tenant.clinicId;
   if (doctorName) {
     const cleanDocName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
-    const docMembership = await prisma.clinicMembership.findFirst({
+    const localMembership = await prisma.clinicMembership.findFirst({
       where: {
+        clinicId: input.tenant.clinicId,
         user: {
           name: { contains: cleanDocName, mode: "insensitive" },
         },
@@ -358,8 +360,27 @@ export async function bookAppointmentFromSlot(input: {
       },
       select: { clinicId: true },
     });
-    if (docMembership?.clinicId) {
-      appointmentClinicId = docMembership.clinicId;
+    if (localMembership?.clinicId) {
+      appointmentClinicId = localMembership.clinicId;
+    } else {
+      const docMembership = await prisma.clinicMembership.findFirst({
+        where: {
+          user: {
+            name: { contains: cleanDocName, mode: "insensitive" },
+          },
+          status: "ACTIVE",
+        },
+        select: { clinicId: true },
+      });
+      if (docMembership?.clinicId) {
+        const targetClinic = await prisma.clinic.findUnique({
+          where: { id: docMembership.clinicId },
+          select: { organizationId: true },
+        });
+        if (targetClinic?.organizationId === input.tenant.organizationId) {
+          appointmentClinicId = docMembership.clinicId;
+        }
+      }
     }
   }
 

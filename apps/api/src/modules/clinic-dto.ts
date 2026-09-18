@@ -284,11 +284,11 @@ export function serializeAppointment(row: Appointment): AppointmentDto {
     room: row.room ?? "",
     status: APPOINTMENT_UI[row.status],
     time: row.startsAt.toLocaleTimeString("en-IN", {
-      timeZone: "UTC",
+      timeZone: "Asia/Kolkata",
       hour: "2-digit",
       minute: "2-digit",
     }),
-    date: row.startsAt.toISOString().slice(0, 10),
+    date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(row.startsAt),
     duration: row.durationMin,
     notes: row.notes ?? "",
   };

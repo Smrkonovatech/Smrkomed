@@ -8,6 +8,7 @@ import { requireClinicOwned } from "../../lib/resources";
 import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
 import { serializeAppointment } from "../clinic-dto";
+import { formatTimeIST, formatDateIST, formatTime12IST } from "./availability";
 import { createAppointmentSchema, idParam, updateAppointmentSchema } from "./schemas";
 
 export const appointmentRoutes = new Hono<AppEnv>()
@@ -79,8 +80,10 @@ export const appointmentRoutes = new Hono<AppEnv>()
           triggerEventId: appointment.id,
           coupleId: couple.id,
           vars: {
-            appointment_date: appointment.startsAt.toISOString().slice(0, 10),
-            appointment_time: appointment.startsAt.toISOString().slice(11, 16),
+            appointment_date: formatDateIST(appointment.startsAt),
+            appointment_time: formatTime12IST(appointment.startsAt),
+            "appointment.date": formatDateIST(appointment.startsAt),
+            "appointment.time": formatTime12IST(appointment.startsAt),
             doctor_name: appointment.doctorName ?? "",
             "doctor.name": appointment.doctorName ?? "",
             clinic_name: tenant.clinicName,
@@ -118,8 +121,10 @@ export const appointmentRoutes = new Hono<AppEnv>()
             triggerEventId: `appt_missed_${appointment.id}`,
             coupleId: appointment.coupleId,
             vars: {
-              appointment_date: appointment.startsAt.toISOString().slice(0, 10),
-              appointment_time: appointment.startsAt.toISOString().slice(11, 16),
+              appointment_date: formatDateIST(appointment.startsAt),
+              appointment_time: formatTime12IST(appointment.startsAt),
+              "appointment.date": formatDateIST(appointment.startsAt),
+              "appointment.time": formatTime12IST(appointment.startsAt),
               doctor_name: appointment.doctorName ?? "",
               "doctor.name": appointment.doctorName ?? "",
               clinic_name: tenant.clinicName,
@@ -137,8 +142,10 @@ export const appointmentRoutes = new Hono<AppEnv>()
             triggerEventId: `appt_cancelled_${appointment.id}`,
             coupleId: appointment.coupleId,
             vars: {
-              appointment_date: appointment.startsAt.toISOString().slice(0, 10),
-              appointment_time: appointment.startsAt.toISOString().slice(11, 16),
+              appointment_date: formatDateIST(appointment.startsAt),
+              appointment_time: formatTime12IST(appointment.startsAt),
+              "appointment.date": formatDateIST(appointment.startsAt),
+              "appointment.time": formatTime12IST(appointment.startsAt),
               doctor_name: appointment.doctorName ?? "",
               "doctor.name": appointment.doctorName ?? "",
               clinic_name: tenant.clinicName,
@@ -156,8 +163,10 @@ export const appointmentRoutes = new Hono<AppEnv>()
             triggerEventId: `appt_resched_${appointment.id}_${appointment.startsAt.toISOString()}`,
             coupleId: appointment.coupleId,
             vars: {
-              appointment_date: appointment.startsAt.toISOString().slice(0, 10),
-              appointment_time: appointment.startsAt.toISOString().slice(11, 16),
+              appointment_date: formatDateIST(appointment.startsAt),
+              appointment_time: formatTime12IST(appointment.startsAt),
+              "appointment.date": formatDateIST(appointment.startsAt),
+              "appointment.time": formatTime12IST(appointment.startsAt),
               doctor_name: appointment.doctorName ?? "",
               "doctor.name": appointment.doctorName ?? "",
               clinic_name: tenant.clinicName,

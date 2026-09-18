@@ -11,7 +11,7 @@ import { runExecution } from "./engine";
 import { dispatchWhatsAppTrigger } from "./triggers";
 import { mergeExecutionContext, parseExecutionContext } from "./context";
 import { nextNodes, parseDefinition } from "./validate";
-import { decodeSlotId } from "../appointments/availability";
+import { decodeSlotId, formatTime12IST, formatDateFriendlyIST } from "../appointments/availability";
 
 /** Start work immediately (do not wait for setImmediate — more reliable on Railway). */
 function scheduleBackground(task: () => Promise<void>) {
@@ -106,15 +106,8 @@ export function buildIncomingWhatsAppVars(input: {
           let dateStr = "";
           if (decoded) {
             const d = new Date(decoded.startMs);
-            const hours = d.getUTCHours();
-            const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-            const ampm = hours >= 12 ? "PM" : "AM";
-            const h12 = hours % 12 || 12;
-            timeLabel = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
-            const weekday = d.toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" });
-            const month = d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short" });
-            const day = d.getUTCDate();
-            dateStr = `${weekday}, ${day} ${month}`;
+            timeLabel = formatTime12IST(d);
+            dateStr = formatDateFriendlyIST(d);
           }
           return {
             selectedSlotId: slotId,
@@ -310,7 +303,7 @@ export async function resumeWaitForReplyExecutions(input: {
                   slots.find((s: any) => {
                     const d = new Date(s.startTime);
                     const h12 = d
-                      .toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })
+                      .toLocaleString("en-US", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true })
                       .toLowerCase();
                     return cleanLower.includes(h12) || cleanLower.includes(s.timeLabel?.toLowerCase() || "");
                   }) ?? null;

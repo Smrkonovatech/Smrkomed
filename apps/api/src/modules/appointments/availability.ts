@@ -15,6 +15,43 @@ import {
 } from "../whatsapp-automation/safety";
 import { getTimezoneOffsetString } from "../appointment-booking/slot-engine";
 
+/** Format a Date or ISO string to HH:MM in Asia/Kolkata timezone. */
+export function formatTimeIST(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toLocaleTimeString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** Format a Date or ISO string to YYYY-MM-DD in Asia/Kolkata timezone. */
+export function formatDateIST(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(date);
+}
+
+/** Format a Date or ISO string to hh:mm AM/PM in Asia/Kolkata timezone. */
+export function formatTime12IST(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  return date.toLocaleTimeString("en-US", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+/** Format a Date or ISO string to friendly string like "Fri, 18 Sep" in Asia/Kolkata timezone. */
+export function formatDateFriendlyIST(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  const weekday = date.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", weekday: "short" });
+  const month = date.toLocaleDateString("en-US", { timeZone: "Asia/Kolkata", month: "short" });
+  const day = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Kolkata", day: "numeric" }).format(date);
+  return `${weekday}, ${day} ${month}`;
+}
+
 export type AppointmentSlot = {
   slotId: string;
   doctorId: string | null;
