@@ -85,7 +85,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
   };
 
   const openExternalWhatsApp = () => {
-    const phone = "919606654032";
+    const phone = "918660717328";
     const encoded = encodeURIComponent(waMessage);
     window.open(`https://wa.me/${phone}?text=${encoded}`, "_blank");
   };
@@ -381,7 +381,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                 <h3 className="text-lg font-bold text-foreground">
                   WhatsApp Care Concierge
                 </h3>
-                <p className="text-xs text-muted-foreground">Hospex Bangalore (+91 96066 54032)</p>
+                <p className="text-xs text-muted-foreground">Hospex Bangalore (+91 866 071 7328)</p>
               </div>
             </div>
 

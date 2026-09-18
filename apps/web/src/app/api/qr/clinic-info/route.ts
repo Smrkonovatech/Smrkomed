@@ -43,7 +43,7 @@ export async function GET() {
         city: clinic.city || "Bangalore",
         address: clinic.address || "12 Lavelle Road, Bangalore 560001",
         phone: clinic.phone || "+91 80 4000 1200",
-        whatsappNumber: "+919606654032",
+        whatsappNumber: "+918660717328",
         emergencyPhone: "+91 80 4000 1299",
         hours: "Mon–Sat · 08:00 – 20:00",
         doctors,

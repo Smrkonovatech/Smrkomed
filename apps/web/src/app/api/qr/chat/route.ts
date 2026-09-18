@@ -15,7 +15,7 @@ Clinic Key Information:
 - Location: 12 Lavelle Road, Bangalore 560001 (opposite UB City area).
 - Timings: Monday to Saturday, 08:00 AM – 08:00 PM. Sunday: Emergency consultations only.
 - Reception Helpline: +91 80 4000 1200
-- WhatsApp Care Concierge: +91 96066 54032
+- WhatsApp Care Concierge: +91 866 071 7328
 - Key Specialists:
   * Dr. Manideep (Senior Reproductive Endocrinologist & IVF Director)
   * Dr. Ananya Rao (Chief Fertility Specialist & Clinical Lead)
@@ -75,7 +75,7 @@ Our nurse can also scan and upload them into your digital SmrkoMed timeline.`;
   }
 
   if (query.includes("whatsapp") || query.includes("chat") || query.includes("message")) {
-    return `${nameGreeting}Our official WhatsApp Care Concierge number is **+91 96066 54032**. Tap the 'Chat in WhatsApp' button below to open a pre-filled chat with our Bangalore desk!`;
+    return `${nameGreeting}Our official WhatsApp Care Concierge number is **+91 866 071 7328**. Tap the 'Chat in WhatsApp' button below to open a pre-filled chat with our Bangalore desk!`;
   }
 
   return `${nameGreeting}Welcome to Hospex Bangalore Clinic! I am Smrko AI, your personal clinical care assistant. Your check-in is verified in our Bangalore reception system. You can ask me anything about our doctors, clinic location at Lavelle Road, IVF journeys, or preparation for today's appointment.`;
