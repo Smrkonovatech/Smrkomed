@@ -77,7 +77,15 @@ export function AppHeader() {
       .slice(0, 2)
       .toUpperCase() ?? currentUser.initials;
   const sessionRoleLabel = session?.user?.role?.replaceAll("_", " ") ?? roleLabels[role];
-  const clinic = clinics.find((c) => c.id === clinicId) ?? clinics.find((c) => c.id === "kochi") ?? clinics[0]!;
+  const clinic =
+    clinics.find(
+      (c) =>
+        c.id === clinicId ||
+        (c.id === "kochi" && (clinicId === "cmu3nmx310026jy04gsi21hxl" || clinicId.toLowerCase().includes("kochi"))) ||
+        (c.id === "blr" && (clinicId === "cmt0exo9n000vl804rbaabh32" || clinicId.toLowerCase().includes("blr") || clinicId.toLowerCase().includes("bangalore"))),
+    ) ??
+    clinics.find((c) => c.id === "kochi") ??
+    clinics[0]!;
   const displayClinicName = `${currentClinic?.name || clinicName || clinic.name} · ${clinic.city}`;
 
   const results = useMemo<SearchResult[]>(() => {

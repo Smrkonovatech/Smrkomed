@@ -237,7 +237,16 @@ export async function bookAppointmentFromSlot(input: {
   idempotencyKey: string;
   notes?: string;
 }): Promise<
-  | { ok: true; appointmentId: string; alreadyExisted: boolean; startsAt: string; doctorName: string | null; type: string }
+  | {
+      ok: true;
+      appointmentId: string;
+      alreadyExisted: boolean;
+      startsAt: string;
+      doctorName: string | null;
+      type: string;
+      clinicId?: string;
+      clinicName?: string;
+    }
   | { ok: false; reason: string; handoffRecommended?: boolean }
 > {
   console.log("[APPOINTMENT_CONFIRM_STARTED]", {
@@ -258,11 +267,11 @@ export async function bookAppointmentFromSlot(input: {
   });
   if (existingIdem) {
     const appt = await prisma.appointment.findFirst({
-      where: { id: existingIdem.appointmentId, clinicId: input.tenant.clinicId },
+      where: { id: existingIdem.appointmentId },
     });
     if (appt) {
       console.log("[APPOINTMENT_CREATED]", {
-        clinicId: input.tenant.clinicId,
+        clinicId: appt.clinicId,
         appointmentId: appt.id,
         alreadyExisted: true,
         startsAt: appt.startsAt.toISOString(),
@@ -274,41 +283,8 @@ export async function bookAppointmentFromSlot(input: {
         startsAt: appt.startsAt.toISOString(),
         doctorName: appt.doctorName,
         type: appt.type,
+        clinicId: appt.clinicId,
       };
-    }
-  }
-
-  let coupleId = input.coupleId ?? null;
-  if (!coupleId && input.patientId) {
-    const couple = await prisma.couple.findFirst({
-      where: {
-        clinicId: input.tenant.clinicId,
-        OR: [{ primaryPatientId: input.patientId }, { partnerPatientId: input.patientId }],
-      },
-      select: { id: true, assignedDoctor: { select: { name: true } } },
-    });
-    if (couple) {
-      coupleId = couple.id;
-    } else {
-      // Auto-create a lightweight couple record for fertility care integration
-      try {
-        const newCouple = await prisma.couple.create({
-          data: {
-            clinicId: input.tenant.clinicId,
-            slug: `c-${input.patientId.slice(-8)}-${Date.now().toString(36)}`,
-            primaryPatientId: input.patientId,
-          },
-          select: { id: true },
-        });
-        coupleId = newCouple.id;
-        console.log("[COUPLE_CREATED]", {
-          clinicId: input.tenant.clinicId,
-          coupleId: newCouple.id,
-          primaryPatientId: input.patientId,
-        });
-      } catch (coupleErr) {
-        console.warn("[whatsapp-booking] Non-blocking: could not create couple, proceeding with individual appointment", coupleErr);
-      }
     }
   }
 
@@ -325,31 +301,14 @@ export async function bookAppointmentFromSlot(input: {
     }
   }
 
-  const valid = await validateSlotStillAvailable({
-    clinicId: input.tenant.clinicId,
-    startTime,
-    durationMin: decoded.durationMin,
-    doctorName,
-  });
-  if (!valid.ok) {
-    console.log("[APPOINTMENT_CREATE_FAILED]", {
-      clinicId: input.tenant.clinicId,
-      reason: valid.reason,
-      slotId: input.slotId,
-    });
-    return { ok: false, reason: valid.reason, handoffRecommended: valid.reason === "CLINIC_CLOSED" };
-  }
-
-  console.log("[APPOINTMENT_SLOT_REVALIDATED]", {
-    clinicId: input.tenant.clinicId,
-    slotId: input.slotId,
-    valid: true,
-  });
-
-  // Resolve doctor's active clinic membership if doctorName is provided
+  // 1. Resolve doctor's active clinic membership if doctorName is provided
   let appointmentClinicId = input.tenant.clinicId;
+  let targetClinicProfile: { id: string; name: string; city: string | null } | null = null;
+  let assignedDoctorUserId: string | null = null;
+
   if (doctorName) {
     const cleanDocName = doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
+    // Check current tenant clinic first
     const localMembership = await prisma.clinicMembership.findFirst({
       where: {
         clinicId: input.tenant.clinicId,
@@ -358,11 +317,17 @@ export async function bookAppointmentFromSlot(input: {
         },
         status: "ACTIVE",
       },
-      select: { clinicId: true },
+      include: {
+        clinic: { select: { id: true, name: true, city: true } },
+      },
     });
-    if (localMembership?.clinicId) {
-      appointmentClinicId = localMembership.clinicId;
+
+    if (localMembership?.clinic) {
+      appointmentClinicId = localMembership.clinic.id;
+      targetClinicProfile = localMembership.clinic;
+      assignedDoctorUserId = localMembership.userId;
     } else {
+      // Check other branches/clinics (e.g. Dr. Jismon J in Hospex Kochi)
       const docMembership = await prisma.clinicMembership.findFirst({
         where: {
           user: {
@@ -370,18 +335,120 @@ export async function bookAppointmentFromSlot(input: {
           },
           status: "ACTIVE",
         },
-        select: { clinicId: true },
+        include: {
+          clinic: { select: { id: true, name: true, city: true } },
+        },
+        orderBy: { createdAt: "desc" },
       });
-      if (docMembership?.clinicId) {
-        const targetClinic = await prisma.clinic.findUnique({
-          where: { id: docMembership.clinicId },
-          select: { organizationId: true },
-        });
-        if (targetClinic?.organizationId === input.tenant.organizationId) {
-          appointmentClinicId = docMembership.clinicId;
-        }
+
+      if (docMembership?.clinic) {
+        appointmentClinicId = docMembership.clinic.id;
+        targetClinicProfile = docMembership.clinic;
+        assignedDoctorUserId = docMembership.userId;
       }
     }
+  }
+
+  if (!targetClinicProfile) {
+    targetClinicProfile = await prisma.clinic.findUnique({
+      where: { id: appointmentClinicId },
+      select: { id: true, name: true, city: true },
+    });
+  }
+
+  const resolvedClinicName = targetClinicProfile?.city
+    ? `${targetClinicProfile.name}, ${targetClinicProfile.city}`
+    : targetClinicProfile?.name || input.tenant.clinicName || "Hospex";
+
+  // Validate slot availability in the target clinic
+  const valid = await validateSlotStillAvailable({
+    clinicId: appointmentClinicId,
+    startTime,
+    durationMin: decoded.durationMin,
+    doctorName,
+  });
+  if (!valid.ok) {
+    console.log("[APPOINTMENT_CREATE_FAILED]", {
+      clinicId: appointmentClinicId,
+      reason: valid.reason,
+      slotId: input.slotId,
+    });
+    return { ok: false, reason: valid.reason, handoffRecommended: valid.reason === "CLINIC_CLOSED" };
+  }
+
+  console.log("[APPOINTMENT_SLOT_REVALIDATED]", {
+    clinicId: appointmentClinicId,
+    slotId: input.slotId,
+    valid: true,
+  });
+
+  // 2. Resolve or align Couple and Patients to the target clinic
+  let coupleId = input.coupleId ?? null;
+  if (!coupleId && input.patientId) {
+    const couple = await prisma.couple.findFirst({
+      where: {
+        clinicId: { in: [appointmentClinicId, input.tenant.clinicId] },
+        OR: [{ primaryPatientId: input.patientId }, { partnerPatientId: input.patientId }],
+      },
+      select: { id: true, clinicId: true, assignedDoctorId: true },
+    });
+    if (couple) {
+      coupleId = couple.id;
+      if (couple.clinicId !== appointmentClinicId || (assignedDoctorUserId && !couple.assignedDoctorId)) {
+        await prisma.couple.update({
+          where: { id: couple.id },
+          data: {
+            clinicId: appointmentClinicId,
+            ...(assignedDoctorUserId ? { assignedDoctorId: assignedDoctorUserId } : {}),
+          },
+        }).catch(() => undefined);
+      }
+    } else {
+      // Auto-create a lightweight couple record for fertility care integration
+      try {
+        const newCouple = await prisma.couple.create({
+          data: {
+            clinicId: appointmentClinicId,
+            slug: `c-${input.patientId.slice(-8)}-${Date.now().toString(36)}`,
+            primaryPatientId: input.patientId,
+            ...(assignedDoctorUserId ? { assignedDoctorId: assignedDoctorUserId } : {}),
+          },
+          select: { id: true },
+        });
+        coupleId = newCouple.id;
+        console.log("[COUPLE_CREATED]", {
+          clinicId: appointmentClinicId,
+          coupleId: newCouple.id,
+          primaryPatientId: input.patientId,
+        });
+      } catch (coupleErr) {
+        console.warn("[whatsapp-booking] Non-blocking: could not create couple, proceeding with individual appointment", coupleErr);
+      }
+    }
+  } else if (coupleId) {
+    await prisma.couple.updateMany({
+      where: { id: coupleId },
+      data: {
+        clinicId: appointmentClinicId,
+        ...(assignedDoctorUserId ? { assignedDoctorId: assignedDoctorUserId } : {}),
+      },
+    }).catch(() => undefined);
+  }
+
+  // Ensure patients are associated with target appointmentClinicId
+  if (input.patientId) {
+    await prisma.patient.updateMany({
+      where: { id: input.patientId, clinicId: { not: appointmentClinicId } },
+      data: { clinicId: appointmentClinicId },
+    }).catch(() => undefined);
+  }
+
+  // Ensure conversation reflects appointmentClinicId
+  if (input.conversationId) {
+    await prisma.conversation.updateMany({
+      where: { id: input.conversationId, clinicId: { not: appointmentClinicId } },
+      data: { clinicId: appointmentClinicId, ...(coupleId ? { coupleId } : {}) },
+    }).catch(() => undefined);
   }
 
   try {
@@ -408,7 +475,7 @@ export async function bookAppointmentFromSlot(input: {
     });
 
     console.log("[APPOINTMENT_CREATED]", {
-      clinicId: input.tenant.clinicId,
+      clinicId: appointmentClinicId,
       appointmentId: appointment.id,
       alreadyExisted: false,
       startsAt: appointment.startsAt.toISOString(),
@@ -426,12 +493,13 @@ export async function bookAppointmentFromSlot(input: {
         conversationId: input.conversationId,
         slotId: input.slotId,
         idempotencyKey: input.idempotencyKey,
+        targetClinicId: appointmentClinicId,
       },
     }).catch(() => undefined);
 
     if (coupleId) {
       await ensureCareTaskForAppointment({
-        clinicId: input.tenant.clinicId,
+        clinicId: appointmentClinicId,
         coupleId,
         appointmentId: appointment.id,
         title: `AI booked appointment — ${appointment.type}`,
@@ -444,7 +512,7 @@ export async function bookAppointmentFromSlot(input: {
     }
 
     await notifyStaffAiAppointmentAction({
-      clinicId: input.tenant.clinicId,
+      clinicId: appointmentClinicId,
       conversationId: input.conversationId,
       title: "AI booked appointment",
       body: `${appointment.type} · ${appointment.startsAt.toISOString()}${appointment.doctorName ? ` · ${appointment.doctorName}` : ""}`,
@@ -452,7 +520,10 @@ export async function bookAppointmentFromSlot(input: {
 
     // Emit automation only after successful mutation (+ idempotency row).
     await dispatchApptTrigger({
-      tenant: input.tenant,
+      tenant: {
+        ...input.tenant,
+        clinicId: appointmentClinicId,
+      },
       triggerType: "APPOINTMENT_BOOKED",
       appointmentId: appointment.id,
       coupleId,
@@ -461,7 +532,7 @@ export async function bookAppointmentFromSlot(input: {
     });
 
     console.log("[APPOINTMENT_CONFIRMATION_SENT]", {
-      clinicId: input.tenant.clinicId,
+      clinicId: appointmentClinicId,
       appointmentId: appointment.id,
       conversationId: input.conversationId,
     });
@@ -473,6 +544,8 @@ export async function bookAppointmentFromSlot(input: {
       startsAt: appointment.startsAt.toISOString(),
       doctorName: appointment.doctorName,
       type: appointment.type,
+      clinicId: appointmentClinicId,
+      clinicName: resolvedClinicName,
     };
   } catch (err) {
     console.error("[APPOINTMENT_CREATE_FAILED]", {

@@ -170,15 +170,16 @@ async function resolveLeadId(clinicId: string, phone: string | null): Promise<st
 async function clinicTenant(clinicId: string): Promise<TenantContext | null> {
   const clinic = await prisma.clinic.findUnique({
     where: { id: clinicId },
-    select: { id: true, name: true, organizationId: true },
+    select: { id: true, name: true, city: true, organizationId: true },
   });
   if (!clinic) return null;
+  const clinicDisplay = clinic.city ? `${clinic.name}, ${clinic.city}` : clinic.name;
   return {
     userId: "system-webhook",
     role: "CLINIC_ADMIN",
     clinicId: clinic.id,
     organizationId: clinic.organizationId,
-    clinicName: clinic.name,
+    clinicName: clinicDisplay,
     organizationName: "",
   };
 }

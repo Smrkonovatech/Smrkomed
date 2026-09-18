@@ -1682,11 +1682,12 @@ async function executeNode(
         vars["doctor.name"] = cleanDocName;
         vars["doctor_name"] = `Dr. ${cleanDocName}`;
         vars["doctor.displayName"] = `Dr. ${cleanDocName}`;
-        vars["doctor.specialty"] = doc.specialty;
-        vars["doctor.experience"] = doc.experience;
-        vars["doctor.bio"] = doc.bio;
         vars["doctor.location"] = doc.location || "";
         vars["doctor.clinicId"] = doc.clinicId || "";
+        if (doc.location) {
+          vars["clinic.name"] = `Hospex, ${doc.location}`;
+          vars["clinic_name"] = `Hospex, ${doc.location}`;
+        }
         if (doc.photoUrl) vars["doctor.photoUrl"] = doc.photoUrl;
         vars["doctor.languages"] = Array.isArray(doc.languages) ? doc.languages.join(" • ") : String(doc.languages || "English • Hindi");
       }
@@ -1910,7 +1911,10 @@ async function executeNode(
         vars["doctor.name"] = booked.doctorName;
         vars["doctor_name"] = booked.doctorName;
       }
-      if (!vars["clinic.name"] && !vars["clinic_name"]) {
+      if (booked.clinicName) {
+        vars["clinic.name"] = booked.clinicName;
+        vars["clinic_name"] = booked.clinicName;
+      } else if (!vars["clinic.name"] && !vars["clinic_name"]) {
         vars["clinic.name"] = tenant.clinicName || "our clinic";
         vars["clinic_name"] = tenant.clinicName || "our clinic";
       }
