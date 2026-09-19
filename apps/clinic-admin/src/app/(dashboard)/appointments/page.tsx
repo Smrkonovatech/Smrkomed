@@ -69,8 +69,9 @@ export function parseYmd(dateStr: string): { year: number; month: number; day: n
 
 /** Parse appointment date + time or startsAt into an exact millisecond timestamp for chronological sorting in IST */
 function getAppointmentTimestamp(appointment: AppAppointment): number {
-  if (appointment.startsAt) {
-    const ts = new Date(appointment.startsAt).getTime();
+  const startsAt = (appointment as any).startsAt;
+  if (startsAt) {
+    const ts = new Date(startsAt).getTime();
     if (!isNaN(ts)) return ts;
   }
   const dateStr = appointment.date || getTodayIst();
