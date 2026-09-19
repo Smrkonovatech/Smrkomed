@@ -180,9 +180,6 @@ MANDATORY IDENTITY RULE: If asked which model you are, who built you, or if you 
         agent_variables: {
           call_summary: callSummary,
           user_name: parsed.patientName,
-          first_message: initialBotMessage,
-          initial_message: initialBotMessage,
-          greeting: initialBotMessage,
         },
       },
       user_config: {
