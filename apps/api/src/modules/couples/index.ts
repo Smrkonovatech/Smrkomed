@@ -82,27 +82,27 @@ export const coupleRoutes = new Hono<AppEnv>()
       }),
     ]);
 
-    // Filter out patient chart notes that were recorded from prescription/notes modal
-    const isNoteRecord = (a: any) => {
-      const notes = (a.notes || "").toLowerCase();
-      const type = (a.type || "").toLowerCase();
-      return (
-        notes.includes("[clinical note]") ||
-        notes.includes("[progress note]") ||
-        notes.includes("[follow-up note]") ||
-        notes.includes("[observation]") ||
-        notes.includes("[counseling]") ||
-        notes.includes("[procedure note]") ||
-        notes.includes("[general note]") ||
-        type.startsWith("clinical note") ||
-        type.startsWith("progress note") ||
-        type.startsWith("patient note") ||
-        type.startsWith("general note") ||
-        type.startsWith("observation note")
+    const serializedAppts = appointments.map(serializeAppointment);
+    for (const note of notes) {
+      const alreadyHas = serializedAppts.some(
+        (a) => a.id === note.id || (a.date && new Date(a.date).toDateString() === note.consultationDate.toDateString())
       );
-    };
-
-    const serializedAppts = appointments.filter((a) => !isNoteRecord(a)).map(serializeAppointment);
+      if (!alreadyHas) {
+        serializedAppts.push({
+          id: note.id,
+          clinicId: tenant.clinicId,
+          coupleId: note.coupleId,
+          type: note.reasonForVisit || "Doctor Consultation",
+          doctor: note.createdBy?.name || "Doctor",
+          room: "OPD Room 3",
+          status: "Completed",
+          time: "11:00 AM",
+          date: note.consultationDate.toISOString(),
+          duration: 30,
+          notes: note.summary,
+        });
+      }
+    }
 
     const serializedTasks = tasks.map((task) => serializeTask(task as any, task.couple as any));
 

@@ -244,53 +244,25 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
       };
     });
 
-    const apptEvents: CalendarEvent[] = appointments
-      .filter((a) => {
-        // Exclude notes added from prescription/patient care modal
-        const typeLower = (a.type || "").toLowerCase();
-        const notesLower = ((a as any).notes || "").toLowerCase();
-        const catLower = ((a as any).category || "").toLowerCase();
-
-        const isNote =
-          (a as any).isNote === true ||
-          (a as any).isPatientNote === true ||
-          catLower.includes("note") ||
-          typeLower.startsWith("clinical note") ||
-          typeLower.startsWith("progress note") ||
-          typeLower.startsWith("patient note") ||
-          typeLower.startsWith("general note") ||
-          typeLower.startsWith("follow-up note") ||
-          typeLower.startsWith("observation") ||
-          typeLower.startsWith("counseling") ||
-          notesLower.includes("[clinical note]") ||
-          notesLower.includes("[progress note]") ||
-          notesLower.includes("[follow-up note]") ||
-          notesLower.includes("[observation]") ||
-          notesLower.includes("[counseling]") ||
-          notesLower.includes("[procedure note]") ||
-          notesLower.includes("[general note]");
-
-        return !isNote;
-      })
-      .map((a) => {
-        const { date, time } = parseSafeDateAndTime(a.date, a);
-        const isConsultation =
-          a.type?.toLowerCase().includes("consultation") ||
-          ((a as any).category && String((a as any).category).toLowerCase().includes("consultation"));
-        return {
-          id: a.id,
-          title: a.type?.includes("Appointment") || a.type?.includes("Consultation") ? a.type : `${a.type} Appointment`,
-          date,
-          time: a.time || time,
-          type: "appointment",
-          status: a.status,
-          category: isConsultation ? "Consultation" : "Appointment",
-          assignedTo: a.doctor,
-          isCareLoop: false,
-          isMilestone: false,
-          raw: a,
-        };
-      });
+    const apptEvents: CalendarEvent[] = appointments.map((a) => {
+      const { date, time } = parseSafeDateAndTime(a.date, a);
+      const isConsultation =
+        a.type?.toLowerCase().includes("consultation") ||
+        ((a as any).category && String((a as any).category).toLowerCase().includes("consultation"));
+      return {
+        id: a.id,
+        title: a.type?.includes("Appointment") || a.type?.includes("Consultation") ? a.type : `${a.type} Appointment`,
+        date,
+        time: a.time || time,
+        type: "appointment",
+        status: a.status,
+        category: isConsultation ? "Consultation" : "Appointment",
+        assignedTo: a.doctor,
+        isCareLoop: false,
+        isMilestone: false,
+        raw: a,
+      };
+    });
 
     // Check if patient has active journey
     const hasAssignedJourney = Boolean(
@@ -441,7 +413,7 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
           </div>
 
           {/* Weekday headers: MON TUE WED THU FRI SAT SUN */}
-          <div className="grid grid-cols-7 mb-2">
+          <div className="grid grid-cols-7 mb-2 px-1">
             {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
               <div key={day} className="text-left px-2 py-1 text-[11px] font-bold text-gray-400 tracking-wider">
                 {day}
@@ -450,7 +422,7 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
           </div>
 
           {/* Calendar Month Grid */}
-          <div className="grid grid-cols-7 border-t border-l border-gray-100 rounded-xl overflow-hidden bg-white">
+          <div className="grid grid-cols-7 border border-gray-100 rounded-2xl bg-gray-100/60 p-1 gap-px">
             {calendarDays.map((day, idx) => {
               const dayEvents = getEventsForDate(day);
               const isSelected = selectedDate && isSameDay(day, selectedDate);
@@ -460,10 +432,10 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
                 <div
                   key={idx}
                   onClick={() => handleDayClick(day)}
-                  className={`p-2 min-h-[90px] border-r border-b border-gray-100 transition-all flex flex-col justify-start gap-1 relative cursor-pointer ${
+                  className={`p-2 min-h-[92px] bg-white transition-all flex flex-col justify-start gap-1 relative cursor-pointer ${
                     isSelected
-                      ? "ring-2 ring-[#7C5CE5] rounded-xl bg-purple-50/20 z-10 -m-px shadow-xs"
-                      : "hover:bg-slate-50/70"
+                      ? "border-2 border-[#7C5CE5] rounded-xl bg-purple-50/20 z-10 shadow-xs"
+                      : "border-2 border-transparent rounded-xl hover:bg-slate-50/70"
                   }`}
                 >
                   <div className="flex items-center justify-start mb-0.5">
