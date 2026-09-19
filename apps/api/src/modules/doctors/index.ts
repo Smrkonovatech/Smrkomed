@@ -430,7 +430,7 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
     selectedDate: requestedDate,
     morningSession: {
       title: "MORNING SESSION • 09:00 AM – 12:00 PM",
-      allocatedText: `${morningSlots.filter((s) => s.status === "active" || s.status === "booked").length} of ${morningSlots.length} Slots Allocated`,
+      allocatedText: `${morningSlots.filter((s) => s.status === "available" || s.status === "booked").length} of ${morningSlots.length} Slots Allocated`,
       slots: morningSlots,
     },
     afternoonSession: {
