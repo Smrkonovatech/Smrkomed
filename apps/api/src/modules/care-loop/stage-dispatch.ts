@@ -757,15 +757,34 @@ export async function dispatchTaskToWhatsApp(
   const targetRole = input.targetRole || task.targetRole || "PRIMARY";
   const broadcastToBoth = Boolean(input.broadcastToBoth || targetRole === "COUPLE" || targetRole === "BOTH");
 
-  const primaryPhone = input.phoneNumber || task.couple?.primaryPatient?.phone || null;
-  const partnerPhone = input.partnerPhoneNumber || task.couple?.partnerPatient?.phone || null;
+  let targetPatient: { id: string; firstName: string | null; lastName: string | null; phone: string | null } | null = null;
+  if (task.targetPatientId) {
+    targetPatient = await prisma.patient.findUnique({
+      where: { id: task.targetPatientId },
+      select: { id: true, firstName: true, lastName: true, phone: true },
+    }).catch(() => null);
+  }
+
+  const primaryPhone =
+    (targetRole !== "PARTNER" ? input.phoneNumber : null) ||
+    task.couple?.primaryPatient?.phone ||
+    (targetRole === "PRIMARY" ? targetPatient?.phone : null) ||
+    null;
+
+  let partnerPhone =
+    input.partnerPhoneNumber ||
+    task.couple?.partnerPatient?.phone ||
+    (targetRole === "PARTNER" ? targetPatient?.phone : null) ||
+    null;
 
   const primaryName = task.couple?.primaryPatient?.firstName
     ? `${task.couple.primaryPatient.firstName} ${task.couple.primaryPatient.lastName || ""}`.trim()
     : "Patient";
-  const partnerName = task.couple?.partnerPatient?.firstName
+  let partnerName = task.couple?.partnerPatient?.firstName
     ? `${task.couple.partnerPatient.firstName} ${task.couple.partnerPatient.lastName || ""}`.trim()
-    : "Partner";
+    : (targetRole === "PARTNER" && targetPatient?.firstName
+      ? `${targetPatient.firstName} ${targetPatient.lastName || ""}`.trim()
+      : "Partner");
 
   // Case 1: Broadcast to both partners in couple
   if (broadcastToBoth && primaryPhone) {
@@ -830,8 +849,19 @@ export async function dispatchTaskToWhatsApp(
 
   // Case 2: Dedicated Partner Task
   if (targetRole === "PARTNER") {
-    const rawPartnerPhone = input.phoneNumber || partnerPhone || primaryPhone;
+    // Only use partner's number - NEVER fall back to primary patient's phone
+    const rawPartnerPhone =
+      partnerPhone ||
+      (input.phoneNumber && input.phoneNumber !== task.couple?.primaryPatient?.phone ? input.phoneNumber : null);
+
     if (!rawPartnerPhone) {
+      await prisma.careTask.update({
+        where: { id: task.id },
+        data: {
+          lastAction: `WhatsApp dispatch skipped: No phone number registered for partner (${partnerName})`,
+          nextAction: "Please add a phone number for the partner to enable WhatsApp reminders",
+        },
+      });
       return {
         success: false,
         taskId: task.id,
@@ -840,7 +870,7 @@ export async function dispatchTaskToWhatsApp(
         sentText: "",
         buttonsSent: [],
         deliveryMethod: "CONVERSATION_SAVED",
-        error: "No phone number available for partner recipient",
+        error: `No phone number available for partner recipient (${partnerName})`,
       };
     }
 
@@ -851,7 +881,7 @@ export async function dispatchTaskToWhatsApp(
       patientName: partnerName,
       roleLabel: "Partner",
       coupleId: task.coupleId,
-      patientId: task.couple?.partnerPatientId,
+      patientId: task.couple?.partnerPatientId || task.targetPatientId || null,
     });
 
     const normPhone = normalizeWhatsAppPhone(rawPartnerPhone);
@@ -883,7 +913,7 @@ export async function dispatchTaskToWhatsApp(
   }
 
   // Case 3: Primary Patient Task (Standard)
-  const rawPrimaryPhone = input.phoneNumber || primaryPhone;
+  const rawPrimaryPhone = primaryPhone;
   if (!rawPrimaryPhone) {
     return {
       success: false,

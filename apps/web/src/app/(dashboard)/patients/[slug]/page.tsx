@@ -278,6 +278,7 @@ export default function PatientProfile() {
                 <div className="lg:col-span-7 xl:col-span-8">
                     <MedicationsWidget
                         coupleId={effectiveCouple.id}
+                        couple={effectiveCouple}
                         p360={p360}
                         onMedicationAdded={reload360}
                     />

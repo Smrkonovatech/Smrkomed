@@ -85,10 +85,12 @@ import { AddPrescriptionModal } from "./add-prescription-modal";
 
 export function MedicationsWidget({
   coupleId,
+  couple,
   p360,
   onMedicationAdded,
 }: {
   coupleId: string;
+  couple?: any;
   p360?: any;
   onMedicationAdded?: () => void;
 }) {
@@ -105,7 +107,65 @@ export function MedicationsWidget({
     p360?.header?.patientId ||
     p360?.primaryPatient?.id ||
     p360?.couple?.primaryPatientId ||
+    couple?.primary?.id ||
     "";
+
+  const partnerPatientId =
+    p360?.header?.partnerId ||
+    p360?.partnerPatient?.id ||
+    p360?.couple?.partnerPatientId ||
+    couple?.partner?.id ||
+    "";
+
+  const primaryName =
+    couple?.primary?.name ||
+    p360?.header?.patientName ||
+    (p360?.primaryPatient
+      ? `${p360.primaryPatient.firstName || ""} ${p360.primaryPatient.lastName || ""}`.trim()
+      : "") ||
+    "Primary Partner";
+
+  const partnerName =
+    couple?.partner?.name ||
+    p360?.header?.partnerName ||
+    (p360?.partnerPatient
+      ? `${p360.partnerPatient.firstName || ""} ${p360.partnerPatient.lastName || ""}`.trim()
+      : "") ||
+    "";
+
+  const primaryPhone =
+    p360?.header?.contact ||
+    p360?.header?.phone ||
+    p360?.primaryPatient?.phone ||
+    couple?.primary?.phone ||
+    "";
+
+  const partnerPhone =
+    p360?.partnerPatient?.phone ||
+    couple?.partner?.phone ||
+    p360?.header?.partnerPhone ||
+    "";
+
+  const couplePatients = [
+    {
+      id: primaryPatientId,
+      name: primaryName,
+      role: "Primary Partner",
+      gender: couple?.primary?.gender || p360?.header?.gender || p360?.primaryPatient?.gender || "Female",
+      phone: primaryPhone,
+    },
+    ...(partnerName && (partnerPatientId || partnerName !== "Partner")
+      ? [
+          {
+            id: partnerPatientId || (partnerName ? `partner_${partnerName}` : ""),
+            name: partnerName,
+            role: "Partner / Spouse",
+            gender: couple?.partner?.gender || p360?.partnerPatient?.gender || "Male",
+            phone: partnerPhone,
+          },
+        ]
+      : []),
+  ].filter((p) => Boolean(p.name));
 
   const handleMedClick = (med: any) => {
     setSelectedPrescription(med);
@@ -140,23 +200,41 @@ export function MedicationsWidget({
           {/* Clean Interactive Row-by-Row List */}
           {currentMeds.length > 0 ? (
             <div className="divide-y divide-gray-100">
-              {currentMeds.map((med: any, idx: number) => (
-                <div
-                  key={med.prescriptionId || med.id || idx}
-                  onClick={() => handleMedClick(med)}
-                  className="flex items-center justify-between py-3 text-xs hover:bg-slate-50/80 px-2.5 -mx-2.5 rounded-xl transition-all cursor-pointer group active:scale-[0.99]"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#866BE3]/40 group-hover:bg-[#866BE3] transition-colors" />
-                    <span className="font-semibold text-gray-800 group-hover:text-[#866BE3] transition-colors">
-                      {med.medicineName || med.medication} {med.dosage ? `(${med.dosage})` : ""}
+              {currentMeds.map((med: any, idx: number) => {
+                const medPatientName =
+                  med.patientName ||
+                  (med.patientId === partnerPatientId ? partnerName : med.patientId === primaryPatientId ? primaryName : null);
+                const isForPartner = med.patientId === partnerPatientId;
+
+                return (
+                  <div
+                    key={med.prescriptionId || med.id || idx}
+                    onClick={() => handleMedClick(med)}
+                    className="flex items-center justify-between py-3 text-xs hover:bg-slate-50/80 px-2.5 -mx-2.5 rounded-xl transition-all cursor-pointer group active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#866BE3]/40 group-hover:bg-[#866BE3] transition-colors" />
+                      <span className="font-semibold text-gray-800 group-hover:text-[#866BE3] transition-colors">
+                        {med.medicineName || med.medication} {med.dosage ? `(${med.dosage})` : ""}
+                      </span>
+                      {medPatientName && (
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${
+                            isForPartner
+                              ? "bg-amber-50 text-amber-700 border-amber-200/70"
+                              : "bg-purple-50 text-[#866BE3] border-purple-100"
+                          }`}
+                        >
+                          {medPatientName.split(" ")[0]}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-gray-500 font-medium group-hover:text-gray-700">
+                      {med.frequency || "Once daily"}
                     </span>
                   </div>
-                  <span className="text-gray-500 font-medium group-hover:text-gray-700">
-                    {med.frequency || "Once daily"}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center bg-slate-50/50 rounded-2xl border border-dashed border-gray-100 my-2">
@@ -192,6 +270,7 @@ export function MedicationsWidget({
         isOpen={detailsModalOpen}
         onOpenChange={setDetailsModalOpen}
         prescription={selectedPrescription}
+        couple={couple}
         p360={p360}
         onEdit={handleEdit}
         onPrescriptionUpdated={onMedicationAdded}
@@ -203,6 +282,9 @@ export function MedicationsWidget({
         onOpenChange={setAddPrescriptionOpen}
         patientId={primaryPatientId}
         coupleId={coupleId}
+        couplePatients={couplePatients}
+        couple={couple}
+        p360={p360}
         initialPrescription={editingPrescription}
         onPrescriptionAdded={onMedicationAdded}
       />

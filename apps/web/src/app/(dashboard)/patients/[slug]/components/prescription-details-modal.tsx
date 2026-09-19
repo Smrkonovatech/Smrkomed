@@ -15,6 +15,7 @@ import {
   X,
   MapPin,
   Stethoscope,
+  User,
 } from "lucide-react";
 import { DiscontinuePrescriptionDialog } from "./discontinue-prescription-dialog";
 
@@ -22,6 +23,7 @@ interface PrescriptionDetailsModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   prescription: any;
+  couple?: any;
   p360?: any;
   onEdit?: ((prescription: any) => void) | undefined;
   onPrescriptionUpdated?: (() => void) | undefined;
@@ -31,6 +33,7 @@ export function PrescriptionDetailsModal({
   isOpen,
   onOpenChange,
   prescription,
+  couple,
   p360,
   onEdit,
   onPrescriptionUpdated,
@@ -111,6 +114,21 @@ export function PrescriptionDetailsModal({
       ? `${p360.header.currentTreatment.stageName}`
       : "Active Treatment");
 
+  const partnerPatientId =
+    p360?.partnerPatient?.id ||
+    couple?.partner?.id ||
+    p360?.couple?.partnerPatientId;
+
+  const isPartner = Boolean(prescription.patientId && partnerPatientId && prescription.patientId === partnerPatientId);
+
+  const targetPatientName =
+    prescription.patientName ||
+    (isPartner
+      ? couple?.partner?.name || p360?.header?.partnerName || "Partner"
+      : couple?.primary?.name || p360?.header?.patientName || "Primary Partner");
+
+  const targetPatientRole = isPartner ? "Partner / Spouse" : "Primary Partner";
+
   const handleEditClick = () => {
     onOpenChange(false);
     onEdit?.(prescription);
@@ -149,6 +167,23 @@ export function PrescriptionDetailsModal({
 
             {/* Details Rows */}
             <div className="space-y-4 text-xs">
+              {/* Prescribed For Patient */}
+              {targetPatientName && (
+                <div className="flex items-start gap-3">
+                  <div className="w-4 h-4 flex items-center justify-center shrink-0 mt-0.5 text-[#866BE3]">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="font-bold text-gray-900 text-xs flex items-center gap-2">
+                      <span>Prescribed for: {targetPatientName}</span>
+                      <span className="text-[10px] font-semibold bg-[#866BE3]/10 text-[#866BE3] px-2 py-0.5 rounded-full border border-[#866BE3]/20">
+                        {targetPatientRole}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Row 1: Duration, Start Date & Frequency */}
               <div className="flex items-start gap-3">
                 <Calendar className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />

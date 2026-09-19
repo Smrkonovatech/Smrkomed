@@ -1531,6 +1531,9 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
 
   let targetRole = input.targetRole || "PRIMARY";
   let targetPatientId: string | null = input.targetPatientId ?? null;
+  if (targetPatientId && targetPatientId.startsWith("partner_")) {
+    targetPatientId = null;
+  }
   if (!targetPatientId) {
     if (targetRole === "PARTNER" && couple.partnerPatientId) {
       targetPatientId = couple.partnerPatientId;
@@ -1541,6 +1544,8 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
       targetPatientId = couple.primaryPatientId;
       targetRole = "PRIMARY";
     }
+  } else if (couple.partnerPatientId && targetPatientId === couple.partnerPatientId) {
+    targetRole = "PARTNER";
   }
 
   let planId = input.carePlanId;
@@ -1635,12 +1640,22 @@ export async function addDoctorTask(tenant: TenantContext, input: AddDoctorTaskI
   // Automatically dispatch WhatsApp notification to patient / partner / couple if enabled
   if (input.sendWhatsApp !== false) {
     const { dispatchTaskToWhatsApp } = await import("./stage-dispatch");
+    const isBoth = targetRole === "COUPLE" || targetRole === "BOTH" || Boolean(input.broadcastToBoth);
+    const partnerPhone =
+      input.partnerPhoneNumber ||
+      (targetRole === "PARTNER" || isBoth ? couple.partnerPatient?.phone : undefined) ||
+      undefined;
+    const primaryPhone =
+      input.phoneNumber ||
+      (targetRole === "PRIMARY" || isBoth ? couple.primaryPatient?.phone : undefined) ||
+      undefined;
+
     await dispatchTaskToWhatsApp(tenant, {
       taskId: task.id,
-      ...(input.phoneNumber ? { phoneNumber: input.phoneNumber } : {}),
-      ...(input.partnerPhoneNumber ? { partnerPhoneNumber: input.partnerPhoneNumber } : {}),
+      phoneNumber: targetRole === "PARTNER" ? undefined : primaryPhone,
+      partnerPhoneNumber: targetRole === "PRIMARY" ? undefined : partnerPhone,
       targetRole,
-      broadcastToBoth: input.broadcastToBoth || targetRole === "COUPLE" || targetRole === "BOTH",
+      broadcastToBoth: isBoth,
     }).catch((err) => {
       console.error("[addDoctorTask] Automatic WhatsApp dispatch error:", err);
     });
