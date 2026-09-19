@@ -1,4 +1,4 @@
-import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api/client";
+import { ApiError, apiDelete, apiGet, apiPatch, apiPost, apiPut, apiUpload } from "@/lib/api/client";
 
 export type ClinicPerson = {
   id: string;
@@ -133,6 +133,10 @@ export const clinicApi = {
       status?: string;
     },
   ) => apiPatch<ClinicCouple>(`/api/v1/couples/${id}`, body),
+  treatment: (id: string) => apiGet<any>(`/api/v1/treatments/${id}`),
+  patchTreatment: (id: string, body: unknown) => apiPatch<any>(`/api/v1/treatments/${id}`, body),
+  createTreatment: (body: unknown) => apiPost<any>("/api/v1/treatments", body),
+  coupleTreatment: (coupleId: string) => apiGet<any>(`/api/v1/couples/${coupleId}/treatment`),
   patchCoupleTreatment: (coupleId: string, body: unknown) => apiPatch<any>(`/api/v1/couples/${coupleId}/treatment`, body),
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
@@ -214,19 +218,14 @@ export const clinicApi = {
   },
   completeConsultation: (appointmentId: string, body: unknown) =>
     apiPost<any>(`/api/v1/doctors/consultations/${appointmentId}`, body),
+  recordConsultation: (appointmentId: string, body: unknown) =>
+    apiPost<any>(`/api/v1/doctors/consultations/${appointmentId}`, body),
   doctorReports: (filter?: string) =>
     apiGet<any[]>(`/api/v1/doctors/reports${filter ? `?filter=${filter}` : ""}`),
   doctorReviewReport: (orderId: string, body: unknown) =>
     apiPost<any>(`/api/v1/doctors/reports/${orderId}/review`, body),
   doctorCareLoopExceptions: () => apiGet<any[]>("/api/v1/doctors/care-loop-exceptions"),
   doctorMessages: () => apiGet<any[]>("/api/v1/doctors/messages"),
-  // Doctor Management (Full Profiles & Real DB Persisted)
-  getDoctors: () => apiGet<any[]>("/api/v1/doctors"),
-  getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
-  createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
-  updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
-  deleteDoctor: (id: string) =>
-    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/doctors/${id.replace(/^doc_/, "")}`),
   // Analytics APIs
   analyticsOverview: (params?: { dateRange?: string | undefined; dateFrom?: string | undefined; dateTo?: string | undefined; doctorId?: string | undefined; status?: string | undefined }) => {
     const q = params ? "?" + new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as [string, string][]).toString() : "";
@@ -272,6 +271,49 @@ export const clinicApi = {
     apiPost<any>(`/api/v1/pharmacy/prescriptions/${id}/cancel`, {}),
   deletePrescription: (id: string) =>
     apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/pharmacy/prescriptions/${id}`),
+  // Staff Management
+  getStaff: (clinicId?: string) => apiGet<any[]>(`/api/v1/users/staff${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
+  createStaffMember: (body: {
+    name: string;
+    email: string;
+    password: string;
+    role: string;
+    clinicId?: string | undefined;
+    locationId?: string | undefined;
+    title?: string | undefined;
+    phone?: string | undefined;
+    department?: string | undefined;
+    registrationNumber?: string | undefined;
+    qualifications?: string | undefined;
+    yearsExperience?: number | string | undefined;
+    languages?: string | undefined;
+  }) => apiPost<any>("/api/v1/users/staff", body),
+  // Doctor Management (Full Profiles & Real DB Persisted)
+  getDoctors: (clinicId?: string) => apiGet<any[]>(`/api/v1/doctors${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
+  getDoctor: (id: string) => apiGet<any>(`/api/v1/doctors/${id}`),
+  createDoctor: (body: unknown) => apiPost<any>("/api/v1/doctors", body),
+  updateDoctor: (id: string, body: unknown) => apiPut<any>(`/api/v1/doctors/${id}`, body),
+  deleteDoctor: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/doctors/${id.replace(/^doc_/, "")}`),
+  // WhatsApp Inbox & Conversations
+  whatsappInbox: (params?: { filter?: string; q?: string }) => {
+    const q = params
+      ? "?" + new URLSearchParams(Object.entries(params).filter(([_, v]) => Boolean(v)) as [string, string][]).toString()
+      : "";
+    return apiGet<any[]>(`/api/v1/whatsapp-automation/inbox${q}`);
+  },
+  whatsappConversation: (id: string) =>
+    apiGet<any>(`/api/v1/whatsapp-automation/inbox/${id}`),
+  sendWhatsappMessage: (conversationId: string, body: string) =>
+    apiPost<any>(`/api/v1/whatsapp-automation/inbox/${conversationId}/reply`, { body }),
+  sendWhatsappCoupleMessage: (coupleId: string, body: string) =>
+    apiPost<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/reply`, { body }),
+  whatsappCoupleMessages: (coupleId: string) =>
+    apiGet<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/messages`),
+  sendWhatsappMedia: (conversationId: string, formData: FormData) =>
+    apiUpload<any>(`/api/v1/whatsapp-automation/inbox/${conversationId}/media`, formData),
+  sendWhatsappCoupleMedia: (coupleId: string, formData: FormData) =>
+    apiUpload<any>(`/api/v1/whatsapp-automation/couples/${coupleId}/media`, formData),
   sendWhatsappToRecipient: (body: {
     patientId?: string | undefined;
     coupleId?: string | undefined;
@@ -282,6 +324,31 @@ export const clinicApi = {
     header?: string | undefined;
     footer?: string | undefined;
   }) => apiPost<any>("/api/v1/whatsapp-automation/send-to-recipient", body),
+  // Clinic Profile & Location Settings
+  getCurrentClinic: () => apiGet<ClinicProfile>("/api/v1/clinics/current"),
+  updateCurrentClinic: (body: Partial<ClinicProfile> & { hours?: string | null }) =>
+    apiPatch<ClinicProfile>("/api/v1/clinics/current", body),
+  getClinics: () => apiGet<ClinicProfile[]>("/api/v1/clinics"),
 };
 
-
+export type ClinicProfile = {
+  id: string;
+  name: string;
+  slug?: string;
+  city?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  website?: string | null;
+  timezone?: string;
+  hours?: string | null;
+  organizationId?: string;
+  branches?: Array<{
+    id: string;
+    name: string;
+    city?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    hours?: string | null;
+  }>;
+};
