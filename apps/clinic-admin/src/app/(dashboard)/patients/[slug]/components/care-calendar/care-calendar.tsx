@@ -244,25 +244,53 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
       };
     });
 
-    const apptEvents: CalendarEvent[] = appointments.map((a) => {
-      const { date, time } = parseSafeDateAndTime(a.date, a);
-      const isConsultation =
-        a.type?.toLowerCase().includes("consultation") ||
-        ((a as any).category && String((a as any).category).toLowerCase().includes("consultation"));
-      return {
-        id: a.id,
-        title: a.type?.includes("Appointment") || a.type?.includes("Consultation") ? a.type : `${a.type} Appointment`,
-        date,
-        time: a.time || time,
-        type: "appointment",
-        status: a.status,
-        category: isConsultation ? "Consultation" : "Appointment",
-        assignedTo: a.doctor,
-        isCareLoop: false,
-        isMilestone: false,
-        raw: a,
-      };
-    });
+    const apptEvents: CalendarEvent[] = appointments
+      .filter((a) => {
+        // Exclude notes added from prescription/patient care modal
+        const typeLower = (a.type || "").toLowerCase();
+        const notesLower = ((a as any).notes || "").toLowerCase();
+        const catLower = ((a as any).category || "").toLowerCase();
+
+        const isNote =
+          (a as any).isNote === true ||
+          (a as any).isPatientNote === true ||
+          catLower.includes("note") ||
+          typeLower.startsWith("clinical note") ||
+          typeLower.startsWith("progress note") ||
+          typeLower.startsWith("patient note") ||
+          typeLower.startsWith("general note") ||
+          typeLower.startsWith("follow-up note") ||
+          typeLower.startsWith("observation") ||
+          typeLower.startsWith("counseling") ||
+          notesLower.includes("[clinical note]") ||
+          notesLower.includes("[progress note]") ||
+          notesLower.includes("[follow-up note]") ||
+          notesLower.includes("[observation]") ||
+          notesLower.includes("[counseling]") ||
+          notesLower.includes("[procedure note]") ||
+          notesLower.includes("[general note]");
+
+        return !isNote;
+      })
+      .map((a) => {
+        const { date, time } = parseSafeDateAndTime(a.date, a);
+        const isConsultation =
+          a.type?.toLowerCase().includes("consultation") ||
+          ((a as any).category && String((a as any).category).toLowerCase().includes("consultation"));
+        return {
+          id: a.id,
+          title: a.type?.includes("Appointment") || a.type?.includes("Consultation") ? a.type : `${a.type} Appointment`,
+          date,
+          time: a.time || time,
+          type: "appointment",
+          status: a.status,
+          category: isConsultation ? "Consultation" : "Appointment",
+          assignedTo: a.doctor,
+          isCareLoop: false,
+          isMilestone: false,
+          raw: a,
+        };
+      });
 
     // Check if patient has active journey
     const hasAssignedJourney = Boolean(
@@ -359,9 +387,9 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
   const selectedDayEvents = useMemo(() => getEventsForDate(safeSelectedDate), [events, safeSelectedDate]);
 
   return (
-    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
       {/* Left Card (8 cols): Care Calendar matching Image 2 */}
-      <div className="lg:col-span-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between">
+      <div className="lg:col-span-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col">
         <div>
           {/* Header matching Image 2 */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -487,7 +515,7 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
       </div>
 
       {/* Right Card (4 cols): Selected Day Details Companion Panel matching Image 2 */}
-      <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between">
+      <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col">
         <CalendarDayPanel
           date={safeSelectedDate}
           events={selectedDayEvents}
