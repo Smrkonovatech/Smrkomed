@@ -1,20 +1,30 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Pill, Search, Check, X, Loader2, ChevronDown } from "lucide-react";
+import { Pill, Search, Check, X, Loader2, ChevronDown, User } from "lucide-react";
 import { toast } from "sonner";
 import { clinicApi } from "@/lib/clinic-api";
+
+export interface CouplePatientOption {
+  id: string;
+  name: string;
+  role?: string;
+  gender?: string;
+}
 
 interface AddPrescriptionModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  patientId: string;
+  patientId?: string;
   coupleId?: string | undefined;
+  couplePatients?: CouplePatientOption[];
+  couple?: any;
+  p360?: any;
   initialPrescription?: any | null;
   onPrescriptionAdded?: (() => void) | undefined;
 }
@@ -40,9 +50,85 @@ export function AddPrescriptionModal({
   onOpenChange,
   patientId,
   coupleId,
+  couplePatients,
+  couple,
+  p360,
   initialPrescription,
   onPrescriptionAdded,
 }: AddPrescriptionModalProps) {
+  const patientOptions: CouplePatientOption[] = useMemo(() => {
+    if (couplePatients && couplePatients.length > 0) {
+      return couplePatients;
+    }
+
+    const options: CouplePatientOption[] = [];
+
+    // 1. Primary Partner
+    const primaryId =
+      p360?.primaryPatient?.id ||
+      couple?.primary?.id ||
+      p360?.header?.patientId ||
+      p360?.couple?.primaryPatientId ||
+      patientId ||
+      "";
+
+    const primaryName =
+      p360?.header?.patientName ||
+      couple?.primary?.name ||
+      p360?.primaryPatient?.name ||
+      (p360?.primaryPatient
+        ? `${p360.primaryPatient.firstName || ""} ${p360.primaryPatient.lastName || ""}`.trim()
+        : "") ||
+      "Primary Partner";
+
+    const primaryGender =
+      p360?.header?.gender ||
+      p360?.primaryPatient?.gender ||
+      couple?.primary?.gender;
+
+    if (primaryId || primaryName) {
+      options.push({
+        id: primaryId,
+        name: primaryName,
+        role: "Primary Partner",
+        gender: primaryGender,
+      });
+    }
+
+    // 2. Partner / Spouse
+    const partnerId =
+      p360?.partnerPatient?.id ||
+      couple?.partner?.id ||
+      p360?.header?.partnerId ||
+      p360?.couple?.partnerPatientId ||
+      "";
+
+    const partnerName =
+      p360?.header?.partnerName ||
+      couple?.partner?.name ||
+      p360?.partnerPatient?.name ||
+      (p360?.partnerPatient
+        ? `${p360.partnerPatient.firstName || ""} ${p360.partnerPatient.lastName || ""}`.trim()
+        : "") ||
+      "";
+
+    const partnerGender =
+      p360?.partnerPatient?.gender ||
+      couple?.partner?.gender;
+
+    if (partnerId || partnerName) {
+      options.push({
+        id: partnerId || (partnerName ? `partner_${partnerName}` : ""),
+        name: partnerName || "Partner",
+        role: "Partner / Spouse",
+        gender: partnerGender,
+      });
+    }
+
+    return options;
+  }, [couplePatients, p360, couple, patientId]);
+
+  const [selectedPatientId, setSelectedPatientId] = useState<string>("");
   const [medicationName, setMedicationName] = useState("");
   const [form, setForm] = useState("Injection");
   const [dosage, setDosage] = useState("225");
@@ -52,6 +138,18 @@ export function AddPrescriptionModal({
   const [durationUnit, setDurationUnit] = useState("Days");
   const [quantity, setQuantity] = useState("30");
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialPrescription?.patientId) {
+        setSelectedPatientId(initialPrescription.patientId);
+      } else if (patientId) {
+        setSelectedPatientId(patientId);
+      } else if (patientOptions[0]?.id) {
+        setSelectedPatientId(patientOptions[0].id);
+      }
+    }
+  }, [isOpen, initialPrescription, patientId, patientOptions]);
 
   useEffect(() => {
     if (initialPrescription && isOpen) {
@@ -94,13 +192,29 @@ export function AddPrescriptionModal({
     try {
       setSubmitting(true);
 
+      const effectivePatientId =
+        selectedPatientId ||
+        patientId ||
+        patientOptions[0]?.id ||
+        undefined;
+
       const fullDosage = `${dosage} ${unit}`.trim();
       const durationText = `${durationValue} ${durationUnit}`;
       const qtyNumber = parseInt(quantity, 10) || parseInt(durationValue, 10) || 30;
 
-      // 1. Create prescription via clinicApi
+      // If editing an existing prescription, remove the old one first
+      if (initialPrescription?.prescriptionId || initialPrescription?.id) {
+        const oldId = initialPrescription.prescriptionId || initialPrescription.id;
+        try {
+          await clinicApi.deletePrescription(oldId);
+        } catch (delErr) {
+          console.warn("Could not delete previous prescription before replacing:", delErr);
+        }
+      }
+
+      // 1. Create prescription via clinicApi with the selected patientId
       await clinicApi.createPrescription({
-        patientId: patientId && patientId.trim().length > 0 ? patientId.trim() : undefined,
+        patientId: effectivePatientId && effectivePatientId.trim().length > 0 ? effectivePatientId.trim() : undefined,
         coupleId: coupleId || undefined,
         notes: `Prescribed: ${medicationName} (${fullDosage}, ${form}) - ${frequency} for ${durationText}`,
         items: [
@@ -117,22 +231,36 @@ export function AddPrescriptionModal({
         ],
       });
 
-      // 2. Create Care Task in Care Loop for automatic reminders
-      if (coupleId && patientId) {
+      // 2. Create Care Task in Care Loop for automatic reminders for the selected patient
+      if (coupleId && effectivePatientId) {
         try {
+          const selectedPatient = patientOptions.find((p) => p.id === effectivePatientId);
+          const forLabel = selectedPatient?.name ? ` (${selectedPatient.name})` : "";
+
+          // Determine targetRole: if selected patient is NOT the primary, it must be the partner
+          const primaryId =
+            p360?.primaryPatient?.id ||
+            p360?.header?.patientId ||
+            p360?.couple?.primaryPatientId ||
+            patientId ||
+            "";
+          const isPartner = primaryId && effectivePatientId !== primaryId;
+          const targetRole = isPartner ? "PARTNER" : "PRIMARY";
+
           await clinicApi.createTask({
             coupleId,
-            patientId,
-            title: `Medication: ${medicationName.trim()} (${fullDosage})`,
+            title: `Medication: ${medicationName.trim()} (${fullDosage})${forLabel}`,
             category: "MEDICATION",
             dueDate: new Date(Date.now() + 86400000).toISOString(),
-            status: "PENDING",
             priority: "HIGH",
             description: `${form} • ${frequency}. Duration: ${durationText}. Quantity: ${qtyNumber}`,
             sendWhatsApp: true,
+            targetRole,
+            targetPatientId: effectivePatientId,
+            targetName: selectedPatient?.name,
           });
         } catch {
-          // Non-blocking
+          // Non-blocking: medication task creates even if WhatsApp task fails
         }
       }
 
@@ -149,6 +277,8 @@ export function AddPrescriptionModal({
       setSubmitting(false);
     }
   };
+
+  const activeSelectedId = selectedPatientId || patientOptions[0]?.id;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -172,6 +302,92 @@ export function AddPrescriptionModal({
 
         {/* Form body matching Image 1 */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+          {/* Patient Selection from Couple */}
+          {patientOptions.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-[#866BE3]" />
+                  <span>Select Patient (Prescribed For)</span>
+                </label>
+                <span className="text-[11px] text-[#866BE3] font-medium bg-[#866BE3]/10 px-2 py-0.5 rounded-md">
+                  Couple Member
+                </span>
+              </div>
+
+              {patientOptions.length > 1 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {patientOptions.map((opt) => {
+                    const isSelected = activeSelectedId === opt.id;
+                    return (
+                      <button
+                        key={opt.id || opt.name}
+                        type="button"
+                        onClick={() => setSelectedPatientId(opt.id)}
+                        className={`relative flex items-center gap-2.5 p-2.5 rounded-xl border text-left transition-all cursor-pointer select-none ${
+                          isSelected
+                            ? "bg-[#F8F5FF] border-[#866BE3] ring-1 ring-[#866BE3] shadow-xs"
+                            : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50/80 hover:border-gray-300"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-xs font-bold transition-colors ${
+                            isSelected
+                              ? "bg-[#866BE3] text-white shadow-xs"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                        >
+                          {opt.name.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs font-semibold text-gray-900 truncate leading-tight">
+                            {opt.name}
+                          </div>
+                          <div className="flex items-center gap-1 text-[10px] text-gray-500 font-medium mt-0.5">
+                            <span className={isSelected ? "text-[#866BE3] font-semibold" : ""}>
+                              {opt.role || "Patient"}
+                            </span>
+                            {opt.gender && (
+                              <>
+                                <span>•</span>
+                                <span className="capitalize">{opt.gender.toLowerCase()}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <div className="w-4 h-4 rounded-full bg-[#866BE3] text-white flex items-center justify-center shrink-0">
+                            <Check className="w-2.5 h-2.5 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : patientOptions[0] ? (
+                <div className="flex items-center justify-between p-2.5 px-3.5 bg-[#F8F5FF] border border-[#866BE3]/30 rounded-xl text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-[#866BE3] text-white flex items-center justify-center text-xs font-bold">
+                      {patientOptions[0].name.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-900 leading-tight">
+                        {patientOptions[0].name}
+                      </div>
+                      <div className="text-[10px] text-[#866BE3] font-medium leading-tight mt-0.5">
+                        {patientOptions[0].role || "Primary Partner"}
+                        {patientOptions[0].gender ? ` • ${patientOptions[0].gender}` : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold bg-[#866BE3]/10 text-[#866BE3] px-2 py-0.5 rounded-md">
+                    Selected
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {/* Medication Name & Strength */}
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-gray-800 block">
