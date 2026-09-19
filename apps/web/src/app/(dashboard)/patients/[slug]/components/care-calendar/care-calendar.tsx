@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import {
   format,
-  addDays,
   startOfWeek,
   endOfWeek,
   startOfMonth,
@@ -19,11 +18,7 @@ import {
   ChevronRight,
   Calendar as CalendarIcon,
   Plus,
-  Bot,
-  Clock,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { clinicApi, type ClinicAppointment, type ClinicTask } from "@/lib/clinic-api";
 import { CalendarDayPanel } from "./calendar-day-panel";
 import { AddCareTaskModal } from "./add-care-task-modal";
@@ -98,39 +93,79 @@ function parseSafeDateAndTime(dueStr: string | null | undefined, raw?: any): { d
   }
 
   if (!time && dueStr) {
-    const parsed = new Date(dueStr);
-    if (!isNaN(parsed.getTime())) {
-      try {
-        time = format(parsed, "hh:mm a");
-      } catch {
-        time = "";
-      }
+    const timeRegex = /\b(\d{1,2}:\d{2}\s*(?:AM|PM|am|pm))\b/;
+    const match = dueStr.match(timeRegex);
+    if (match && match[1]) {
+      time = match[1];
     }
   }
 
   return { date: d, time };
 }
 
-function formatSafeDate(date: Date | null | undefined, formatStr: string, fallback = ""): string {
-  if (!date || isNaN(date.getTime())) return fallback;
-  try {
-    return format(date, formatStr);
-  } catch {
-    return fallback;
+function getPillStyle(e: CalendarEvent) {
+  const cat = (e.category || "").toLowerCase();
+  const t = (e.title || "").toLowerCase();
+
+  if (cat.includes("blood") || cat.includes("diagnostic") || t.includes("blood") || t.includes("lab")) {
+    return {
+      badge: "bg-[#FFF0F0] text-[#D93838] border border-[#FCD6D6]",
+      dot: "bg-[#D93838]",
+    };
   }
+  if (cat.includes("ultrasound") || t.includes("ultrasound") || t.includes("scan")) {
+    if (t.includes("review") || t.includes("monitoring")) {
+      return {
+        badge: "bg-[#F6F2FF] text-[#7C5CE5] border border-[#E8DDFF]",
+        dot: "bg-[#7C5CE5]",
+      };
+    }
+    return {
+      badge: "bg-[#EEF6FF] text-[#2563EB] border border-[#D0E6FF]",
+      dot: "bg-[#2563EB]",
+    };
+  }
+  if (cat.includes("consultation") || t.includes("consultation") || cat.includes("appointment")) {
+    return {
+      badge: "bg-[#E6F8FA] text-[#0891B2] border border-[#CFEDF2]",
+      dot: "bg-[#0891B2]",
+    };
+  }
+  if (cat.includes("medication") || t.includes("medication") || t.includes("stimulation")) {
+    return {
+      badge: "bg-[#F0FDF4] text-[#16A34A] border border-[#DCFCE7]",
+      dot: "bg-[#16A34A]",
+    };
+  }
+  return {
+    badge: "bg-[#F6F2FF] text-[#7C5CE5] border border-[#E8DDFF]",
+    dot: "bg-[#7C5CE5]",
+  };
+}
+
+function getShortEventTitle(title: string): string {
+  if (!title) return "Event";
+  const lower = title.toLowerCase();
+  if (lower.includes("blood test")) return "Blood Test";
+  if (lower.includes("ultrasound")) return "Ultrasound";
+  if (lower.includes("consultation")) return "Consultation";
+  if (lower.includes("scan") && lower.includes("review")) return "Scan + Review";
+  if (lower.includes("review report") || lower.includes("report review")) return "Review Report";
+  if (lower.includes("medication")) {
+    const medName = title.replace(/^medication:\s*/i, "").split(" ")[0];
+    return `Medication: ${medName}`;
+  }
+  return title;
 }
 
 export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [viewMode, setViewMode] = useState<"month" | "week" | "list">("month");
-  const [filterCategory, setFilterCategory] = useState<"all" | "milestones" | "consultations" | "tasks">("all");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
   const [tasks, setTasks] = useState<ClinicTask[]>([]);
   const [appointments, setAppointments] = useState<ClinicAppointment[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   const fetchCalendarData = async () => {
     const coupleKey = couple.id || (couple as any).slug;
@@ -278,23 +313,20 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
           id: `step-${step.id || step.sortOrder}`,
           title: step.name,
           date: milestoneDate,
-          time: "10:00 AM",
+          time: "09:00 AM",
           type: "milestone",
-          status: step.status || "PENDING",
+          status: step.status === "DONE" ? "Completed" : step.status === "CURRENT" ? "In Progress" : "Scheduled",
           category: "Milestone",
-          assignedTo: p360?.header?.assignedDoctor?.name || "Clinical Team",
           isCareLoop: true,
           isMilestone: true,
           raw: {
             id: `step-${step.id || step.sortOrder}`,
             title: step.name,
+            status: step.status,
             category: "Milestone",
-            status: step.status || "PENDING",
-            priority: "HIGH",
             due: milestoneDate.toISOString(),
-            assignedTo: p360?.header?.assignedDoctor?.name || "Clinical Team",
+            priority: "NORMAL",
             targetRole: "DOCTOR",
-            actionType: "PATIENT_WHATSAPP_UPDATE",
           } as any,
         });
       }
@@ -303,39 +335,16 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
     return [...taskEvents, ...planStepEvents, ...apptEvents].sort((a, b) => a.date.getTime() - b.date.getTime());
   }, [tasks, appointments, p360?.header?.currentCarePlan, p360?.header?.currentTreatment, couple?.stage, default15Stages]);
 
-  const milestoneCount = useMemo(
-    () => events.filter((e) => e.isMilestone || e.category.toLowerCase().includes("milestone") || e.category.toLowerCase().includes("procedure")).length,
-    [events]
-  );
-  const consultationCount = useMemo(
-    () => events.filter((e) => e.type === "appointment" || e.category.toLowerCase().includes("consultation")).length,
-    [events]
-  );
-  const taskCount = useMemo(
-    () => events.filter((e) => !e.isMilestone && e.type === "task").length,
-    [events]
-  );
-
-  const displayedEvents = useMemo(() => {
-    if (filterCategory === "milestones") {
-      return events.filter((e) => e.isMilestone || e.category.toLowerCase().includes("milestone") || e.category.toLowerCase().includes("procedure"));
-    }
-    if (filterCategory === "consultations") {
-      return events.filter((e) => e.type === "appointment" || e.category.toLowerCase().includes("consultation"));
-    }
-    if (filterCategory === "tasks") {
-      return events.filter((e) => !e.isMilestone && e.type === "task");
-    }
-    return events;
-  }, [events, filterCategory]);
-
   const handlePrev = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNext = () => setCurrentDate(addMonths(currentDate, 1));
-  const handleToday = () => setCurrentDate(new Date());
+  const handleToday = () => {
+    const now = new Date();
+    setCurrentDate(now);
+    setSelectedDate(now);
+  };
 
   const handleDayClick = (date: Date) => {
     setSelectedDate(date);
-    setIsPanelOpen(true);
   };
 
   const monthStart = startOfMonth(currentDate);
@@ -344,383 +353,152 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
   const calendarEndDate = endOfWeek(monthEnd, { weekStartsOn: 1 });
   const calendarDays = eachDayOfInterval({ start: calendarStartDate, end: calendarEndDate });
 
-  const currentWeekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = Array.from({ length: 7 }).map((_, i) => addDays(currentWeekStart, i));
+  const getEventsForDate = (date: Date) => events.filter((e) => isSameDay(e.date, date));
 
-  const listEvents = useMemo(() => {
-    return displayedEvents
-      .filter((e) => {
-        return e.date >= monthStart;
-      })
-      .slice(0, 50);
-  }, [displayedEvents, monthStart]);
-
-  const getEventsForDate = (date: Date) => displayedEvents.filter((e) => isSameDay(e.date, date));
-
-  const getEventColor = (category: string, title?: string, isMilestone?: boolean) => {
-    const cat = category.toLowerCase();
-    const t = (title || "").toLowerCase();
-    if (isMilestone || cat.includes("milestone") || t.includes("baseline")) {
-      return "bg-[#F3EEFE] text-[#6A3BC8] border border-[#D8C7FA] before:bg-[#866BE3] font-semibold";
-    }
-    if (cat.includes("procedure") || t.includes("retrieval") || t.includes("transfer")) {
-      return "bg-indigo-50 text-indigo-700 border border-indigo-200 before:bg-indigo-600 font-semibold";
-    }
-    if (cat.includes("consultation") || cat.includes("appointment")) {
-      return "bg-blue-50 text-blue-700 border border-blue-200 before:bg-blue-500 font-medium";
-    }
-    if (cat.includes("blood") || cat.includes("diagnostic") || cat.includes("test")) {
-      return "bg-rose-50 text-rose-700 border border-rose-200 before:bg-rose-500 font-medium";
-    }
-    if (cat.includes("medication") || t.includes("stimulation")) {
-      return "bg-emerald-50 text-emerald-700 border border-emerald-200 before:bg-emerald-500 font-medium";
-    }
-    if (cat.includes("review") || cat.includes("scan") || cat.includes("monitoring")) {
-      return "bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200 before:bg-fuchsia-500 font-medium";
-    }
-    return "bg-slate-50 text-slate-700 border border-slate-200 before:bg-slate-400";
-  };
+  const safeSelectedDate = selectedDate || currentDate || new Date();
+  const selectedDayEvents = useMemo(() => getEventsForDate(safeSelectedDate), [events, safeSelectedDate]);
 
   return (
-    <div className="w-full bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between mb-3 gap-3">
-        <div className="flex items-center gap-2">
-          <div className="bg-purple-100 p-1.5 rounded-lg text-[#866BE3]">
-            <CalendarIcon className="size-4" />
-          </div>
-          <h2 className="text-lg font-bold text-slate-800 tracking-tight">Care Calendar</h2>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleToday}
-              className="h-7 rounded-full px-3 text-xs font-medium bg-white text-slate-600 border-slate-200 cursor-pointer"
-            >
-              Today
-            </Button>
-            <div className="flex items-center bg-white rounded-full border border-slate-200 overflow-hidden h-7">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handlePrev}
-                className="h-7 w-7 rounded-none hover:bg-slate-50 text-slate-500 cursor-pointer"
-              >
-                <ChevronLeft className="size-3" />
-              </Button>
-              <div className="h-3 w-px bg-slate-200 mx-0.5"></div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleNext}
-                className="h-7 w-7 rounded-none hover:bg-slate-50 text-slate-500 cursor-pointer"
-              >
-                <ChevronRight className="size-3" />
-              </Button>
+    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch">
+      {/* Left Card (8 cols): Care Calendar matching Image 2 */}
+      <div className="lg:col-span-8 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between">
+        <div>
+          {/* Header matching Image 2 */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#F5F2FD] flex items-center justify-center text-[#7C5CE5]">
+                <CalendarIcon className="w-5 h-5" />
+              </div>
+              <h2 className="text-base font-bold text-gray-900 tracking-tight">Care Calendar</h2>
             </div>
-            <span className="text-xs font-bold text-slate-700 w-28 text-center">
-              {format(currentDate, "MMMM yyyy")}
-            </span>
+
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={handleToday}
+                className="px-4 py-1.5 rounded-full text-xs font-semibold text-gray-700 bg-gray-100/80 hover:bg-gray-100 border border-gray-200/50 cursor-pointer transition-colors"
+              >
+                Today
+              </button>
+
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-100/80 border border-gray-200/50">
+                <button
+                  type="button"
+                  onClick={handlePrev}
+                  className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs font-bold text-gray-800 min-w-[70px] text-center">
+                  {format(currentDate, "MMM") === "Sep" ? `Sept ${format(currentDate, "yyyy")}` : format(currentDate, "MMM yyyy")}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-4 py-1.5 rounded-full bg-[#7C5CE5] hover:bg-[#6D4CD4] text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Task</span>
+              </button>
+            </div>
           </div>
 
-          <div className="flex items-center bg-white rounded-full p-0.5 border border-slate-200 shadow-sm h-7">
-            {(["Month", "Week", "List"] as const).map((view) => (
-              <Button
-                key={view}
-                variant="ghost"
-                size="sm"
-                onClick={() => setViewMode(view.toLowerCase() as any)}
-                className={`h-6 px-3 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
-                  viewMode === view.toLowerCase()
-                    ? "bg-[#866BE3] text-white hover:bg-[#7254d1] hover:text-white shadow-2xs"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                {view}
-              </Button>
+          {/* Weekday headers: MON TUE WED THU FRI SAT SUN */}
+          <div className="grid grid-cols-7 mb-2">
+            {["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"].map((day) => (
+              <div key={day} className="text-left px-2 py-1 text-[11px] font-bold text-gray-400 tracking-wider">
+                {day}
+              </div>
             ))}
           </div>
 
-          <Button
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-[#866BE3] hover:bg-[#7254d1] h-7 rounded-full px-4 shadow-sm text-white border-none text-xs cursor-pointer active:scale-95 transition-all"
-          >
-            <Plus className="size-3 mr-1" /> Add Task
-          </Button>
-        </div>
-      </div>
+          {/* Calendar Month Grid */}
+          <div className="grid grid-cols-7 border-t border-l border-gray-100 rounded-xl overflow-hidden bg-white">
+            {calendarDays.map((day, idx) => {
+              const dayEvents = getEventsForDate(day);
+              const isSelected = selectedDate && isSameDay(day, selectedDate);
+              const isCurrentMonth = isSameMonth(day, currentDate);
 
-      {/* Category Filter Pills */}
-      <div className="flex items-center gap-2 mb-3 px-1 overflow-x-auto pb-1">
-        <button
-          type="button"
-          onClick={() => setFilterCategory("all")}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-            filterCategory === "all"
-              ? "bg-[#866BE3] text-white shadow-2xs"
-              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-          }`}
-        >
-          All ({events.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterCategory("milestones")}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-            filterCategory === "milestones"
-              ? "bg-[#7C5CEB] text-white shadow-2xs"
-              : "bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200"
-          }`}
-        >
-          <span>🎯 Cycle Milestones</span>
-          <span
-            className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-              filterCategory === "milestones" ? "bg-white/20 text-white" : "bg-purple-200 text-purple-800"
-            }`}
-          >
-            {milestoneCount}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterCategory("consultations")}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-            filterCategory === "consultations"
-              ? "bg-blue-600 text-white shadow-2xs"
-              : "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
-          }`}
-        >
-          <span>🩺 Consultations</span>
-          <span
-            className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-              filterCategory === "consultations" ? "bg-white/20 text-white" : "bg-blue-200 text-blue-800"
-            }`}
-          >
-            {consultationCount}
-          </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setFilterCategory("tasks")}
-          className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap ${
-            filterCategory === "tasks"
-              ? "bg-slate-700 text-white shadow-2xs"
-              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-          }`}
-        >
-          <span>📋 Care Tasks</span>
-          <span
-            className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-              filterCategory === "tasks" ? "bg-white/20 text-white" : "bg-slate-200 text-slate-700"
-            }`}
-          >
-            {taskCount}
-          </span>
-        </button>
-      </div>
-
-      <div className="flex flex-col lg:flex-row gap-3">
-        {/* Main Calendar Area */}
-        <div className="flex-1 bg-white rounded-xl border border-slate-100 shadow-sm flex flex-col overflow-hidden">
-          {viewMode === "month" && (
-            <>
-              {/* Calendar Header */}
-              <div className="grid grid-cols-7 border-b bg-white">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-                  <div key={day} className="text-center py-2 text-[10px] font-medium text-slate-400">
-                    {day}
-                  </div>
-                ))}
-              </div>
-
-              {/* Calendar Grid */}
-              <div className="flex-1 grid grid-cols-7 grid-rows-5 bg-slate-50 gap-px border-t border-slate-100">
-                {calendarDays.map((day, idx) => {
-                  const dayEvents = getEventsForDate(day);
-                  const isToday = isSameDay(day, new Date());
-                  const isSelected = selectedDate && isSameDay(day, selectedDate);
-                  const isCurrentMonth = isSameMonth(day, currentDate);
-
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => handleDayClick(day)}
-                      className={`bg-white p-1 relative cursor-pointer min-h-[75px] transition-all hover:bg-slate-50 ${
-                        !isCurrentMonth ? "opacity-40" : ""
-                      }`}
-                    >
-                      <div className="flex justify-center mb-0.5">
-                        <span
-                          className={`text-[10px] font-medium w-5 h-5 flex items-center justify-center rounded-full ${
-                            isSelected
-                              ? "bg-purple-100 text-purple-700 ring-1 ring-purple-300"
-                              : isToday
-                                ? "text-indigo-600 font-bold"
-                                : "text-slate-600"
-                          }`}
-                        >
-                          {format(day, "d")}
-                        </span>
+              return (
+                <div
+                  key={idx}
+                  onClick={() => handleDayClick(day)}
+                  className={`p-2 min-h-[90px] border-r border-b border-gray-100 transition-all flex flex-col justify-start gap-1 relative cursor-pointer ${
+                    isSelected
+                      ? "ring-2 ring-[#7C5CE5] rounded-xl bg-purple-50/20 z-10 -m-px shadow-xs"
+                      : "hover:bg-slate-50/70"
+                  }`}
+                >
+                  <div className="flex items-center justify-start mb-0.5">
+                    {isSelected ? (
+                      <div className="w-6 h-6 rounded-full bg-[#7C5CE5] text-white flex items-center justify-center text-xs font-bold shadow-2xs">
+                        {format(day, "d")}
                       </div>
-                      <div className="space-y-0.5">
-                        {dayEvents.slice(0, 3).map((e) => (
-                          <div
-                            key={e.id}
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setSelectedEvent(e);
-                            }}
-                            className={`text-[9px] px-1.5 py-0.5 rounded-full leading-tight truncate flex items-center gap-1 relative before:content-[''] before:w-1 before:h-1 before:rounded-full hover:opacity-80 transition-opacity cursor-pointer ${getEventColor(
-                              e.category,
-                              e.title,
-                              e.isMilestone
-                            )}`}
-                          >
-                            <span className="truncate flex-1">{e.title}</span>
-                          </div>
-                        ))}
-                        {dayEvents.length > 3 && (
-                          <div className="text-[9px] text-slate-400 font-medium px-1.5">
-                            +{dayEvents.length - 3} more
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {viewMode === "week" && (
-            <>
-              {/* Calendar Header */}
-              <div className="grid grid-cols-7 border-b bg-white">
-                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, idx) => (
-                  <div
-                    key={day}
-                    className={`text-center py-2 text-[10px] font-medium ${
-                      isSameDay(weekDays[idx]!, new Date()) ? "text-[#866BE3] font-bold" : "text-slate-400"
-                    }`}
-                  >
-                    <div>{day}</div>
-                    <div className="text-xs mt-0.5">{format(weekDays[idx]!, "d")}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Weekly Grid */}
-              <div className="flex-1 grid grid-cols-7 bg-slate-50 gap-px border-t border-slate-100">
-                {weekDays.map((day, idx) => {
-                  const dayEvents = getEventsForDate(day);
-                  const isSelected = selectedDate && isSameDay(day, selectedDate);
-
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => handleDayClick(day)}
-                      className={`bg-white p-2 relative cursor-pointer min-h-[300px] transition-all hover:bg-slate-50 ${
-                        isSelected ? "ring-1 ring-inset ring-purple-200" : ""
-                      }`}
-                    >
-                      <div className="space-y-1.5 mt-2">
-                        {dayEvents.map((e) => (
-                          <div
-                            key={e.id}
-                            onClick={(ev) => {
-                              ev.stopPropagation();
-                              setSelectedEvent(e);
-                            }}
-                            className={`text-[10px] px-2 py-1 rounded border leading-tight flex flex-col gap-1 hover:opacity-80 transition-opacity cursor-pointer ${getEventColor(
-                              e.category,
-                              e.title,
-                              e.isMilestone
-                            )}`}
-                          >
-                            <span className="font-semibold line-clamp-2">{e.title}</span>
-                            {e.time && (
-                              <span className="text-[9px] opacity-80 flex items-center">
-                                <Clock className="size-2.5 mr-1" />
-                                {e.time}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-
-          {viewMode === "list" && (
-            <div className="flex-1 overflow-y-auto p-4 bg-slate-50/30">
-              <div className="max-w-2xl mx-auto space-y-3">
-                {listEvents.length === 0 ? (
-                  <div className="text-center py-10 text-slate-500 text-sm">No events found.</div>
-                ) : (
-                  listEvents.map((e) => (
-                    <div
-                      key={e.id}
-                      className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm flex items-start gap-3 hover:border-[#866BE3]/50 cursor-pointer transition-colors"
-                      onClick={() => setSelectedEvent(e)}
-                    >
-                      <div
-                        className={`mt-1 size-2.5 rounded-full shrink-0 ${
-                          e.category.toLowerCase().includes("blood")
-                            ? "bg-rose-500"
-                            : e.category.toLowerCase().includes("appointment")
-                              ? "bg-blue-500"
-                              : e.category.toLowerCase().includes("medication")
-                                ? "bg-emerald-500"
-                                : "bg-purple-500"
+                    ) : (
+                      <span
+                        className={`text-xs font-medium pl-1 ${
+                          !isCurrentMonth ? "text-gray-300" : "text-gray-700"
                         }`}
-                      />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-bold text-sm text-slate-800">{e.title}</span>
-                          {e.isCareLoop && <Bot className="size-3 text-purple-400" />}
-                        </div>
-                        <div className="text-xs text-slate-500 flex items-center gap-3">
-                          <span className="font-medium text-slate-700">
-                            {formatSafeDate(e.date, "EEE, d MMM yyyy")}
-                          </span>
-                          {e.time && <span>• {e.time}</span>}
-                          <span>• {e.category}</span>
-                        </div>
-                      </div>
-                      <Badge variant="secondary" className="text-[10px] font-normal">
-                        {e.status}
-                      </Badge>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+                      >
+                        {format(day, "d")}
+                      </span>
+                    )}
+                  </div>
 
-        {/* Selected Day Panel */}
-        <div
-          className={`w-full lg:w-72 transition-all ${
-            isPanelOpen ? "block" : "hidden"
-          } bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col`}
-        >
-          <CalendarDayPanel
-            date={selectedDate || new Date()}
-            events={getEventsForDate(selectedDate || new Date())}
-            onClose={() => setIsPanelOpen(false)}
-            onAddTask={() => setIsAddModalOpen(true)}
-            couple={couple}
-            onSaved={fetchCalendarData}
-          />
+                  <div className="space-y-1 overflow-hidden">
+                    {dayEvents.slice(0, 2).map((e) => {
+                      const style = getPillStyle(e);
+                      const shortTitle = getShortEventTitle(e.title);
+                      return (
+                        <div
+                          key={e.id}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            setSelectedDate(day);
+                            setSelectedEvent(e);
+                          }}
+                          className={`text-[10px] font-medium px-2 py-0.5 rounded-lg truncate flex items-center gap-1.5 transition-all hover:opacity-90 cursor-pointer ${style.badge}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${style.dot}`} />
+                          <span className="truncate">{shortTitle}</span>
+                        </div>
+                      );
+                    })}
+                    {dayEvents.length > 2 && (
+                      <div className="text-[10px] text-gray-400 font-semibold pl-1">
+                        +{dayEvents.length - 2} more
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
-      {/* Add Care Task Modal matching Image 2 */}
+      {/* Right Card (4 cols): Selected Day Details Companion Panel matching Image 2 */}
+      <div className="lg:col-span-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex flex-col justify-between">
+        <CalendarDayPanel
+          date={safeSelectedDate}
+          events={selectedDayEvents}
+          onAddTask={() => setIsAddModalOpen(true)}
+          couple={couple}
+          p360={p360}
+          onSaved={fetchCalendarData}
+        />
+      </div>
+
+      {/* Add Care Task Modal */}
       <AddCareTaskModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
@@ -729,7 +507,7 @@ export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
         onSaved={fetchCalendarData}
       />
 
-      {/* Event Details Modal matching Image 3 */}
+      {/* Event Details Modal */}
       <EventDetailsModal
         isOpen={!!selectedEvent}
         onClose={() => setSelectedEvent(null)}

@@ -2,201 +2,163 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { X, Plus, Bot, Clock, AlertCircle, CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Plus, Calendar as CalendarIcon } from "lucide-react";
 import { type CalendarEvent } from "./care-calendar";
-import { clinicApi } from "@/lib/clinic-api";
-import { toast } from "sonner";
 import { EventDetailsModal } from "./event-details-modal";
 
 interface CalendarDayPanelProps {
   date: Date;
   events: CalendarEvent[];
-  onClose: () => void;
+  onClose?: () => void;
   onAddTask: () => void;
   couple: { id: string; primaryPatient?: { firstName: string; lastName: string } } | any;
+  p360?: any;
   onSaved?: () => void;
 }
 
 export function CalendarDayPanel({
   date,
   events,
-  onClose,
   onAddTask,
   couple,
+  p360,
   onSaved,
 }: CalendarDayPanelProps) {
-  const [processingId, setProcessingId] = useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-
-  const handleMarkComplete = async (e: React.MouseEvent, event: CalendarEvent) => {
-    e.stopPropagation();
-    if (event.type === "task") {
-      setProcessingId(event.id);
-      try {
-        await clinicApi.completeTask(event.id);
-        toast.success(`"${event.title}" marked as completed.`);
-        if (onSaved) onSaved();
-      } catch (err) {
-        toast.error("Failed to complete task.");
-      } finally {
-        setProcessingId(null);
-      }
-    }
-  };
-
-  const handleEscalate = async (e: React.MouseEvent, event: CalendarEvent) => {
-    e.stopPropagation();
-    if (event.type === "task") {
-      setProcessingId(event.id);
-      try {
-        await clinicApi.escalateTask(event.id, "Manual escalation from Care Calendar.");
-        toast.success(`"${event.title}" escalated for assistance.`);
-        if (onSaved) onSaved();
-      } catch (err) {
-        toast.error("Failed to escalate task.");
-      } finally {
-        setProcessingId(null);
-      }
-    }
-  };
 
   const safeDate = date && !isNaN(date.getTime()) ? date : new Date();
   const dayNum = format(safeDate, "d");
   const monthYear = format(safeDate, "MMM yyyy");
 
+  const getStatusBadge = (status: string) => {
+    const s = (status || "").toLowerCase();
+    if (s.includes("confirm") || s.includes("complet") || s === "done") {
+      return {
+        label: "Confirmed",
+        className: "bg-emerald-50 text-emerald-600 border-emerald-200/70",
+      };
+    }
+    if (s.includes("schedul") || s.includes("waiting") || s.includes("booked")) {
+      return {
+        label: "Scheduled",
+        className: "bg-blue-50 text-blue-600 border-blue-200/70",
+      };
+    }
+    return {
+      label: "Pending",
+      className: "bg-amber-50 text-amber-600 border-amber-200/70",
+    };
+  };
+
+  const getDotColor = (event: CalendarEvent) => {
+    const cat = (event.category || "").toLowerCase();
+    const t = (event.title || "").toLowerCase();
+    const s = (event.status || "").toLowerCase();
+
+    if (s.includes("confirm") || t.includes("ultrasound") || cat.includes("ultrasound")) return "bg-emerald-500";
+    if (cat.includes("blood") || t.includes("blood") || s.includes("schedul")) return "bg-blue-500";
+    if (t.includes("review") || cat.includes("consultation") || event.isMilestone) return "bg-[#7C5CE5]";
+    return "bg-[#7C5CE5]";
+  };
+
+  const getPatientName = (event: CalendarEvent) => {
+    if (event.raw && (event.raw as any).patientName) {
+      return (event.raw as any).patientName;
+    }
+    const t = (event.title || "").toLowerCase();
+    if (t.includes("review") || t.includes("couples") || t.includes("both")) {
+      return "Both";
+    }
+    const name =
+      couple?.primary?.name ||
+      p360?.header?.patientName ||
+      (couple?.primaryPatient ? `${couple.primaryPatient.firstName || ""} ${couple.primaryPatient.lastName || ""}`.trim() : null) ||
+      "Geethu";
+    return name.split(" ")[0];
+  };
+
   return (
     <>
-      <div className="h-full flex flex-col bg-white">
-        <div className="px-4 py-3 border-b border-slate-50 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="font-medium text-indigo-700 text-lg">
-              {dayNum} <span className="text-slate-700">{monthYear}</span>
-            </h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-slate-500 font-medium">
-              {events.length} {events.length === 1 ? "task" : "tasks"}
-            </p>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onClose}
-              className="h-8 w-8 text-slate-400 hover:text-slate-600 rounded-full cursor-pointer"
-            >
-              <X className="size-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-0">
-          {events.length === 0 ? (
-            <div className="h-40 flex flex-col items-center justify-center text-center">
-              <Clock className="size-6 text-slate-200 mb-2" />
-              <p className="text-xs font-medium text-slate-500">
-                No care activities scheduled
-              </p>
+      <div className="h-full flex flex-col justify-between bg-white">
+        <div>
+          {/* Header matching Image 2 */}
+          <div className="flex items-center justify-between pb-4 mb-2 border-b border-gray-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-gray-100/90 flex items-center justify-center font-bold text-base text-gray-900">
+                {dayNum}
+              </div>
+              <span className="text-sm font-bold text-gray-900">
+                {monthYear}
+              </span>
             </div>
-          ) : (
-            events.map((event, idx) => (
-              <div
-                key={event.id}
-                onClick={() => setSelectedEvent(event)}
-                className={`py-3 group cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 rounded-xl transition-colors ${
-                  idx !== events.length - 1 ? "border-b border-slate-100" : ""
-                }`}
-              >
-                <div className="flex justify-between items-start">
-                  <div className="flex items-start gap-2.5">
-                    <div
-                      className={`mt-1 size-2 rounded-full shrink-0 ${
-                        event.category.toLowerCase().includes("blood")
-                          ? "bg-rose-500"
-                          : event.category.toLowerCase().includes("appointment")
-                            ? "bg-blue-500"
-                            : event.category.toLowerCase().includes("medication")
-                              ? "bg-emerald-500"
-                              : "bg-purple-500"
-                      }`}
-                    />
-                    <div>
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {event.time && (
-                          <span className="text-xs text-slate-500 font-medium">
-                            {event.time}
-                          </span>
-                        )}
-                        <span className="font-semibold text-sm text-slate-800 group-hover:text-[#866BE3] transition-colors">
-                          {event.title}
+            <span className="px-3 py-1 rounded-full bg-gray-100/80 text-gray-600 text-xs font-semibold">
+              {events.length} {events.length === 1 ? "task" : "tasks"}
+            </span>
+          </div>
+
+          {/* List of Tasks matching Image 2 */}
+          <div className="divide-y divide-gray-100/80 max-h-[360px] overflow-y-auto pr-1">
+            {events.length === 0 ? (
+              <div className="py-12 flex flex-col items-center justify-center text-center">
+                <div className="w-10 h-10 rounded-full bg-purple-50 text-[#866BE3] flex items-center justify-center mb-2">
+                  <CalendarIcon className="w-4 h-4" />
+                </div>
+                <p className="text-xs font-bold text-gray-800">No care activities scheduled</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 max-w-[200px]">
+                  No appointments or tasks set for this date.
+                </p>
+              </div>
+            ) : (
+              events.map((event) => {
+                const statusInfo = getStatusBadge(event.status);
+                const dotColor = getDotColor(event);
+                const patient = getPatientName(event);
+
+                return (
+                  <div
+                    key={event.id}
+                    onClick={() => setSelectedEvent(event)}
+                    className="py-3.5 group cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 rounded-xl transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-start gap-2.5">
+                        <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                        <span className="text-xs font-semibold text-gray-500 w-16 shrink-0 pt-0.5">
+                          {event.time || "09:00 AM"}
                         </span>
+                        <div>
+                          <h4 className="font-bold text-xs text-gray-900 group-hover:text-[#7C5CE5] transition-colors leading-snug">
+                            {event.title}
+                          </h4>
+                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">
+                            Patient: <span className="text-gray-600 font-semibold">{patient}</span>
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500">
-                        {event.assignedTo || "Unassigned"}
-                      </div>
-                      {event.type === "task" &&
-                        event.status !== "completed" &&
-                        event.status !== "escalated" && (
-                          <div className="flex items-center gap-2 mt-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => handleMarkComplete(e, event)}
-                              disabled={processingId === event.id}
-                              className="h-6 px-2 text-[10px] font-medium text-emerald-600 border-emerald-200 hover:bg-emerald-50 bg-emerald-50/50 cursor-pointer"
-                            >
-                              <CheckCircle2 className="size-3 mr-1" /> Done
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => handleEscalate(e, event)}
-                              disabled={processingId === event.id}
-                              className="h-6 px-2 text-[10px] font-medium text-rose-600 border-rose-200 hover:bg-rose-50 bg-rose-50/50 cursor-pointer"
-                            >
-                              <AlertCircle className="size-3 mr-1" /> Need Help
-                            </Button>
-                          </div>
-                        )}
+
+                      <span
+                        className={`shrink-0 text-[10px] font-semibold px-2.5 py-0.5 rounded-full border ${statusInfo.className}`}
+                      >
+                        {statusInfo.label}
+                      </span>
                     </div>
                   </div>
-
-                  <div className="flex items-center gap-2 shrink-0 ml-2">
-                    {event.isCareLoop && <Bot className="size-3 text-purple-400" />}
-                    {event.status === "completed" || event.status === "Completed" ? (
-                      <Badge className="text-[10px] font-normal bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200 rounded-full px-2">
-                        Completed
-                      </Badge>
-                    ) : event.status === "waiting" ||
-                      event.status === "Waiting" ||
-                      event.status === "Scheduled" ? (
-                      <Badge className="text-[10px] font-normal bg-blue-100 text-blue-700 hover:bg-blue-100 border-blue-200 rounded-full px-2">
-                        Scheduled
-                      </Badge>
-                    ) : event.status === "overdue" ? (
-                      <Badge className="text-[10px] font-normal bg-rose-100 text-rose-700 hover:bg-rose-100 border-rose-200 rounded-full px-2">
-                        Overdue
-                      </Badge>
-                    ) : (
-                      <Badge className="text-[10px] font-normal bg-orange-100 text-orange-700 hover:bg-orange-100 border-orange-200 rounded-full px-2">
-                        Pending
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
 
-        <div className="p-4 bg-slate-50/50 mt-auto">
-          <Button
+        {/* Bottom Button matching Image 2 */}
+        <div className="pt-4 mt-auto">
+          <button
+            type="button"
             onClick={onAddTask}
-            variant="outline"
-            className="w-full text-indigo-500 hover:text-indigo-600 hover:bg-indigo-50 border-indigo-200 rounded-full h-8 text-xs shadow-sm bg-white cursor-pointer"
+            className="w-full py-2.5 rounded-full border border-[#7C5CE5] text-[#7C5CE5] hover:bg-[#7C5CE5]/5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all active:scale-[0.99] cursor-pointer shadow-2xs"
           >
-            <Plus className="size-3 mr-1.5" /> Add Task for this date
-          </Button>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Task for this date</span>
+          </button>
         </div>
       </div>
 
