@@ -6,34 +6,39 @@ import { ArrowRight, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IvfJourneyModal } from "./ivf-journey-modal";
 
-const carePlanSteps = [
-  "01. Baseline",
+const default15Stages = [
+  "01. Lead / Appointment",
   "02. Initial Consultation",
-  "03. Pre-IVF Workup",
-  "04. Monitoring",
-  "05. Ovarian Stimulation",
-  "06. Trigger Shot",
-  "07. Egg Retrieval",
-  "08. ICSI",
-  "09. Embryo Culture",
-  "10. Embryo Transfer",
-  "11. Luteal Phase Support",
-  "12. Beta HCG",
+  "03. Fertility Investigation / Workup",
+  "04. IVF Decision",
+  "05. Treatment Planning & Consent",
+  "06. Cycle Preparation",
+  "07. Ovarian Stimulation",
+  "08. Follicular Monitoring",
+  "09. Trigger",
+  "10. OPU (Oocyte Pick-Up)",
+  "11. Embryology",
+  "12. Transfer / FET",
+  "13. Post-Transfer (Two-Week Wait)",
+  "14. Pregnancy Test",
+  "15. Outcome",
 ];
 
 export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | any, p360?: any }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  let currentStageName = couple.stage || "";
-  let nextStageName = "Complete";
-  let carePlanStepsArr = carePlanSteps;
+  let currentStageName = p360?.header?.currentCarePlan?.stageName || couple?.stage || "07. Ovarian Stimulation";
+  let nextStageName = "08. Follicular Monitoring";
+  let carePlanStepsArr = default15Stages;
 
   if (p360?.header?.currentCarePlan) {
     const steps = p360.header.currentCarePlan.steps || [];
     const sortedSteps = [...steps].sort((a: any, b: any) => a.sortOrder - b.sortOrder);
-    carePlanStepsArr = sortedSteps.map((s: any) => s.name);
+    if (sortedSteps.length > 0) {
+      carePlanStepsArr = sortedSteps.map((s: any) => s.name);
+    }
     
-    const currentIndex = sortedSteps.findIndex((s: any) => s.status === "IN_PROGRESS");
+    const currentIndex = sortedSteps.findIndex((s: any) => s.status === "CURRENT" || s.status === "IN_PROGRESS");
     if (currentIndex !== -1) {
       currentStageName = sortedSteps[currentIndex].name;
       if (currentIndex + 1 < sortedSteps.length) {
@@ -49,8 +54,8 @@ export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | a
       }
     }
   } else {
-    const currentStepIdx = carePlanSteps.findIndex(s => s === currentStageName);
-    nextStageName = currentStepIdx >= 0 && currentStepIdx < carePlanSteps.length - 1 ? (carePlanSteps[currentStepIdx + 1] || "Complete") : "Complete";
+    const currentStepIdx = carePlanStepsArr.findIndex(s => s === currentStageName);
+    nextStageName = currentStepIdx >= 0 && currentStepIdx < carePlanStepsArr.length - 1 ? (carePlanStepsArr[currentStepIdx + 1] || "Complete") : "Complete";
   }
 
   return (
@@ -74,22 +79,13 @@ export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | a
           <div className="absolute inset-0 m-auto w-[180px] h-[180px] bg-[#EBE5FF] rounded-full" />
           
           {/* Center Content */}
-          <div className="absolute inset-0 m-auto w-24 h-24 flex flex-col items-center justify-center">
-            <div className="w-12 h-12 rounded-full bg-white overflow-hidden shadow-sm flex items-center justify-center mb-1 z-10">
-              <Image 
-                src="/images/dashboard/patient.png" 
-                alt="Patient" 
-                width={48} 
-                height={48} 
-                className="object-cover"
-              />
-            </div>
-            <div className="text-center text-[11px] text-gray-600 font-medium leading-none mb-0.5">
-              Current:
-            </div>
-            <div className="text-center text-[13px] font-bold text-[#4B3F72] leading-tight max-w-[100px] truncate">
-              {currentStageName.split('. ')[1] || currentStageName}
-            </div>
+          <div className="absolute inset-0 m-auto w-24 h-24 rounded-full overflow-hidden flex items-center justify-center p-2 bg-white shadow-md border-2 border-white">
+            <Image 
+              src="/images/dashboard/patient.png" 
+              alt="Patient" 
+              fill 
+              className="object-contain"
+            />
           </div>
 
           {/* Nodes around the circle (Radius = 100, Center = 120,120) */}
@@ -103,14 +99,14 @@ export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | a
 
         {/* Right side info & Illustration */}
         <div className="flex flex-col justify-start h-[240px] relative z-10 w-[220px]">
-          <div className="text-left w-full z-20 pt-4 pl-4">
-            <p className="text-xs text-gray-600 mb-1">Next Stage:</p>
+          <div className="text-left w-full z-20 pt-1 pl-2 space-y-1">
+            <p className="text-xs text-gray-600 font-medium">Next Stage:</p>
             <p className="text-sm font-bold text-gray-900 truncate">
               {nextStageName?.split('. ')?.[1] || nextStageName || "Complete"}
             </p>
           </div>
           
-          <div className="absolute -bottom-6 -right-4 w-[220px] h-[220px] pointer-events-none z-0">
+          <div className="absolute -bottom-2 -right-2 w-[160px] h-[140px] pointer-events-none z-10">
             <Image 
               src="/images/dashboard/patient.png" 
               alt="Patient and Doctor" 

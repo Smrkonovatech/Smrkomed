@@ -43,10 +43,11 @@ function getActiveClinicId(): string | undefined {
     if (raw) {
       if (raw === "blr" || raw === "cmt0exo9n000vl804rbaabh32") return "cmt0exo9n000vl804rbaabh32";
       if (raw === "kochi" || raw === "cmu3nmx310026jy04gsi21hxl") return "cmu3nmx310026jy04gsi21hxl";
+      if (raw === "chennai" || raw === "hospex-chennai-clinic") return "hospex-chennai-clinic";
       return raw;
     }
   }
-  return undefined;
+  return "cmt0exo9n000vl804rbaabh32";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

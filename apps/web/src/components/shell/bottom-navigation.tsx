@@ -12,8 +12,23 @@ import {
   MessageCircle,
   FileText,
   Users,
+  RefreshCw,
+  LayoutDashboard,
+  GitBranch,
+  ClipboardList,
+  Settings,
+  BarChart3,
+  Heart,
+  Building2,
+  User,
+  Lock,
+  Mail,
+  Globe,
+  HandHeart,
+  LogOut,
+  ChevronRight,
 } from "lucide-react";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
 import {
@@ -161,13 +176,14 @@ function DockStatus() {
 
 const DOCTOR_NAV_CATEGORIES: AppNavCategory[] = [
   {
-    id: "doctor_home",
-    label: "Home",
+    id: "doctor_dashboard",
+    label: "Dashboard",
     description: "Doctor Workspace",
-    icon: Stethoscope,
+    icon: LayoutDashboard,
     href: "/home",
     items: [
-      { href: "/home", label: "Dashboard", icon: Stethoscope },
+      { href: "/home", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/doctor", label: "Doctor App", icon: Stethoscope },
       { href: "/home", label: "Smrko AI", icon: Sparkles, openAi: true },
     ],
   },
@@ -189,8 +205,41 @@ const DOCTOR_NAV_CATEGORIES: AppNavCategory[] = [
     icon: Users,
     href: "/patients",
     items: [
-      { href: "/patients", label: "Assigned Patients", icon: Users },
-      { href: "/care-plans", label: "Active Treatments", icon: Activity },
+      { href: "/patients", label: "Patients", icon: Users },
+      { href: "/patients", label: "Couples", icon: Heart },
+    ],
+  },
+  {
+    id: "doctor_care_journeys",
+    label: "Care Journeys",
+    description: "Care Journeys & Protocols",
+    icon: GitBranch,
+    href: "/care-plans",
+    items: [
+      { href: "/care-plans", label: "Care Plans & Protocols", icon: GitBranch },
+      { href: "/ivf-cycles", label: "IVF Journeys", icon: Sparkles },
+    ],
+  },
+  {
+    id: "doctor_care_loop",
+    label: "Care Loop",
+    description: "Care Loop",
+    icon: RefreshCw,
+    href: "/care-loop",
+    items: [
+      { href: "/care-loop", label: "Care Loop", icon: RefreshCw },
+    ],
+  },
+  {
+    id: "doctor_reports",
+    label: "Reports",
+    description: "Reports & Analytics",
+    icon: FileText,
+    href: "/reports",
+    items: [
+      { href: "/reports", label: "Reports", icon: FileText },
+      { href: "/analytics", label: "Analytics", icon: BarChart3 },
+      { href: "/clinical-diagnostics", label: "Diagnostics", icon: Activity },
     ],
   },
   {
@@ -201,17 +250,34 @@ const DOCTOR_NAV_CATEGORIES: AppNavCategory[] = [
     href: "/whatsapp/inbox",
     items: [
       { href: "/whatsapp/inbox", label: "Clinical Messages", icon: MessageCircle },
+      { href: "/whatsapp", label: "WhatsApp Desk", icon: MessageCircle },
     ],
   },
   {
-    id: "doctor_more",
-    label: "Diagnostics",
-    description: "Clinical Diagnostics",
-    icon: FileText,
-    href: "/clinical-diagnostics",
+    id: "doctor_discharge",
+    label: "Discharge",
+    description: "Patient Discharge",
+    icon: ClipboardList,
+    href: "/discharge",
     items: [
-      { href: "/clinical-diagnostics", label: "Diagnostic Orders & Review", icon: FileText },
-      { href: "/staff", label: "Team Directory", icon: Users },
+      { href: "/discharge", label: "Discharge Summaries", icon: ClipboardList },
+    ],
+  },
+  {
+    id: "doctor_settings",
+    label: "Settings",
+    description: "Doctor Settings",
+    icon: Settings,
+    href: "/settings",
+    items: [
+      { href: "/settings?tab=profile", label: "Profile", icon: User },
+      { href: "/settings?tab=notifications", label: "Notifications", icon: Bell },
+      { href: "/settings?tab=security", label: "Security", icon: Lock },
+      { href: "/settings?tab=communication", label: "Communication Preferences", icon: Mail },
+      { href: "/settings?tab=language", label: "Language", icon: Globe },
+      { href: "/settings?tab=privacy", label: "Terms and Privacy", icon: FileText },
+      { href: "/help", label: "Help & Support", icon: HandHeart },
+      { href: "/api/auth/signout", label: "Logout", icon: LogOut },
     ],
   },
 ];
@@ -320,14 +386,15 @@ export function BottomNavigation() {
                   aria-controls={hasMenu && expanded ? panelId : undefined}
                   onFocus={() => (hasMenu ? openCategory(category.id) : undefined)}
                   onClick={() => {
-                    if (!hasMenu && category.href) {
+                    if (category.href) {
+                      setOpenId(null);
                       router.push(category.href);
                       return;
                     }
                     if (hasMenu) openCategory(category.id);
                   }}
                   className={cn(
-                    "flex min-w-[3.75rem] flex-col items-center justify-center gap-0.5 rounded-lg px-2 py-1 transition-colors duration-150 sm:min-w-[4.5rem] sm:px-2.5",
+                    "flex min-w-[3.5rem] flex-col items-center justify-center gap-0.5 rounded-lg px-1.5 py-1 transition-colors duration-150 sm:min-w-[4.25rem] sm:px-2 md:min-w-[4.5rem] md:px-2.5",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/35",
                     lit ? "bg-white/10" : "hover:bg-white/8",
                   )}
@@ -339,7 +406,7 @@ export function BottomNavigation() {
                     aria-hidden
                   />
                   <span
-                    className="max-w-[4.5rem] truncate text-[9px] font-semibold tracking-tight sm:text-[10px]"
+                    className="max-w-[5.25rem] truncate text-[9px] font-semibold tracking-tight sm:text-[10px]"
                     style={{ color: lit ? ACTIVE_AMBER : "rgba(255,255,255,0.72)" }}
                   >
                     {category.label}
@@ -355,69 +422,140 @@ export function BottomNavigation() {
                     className={cn(
                       "pointer-events-none absolute bottom-[calc(100%+14px)] left-1/2 z-50 w-[min(18rem,calc(100vw-1.5rem))] -translate-x-1/2 origin-bottom scale-95 opacity-0 transition-all duration-150",
                       category.columns === 2 && "sm:w-[22rem]",
+                      category.id === "doctor_settings" && "w-[min(21rem,calc(100vw-1.5rem))] right-0 left-auto translate-x-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2",
                       expanded && "pointer-events-auto scale-100 opacity-100",
                     )}
                     onMouseEnter={() => openCategory(category.id)}
                     onMouseLeave={scheduleClose}
                   >
-                    <div className="relative rounded-2xl border border-border/50 bg-white px-2 py-2 shadow-[0_14px_36px_rgba(28,18,52,0.16)]">
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute top-full left-1/2 -mt-px -translate-x-1/2"
-                      >
-                        <span className="block size-0 border-x-[7px] border-t-[8px] border-x-transparent border-t-white drop-shadow-[0_2px_2px_rgba(28,18,52,0.08)]" />
-                      </span>
-                      <p className="mb-1 px-2.5 pt-0.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-                        {category.label}
-                      </p>
-                      <ul
-                        className={cn(
-                          "grid gap-0.5",
-                          category.columns === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1",
-                        )}
-                      >
-                        {category.items.map((item) => {
-                          const ItemIcon = item.icon;
-                          const badge = item.label === "Tasks" && taskBadge > 0 ? taskBadge : null;
-                          const itemActive =
-                            !item.openAi &&
-                            (item.href === "/home"
-                              ? pathname === "/home"
-                              : pathname === item.href || pathname.startsWith(`${item.href}/`));
-                          return (
-                            <li key={`${category.id}-${item.label}`}>
-                              <Link
-                                href={item.openAi ? "#" : item.href}
-                                role="menuitem"
-                                aria-current={itemActive ? "page" : undefined}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  handleItemActivate(category, item.href, item.openAi);
-                                }}
-                                onFocus={() => openCategory(category.id)}
-                                className={cn(
-                                  "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-[#2c2540] transition-colors duration-150",
-                                  "hover:bg-primary-soft/80 focus-visible:bg-primary-soft/80 focus-visible:outline-none",
-                                  itemActive && "bg-primary-soft text-primary",
-                                )}
-                              >
-                                <ItemIcon
-                                  className="size-4 shrink-0 text-[#3d3558]"
-                                  strokeWidth={1.75}
-                                  aria-hidden
-                                />
-                                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                                {badge != null ? (
-                                  <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[#fde8e8] text-[11px] font-semibold text-[#d14343] tabular-nums">
-                                    {badge > 9 ? "9+" : badge}
-                                  </span>
-                                ) : null}
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+                    {category.id === "doctor_settings" ? (
+                      <div className="relative rounded-2xl border border-gray-200/90 bg-white shadow-[0_16px_45px_rgba(28,18,52,0.18)] overflow-hidden">
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute top-full right-8 sm:left-1/2 sm:right-auto -mt-px sm:-translate-x-1/2"
+                        >
+                          <span className="block size-0 border-x-[7px] border-t-[8px] border-x-transparent border-t-white drop-shadow-[0_2px_2px_rgba(28,18,52,0.08)]" />
+                        </span>
+                        <ul className="divide-y divide-gray-100">
+                          {category.items.map((item) => {
+                            const ItemIcon = item.icon;
+                            const isLogout = item.label === "Logout";
+                            return (
+                              <li key={`${category.id}-${item.label}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenId(null);
+                                    if (isLogout) {
+                                      signOut({ callbackUrl: "/login" });
+                                      return;
+                                    }
+                                    router.push(item.href);
+                                  }}
+                                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50/90 transition-colors text-left group"
+                                >
+                                  <div className="flex items-center gap-3.5 min-w-0">
+                                    <div
+                                      className={cn(
+                                        "size-9 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-105",
+                                        isLogout
+                                          ? "bg-[#fee2e2]/70 text-[#ef4444]"
+                                          : "bg-[#f3f0ff] text-[#7c3aed]"
+                                      )}
+                                    >
+                                      <ItemIcon className="size-4.5" strokeWidth={1.8} />
+                                    </div>
+                                    <span
+                                      className={cn(
+                                        "text-[13px] sm:text-sm font-medium tracking-tight truncate",
+                                        isLogout
+                                          ? "text-[#ef4444] font-semibold"
+                                          : "text-gray-900"
+                                      )}
+                                    >
+                                      {item.label}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    {item.label === "Language" && (
+                                      <span className="text-xs text-gray-400 font-normal">
+                                        English (US)
+                                      </span>
+                                    )}
+                                    <ChevronRight
+                                      className={cn(
+                                        "size-4 transition-transform group-hover:translate-x-0.5",
+                                        isLogout ? "text-rose-400" : "text-gray-400/80"
+                                      )}
+                                      strokeWidth={2}
+                                    />
+                                  </div>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ) : (
+                      <div className="relative rounded-2xl border border-border/50 bg-white px-2 py-2 shadow-[0_14px_36px_rgba(28,18,52,0.16)]">
+                        <span
+                          aria-hidden
+                          className="pointer-events-none absolute top-full left-1/2 -mt-px -translate-x-1/2"
+                        >
+                          <span className="block size-0 border-x-[7px] border-t-[8px] border-x-transparent border-t-white drop-shadow-[0_2px_2px_rgba(28,18,52,0.08)]" />
+                        </span>
+                        <p className="mb-1 px-2.5 pt-0.5 text-[10px] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+                          {category.label}
+                        </p>
+                        <ul
+                          className={cn(
+                            "grid gap-0.5",
+                            category.columns === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1",
+                          )}
+                        >
+                          {category.items.map((item) => {
+                            const ItemIcon = item.icon;
+                            const badge = item.label === "Tasks" && taskBadge > 0 ? taskBadge : null;
+                            const itemActive =
+                              !item.openAi &&
+                              (item.href === "/home"
+                                ? pathname === "/home"
+                                : pathname === item.href || pathname.startsWith(`${item.href}/`));
+                            return (
+                              <li key={`${category.id}-${item.label}`}>
+                                <Link
+                                  href={item.openAi ? "#" : item.href}
+                                  role="menuitem"
+                                  aria-current={itemActive ? "page" : undefined}
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    handleItemActivate(category, item.href, item.openAi);
+                                  }}
+                                  onFocus={() => openCategory(category.id)}
+                                  className={cn(
+                                    "flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium text-[#2c2540] transition-colors duration-150",
+                                    "hover:bg-primary-soft/80 focus-visible:bg-primary-soft/80 focus-visible:outline-none",
+                                    itemActive && "bg-primary-soft text-primary",
+                                  )}
+                                >
+                                  <ItemIcon
+                                    className="size-4 shrink-0 text-[#3d3558]"
+                                    strokeWidth={1.75}
+                                    aria-hidden
+                                  />
+                                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                                  {badge != null ? (
+                                    <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[#fde8e8] text-[11px] font-semibold text-[#d14343] tabular-nums">
+                                      {badge > 9 ? "9+" : badge}
+                                    </span>
+                                  ) : null}
+                                </Link>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 ) : null}
               </div>

@@ -18,8 +18,16 @@ export { CreateCoupleFailedError } from "../../lib/errors";
 export type { CreateCoupleStep } from "../../lib/errors";
 
 export const coupleInclude = {
-  primaryPatient: true,
-  partnerPatient: true,
+  primaryPatient: {
+    include: {
+      digitalHealthIdentity: true,
+    },
+  },
+  partnerPatient: {
+    include: {
+      digitalHealthIdentity: true,
+    },
+  },
   assignedDoctor: { select: { id: true, name: true } },
   assignedCoordinator: { select: { id: true, name: true } },
   treatments: { orderBy: { createdAt: "desc" as const }, take: 1 },
@@ -268,16 +276,26 @@ export type CreateCoupleInput = {
   coordinatorName?: string | undefined;
   whatsappConsent?: boolean | undefined;
   carePlanTemplate?: string | undefined;
+  clinicId?: string | undefined;
 };
 
 export async function createCoupleRecord(ctx: TenantContext, input: CreateCoupleInput) {
   const requestId = newCreateCoupleRequestId();
   let step: CreateCoupleStep = "CLINIC_LOOKUP";
 
+  const targetClinicId =
+    input.clinicId === "blr" || input.clinicId === "cmt0exo9n000vl804rbaabh32"
+      ? "cmt0exo9n000vl804rbaabh32"
+      : input.clinicId === "kochi" || input.clinicId === "cmu3nmx310026jy04gsi21hxl"
+        ? "cmu3nmx310026jy04gsi21hxl"
+        : input.clinicId === "chennai" || input.clinicId === "hospex-chennai-clinic"
+          ? "hospex-chennai-clinic"
+          : (input.clinicId || ctx.clinicId);
+
   try {
     const clinic = await runStep("CLINIC_LOOKUP", requestId, ctx, () =>
       prisma.clinic.findFirst({
-        where: { id: ctx.clinicId, organizationId: ctx.organizationId },
+        where: { id: targetClinicId, organizationId: ctx.organizationId },
         select: { id: true },
       }),
     );
@@ -300,7 +318,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     step = "STAFF_RESOLVE";
     const doctorId = await runStep("STAFF_RESOLVE", requestId, ctx, () =>
       resolveStaffMember(
-        ctx.clinicId,
+        targetClinicId,
         ctx.organizationId,
         input.assignedDoctorId,
         input.doctorName,
@@ -309,7 +327,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     );
     const coordinatorId = await runStep("STAFF_RESOLVE", requestId, ctx, () =>
       resolveStaffMember(
-        ctx.clinicId,
+        targetClinicId,
         ctx.organizationId,
         input.assignedCoordinatorId,
         input.coordinatorName,
@@ -324,7 +342,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     const primaryDob = parseDate(input.primary.dob);
     const partnerDob = partnerInput ? parseDate(partnerInput.dob) : undefined;
     const baseSlug = slugify(`${primaryNames.firstName}-${partnerNames?.firstName ?? "patient"}`);
-    const slug = await uniqueSlug(ctx.clinicId, baseSlug);
+    const slug = await uniqueSlug(targetClinicId, baseSlug);
     const kind = TREATMENT_KIND[input.treatment];
     const planType = CARE_PLAN_TYPE[input.treatment];
     const createPlan = Boolean(input.carePlanTemplate && input.carePlanTemplate !== "None");
@@ -334,7 +352,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
       const primary = await runStep("PATIENT_PRIMARY", requestId, ctx, () =>
         tx.patient.create({
           data: {
-            clinicId: ctx.clinicId,
+            clinicId: targetClinicId,
             firstName: primaryNames.firstName,
             lastName: primaryNames.lastName,
             dateOfBirth: primaryDob,
@@ -353,7 +371,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
         const partner = await runStep("PATIENT_PARTNER", requestId, ctx, () =>
           tx.patient.create({
             data: {
-              clinicId: ctx.clinicId,
+              clinicId: targetClinicId,
               firstName: partnerNames.firstName,
               lastName: partnerNames.lastName,
               dateOfBirth: partnerDob,
@@ -372,7 +390,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
       const couple = await runStep("COUPLE", requestId, ctx, () =>
         tx.couple.create({
           data: {
-            clinicId: ctx.clinicId,
+            clinicId: targetClinicId,
             slug,
             primaryPatientId: primary.id,
             partnerPatientId: partnerId,
@@ -388,7 +406,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
       await runStep("TREATMENT", requestId, ctx, () =>
         tx.treatment.create({
           data: {
-            clinicId: ctx.clinicId,
+            clinicId: targetClinicId,
             coupleId: couple.id,
             kind,
             label:
@@ -409,7 +427,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
         const plan = await runStep("CARE_PLAN", requestId, ctx, () =>
           tx.carePlan.create({
             data: {
-              clinicId: ctx.clinicId,
+              clinicId: targetClinicId,
               coupleId: couple.id,
               type: planType,
               name:
@@ -428,7 +446,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
         await runStep("CARE_TASK", requestId, ctx, () =>
           tx.careTask.create({
             data: {
-              clinicId: ctx.clinicId,
+              clinicId: targetClinicId,
               coupleId: couple.id,
               carePlanId: plan.id,
               title: "Initial consultation",
@@ -449,7 +467,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
           for (const patientId of patientIds) {
             await tx.consent.create({
               data: {
-                clinicId: ctx.clinicId,
+                clinicId: targetClinicId,
                 patientId,
                 channel: "WHATSAPP",
                 consentType: "WHATSAPP_COMMUNICATION",
@@ -467,7 +485,12 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     });
 
     step = "LOAD_COUPLE";
-    const loaded = await runStep("LOAD_COUPLE", requestId, ctx, () => loadCouple(ctx, created));
+    const loaded = await runStep("LOAD_COUPLE", requestId, ctx, () =>
+      prisma.couple.findFirst({
+        where: { id: created, clinicId: targetClinicId },
+        include: coupleInclude,
+      }),
+    );
     if (!loaded) throw notFound();
     return loaded;
   } catch (error) {

@@ -50,6 +50,20 @@ export function PatientProfileCards({
     setModalOpen(true);
   };
 
+  const primaryAbdmConnected =
+    primary?.abdmConnected === true ||
+    couple?.primary?.abdmConnected === true ||
+    p360?.primaryPatient?.abdmConnected === true ||
+    p360?.header?.abhaStatus === "LINKED" ||
+    p360?.header?.abhaStatus === "VERIFIED";
+
+  const partnerAbdmConnected =
+    partner?.abdmConnected === true ||
+    couple?.partner?.abdmConnected === true ||
+    p360?.partnerPatient?.abdmConnected === true ||
+    p360?.header?.partnerAbhaStatus === "LINKED" ||
+    p360?.header?.partnerAbhaStatus === "VERIFIED";
+
   const coupleIdDisplay = p360?.header?.patientId || couple?.id || couple?.slug || "SMR1029";
 
   return (
@@ -85,10 +99,17 @@ export function PatientProfileCards({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-gray-500">ABDM:</span>
-                  <span className="flex items-center gap-1 font-semibold text-[#00A89D]">
-                    <CheckCircle2 className="w-3 h-3 text-[#00A89D]" />
-                    Connected
-                  </span>
+                  {primaryAbdmConnected ? (
+                    <span className="flex items-center gap-1 font-semibold text-[#00A89D]">
+                      <CheckCircle2 className="w-3 h-3 text-[#00A89D]" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 font-semibold text-amber-600">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                      Not Connected
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -139,10 +160,17 @@ export function PatientProfileCards({
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-gray-500">ABDM:</span>
-                    <span className="flex items-center gap-1 font-semibold text-[#00A89D]">
-                      <CheckCircle2 className="w-3 h-3 text-[#00A89D]" />
-                      Connected
-                    </span>
+                    {partnerAbdmConnected ? (
+                      <span className="flex items-center gap-1 font-semibold text-[#00A89D]">
+                        <CheckCircle2 className="w-3 h-3 text-[#00A89D]" />
+                        Connected
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 font-semibold text-amber-600">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        Not Connected
+                      </span>
+                    )}
                   </div>
                 </div>
 

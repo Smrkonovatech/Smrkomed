@@ -1236,10 +1236,58 @@ export const pharmacyRoutes = new Hono<AppEnv>()
   .post("/prescriptions", validate("json", createPrescriptionSchema), async (c) => {
     const tenant = requirePharmacyPrescriptions(c);
     const body = c.req.valid("json");
-    await requireClinicOwned(tenant, await prisma.patient.findUnique({ where: { id: body.patientId } }));
-    if (body.coupleId) {
-      await requireClinicOwned(tenant, await prisma.couple.findUnique({ where: { id: body.coupleId } }));
+
+    let resolvedPatientId = body.patientId || null;
+    let resolvedCoupleId = body.coupleId || null;
+
+    if (!resolvedPatientId && resolvedCoupleId) {
+      const couple = await prisma.couple.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [{ id: resolvedCoupleId }, { slug: resolvedCoupleId }],
+        },
+      });
+      if (couple) {
+        resolvedCoupleId = couple.id;
+        resolvedPatientId = couple.primaryPatientId;
+      }
     }
+
+    if (!resolvedPatientId) {
+      throw new HttpError(400, "BAD_REQUEST", "Patient ID is required for prescription");
+    }
+
+    let patient = await prisma.patient.findUnique({ where: { id: resolvedPatientId } });
+    if (!patient && resolvedCoupleId) {
+      const couple = await prisma.couple.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [{ id: resolvedCoupleId }, { slug: resolvedCoupleId }],
+        },
+      });
+      if (couple?.primaryPatientId) {
+        resolvedPatientId = couple.primaryPatientId;
+        patient = await prisma.patient.findUnique({ where: { id: couple.primaryPatientId } });
+      }
+    }
+
+    if (!patient) {
+      throw notFound("Patient not found");
+    }
+    await requireClinicOwned(tenant, patient);
+
+    if (resolvedCoupleId) {
+      const couple = await prisma.couple.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [{ id: resolvedCoupleId }, { slug: resolvedCoupleId }],
+        },
+      });
+      if (couple) {
+        resolvedCoupleId = couple.id;
+      }
+    }
+
     if (body.appointmentId) {
       await requireClinicOwned(tenant, await prisma.appointment.findUnique({ where: { id: body.appointmentId } }));
     }
@@ -1255,8 +1303,8 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     const rx = await prisma.pharmacyPrescription.create({
       data: {
         clinicId: tenant.clinicId,
-        patientId: body.patientId,
-        coupleId: body.coupleId ?? null,
+        patientId: resolvedPatientId,
+        coupleId: resolvedCoupleId,
         doctorId: body.doctorId ?? (tenant.role === "DOCTOR" ? tenant.userId : null),
         doctorName: body.doctorName ?? null,
         appointmentId: body.appointmentId ?? null,
@@ -1291,12 +1339,12 @@ export const pharmacyRoutes = new Hono<AppEnv>()
           })}.`
         : null;
       for (const item of rx.items) {
-        let coupleId = body.coupleId ?? rx.coupleId ?? null;
+        let coupleId = resolvedCoupleId ?? rx.coupleId ?? null;
         if (!coupleId) {
           const couple = await prisma.couple.findFirst({
             where: {
               clinicId: tenant.clinicId,
-              OR: [{ primaryPatientId: body.patientId }, { partnerPatientId: body.patientId }],
+              OR: [{ primaryPatientId: resolvedPatientId }, { partnerPatientId: resolvedPatientId }],
             },
             select: { id: true },
           });
@@ -1330,7 +1378,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
         await scheduleMedicationReminders({
           tenant,
           prescriptionItemId: item.id,
-          patientId: body.patientId,
+          patientId: resolvedPatientId,
           careTaskId: careTask.id,
           medicineName: item.medicineName,
           dosage: item.dosage ?? "As prescribed",
@@ -1346,7 +1394,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
               tenant,
               triggerType: "MEDICINE_ASSIGNED",
               triggerEventId: `medicine_assigned_${item.id}`,
-              patientId: body.patientId,
+              patientId: resolvedPatientId,
               ...(coupleId ? { coupleId } : {}),
               vars: {
                 medicine_name: item.medicineName,
@@ -1464,6 +1512,21 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     });
     await audit(tenant, "pharmacy.prescription.cancel", "PharmacyPrescription", rx.id);
     return ok(c, serializePrescription(rx));
+  })
+  .delete("/prescriptions/:id", validate("param", idParam), async (c) => {
+    const tenant = requirePharmacyPrescriptions(c);
+    const { id } = c.req.valid("param");
+    await loadPrescription(tenant, id);
+    const itemIds = (await prisma.pharmacyPrescriptionItem.findMany({ where: { prescriptionId: id }, select: { id: true } })).map((i) => i.id);
+    if (itemIds.length > 0) {
+      await prisma.medicationReminder.deleteMany({ where: { prescriptionItemId: { in: itemIds } } }).catch(() => undefined);
+    }
+    await prisma.pharmacyPrescriptionItem.deleteMany({ where: { prescriptionId: id } }).catch(() => undefined);
+    await prisma.pharmacyPrescription.delete({ where: { id } }).catch(async () => {
+      await prisma.pharmacyPrescription.update({ where: { id }, data: { status: "CANCELLED" } });
+    });
+    await audit(tenant, "pharmacy.prescription.delete", "PharmacyPrescription", id);
+    return ok(c, { success: true, deletedId: id });
   })
 
   // ─── Patient / couple history ───────────────────────────────────────────────

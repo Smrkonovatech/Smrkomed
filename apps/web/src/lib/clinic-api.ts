@@ -44,6 +44,9 @@ export type ClinicTask = {
   note?: string;
   targetRole?: string | null;
   targetPatientId?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  taskType?: string | null;
 };
 
 export type ClinicAppointment = {
@@ -138,10 +141,13 @@ export const clinicApi = {
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
   patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),
+  deleteTask: (id: string) => apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/care-tasks/${id}`),
   appointments: () => apiGet<ClinicAppointment[]>("/api/v1/appointments"),
   createAppointment: (body: unknown) => apiPost<ClinicAppointment>("/api/v1/appointments", body),
   patchAppointment: (id: string, body: unknown) =>
     apiPatch<ClinicAppointment>(`/api/v1/appointments/${id}`, body),
+  deleteAppointment: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/appointments/${id}`),
   documents: () => apiGet<ClinicDocument[]>("/api/v1/documents"),
   createDocument: (body: unknown) => apiPost<ClinicDocument>("/api/v1/documents", body),
   activity: () => apiGet<ClinicActivity[]>("/api/v1/activity"),
@@ -261,6 +267,10 @@ export const clinicApi = {
     return apiGet<any>(`/api/v1/pharmacy/prescriptions${q}`);
   },
   createPrescription: (body: unknown) => apiPost<any>("/api/v1/pharmacy/prescriptions", body),
+  cancelPrescription: (id: string) =>
+    apiPost<any>(`/api/v1/pharmacy/prescriptions/${id}/cancel`, {}),
+  deletePrescription: (id: string) =>
+    apiDelete<{ success: boolean; deletedId: string }>(`/api/v1/pharmacy/prescriptions/${id}`),
   // Staff Management
   getStaff: (clinicId?: string) => apiGet<any[]>(`/api/v1/users/staff${clinicId ? `?clinicId=${encodeURIComponent(clinicId)}` : ""}`),
   createStaffMember: (body: {

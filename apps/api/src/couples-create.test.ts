@@ -411,3 +411,22 @@ test("HTTP staff unauthenticated is 401", async () => {
   const res = await app.request("http://localhost/api/v1/users/staff");
   assert.equal(res.status, 401);
 });
+
+test("HTTP POST /api/v1/couples accepts clinicId in body and creates couple for that clinic", async () => {
+  const person = primary("HttpClinicId");
+  const res = await app.request("http://localhost/api/v1/couples", {
+    method: "POST",
+    headers: { "content-type": "application/json", ...cookie(fixture.token) },
+    body: JSON.stringify({
+      primary: person,
+      treatment: "IVF",
+      whatsappConsent: false,
+      carePlanTemplate: "None",
+      clinicId: fixture.clinicId,
+    }),
+  });
+  const body = await json(res);
+  assert.equal(res.status, 201);
+  assert.equal(body.success, true);
+  assert.ok(body.data?.id);
+});

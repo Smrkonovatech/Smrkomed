@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, RefreshCcw, FileText, Activity, ArrowRight, Play, Wand2, Plus } from "lucide-react";
+import { Calendar, RefreshCcw, FileText, Activity, ArrowRight, Play, Wand2, Plus, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Couple, Appointment, CareTask } from "@/lib/demo-data";
 import { AbhaSetupWizard } from "@/components/digital-health/abha-setup-wizard";
@@ -67,7 +67,7 @@ export function AbdmStatusWidget({
           <div className="flex flex-wrap items-center gap-y-3 gap-x-4">
             <div className="flex items-center gap-3">
               <span className="text-[#866BE3] font-medium text-sm">{primaryName}</span>
-              {couple?.primary?.abdmConnected !== false ? (
+              {couple?.primary?.abdmConnected === true ? (
                 <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                   Connected
@@ -95,7 +95,7 @@ export function AbdmStatusWidget({
             {couple?.partner && (
               <div className="flex items-center gap-3">
                 <span className="text-[#866BE3] font-medium text-sm">{partnerName}</span>
-                {couple.partner.abdmConnected !== false ? (
+                {couple.partner.abdmConnected === true ? (
                   <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                     Connected
@@ -246,10 +246,15 @@ export function UpcomingSessionWidget({
           <button
             type="button"
             onClick={() => setIsConsultModalOpen(true)}
-            className="flex-1 py-2.5 px-3 rounded-full bg-[#866BE3] text-white text-[11px] font-semibold hover:bg-[#7254d1] transition-colors flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+            className="flex-1 py-1.5 px-3 rounded-full bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white text-[11px] font-semibold hover:opacity-95 transition-all flex items-center justify-between gap-1.5 shadow-[0_6px_14px_rgba(134,107,227,0.22)] active:scale-95 cursor-pointer group"
           >
-            Start Session
-            <Play className="w-3 h-3 fill-current" />
+            <div className="w-5 h-5 rounded-full border border-white/25 bg-white/15 flex items-center justify-center shrink-0">
+              <Mic className="w-3 h-3 text-white" />
+            </div>
+            <span className="font-semibold text-[11px] whitespace-nowrap px-1">Start Consultation</span>
+            <div className="w-5 h-5 rounded-full bg-white/15 flex items-center justify-center shrink-0 group-hover:bg-white/25 transition-colors">
+              <ArrowRight className="w-3 h-3 text-white" />
+            </div>
           </button>
           <button
             type="button"

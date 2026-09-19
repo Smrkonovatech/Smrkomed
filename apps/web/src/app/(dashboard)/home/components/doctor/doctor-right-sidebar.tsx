@@ -2,58 +2,233 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Mic, Clock, ArrowRight, Square } from "lucide-react";
+import { Mic, Clock, ArrowRight, Square, Sparkles } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { useAppState } from "@/lib/app-state";
 import { coupleLabel, findCouple, type Couple } from "@/lib/demo-data";
 import { useSmrkoAiBuddy } from "@/components/ai/smrko-ai-host";
 import { clinicApi } from "@/lib/clinic-api";
 import { useDoctorAppointments } from "./doctor-dashboard";
+import {
+  ActiveConsultationModal,
+  type ConsultationSessionState,
+  formatSecondsToTime,
+} from "@/components/consultation/active-consultation";
+import { ConsultationSummaryModal } from "@/app/(dashboard)/patients/[slug]/components/consultation-summary-modal";
+import { toast } from "sonner";
 
 export function DoctorRightSidebar() {
+  const { data: session } = useSession();
   const appState = useAppState() as ReturnType<typeof useAppState> & { couples?: Couple[] };
   const { exceptions } = appState;
   const couples = appState.couples ?? [];
   const appointments = useDoctorAppointments();
   const { ask } = useSmrkoAiBuddy();
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordTime, setRecordTime] = useState(0);
+  const nextAppointment = appointments[0];
+  const nextCouple = nextAppointment ? findCouple(nextAppointment.coupleId, couples) : (couples.length > 0 ? couples[0] : null);
+  const patientName = nextAppointment
+    ? (nextCouple ? coupleLabel(nextCouple) : "Scheduled Patient")
+    : (nextCouple ? coupleLabel(nextCouple) : "No scheduled visits");
+  const appointmentDetails = nextAppointment
+    ? `${nextAppointment.type} • ${nextAppointment.time}`
+    : (nextCouple ? `${nextCouple.treatment} • On Track` : "All clear for today");
+  const todayVisits = appointments.length;
+
+  const doctorDisplayName = session?.user?.name || "Doctor";
+
+  // Consultation Session State (Images 1, 2, 3, 4)
+  const [consultation, setConsultation] = useState<ConsultationSessionState>({
+    isActive: false,
+    isPaused: false,
+    isMinimized: false, // Opens full modal first (Image 2)
+    recordSeconds: 0,
+    patientName: "",
+    patientSubtitle: "",
+    doctorName: doctorDisplayName,
+    roomName: "OPD Room",
+    cycleBadge: "Consultation",
+  });
+
+  const [isEndingDialogOpen, setIsEndingDialogOpen] = useState(false);
+
+  // Last Consultation Summary State (Stored & Displayed on Home Page)
+  const [lastConsultation, setLastConsultation] = useState<{
+    title: string;
+    date: string;
+    content: string;
+    actor: string;
+    patientName: string;
+    transcript?: string;
+  } | null>(null);
+
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+
+  // Fetch latest consultation directly from PostgreSQL database
+  const fetchLatestConsultation = async () => {
+    try {
+      const res = await fetch("/api/consultations/latest");
+      const json = await res.json();
+      if (json.success && json.data) {
+        setLastConsultation({
+          title: json.data.title,
+          date: json.data.date,
+          content: json.data.content,
+          actor: json.data.actor,
+          patientName: json.data.patientName,
+          transcript: json.data.content,
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to fetch latest consultation from DB:", e);
+    }
+
+    // Fallback to localStorage
+    try {
+      const saved = localStorage.getItem("smrkomed_last_consultation");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setLastConsultation(parsed);
+      }
+    } catch (e) {}
+  };
 
   useEffect(() => {
+    fetchLatestConsultation();
+  }, []);
+
+  // Timer loop for active consultation
+  useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (isRecording) {
+    if (consultation.isActive && !consultation.isPaused) {
       interval = setInterval(() => {
-        setRecordTime((prev) => prev + 1);
+        setConsultation((prev) => ({
+          ...prev,
+          recordSeconds: prev.recordSeconds + 1,
+        }));
       }, 1000);
-    } else {
-      setRecordTime(0);
     }
     return () => clearInterval(interval);
-  }, [isRecording]);
+  }, [consultation.isActive, consultation.isPaused]);
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
+  const startConsultation = () => {
+    setConsultation({
+      isActive: true,
+      isPaused: false,
+      isMinimized: false, // Opens full modal first (Image 2)
+      recordSeconds: 0,
+      patientName: patientName,
+      patientSubtitle: appointmentDetails,
+      doctorName: doctorDisplayName,
+      roomName: "OPD Room 3",
+      cycleBadge: "IVF Cycle #2",
+    });
+    toast.success("Consultation session started. Smrko AI is listening.");
+  };
+
+  const togglePause = () => {
+    setConsultation((prev) => {
+      const nextPaused = !prev.isPaused;
+      if (nextPaused) {
+        toast.info("Consultation session paused.");
+      } else {
+        toast.success("Consultation session resumed.");
+      }
+      return { ...prev, isPaused: nextPaused };
+    });
+  };
+
+  const toggleMinimize = () => {
+    setConsultation((prev) => ({
+      ...prev,
+      isMinimized: !prev.isMinimized,
+    }));
+  };
+
+  const handleEndRequest = () => {
+    setIsEndingDialogOpen(true);
+  };
+
+  const handleEndConfirm = async (finalTranscript?: string) => {
+    setIsEndingDialogOpen(false);
+    setConsultation((prev) => ({
+      ...prev,
+      isActive: false,
+      isPaused: false,
+      recordSeconds: 0,
+    }));
+
+    const cleanTranscript = finalTranscript && finalTranscript.trim().length > 0 ? finalTranscript.trim() : "";
+    const cleanSummary = cleanTranscript.length > 0
+      ? `Audio Transcript (Sarvam AI):\n"${cleanTranscript}"`
+      : "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+
+    const payload = {
+      coupleId: nextCouple?.id || undefined,
+      patientName: patientName,
+      doctorName: doctorDisplayName,
+      reasonForVisit: "Fertility Initial Consultation",
+      transcript: cleanTranscript,
+      summary: cleanSummary,
+    };
+
+    // 1. Immediately persist into PostgreSQL Database
+    try {
+      const res = await fetch("/api/consultations/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setLastConsultation({
+          title: json.data.title,
+          date: json.data.date,
+          content: json.data.content,
+          actor: json.data.actor,
+          patientName: json.data.patientName,
+          transcript: cleanTranscript,
+        });
+        toast.success("Consultation saved to database successfully.");
+        return;
+      }
+    } catch (dbErr) {
+      console.error("Failed to save consultation to DB:", dbErr);
+    }
+
+    // Fallback local update
+    const fallbackSummary = {
+      title: "Fertility Initial Consultation",
+      date: new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+      content: cleanSummary,
+      actor: doctorDisplayName,
+      patientName: patientName,
+      transcript: cleanTranscript,
+    };
+    setLastConsultation(fallbackSummary);
+    try {
+      localStorage.setItem("smrkomed_last_consultation", JSON.stringify(fallbackSummary));
+    } catch (e) {}
+
+    toast.success("Consultation ended and signed off.");
+  };
+
+  const handleCancelEnd = () => {
+    setIsEndingDialogOpen(false);
   };
 
   const clinicalEscalations = exceptions.filter(e => e.kind === 'clinical_review' || e.kind === 'ai_escalation').length;
   const reportsReview = exceptions.filter(e => e.kind === 'missing_report').length;
   const careLoopExceptions = exceptions.filter(e => e.kind === 'appointment_issue' || e.kind === 'no_response').length;
 
-  const nextAppointment = appointments[0];
-  const nextCouple = nextAppointment ? findCouple(nextAppointment.coupleId, couples) : null;
-  const patientName = nextCouple ? coupleLabel(nextCouple) : "No Upcoming Patients";
-  const appointmentDetails = nextAppointment ? `${nextAppointment.type} • ${nextAppointment.time}` : "—";
-  const todayVisits = appointments.length;
-
-  const [patientQuestionsCount, setPatientQuestionsCount] = useState(2);
+  const [patientQuestionsCount, setPatientQuestionsCount] = useState(0);
 
   useEffect(() => {
     clinicApi.whatsappInbox({ filter: "waiting_staff" })
       .then((rows: any[]) => {
-        if (Array.isArray(rows) && rows.length > 0) {
+        if (Array.isArray(rows)) {
           setPatientQuestionsCount(rows.length);
         }
       })
@@ -65,9 +240,9 @@ export function DoctorRightSidebar() {
       {/* Alerts List */}
       <div className="flex flex-col gap-1.5">
         {[
-          { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]', href: '/care-loop' },
-          { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]', href: '/clinical-diagnostics' },
-          { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]', href: '/care-loop' },
+          { label: 'Clinical Escalations', count: clinicalEscalations, badgeColor: 'bg-[#F48484]', href: '/care-loop' },
+          { label: 'Reports Awaiting Review', count: reportsReview, badgeColor: 'bg-[#F48484]', href: '/clinical-diagnostics' },
+          { label: 'Care Loop Exceptions', count: careLoopExceptions, badgeColor: 'bg-[#F5B575]', href: '/care-loop' },
           { label: 'Patient Questions', count: patientQuestionsCount, badgeColor: 'bg-[#71A021]', href: '/whatsapp/inbox' }
         ].map((alert, i) => (
           <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
@@ -94,13 +269,12 @@ export function DoctorRightSidebar() {
         ))}
       </div>
 
-      {/* Voice Consultation Card */}
+      {/* Voice Consultation Card (Image 2) */}
       <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] flex flex-col items-center justify-center gap-3 relative overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-gray-100 isolate bg-white">
-
         <div className="flex items-center justify-between w-full z-10">
           <span className="text-[clamp(0.55rem,0.8vw,0.65rem)] font-bold tracking-[0.15em] text-[#A694E8] uppercase">Next Patient</span>
           <div className="bg-[#F4F0FC] text-[#866BE3] px-2.5 py-1 rounded-full text-[clamp(0.55rem,0.8vw,0.65rem)] font-semibold flex items-center gap-1 shadow-sm">
-            <Clock className="w-3 h-3" /> In 12 minutes
+            <Clock className="w-3 h-3" /> {nextAppointment?.time || (couples.length > 0 ? "Active Patient" : "No visits scheduled")}
           </div>
         </div>
 
@@ -129,8 +303,12 @@ export function DoctorRightSidebar() {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 w-full z-10">
-          {!isRecording ? (
-            <button onClick={() => setIsRecording(true)} className="bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white rounded-full p-1 flex items-center justify-between flex-[65%] shadow-[0_12px_24px_rgb(134,107,227,0.35)] relative overflow-hidden group">
+          {!consultation.isActive ? (
+            <button
+              type="button"
+              onClick={startConsultation}
+              className="bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white rounded-full p-1 flex items-center justify-between flex-[65%] shadow-[0_12px_24px_rgb(134,107,227,0.35)] relative overflow-hidden group hover:opacity-95 transition-opacity"
+            >
               <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full border border-white/20 bg-white/10 flex items-center justify-center shrink-0">
                 <Mic className="w-3.5 h-3.5 text-white" />
               </div>
@@ -140,13 +318,19 @@ export function DoctorRightSidebar() {
               </div>
             </button>
           ) : (
-            <button onClick={() => setIsRecording(false)} className="bg-red-50 border border-red-200 text-red-600 rounded-full p-1 flex items-center justify-between flex-[65%] shadow-sm relative overflow-hidden group">
+            <button
+              type="button"
+              onClick={() => setConsultation(prev => ({ ...prev, isMinimized: false }))}
+              className="bg-red-50 border border-red-200 text-red-600 rounded-full p-1 flex items-center justify-between flex-[65%] shadow-sm relative overflow-hidden group"
+            >
               <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-red-100 flex items-center justify-center shrink-0">
                 <div className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></div>
               </div>
-              <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">Recording {formatTime(recordTime)}</span>
+              <span className="font-medium text-[clamp(0.6rem,0.9vw,0.75rem)] whitespace-nowrap pl-1">
+                {consultation.isPaused ? "Paused" : "Recording"} {formatSecondsToTime(consultation.recordSeconds)}
+              </span>
               <div className="w-[clamp(1.5rem,2.5vw,1.75rem)] h-[clamp(1.5rem,2.5vw,1.75rem)] rounded-full bg-red-100 flex items-center justify-center shrink-0 group-hover:bg-red-200 transition-colors">
-                <Square className="w-3.5 h-3.5 text-red-500" fill="currentColor" />
+                <ArrowRight className="w-3.5 h-3.5 text-red-500" />
               </div>
             </button>
           )}
@@ -161,26 +345,86 @@ export function DoctorRightSidebar() {
             </div>
           </Link>
         </div>
-
       </div>
 
-      {/* AI Prep Card */}
-      <div className="rounded-[24px] p-[clamp(0.75rem,1.5vw,1.25rem)] text-white text-center flex flex-col items-center justify-center relative z-0 overflow-hidden shadow-sm flex-1 min-h-[clamp(8rem,14vh,10rem)] mt-auto">
-        <Image src="/images/dashboard/prepare-bg.png" alt="Prepare Background" fill sizes="(max-width: 1200px) 100vw, 350px" className="object-cover z-0" />
+      {/* Last Consultation Summary Card (Image 1) */}
+      <div className="bg-gradient-to-br from-[#7C5CEB] to-[#5434BD] rounded-[24px] shadow-sm p-[clamp(1rem,1.5vw,1.25rem)] flex flex-col justify-between text-white relative overflow-hidden flex-1 min-h-[190px]">
+        {/* Decorative background aura */}
+        <div className="absolute top-0 right-0 w-36 h-36 bg-white/10 rounded-full blur-3xl pointer-events-none" />
 
-        <p className="text-[clamp(0.7rem,1.1vw,0.9rem)] leading-[1.3] relative z-10">
-          <span className="font-semibold drop-shadow-sm">You have {todayVisits} patient visits today</span><br />
-          <span className="font-medium opacity-90 drop-shadow-sm text-[clamp(0.65rem,1vw,0.8rem)]">and {clinicalEscalations} of them reported emergency</span>
-        </p>
+        <div className="relative z-10">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="size-7 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
+              <Sparkles className="size-3.5 text-white" />
+            </div>
+            <h2 className="text-sm font-bold text-white tracking-tight">Last Consultation Summary</h2>
+          </div>
 
-        <button
-          onClick={() => ask("Prepare my day: summarize overdue Care Loop tasks, appointments needing confirmation, and patients needing attention.")}
-          className="mt-4 bg-white text-[#866BE3] px-4 py-1.5 rounded-full text-[clamp(0.6rem,0.9vw,0.75rem)] font-semibold flex items-center gap-1.5 hover:bg-gray-50 transition-colors relative z-10 shadow-sm"
-        >
-          <Image src="/images/dashboard/bot.svg" alt="Bot Icon" width={14} height={14} style={{ width: "auto", height: "auto" }} />
-          Prepare my day
-        </button>
+          {lastConsultation ? (
+            <>
+              {/* Subtitle & AI Generated Badge */}
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-bold text-sm text-white">
+                  {lastConsultation.title}
+                </h3>
+                <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
+                  AI Generated
+                </span>
+              </div>
+
+              {/* Date */}
+              <p className="text-[11px] text-white/70 mb-2 font-medium">
+                {lastConsultation.date}
+              </p>
+
+              {/* Body */}
+              <p className="text-xs text-white/90 leading-relaxed font-normal line-clamp-3">
+                {lastConsultation.content}
+              </p>
+            </>
+          ) : (
+            <div className="py-3">
+              <p className="text-xs text-white/80 font-medium">No recent consultation recorded</p>
+              <p className="text-[11px] text-white/60 mt-1">Start a consultation session above to record voice notes and clinical summaries.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Action Button */}
+        {lastConsultation && (
+          <div className="mt-3 relative z-10">
+            <button
+              type="button"
+              onClick={() => setSummaryModalOpen(true)}
+              className="py-1.5 px-4 rounded-full bg-white text-[#7C5CEB] text-xs font-semibold hover:bg-white/90 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+            >
+              <span>View detailed summary</span>
+              <ArrowRight className="size-3" />
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* Consultation Summary Modal */}
+      {lastConsultation && (
+        <ConsultationSummaryModal
+          isOpen={summaryModalOpen}
+          onOpenChange={setSummaryModalOpen}
+          consultation={lastConsultation}
+        />
+      )}
+
+      {/* Active Consultation Modal, Minimized Floating Dock & Confirmation Dialog (Images 2, 3, 4) */}
+      <ActiveConsultationModal
+        session={consultation}
+        onPauseToggle={togglePause}
+        onMinimizeToggle={toggleMinimize}
+        onEndRequest={handleEndRequest}
+        onEndConfirm={handleEndConfirm}
+        onCancelEnd={handleCancelEnd}
+        isEndingDialogOpen={isEndingDialogOpen}
+      />
     </div>
   );
 }

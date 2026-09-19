@@ -34,7 +34,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { careContent, coupleLabel, couples, type CareContentItem } from "@/lib/demo-data";
+import { careContent, coupleLabel, type CareContentItem } from "@/lib/demo-data";
+import { useAppState } from "@/lib/app-state";
 import { treatmentTone } from "@/lib/status";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,7 @@ type ContentErrors = {
 };
 
 export default function CareContentPage() {
+  const { couples } = useAppState();
   const [items, setItems] = useState<LocalContent[]>(careContent);
   const [type, setType] = useState<string>("All");
   const [category, setCategory] = useState("All");

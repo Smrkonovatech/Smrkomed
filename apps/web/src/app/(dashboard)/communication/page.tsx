@@ -7,7 +7,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { WhatsAppThread, VoiceCallPanel, conversationFor, type ChatMessage } from "@/components/whatsapp-thread";
 import { Avatar, PageHeader, SectionHeading, StatusBadge } from "@/components/ui-kit";
-import { couples, coupleLabel } from "@/lib/demo-data";
+import { coupleLabel } from "@/lib/demo-data";
+import { useAppState } from "@/lib/app-state";
 import { apiGet } from "@/lib/api/client";
 import { useRealtimeInbox, type RealtimeMessageCreatedPayload } from "@/lib/realtime/use-realtime-inbox";
 import { cn } from "@/lib/utils";
@@ -39,12 +40,19 @@ type ConversationDetail = {
 };
 
 export default function CommunicationPage() {
+  const { couples } = useAppState();
   const [live, setLive] = useState<ConversationRow[] | null>(null);
-  const [activeId, setActiveId] = useState(couples[0]!.id);
+  const [activeId, setActiveId] = useState<string>("");
   const [liveMessages, setLiveMessages] = useState<ChatMessage[] | null>(null);
   const usingLive = Boolean(live && live.length > 0);
   const activeLive = live?.find((row) => row.id === activeId) ?? live?.[0];
-  const activeDemo = couples.find((c) => c.id === activeId) ?? couples[0]!;
+  const activeCouple = couples.find((c) => c.id === activeId) ?? couples[0];
+
+  useEffect(() => {
+    if (!activeId && couples[0]) {
+      setActiveId(couples[0].id);
+    }
+  }, [couples, activeId]);
 
   const loadConversations = useCallback(async () => {
     try {
@@ -109,7 +117,9 @@ export default function CommunicationPage() {
     ? activeLive?.patient
       ? `${activeLive.patient.firstName} ${activeLive.patient.lastName}`
       : activeLive?.contactPhone ?? "Unmatched contact"
-    : coupleLabel(activeDemo);
+    : activeCouple
+    ? coupleLabel(activeCouple)
+    : "No Patient Selected";
 
   const list = useMemo(() => live ?? [], [live]);
 
@@ -180,7 +190,8 @@ export default function CommunicationPage() {
                     </li>
                   );
                 })
-              : couples.map((c) => (
+              : couples.length > 0
+              ? couples.map((c) => (
                   <li key={c.id}>
                     <button
                       onClick={() => setActiveId(c.id)}
@@ -190,23 +201,28 @@ export default function CommunicationPage() {
                       )}
                     >
                       <Avatar
-                        initials={initials(c.primary.name)}
+                        initials={initials(c.primary?.name || "Patient")}
                         tone={c.id === activeId ? "primary" : "muted"}
                       />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium">{coupleLabel(c)}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {c.nextStep}
+                          {c.nextStep || "Active Care Journey"}
                         </span>
                       </span>
                     </button>
                   </li>
-                ))}
+                ))
+              : (
+                <li className="p-4 text-center text-xs text-muted-foreground">
+                  No patients found for this clinic.
+                </li>
+              )}
           </ul>
         </section>
 
         <WhatsAppThread
-          messages={usingLive ? liveMessages ?? [] : conversationFor(activeDemo.id)}
+          messages={usingLive ? liveMessages ?? [] : activeCouple ? conversationFor(activeCouple.id) : []}
           patientName={title}
         />
 

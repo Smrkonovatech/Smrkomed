@@ -5,121 +5,129 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import { User, Calendar, Activity, HeartPulse, MessageSquare, PlusCircle, Stethoscope } from "lucide-react";
+import { useAppState } from "@/lib/app-state";
 
 export function AdminMainOverview() {
     const { data: session } = useSession();
-    const firstName = session?.user?.name?.split(" ")[0] || "Rohan";
+    const { couples, tasks, appointments, staff, documents } = useAppState();
+    const firstName = session?.user?.name?.split(" ")[0] || "Clinic";
     const [hoveredNode, setHoveredNode] = useState<number | null>(null);
+
+    const activeTasks = tasks.filter((t) => t.status !== "completed").length;
+    const dueToday = tasks.filter((t) => t.status === "waiting" || t.status === "in_progress").length;
+    const overdueTasks = tasks.filter((t) => t.status === "overdue").length;
+    const escalatedTasks = tasks.filter((t) => t.status === "escalated").length;
+    const waCount = tasks.filter((t) => t.title?.toLowerCase().includes("whatsapp")).length;
 
     const orbitNodes = [
         { 
-            id: 1, label: "Staff", value: "318 Total", icon: User, angle: 180,
+            id: 1, label: "Staff", value: `${staff.length} Active`, icon: User, angle: 180,
             popupPosition: "left-[115%] top-1/2 -translate-y-1/2",
             popupData: {
-                title: "Staff Overview", subtitle: "318 total active",
+                title: "Staff Overview", subtitle: `${staff.length} active members`,
                 stats: [
-                    { label: "Doctors", value: 45, color: "bg-[#3B82F6]" },
-                    { label: "Nurses", value: 120, color: "bg-[#10B981]" },
-                    { label: "Admin/Support", value: 141, color: "bg-[#FBBF24]" },
-                    { label: "On Leave", value: 12, color: "bg-[#EF4444]" }
+                    { label: "Doctors", value: staff.filter((s) => s.role === "DOCTOR" || s.roleName === "Doctor").length, color: "bg-[#3B82F6]" },
+                    { label: "Coordinators", value: staff.filter((s) => s.role === "COORDINATOR" || s.roleName === "Care Coordinator").length, color: "bg-[#10B981]" },
+                    { label: "Total Staff", value: staff.length, color: "bg-[#FBBF24]" },
+                    { label: "Active", value: staff.length, color: "bg-[#10B981]" }
                 ],
-                progress: { percent: 92, color: "#10B981", label: "Attendance", subLabel: "290 staff present today", trend: "↑ 2%" },
+                progress: { percent: 100, color: "#10B981", label: "Availability", subLabel: `${staff.length} staff available`, trend: "Active" },
                 buttonText: "View Staff Directory",
                 href: "/staff"
             }
         },
         { 
-            id: 2, label: "Insurance Claims", value: "8 Today", icon: Calendar, angle: 150,
+            id: 2, label: "Appointments", value: `${appointments.length} Scheduled`, icon: Calendar, angle: 150,
             popupPosition: "left-[115%] top-1/2 -translate-y-1/2",
             popupData: {
-                title: "Insurance Claims", subtitle: "Monthly snapshot",
+                title: "Appointments", subtitle: `${appointments.length} total visits`,
                 stats: [
-                    { label: "Approved", value: 142, color: "bg-[#10B981]" },
-                    { label: "Pending", value: 28, color: "bg-[#FBBF24]" },
-                    { label: "Rejected", value: 5, color: "bg-[#EF4444]" },
-                    { label: "Queries Raised", value: 12, color: "bg-[#866BE3]" }
+                    { label: "Confirmed", value: appointments.filter((a) => a.status === "Confirmed").length, color: "bg-[#10B981]" },
+                    { label: "Waiting", value: appointments.filter((a) => a.status === "Waiting").length, color: "bg-[#FBBF24]" },
+                    { label: "Completed", value: appointments.filter((a) => a.status === "Completed").length, color: "bg-[#3B82F6]" },
+                    { label: "No-show", value: appointments.filter((a) => a.status === "No-show").length, color: "bg-[#EF4444]" }
                 ],
-                progress: { percent: 85, color: "#10B981", label: "Approval Rate", subLabel: "Average this month", trend: "↑ 5%" },
-                buttonText: "Go to Claims",
-                href: "/insurance"
+                progress: { percent: appointments.length > 0 ? 100 : 0, color: "#10B981", label: "Schedule Status", subLabel: `${appointments.length} appointments`, trend: "Active" },
+                buttonText: "Go to Calendar",
+                href: "/appointments"
             }
         },
         { 
-            id: 3, label: "Active Journeys", value: "86 Active", icon: Activity, angle: 120,
+            id: 3, label: "Active Journeys", value: `${couples.length} Active`, icon: Activity, angle: 120,
             popupPosition: "left-[115%] top-0",
             popupData: {
-                title: "Active Journeys", subtitle: "86 ongoing treatments",
+                title: "Active Journeys", subtitle: `${couples.length} active couples`,
                 stats: [
-                    { label: "IVF Cycles", value: 42, color: "bg-[#866BE3]" },
-                    { label: "IUI Cycles", value: 24, color: "bg-[#3B82F6]" },
-                    { label: "Consultation Phase", value: 15, color: "bg-[#10B981]" },
-                    { label: "Paused/On Hold", value: 5, color: "bg-[#FBBF24]" }
+                    { label: "IVF Cycles", value: couples.filter((c) => c.treatment === "IVF").length, color: "bg-[#866BE3]" },
+                    { label: "IUI Cycles", value: couples.filter((c) => c.treatment === "IUI").length, color: "bg-[#3B82F6]" },
+                    { label: "Evaluation", value: couples.filter((c) => c.treatment === "Evaluation").length, color: "bg-[#10B981]" },
+                    { label: "FET", value: couples.filter((c) => c.treatment === "FET").length, color: "bg-[#FBBF24]" }
                 ],
-                progress: { percent: 78, color: "#866BE3", label: "Success Rate", subLabel: "Overall tracking", trend: "↑ 4%" },
+                progress: { percent: 100, color: "#866BE3", label: "Journeys on track", subLabel: "Active patient care", trend: "100%" },
                 buttonText: "View All Journeys",
                 href: "/ivf-cycles"
             }
         },
         { 
-            id: 4, label: "Care Loop", value: "124 Active Tasks", icon: HeartPulse, angle: 90,
+            id: 4, label: "Care Loop", value: `${activeTasks} Active Tasks`, icon: HeartPulse, angle: 90,
             popupPosition: "left-[115%] -top-1/2",
             popupData: {
-                title: "Care Loop", subtitle: "124 active tasks",
+                title: "Care Loop", subtitle: `${tasks.length} total tasks`,
                 stats: [
-                    { label: "Due today", value: 42, color: "bg-[#FBBF24]" },
-                    { label: "Awaiting patient", value: 18, color: "bg-[#3B82F6]" },
-                    { label: "Overdue", value: 9, color: "bg-[#FB7185]" },
-                    { label: "Escalated", value: 4, color: "bg-[#EF4444]" }
+                    { label: "Due today / In progress", value: dueToday, color: "bg-[#FBBF24]" },
+                    { label: "Completed", value: tasks.filter((t) => t.status === "completed").length, color: "bg-[#10B981]" },
+                    { label: "Overdue", value: overdueTasks, color: "bg-[#FB7185]" },
+                    { label: "Escalated", value: escalatedTasks, color: "bg-[#EF4444]" }
                 ],
-                progress: { percent: 72, color: "#059669", label: "On track", subLabel: "51 tasks completed today", trend: "↑ 12%" },
+                progress: { percent: tasks.length > 0 ? Math.round((tasks.filter((t) => t.status === "completed").length / tasks.length) * 100) : 100, color: "#059669", label: "Task Progress", subLabel: `${activeTasks} remaining`, trend: "Active" },
                 buttonText: "Open Care Loop",
                 href: "/care-loop"
             }
         },
         { 
-            id: 5, label: "Communication", value: "124 WhatsApp", icon: MessageSquare, angle: 60,
+            id: 5, label: "Communication", value: `${waCount} WhatsApp`, icon: MessageSquare, angle: 60,
             popupPosition: "right-[115%] top-0",
             popupData: {
-                title: "Communications", subtitle: "WhatsApp & SMS",
+                title: "Communications", subtitle: "WhatsApp automation",
                 stats: [
-                    { label: "Unread Messages", value: 42, color: "bg-[#EF4444]" },
-                    { label: "Follow-ups Needed", value: 35, color: "bg-[#FBBF24]" },
-                    { label: "Resolved Today", value: 145, color: "bg-[#10B981]" },
-                    { label: "Broadcasts Sent", value: 4, color: "bg-[#866BE3]" }
+                    { label: "Active WhatsApp Tasks", value: waCount, color: "bg-[#10B981]" },
+                    { label: "Patient Care Loops", value: couples.length, color: "bg-[#866BE3]" },
+                    { label: "Escalated", value: escalatedTasks, color: "bg-[#EF4444]" },
+                    { label: "Overdue", value: overdueTasks, color: "bg-[#FB7185]" }
                 ],
-                progress: { percent: 95, color: "#10B981", label: "Response Rate", subLabel: "Avg 5 min reply time", trend: "↑ 1%" },
+                progress: { percent: 100, color: "#10B981", label: "Channels Active", subLabel: "WhatsApp active", trend: "Connected" },
                 buttonText: "Open Inbox",
                 href: "/whatsapp/inbox"
             }
         },
         { 
-            id: 6, label: "Pharmacy", value: "4 Low stock", icon: PlusCircle, angle: 30,
+            id: 6, label: "Pharmacy", value: "Active", icon: PlusCircle, angle: 30,
             popupPosition: "right-[115%] top-1/2 -translate-y-1/2",
             popupData: {
                 title: "Pharmacy", subtitle: "Inventory status",
                 stats: [
-                    { label: "In Stock", value: 1240, color: "bg-[#10B981]" },
-                    { label: "Low Stock", value: 14, color: "bg-[#FBBF24]" },
-                    { label: "Out of Stock", value: 4, color: "bg-[#EF4444]" },
-                    { label: "Expiring Soon", value: 8, color: "bg-[#866BE3]" }
+                    { label: "Status", value: 1, color: "bg-[#10B981]" },
+                    { label: "Formulary Items", value: 48, color: "bg-[#3B82F6]" },
+                    { label: "Prescriptions active", value: couples.length, color: "bg-[#866BE3]" },
+                    { label: "Low stock items", value: 0, color: "bg-[#10B981]" }
                 ],
-                progress: { percent: 98, color: "#10B981", label: "Availability", subLabel: "Essential medications", trend: "↑ 2%" },
+                progress: { percent: 100, color: "#10B981", label: "Availability", subLabel: "Stock maintained", trend: "Ready" },
                 buttonText: "Manage Inventory",
                 href: "/pharmacy"
             }
         },
         { 
-            id: 7, label: "Diagnostics", value: "318 Total", icon: Stethoscope, angle: 0,
+            id: 7, label: "Diagnostics", value: `${documents.length} Records`, icon: Stethoscope, angle: 0,
             popupPosition: "right-[115%] top-1/2 -translate-y-1/2",
             popupData: {
                 title: "Diagnostics", subtitle: "Lab processing",
                 stats: [
-                    { label: "Completed", value: 156, color: "bg-[#10B981]" },
-                    { label: "Pending Results", value: 42, color: "bg-[#FBBF24]" },
-                    { label: "Critical Findings", value: 5, color: "bg-[#EF4444]" },
-                    { label: "Dispatched", value: 89, color: "bg-[#3B82F6]" }
+                    { label: "Clinical Records", value: documents.length, color: "bg-[#10B981]" },
+                    { label: "Reviewed", value: documents.filter((d) => d.status === "Reviewed").length, color: "bg-[#3B82F6]" },
+                    { label: "Doctor Review", value: documents.filter((d) => d.status === "Doctor Review").length, color: "bg-[#FBBF24]" },
+                    { label: "Awaiting Upload", value: documents.filter((d) => d.status === "Awaiting Upload").length, color: "bg-[#EF4444]" }
                 ],
-                progress: { percent: 88, color: "#3B82F6", label: "SLA Met", subLabel: "Reports delivered on time", trend: "↑ 6%" },
+                progress: { percent: 100, color: "#3B82F6", label: "Diagnostics SLA", subLabel: `${documents.length} records available`, trend: "Active" },
                 buttonText: "View Dashboard",
                 href: "/clinical-diagnostics"
             }
@@ -247,7 +255,7 @@ export function AdminMainOverview() {
                     {/* Center Content */}
                     <div className="absolute bottom-[10%] left-1/2 -translate-x-1/2 flex flex-col items-center text-center z-30">
                         <User className="w-6 h-6 lg:w-8 lg:h-8 text-[#866BE3] mb-1 opacity-70" />
-                        <h2 className="text-5xl lg:text-7xl font-bold text-[#342766] leading-none tracking-tight">318</h2>
+                        <h2 className="text-5xl lg:text-7xl font-bold text-[#342766] leading-none tracking-tight">{couples.length}</h2>
                         <p className="text-[#1a1c29] font-medium text-lg lg:text-xl mt-1">Total Patients</p>
                     </div>
 

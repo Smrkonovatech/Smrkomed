@@ -11,21 +11,21 @@ import { User, Activity, Calendar, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const fallbackSteps = [
-  "01 Lead Appointment",
-  "02 Initial Consultation",
-  "03 Fertility Workup (Tests)",
-  "04 Treatment Decision",
-  "05 Treatment Planning & Consent",
-  "06 Cycle preparation",
-  "07 Ovarian Stimulation",
-  "08 Follicular Monitoring",
-  "09 Trigger",
-  "10 OPU / Egg Retrieval",
-  "11 Embryology",
-  "12 Transfer / FET",
-  "13 Post-Transfer Care",
-  "14 Pregnancy Test",
-  "15 Outcome",
+  "01. Lead / Appointment",
+  "02. Initial Consultation",
+  "03. Fertility Investigation / Workup",
+  "04. IVF Decision",
+  "05. Treatment Planning & Consent",
+  "06. Cycle Preparation",
+  "07. Ovarian Stimulation",
+  "08. Follicular Monitoring",
+  "09. Trigger",
+  "10. OPU (Oocyte Pick-Up)",
+  "11. Embryology",
+  "12. Transfer / FET",
+  "13. Post-Transfer (Two-Week Wait)",
+  "14. Pregnancy Test",
+  "15. Outcome",
 ];
 
 interface IvfJourneyModalProps {

@@ -49,6 +49,14 @@ export default function PatientProfile() {
 
     const targetId = matchedCouple?.id || slug;
 
+    const reload360 = () => {
+        if (!targetId) return;
+        clinicApi
+            .patient360(targetId)
+            .then(setP360)
+            .catch((err) => console.error("Failed to reload patient 360 profile:", err));
+    };
+
     useEffect(() => {
         let isMounted = true;
         if (!targetId) {
@@ -75,7 +83,48 @@ export default function PatientProfile() {
     }, [targetId]);
 
     const effectiveCouple = useMemo(() => {
-        if (matchedCouple) return matchedCouple;
+        const isPrimaryConnected =
+            p360?.primaryPatient?.abdmConnected === true ||
+            p360?.header?.abhaStatus === "LINKED" ||
+            p360?.header?.abhaStatus === "VERIFIED" ||
+            matchedCouple?.primary?.abdmConnected === true;
+
+        const isPartnerConnected =
+            p360?.partnerPatient?.abdmConnected === true ||
+            p360?.header?.partnerAbhaStatus === "LINKED" ||
+            p360?.header?.partnerAbhaStatus === "VERIFIED" ||
+            matchedCouple?.partner?.abdmConnected === true;
+
+        if (matchedCouple) {
+            return {
+                ...matchedCouple,
+                primary: {
+                    ...matchedCouple.primary,
+                    abdmConnected: isPrimaryConnected,
+                    abhaNumber:
+                        p360?.primaryPatient?.abhaNumber ||
+                        p360?.digitalHealth?.identity?.abhaMasked ||
+                        p360?.header?.abhaMasked ||
+                        matchedCouple.primary?.abhaNumber,
+                    abhaAddress:
+                        p360?.primaryPatient?.abhaAddress ||
+                        p360?.digitalHealth?.identity?.abhaAddress ||
+                        matchedCouple.primary?.abhaAddress,
+                },
+                partner: matchedCouple.partner
+                    ? {
+                          ...matchedCouple.partner,
+                          abdmConnected: isPartnerConnected,
+                          abhaNumber:
+                              p360?.partnerPatient?.abhaNumber ||
+                              matchedCouple.partner?.abhaNumber,
+                          abhaAddress:
+                              p360?.partnerPatient?.abhaAddress ||
+                              matchedCouple.partner?.abhaAddress,
+                      }
+                    : undefined,
+            };
+        }
         if (p360?.couple) {
             const cp = p360.couple;
             const primaryPatient = p360.primaryPatient;
@@ -95,7 +144,8 @@ export default function PatientProfile() {
                     phone: p360.header?.contact || primaryPatient?.phone || "",
                     email: primaryPatient?.email || "",
                     status: "Active",
-                    abdmConnected: primaryPatient?.abdmConnected ?? false,
+                    abdmConnected: isPrimaryConnected,
+                    preferredLanguage: primaryPatient?.preferredLanguage || "English",
                 },
                 ...(partnerPatient
                     ? {
@@ -111,22 +161,23 @@ export default function PatientProfile() {
                               phone: partnerPatient.phone || "",
                               email: partnerPatient.email || "",
                               status: "Active",
-                              abdmConnected: partnerPatient.abdmConnected ?? false,
+                              abdmConnected: isPartnerConnected,
+                              preferredLanguage: partnerPatient.preferredLanguage || "English",
                           },
                       }
                     : {}),
                 treatment: p360.header?.currentTreatment?.kind || "IVF",
-                cycleLabel: p360.header?.currentTreatment?.label || "Cycle 1",
-                stage: p360.header?.currentCarePlan?.stageName || "Consultation",
-                stageIndex: 0,
+                cycleLabel: p360.header?.currentTreatment?.label || "IVF / ICSI Treatment",
+                stage: p360.header?.currentCarePlan?.stageName || p360.header?.currentTreatment?.stageName || "07. Ovarian Stimulation",
+                stageIndex: p360.header?.currentCarePlan?.stageIndex ?? p360.header?.currentTreatment?.stageIndex ?? 7,
                 cycle: "Active",
                 doctor: p360.header?.assignedDoctor || "Doctor",
                 coordinator: p360.header?.assignedCoordinator || "Coordinator",
                 careLoop: (cp.careLoopActive ? "Active" : "Paused") as "Active" | "Paused",
-                nextStep: "Follow-up",
+                nextStep: "07. Ovarian Stimulation",
                 status: "On Track" as const,
                 tags: ["IVF"],
-                since: "Recently",
+                since: p360.header?.currentCarePlan?.startDate ? "1 Sept 2026" : "Recently",
             };
         }
         return null;
@@ -180,7 +231,11 @@ export default function PatientProfile() {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Row 1 */}
                 <div className="lg:col-span-4">
-                    <PatientProfileCards couple={effectiveCouple} p360={p360} />
+                    <PatientProfileCards
+                        couple={effectiveCouple}
+                        p360={p360}
+                        onPatientUpdated={reload360}
+                    />
                 </div>
                 <div className="lg:col-span-5">
                     <IvfCycleWidget couple={effectiveCouple} p360={p360} />
@@ -196,7 +251,11 @@ export default function PatientProfile() {
 
                 {/* Row 3 */}
                 <div className="lg:col-span-7 xl:col-span-8">
-                    <MedicationsWidget coupleId={effectiveCouple.id} p360={p360} />
+                    <MedicationsWidget
+                        coupleId={effectiveCouple.id}
+                        p360={p360}
+                        onMedicationAdded={reload360}
+                    />
                 </div>
                 <div className="lg:col-span-5 xl:col-span-4">
                     <LastSessionSummaryWidget p360={p360} />

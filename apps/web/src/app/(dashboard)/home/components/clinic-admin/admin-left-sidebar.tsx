@@ -5,9 +5,9 @@ import Image from "next/image";
 import { useAppState } from "@/lib/app-state";
 
 export function AdminLeftSidebar() {
-  const { appointments, kpis, exceptions } = useAppState();
+  const { appointments, kpis, exceptions, tasks } = useAppState();
 
-  console.log("check", appointments)
+  const activeTasks = tasks.filter((t) => t.status !== "completed").length;
 
   const cards = [
     {
@@ -44,15 +44,15 @@ export function AdminLeftSidebar() {
       btnClass: "bg-blue-500 hover:bg-blue-600",
     },
     {
-      title: "Needs",
-      subtitle: "Attention",
-      icon: "/images/dashboard/info.svg",
-      value: String(exceptions.length).padStart(2, '0'),
-      color: "blue",
-      bgClass: "bg-blue-100/50 hover:bg-blue-100",
-      textClass: "text-blue-800",
-      valueClass: "text-blue-500",
-      btnClass: "bg-blue-500 hover:bg-blue-600",
+      title: "Active",
+      subtitle: "Care Tasks",
+      icon: "/images/dashboard/calender.svg",
+      value: String(activeTasks).padStart(2, '0'),
+      color: "emerald",
+      bgClass: "bg-emerald-100/50 hover:bg-emerald-100",
+      textClass: "text-emerald-800",
+      valueClass: "text-emerald-600",
+      btnClass: "bg-emerald-500 hover:bg-emerald-600",
     },
   ];
 

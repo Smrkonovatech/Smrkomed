@@ -39,10 +39,13 @@ export interface StaffUser {
 export type Treatment = "IVF" | "IUI" | "Evaluation" | "FET";
 
 export interface Person {
+  id?: string;
   name: string;
   age: number;
   phone: string;
   abdmConnected?: boolean;
+  abhaNumber?: string | null;
+  abhaAddress?: string | null;
 }
 
 export interface Couple {
