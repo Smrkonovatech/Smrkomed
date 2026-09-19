@@ -1,0 +1,48 @@
+name: smrkomed_doctor_app
+description: SMRKoMed Doctor Mobile App for authorized clinic doctors.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management — single pattern for the whole app.
+  flutter_riverpod: ^2.6.1
+
+  # Declarative routing with auth redirects and deep-link hooks.
+  go_router: ^15.1.2
+
+  # HTTP client with interceptors, timeouts, and typed errors.
+  dio: ^5.8.1
+
+  # iOS Keychain / Android EncryptedSharedPreferences.
+  flutter_secure_storage: ^9.2.4
+
+  # Face ID, Touch ID, and Android biometrics — unlocks an existing session only.
+  local_auth: ^2.3.0
+
+  # Online / offline / restored connectivity signals.
+  connectivity_plus: ^6.1.4
+  intl: ^0.20.2
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
+
+flutter:
+  generate: true
+  uses-material-design: true
+  assets:
+    - assets/branding/
