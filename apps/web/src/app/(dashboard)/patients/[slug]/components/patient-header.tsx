@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Pencil, Copy, Check, Calendar, Play, Wand2 } from "lucide-react";
+import { ArrowLeft, Pencil, Copy, Check, Calendar, Play, Wand2, Mic, ArrowRight } from "lucide-react";
 import { AssignTeamModal } from "./assign-team-modal";
 import { BillingSummaryModal } from "./billing-summary-modal";
 import { EditTreatmentModal } from "./edit-treatment-modal";
@@ -220,10 +220,15 @@ export function PatientHeader({
             <button
               type="button"
               onClick={() => setIsConsultModalOpen(true)}
-              className="flex-1 py-2 px-4 rounded-full bg-[#866BE3] text-white text-xs font-semibold hover:bg-[#7254d1] transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+              className="flex-1 py-1.5 px-3 rounded-full bg-gradient-to-r from-[#A784F3] to-[#866BE3] text-white text-xs font-semibold hover:opacity-95 transition-all flex items-center justify-between gap-1.5 shadow-[0_8px_16px_rgba(134,107,227,0.25)] active:scale-95 cursor-pointer group"
             >
-              <span>Start Session</span>
-              <Play className="w-3 h-3 fill-current" />
+              <div className="w-5 h-5 rounded-full border border-white/25 bg-white/15 flex items-center justify-center shrink-0">
+                <Mic className="w-3 h-3 text-white" />
+              </div>
+              <span className="font-semibold text-xs whitespace-nowrap px-1">Start Consultation</span>
+              <div className="w-5 h-5 rounded-full bg-white/15 flex items-center justify-center shrink-0 group-hover:bg-white/25 transition-colors">
+                <ArrowRight className="w-3 h-3 text-white" />
+              </div>
             </button>
             <button
               type="button"

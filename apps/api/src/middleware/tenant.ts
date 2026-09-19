@@ -10,10 +10,7 @@ export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     throw unauthenticated("Session is missing tenant context. Sign in again.");
   }
 
-  let clinicId = claims.clinicId;
-  let clinicName = claims.clinicName;
-  let organizationId = claims.organizationId;
-  let organizationName = claims.organizationName;
+  let { clinicId, clinicName, organizationId, organizationName } = claims;
 
   const requestedClinic = c.req.header("x-clinic-id") || c.req.query("clinicId");
   if (requestedClinic) {
@@ -22,7 +19,9 @@ export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
         ? "cmt0exo9n000vl804rbaabh32"
         : requestedClinic === "kochi" || requestedClinic === "cmu3nmx310026jy04gsi21hxl"
           ? "cmu3nmx310026jy04gsi21hxl"
-          : requestedClinic;
+          : requestedClinic === "chennai" || requestedClinic === "hospex-chennai-clinic"
+            ? "hospex-chennai-clinic"
+            : requestedClinic;
 
     if (targetId && targetId !== clinicId) {
       const clinic = await prisma.clinic.findUnique({

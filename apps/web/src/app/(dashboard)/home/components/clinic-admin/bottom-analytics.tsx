@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { ChevronDown, User, Calendar, Banknote, FileText } from "lucide-react";
+import { useAppState } from "@/lib/app-state";
 
 // Simple custom dropdown component
 function Dropdown({ options, value, onChange, align = "right" }: any) {
@@ -49,9 +50,16 @@ function Dropdown({ options, value, onChange, align = "right" }: any) {
 }
 
 export function BottomAnalytics() {
+  const { appointments, couples } = useAppState();
   const [patientFilter, setPatientFilter] = useState("Last 6 months");
   const [apptFilter, setApptFilter] = useState("This week");
   const [revenueFilter, setRevenueFilter] = useState("This month");
+
+  const consultations = appointments.filter((a) => a.type?.toLowerCase().includes("consult")).length;
+  const scans = appointments.filter((a) => a.type?.toLowerCase().includes("scan") || a.type?.toLowerCase().includes("ultrasound")).length;
+  const followUps = appointments.filter((a) => a.type?.toLowerCase().includes("follow")).length;
+  const procedures = appointments.filter((a) => a.type?.toLowerCase().includes("procedure") || a.type?.toLowerCase().includes("opuu") || a.type?.toLowerCase().includes("transfer")).length;
+  const others = Math.max(0, appointments.length - (consultations + scans + followUps + procedures));
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 h-full min-h-[280px]">
@@ -149,19 +157,19 @@ export function BottomAnalytics() {
               <circle cx="50" cy="50" r="42" fill="none" stroke="#3B82F6" strokeWidth="12" strokeDasharray="63 200.9" strokeDashoffset="-198" strokeLinecap="round" />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[24px] font-bold text-[#1a1c29] leading-none">142</span>
-              <span className="text-[10px] text-gray-500 font-medium mt-1">Total Claims</span>
+              <span className="text-[24px] font-bold text-[#1a1c29] leading-none">{appointments.length}</span>
+              <span className="text-[10px] text-gray-500 font-medium mt-1">Total Visits</span>
             </div>
           </div>
 
           {/* Legend */}
           <div className="flex flex-col gap-2.5 ml-3">
             {[
-              { label: 'Consultation', val: '18', color: 'bg-[#866BE3]' },
-              { label: 'Scab', val: '18', color: 'bg-[#F59E0B]' },
-              { label: 'Follow-up', val: '18', color: 'bg-[#3B82F6]' },
-              { label: 'Procedure', val: '18', color: 'bg-[#10B981]' },
-              { label: 'Teleconsultation', val: '18', color: 'bg-[#10B981]' },
+              { label: 'Consultation', val: String(consultations), color: 'bg-[#866BE3]' },
+              { label: 'Ultrasound', val: String(scans), color: 'bg-[#F59E0B]' },
+              { label: 'Follow-up', val: String(followUps), color: 'bg-[#3B82F6]' },
+              { label: 'Procedure', val: String(procedures), color: 'bg-[#10B981]' },
+              { label: 'Other', val: String(others), color: 'bg-gray-400' },
             ].map((item, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <div className={`w-1.5 h-1.5 rounded-full ${item.color}`}></div>

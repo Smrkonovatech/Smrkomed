@@ -27,37 +27,41 @@ export function DoctorRightSidebar() {
   const { ask } = useSmrkoAiBuddy();
 
   const nextAppointment = appointments[0];
-  const nextCouple = nextAppointment ? findCouple(nextAppointment.coupleId, couples) : null;
-  const patientName = nextCouple ? coupleLabel(nextCouple) : "Manideep + Manideep";
-  const appointmentDetails = nextAppointment ? `${nextAppointment.type} • ${nextAppointment.time}` : "Consultation • 02:30 pm";
+  const nextCouple = nextAppointment ? findCouple(nextAppointment.coupleId, couples) : (couples.length > 0 ? couples[0] : null);
+  const patientName = nextAppointment
+    ? (nextCouple ? coupleLabel(nextCouple) : "Scheduled Patient")
+    : (nextCouple ? coupleLabel(nextCouple) : "No scheduled visits");
+  const appointmentDetails = nextAppointment
+    ? `${nextAppointment.type} • ${nextAppointment.time}`
+    : (nextCouple ? `${nextCouple.treatment} • On Track` : "All clear for today");
   const todayVisits = appointments.length;
 
-  const doctorDisplayName = session?.user?.name || "Dr. Shreyas Iyer";
+  const doctorDisplayName = session?.user?.name || "Doctor";
 
   // Consultation Session State (Images 1, 2, 3, 4)
   const [consultation, setConsultation] = useState<ConsultationSessionState>({
     isActive: false,
     isPaused: false,
-    isMinimized: false,
+    isMinimized: false, // Opens full modal first (Image 2)
     recordSeconds: 0,
     patientName: "",
     patientSubtitle: "",
-    doctorName: "Dr. Shreyas Iyer",
-    roomName: "OPD Room 3",
-    cycleBadge: "IVF Cycle #2",
+    doctorName: doctorDisplayName,
+    roomName: "OPD Room",
+    cycleBadge: "Consultation",
   });
 
   const [isEndingDialogOpen, setIsEndingDialogOpen] = useState(false);
 
   // Last Consultation Summary State (Stored & Displayed on Home Page)
-  const [lastConsultation, setLastConsultation] = useState({
-    title: "IVF Monitoring - Day 5",
-    date: "12 Mar 2026",
-    content: "Couples reviewed. Follicular growth appropriate. Medication dose continued. Next scan in..",
-    actor: doctorDisplayName,
-    patientName: "Manideep + Manideep",
-    transcript: "",
-  });
+  const [lastConsultation, setLastConsultation] = useState<{
+    title: string;
+    date: string;
+    content: string;
+    actor: string;
+    patientName: string;
+    transcript?: string;
+  } | null>(null);
 
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
 
@@ -219,12 +223,12 @@ export function DoctorRightSidebar() {
   const reportsReview = exceptions.filter(e => e.kind === 'missing_report').length;
   const careLoopExceptions = exceptions.filter(e => e.kind === 'appointment_issue' || e.kind === 'no_response').length;
 
-  const [patientQuestionsCount, setPatientQuestionsCount] = useState(2);
+  const [patientQuestionsCount, setPatientQuestionsCount] = useState(0);
 
   useEffect(() => {
     clinicApi.whatsappInbox({ filter: "waiting_staff" })
       .then((rows: any[]) => {
-        if (Array.isArray(rows) && rows.length > 0) {
+        if (Array.isArray(rows)) {
           setPatientQuestionsCount(rows.length);
         }
       })
@@ -236,9 +240,9 @@ export function DoctorRightSidebar() {
       {/* Alerts List */}
       <div className="flex flex-col gap-1.5">
         {[
-          { label: 'Clinical Escalations', count: clinicalEscalations || 2, badgeColor: 'bg-[#F48484]', href: '/care-loop' },
-          { label: 'Reports Awaiting Review', count: reportsReview || 2, badgeColor: 'bg-[#F48484]', href: '/clinical-diagnostics' },
-          { label: 'Care Loop Exceptions', count: careLoopExceptions || 3, badgeColor: 'bg-[#F5B575]', href: '/care-loop' },
+          { label: 'Clinical Escalations', count: clinicalEscalations, badgeColor: 'bg-[#F48484]', href: '/care-loop' },
+          { label: 'Reports Awaiting Review', count: reportsReview, badgeColor: 'bg-[#F48484]', href: '/clinical-diagnostics' },
+          { label: 'Care Loop Exceptions', count: careLoopExceptions, badgeColor: 'bg-[#F5B575]', href: '/care-loop' },
           { label: 'Patient Questions', count: patientQuestionsCount, badgeColor: 'bg-[#71A021]', href: '/whatsapp/inbox' }
         ].map((alert, i) => (
           <div key={i} className="flex items-center justify-between p-1 pr-4 rounded-full bg-[#EFEAF6]">
@@ -270,7 +274,7 @@ export function DoctorRightSidebar() {
         <div className="flex items-center justify-between w-full z-10">
           <span className="text-[clamp(0.55rem,0.8vw,0.65rem)] font-bold tracking-[0.15em] text-[#A694E8] uppercase">Next Patient</span>
           <div className="bg-[#F4F0FC] text-[#866BE3] px-2.5 py-1 rounded-full text-[clamp(0.55rem,0.8vw,0.65rem)] font-semibold flex items-center gap-1 shadow-sm">
-            <Clock className="w-3 h-3" /> In 12 minutes
+            <Clock className="w-3 h-3" /> {nextAppointment?.time || (couples.length > 0 ? "Active Patient" : "No visits scheduled")}
           </div>
         </div>
 
@@ -357,46 +361,59 @@ export function DoctorRightSidebar() {
             <h2 className="text-sm font-bold text-white tracking-tight">Last Consultation Summary</h2>
           </div>
 
-          {/* Subtitle & AI Generated Badge */}
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="font-bold text-sm text-white">
-              {lastConsultation.title}
-            </h3>
-            <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
-              AI Generated
-            </span>
-          </div>
+          {lastConsultation ? (
+            <>
+              {/* Subtitle & AI Generated Badge */}
+              <div className="flex items-center gap-2 mb-1">
+                <h3 className="font-bold text-sm text-white">
+                  {lastConsultation.title}
+                </h3>
+                <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
+                  AI Generated
+                </span>
+              </div>
 
-          {/* Date */}
-          <p className="text-[11px] text-white/70 mb-2 font-medium">
-            {lastConsultation.date}
-          </p>
+              {/* Date */}
+              <p className="text-[11px] text-white/70 mb-2 font-medium">
+                {lastConsultation.date}
+              </p>
 
-          {/* Body */}
-          <p className="text-xs text-white/90 leading-relaxed font-normal line-clamp-3">
-            {lastConsultation.content}
-          </p>
+              {/* Body */}
+              <p className="text-xs text-white/90 leading-relaxed font-normal line-clamp-3">
+                {lastConsultation.content}
+              </p>
+            </>
+          ) : (
+            <div className="py-3">
+              <p className="text-xs text-white/80 font-medium">No recent consultation recorded</p>
+              <p className="text-[11px] text-white/60 mt-1">Start a consultation session above to record voice notes and clinical summaries.</p>
+            </div>
+          )}
         </div>
 
         {/* Action Button */}
-        <div className="mt-3 relative z-10">
-          <button
-            type="button"
-            onClick={() => setSummaryModalOpen(true)}
-            className="py-1.5 px-4 rounded-full bg-white text-[#7C5CEB] text-xs font-semibold hover:bg-white/90 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
-          >
-            <span>View detailed summary</span>
-            <ArrowRight className="size-3" />
-          </button>
-        </div>
+        {lastConsultation && (
+          <div className="mt-3 relative z-10">
+            <button
+              type="button"
+              onClick={() => setSummaryModalOpen(true)}
+              className="py-1.5 px-4 rounded-full bg-white text-[#7C5CEB] text-xs font-semibold hover:bg-white/90 transition-all flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+            >
+              <span>View detailed summary</span>
+              <ArrowRight className="size-3" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Consultation Summary Modal */}
-      <ConsultationSummaryModal
-        isOpen={summaryModalOpen}
-        onOpenChange={setSummaryModalOpen}
-        consultation={lastConsultation}
-      />
+      {lastConsultation && (
+        <ConsultationSummaryModal
+          isOpen={summaryModalOpen}
+          onOpenChange={setSummaryModalOpen}
+          consultation={lastConsultation}
+        />
+      )}
 
       {/* Active Consultation Modal, Minimized Floating Dock & Confirmation Dialog (Images 2, 3, 4) */}
       <ActiveConsultationModal

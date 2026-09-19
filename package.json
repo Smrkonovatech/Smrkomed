@@ -27,5 +27,9 @@
     "db:studio": "npm run db:studio -w @smrkomed/database",
     "test": "npm run test -w @smrkomed/database && npm run test -w @smrkomed/api",
     "wa:link": "node scripts/link-whatsapp-clinic.mjs"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.6",
+    "qrcode": "^1.5.4"
   }
 }

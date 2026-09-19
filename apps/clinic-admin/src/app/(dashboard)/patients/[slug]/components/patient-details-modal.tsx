@@ -98,12 +98,21 @@ export function PatientDetailsModal({
     ? p360?.primaryPatient
     : p360?.partnerPatient;
 
+  const [locallyConnected, setLocallyConnected] = useState<boolean | null>(null);
+
   const isAbdmConnected =
-    patientData?.abdmConnected !== undefined
-      ? Boolean(patientData.abdmConnected)
-      : p360?.digitalHealth?.identity?.status === "LINKED"
-      ? true
-      : Boolean(patient?.abdmConnected);
+    locallyConnected !== null
+      ? locallyConnected
+      : isPartner
+      ? partnerData?.abdmConnected === true ||
+        p360?.partnerPatient?.abdmConnected === true ||
+        p360?.header?.partnerAbhaStatus === "LINKED" ||
+        p360?.header?.partnerAbhaStatus === "VERIFIED"
+      : patientData?.abdmConnected === true ||
+        p360?.primaryPatient?.abdmConnected === true ||
+        p360?.header?.abhaStatus === "LINKED" ||
+        p360?.header?.abhaStatus === "VERIFIED" ||
+        patient?.abdmConnected === true;
 
   const defaultAbdmConnection = {
     connected: true,
@@ -448,20 +457,13 @@ export function PatientDetailsModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-8">
             <button
               type="button"
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               <span>View Full Profile</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="p-1.5 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-            >
-              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -707,7 +709,7 @@ export function PatientDetailsModal({
                         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">ABHA Number</span>
                         <button
                           type="button"
-                          onClick={() => handleCopy(p360?.digitalHealth?.identity?.abhaMasked || patientData?.abhaNumber || patient?.abhaNumber || "91-4829-1029-4920", "ABHA Number")}
+                          onClick={() => handleCopy(p360?.digitalHealth?.identity?.abhaMasked || p360?.digitalHealth?.abha?.abhaMasked || p360?.header?.abhaMasked || p360?.primaryPatient?.abhaNumber || patientData?.abhaNumber || patient?.abhaNumber || "91-4829-1029-4920", "ABHA Number")}
                           className="text-gray-400 hover:text-[#866BE3] transition-colors p-1 rounded-md cursor-pointer"
                           title="Copy ABHA Number"
                         >
@@ -715,7 +717,7 @@ export function PatientDetailsModal({
                         </button>
                       </div>
                       <p className="font-bold text-gray-900 text-base mt-1.5 tracking-wide">
-                        {p360?.digitalHealth?.identity?.abhaMasked || patientData?.abhaNumber || patient?.abhaNumber || "91-4829-1029-4920"}
+                        {p360?.digitalHealth?.identity?.abhaMasked || p360?.digitalHealth?.abha?.abhaMasked || p360?.header?.abhaMasked || p360?.primaryPatient?.abhaNumber || patientData?.abhaNumber || patient?.abhaNumber || "91-4829-1029-4920"}
                       </p>
                       <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium mt-2">
                         <CheckCircle2 className="w-3.5 h-3.5" />
@@ -728,7 +730,7 @@ export function PatientDetailsModal({
                         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">ABHA Address (PHR)</span>
                         <button
                           type="button"
-                          onClick={() => handleCopy(p360?.digitalHealth?.identity?.abhaAddress || patientData?.abhaAddress || patient?.abhaAddress || `${patientName?.toLowerCase().replace(/\s+/g, "")}@sbx`, "ABHA Address")}
+                          onClick={() => handleCopy(p360?.digitalHealth?.identity?.abhaAddress || p360?.digitalHealth?.abha?.abhaAddress || p360?.primaryPatient?.abhaAddress || patientData?.abhaAddress || patient?.abhaAddress || `${patientName?.toLowerCase().replace(/\s+/g, "")}@sbx`, "ABHA Address")}
                           className="text-gray-400 hover:text-[#866BE3] transition-colors p-1 rounded-md cursor-pointer"
                           title="Copy ABHA Address"
                         >
@@ -736,7 +738,7 @@ export function PatientDetailsModal({
                         </button>
                       </div>
                       <p className="font-bold text-gray-900 text-base mt-1.5">
-                        {p360?.digitalHealth?.identity?.abhaAddress || patientData?.abhaAddress || patient?.abhaAddress || `${patientName?.toLowerCase().replace(/\s+/g, "")}@sbx`}
+                        {p360?.digitalHealth?.identity?.abhaAddress || p360?.digitalHealth?.abha?.abhaAddress || p360?.primaryPatient?.abhaAddress || patientData?.abhaAddress || patient?.abhaAddress || `${patientName?.toLowerCase().replace(/\s+/g, "")}@sbx`}
                       </p>
                       <div className="flex items-center gap-1.5 text-[11px] text-purple-600 font-medium mt-2">
                         <ShieldCheck className="w-3.5 h-3.5" />
@@ -843,6 +845,7 @@ export function PatientDetailsModal({
                 patientId={patientIdForWizard}
                 connection={defaultAbdmConnection}
                 onCompleted={() => {
+                  setLocallyConnected(true);
                   setAbhaWizardOpen(false);
                   toast.success("ABDM Profile verified and connected successfully!");
                   onPatientUpdated?.();

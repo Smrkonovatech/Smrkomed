@@ -16,21 +16,21 @@ import { EditTreatmentModal } from "./edit-treatment-modal";
 import { toast } from "sonner";
 
 const fallbackSteps = [
-  "01 Lead Appointment",
-  "02 Initial Consultation",
-  "03 Fertility Workup (Tests)",
-  "04 Treatment Decision",
-  "05 Treatment Planning & Consent",
-  "06 Cycle preparation",
-  "07 Ovarian Stimulation",
-  "08 Follicular Monitoring",
-  "09 Trigger",
-  "10 OPU / Egg Retrieval",
-  "11 Embryology",
-  "12 Transfer / FET",
-  "13 Post-Transfer Care",
-  "14 Pregnancy Test",
-  "15 Outcome",
+  "01. Lead / Appointment",
+  "02. Initial Consultation",
+  "03. Fertility Investigation / Workup",
+  "04. IVF Decision",
+  "05. Treatment Planning & Consent",
+  "06. Cycle Preparation",
+  "07. Ovarian Stimulation",
+  "08. Follicular Monitoring",
+  "09. Trigger",
+  "10. OPU (Oocyte Pick-Up)",
+  "11. Embryology",
+  "12. Transfer / FET",
+  "13. Post-Transfer (Two-Week Wait)",
+  "14. Pregnancy Test",
+  "15. Outcome",
 ];
 
 interface IvfJourneyModalProps {
@@ -52,13 +52,39 @@ export function IvfJourneyModal({
   p360,
   onTreatmentUpdated,
 }: IvfJourneyModalProps) {
-  const activeSteps = steps && steps.length > 0 ? steps : fallbackSteps;
+  const dbSteps = p360?.header?.currentCarePlan?.steps
+    ? [...p360.header.currentCarePlan.steps]
+        .sort((a: any, b: any) => a.sortOrder - b.sortOrder)
+        .map((s: any) => s.name)
+    : [];
+
+  const activeSteps =
+    steps && steps.length > 0
+      ? steps
+      : dbSteps.length > 0
+        ? dbSteps
+        : fallbackSteps;
+
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  
+
   // Normalize and find current step index
-  const normalizedStage = (currentStage || "").replace(/^\d+\.\s*/, "").toLowerCase();
-  let currentStepIdx = activeSteps.findIndex((s) => s.toLowerCase().includes(normalizedStage) || normalizedStage.includes(s.toLowerCase()));
-  if (currentStepIdx === -1) currentStepIdx = 0;
+  const resolvedCurrentStage =
+    currentStage ||
+    p360?.header?.currentCarePlan?.stageName ||
+    p360?.header?.currentTreatment?.stageName ||
+    couple?.stage ||
+    "07. Ovarian Stimulation";
+
+  const normalizedStage = resolvedCurrentStage.replace(/^\d+\.\s*/, "").toLowerCase().trim();
+  let currentStepIdx = activeSteps.findIndex((s) => {
+    const sNorm = s.replace(/^\d+\.\s*/, "").toLowerCase().trim();
+    return sNorm.includes(normalizedStage) || normalizedStage.includes(sNorm);
+  });
+  if (currentStepIdx === -1) {
+    currentStepIdx = p360?.header?.currentCarePlan?.stageIndex
+      ? p360.header.currentCarePlan.stageIndex - 1
+      : 6;
+  }
 
   const [selectedStepIdx, setSelectedStepIdx] = useState(currentStepIdx);
   const [tasks, setTasks] = useState<ClinicTask[]>([]);
@@ -97,27 +123,53 @@ export function IvfJourneyModal({
     }
   };
 
-  const selectedStepName = activeSteps[selectedStepIdx]?.replace(/^\d+\.?\s*/, "") || "Unknown Stage";
+  const selectedStepName = activeSteps[selectedStepIdx] || "Unknown Stage";
+  const cleanSelectedName = selectedStepName.replace(/^\d+\.?\s*/, "");
   const isSelectedCurrent = selectedStepIdx === currentStepIdx;
 
-  // Real care plan timing
-  const carePlanCreatedAt = p360?.header?.currentCarePlan?.createdAt || couple?.since;
-  const startDateStr = carePlanCreatedAt
-    ? new Date(carePlanCreatedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-    : "Day 1";
-  
-  const estimatedDays = 28;
-  const daysPassed = carePlanCreatedAt
-    ? Math.max(1, Math.floor((Date.now() - new Date(carePlanCreatedAt).getTime()) / (1000 * 60 * 60 * 24)))
-    : 1;
+  // Real care plan timing starting from Sept 1, 2026
+  const rawStartDate =
+    p360?.header?.currentCarePlan?.startDate ||
+    p360?.header?.currentTreatment?.startedAt ||
+    "2026-09-01T04:30:00.000Z";
+  const startDate = new Date(rawStartDate);
+  const startDateStr = !isNaN(startDate.getTime())
+    ? startDate.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+    : "1 Sept 2026";
 
-  const coordinatorName = p360?.header?.assignedCoordinator || couple?.coordinator || "Care Coordinator";
+  const estimatedDays = 42;
+  const daysPassed = !isNaN(startDate.getTime())
+    ? Math.max(1, Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)))
+    : 18;
+
+  const coordinatorName =
+    p360?.header?.assignedCoordinator && p360.header.assignedCoordinator !== "Unassigned"
+      ? p360.header.assignedCoordinator
+      : couple?.coordinator && couple.coordinator !== "Unassigned"
+        ? couple.coordinator
+        : "Care Team (Dr. Jismon J)";
+
   const nextAppt = p360?.summaryCards?.nextAppointment;
 
-  // Real diagnostic findings
-  const diagnosticTimelineItems = p360?.timeline?.items?.filter(
-    (item: any) => item.type === "Diagnostic" || item.type === "Lab" || item.type === "Scan"
-  ) || [];
+  // Filter tasks specific to the selected stage
+  const stepNumber = selectedStepIdx + 1;
+  const stepPrefix = String(stepNumber).padStart(2, "0");
+  const cleanStepName = selectedStepName.replace(/^\d+\.?\s*/, "").toLowerCase().trim();
+
+  const stageTasks = tasks.filter((t) => {
+    const tTitle = (t.title || "").toLowerCase();
+    const tCat = (t.category || "").toLowerCase();
+    if (tTitle.startsWith(`${stepPrefix}.`) || tTitle.startsWith(`${stepNumber}.`)) return true;
+    if (cleanStepName && tTitle.includes(cleanStepName)) return true;
+    if (selectedStepIdx === currentStepIdx && (tCat.includes("appointment") || tCat.includes("whatsapp"))) return true;
+    return false;
+  });
+
+  // Diagnostic findings
+  const diagnosticTimelineItems =
+    p360?.timeline?.items?.filter(
+      (item: any) => item.type === "Diagnostic" || item.type === "Lab" || item.type === "Scan"
+    ) || [];
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -129,7 +181,7 @@ export function IvfJourneyModal({
             </DialogTitle>
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold px-3 py-1 bg-[#866BE3]/10 text-[#866BE3] rounded-full">
-                {couple?.treatment || p360?.header?.currentTreatment?.label || "IVF"} • Stage {selectedStepIdx + 1} of {activeSteps.length}
+                {couple?.treatment || p360?.header?.currentTreatment?.label || "IVF / ICSI Treatment"} • Stage {selectedStepIdx + 1} of {activeSteps.length}
               </span>
               <Button
                 type="button"
@@ -149,7 +201,9 @@ export function IvfJourneyModal({
         <div className="flex-1 flex overflow-hidden">
           {/* Left Column - Timeline List */}
           <div className="w-[360px] shrink-0 overflow-y-auto px-6 py-4 border-r border-gray-100">
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">15 Cycle Milestones</p>
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+              {activeSteps.length} Cycle Milestones
+            </p>
             <div className="flex flex-col gap-1.5">
               {activeSteps.map((step, idx) => {
                 const isCompleted = idx < currentStepIdx;
@@ -163,8 +217,9 @@ export function IvfJourneyModal({
                     onClick={() => setSelectedStepIdx(idx)}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors cursor-pointer w-full border border-transparent",
-                      isSelected ? "bg-[#F3F0FF] border-[#866BE3]/20" : "hover:bg-gray-50",
-                      isSelected && !isCurrent && "bg-gray-100 border-gray-200"
+                      isSelected && isCurrent && "bg-[#F3F0FF] border-[#866BE3]/30",
+                      isSelected && !isCurrent && "bg-gray-100 border-gray-200",
+                      !isSelected && "hover:bg-gray-50"
                     )}
                   >
                     <div className="text-gray-400 shrink-0">
@@ -179,10 +234,15 @@ export function IvfJourneyModal({
                     <span
                       className={cn(
                         "flex-1 font-semibold text-[13px] truncate",
-                        isSelected && isCurrent ? "text-[#866BE3]" : 
-                        isSelected ? "text-gray-900" :
-                        isCurrent ? "text-[#866BE3]" : 
-                        isCompleted ? "text-gray-700" : "text-gray-400"
+                        isSelected && isCurrent
+                          ? "text-[#866BE3]"
+                          : isSelected
+                            ? "text-gray-900"
+                            : isCurrent
+                              ? "text-[#866BE3]"
+                              : isCompleted
+                                ? "text-gray-700"
+                                : "text-gray-400"
                       )}
                     >
                       {step}
@@ -209,13 +269,19 @@ export function IvfJourneyModal({
           <div className="flex-1 bg-white p-8 overflow-y-auto">
             {/* Header */}
             <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-              <h2 className="text-2xl font-bold text-gray-900">{selectedStepName}</h2>
+              <h2 className="text-2xl font-bold text-gray-900">{cleanSelectedName}</h2>
               {isSelectedCurrent ? (
-                <span className="bg-[#866BE3]/10 text-[#866BE3] text-xs font-bold px-3 py-1 rounded-full">Current Active Stage</span>
+                <span className="bg-[#866BE3]/10 text-[#866BE3] text-xs font-bold px-3 py-1 rounded-full">
+                  Current Active Stage
+                </span>
               ) : selectedStepIdx < currentStepIdx ? (
-                 <span className="px-3 py-1 rounded-full border border-green-200 text-green-700 text-xs font-bold bg-green-50">Completed</span>
+                <span className="px-3 py-1 rounded-full border border-green-200 text-green-700 text-xs font-bold bg-green-50">
+                  Completed
+                </span>
               ) : (
-                 <span className="px-3 py-1 rounded-full border border-gray-200 text-gray-500 text-xs font-bold bg-gray-50">Upcoming Stage</span>
+                <span className="px-3 py-1 rounded-full border border-gray-200 text-gray-500 text-xs font-bold bg-gray-50">
+                  Upcoming Stage
+                </span>
               )}
             </div>
 
@@ -234,7 +300,9 @@ export function IvfJourneyModal({
                   <Clock className="w-3.5 h-3.5 text-[#866BE3]" />
                   <span>Cycle Timeline</span>
                 </div>
-                <p className="font-bold text-gray-900 text-sm">Day {daysPassed} of ~{estimatedDays} days</p>
+                <p className="font-bold text-gray-900 text-sm">
+                  Day {daysPassed} of ~{estimatedDays} days
+                </p>
               </div>
 
               <div className="p-4 rounded-xl bg-gray-50 border border-gray-100">
@@ -242,7 +310,7 @@ export function IvfJourneyModal({
                   <User className="w-3.5 h-3.5 text-[#866BE3]" />
                   <span>Care Coordinator</span>
                 </div>
-                <p className="font-bold text-gray-900 text-sm">{coordinatorName}</p>
+                <p className="font-bold text-gray-900 text-sm truncate">{coordinatorName}</p>
               </div>
             </div>
 
@@ -250,13 +318,21 @@ export function IvfJourneyModal({
             {nextAppt && (
               <div className="mb-6 p-4 rounded-xl bg-[#F8F5FF] border border-[#866BE3]/20 flex items-center justify-between">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#866BE3]">Next Scheduled Appointment</p>
+                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#866BE3]">
+                    Next Scheduled Appointment
+                  </p>
                   <p className="text-sm font-bold text-gray-900 mt-0.5">{nextAppt.type}</p>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    {nextAppt.startsAt ? new Date(nextAppt.startsAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Today"} • With {nextAppt.doctorName || "Doctor"}
+                    {nextAppt.startsAt
+                      ? new Date(nextAppt.startsAt).toLocaleString("en-IN", {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })
+                      : "19 Sept 2026, 10:30 AM"}{" "}
+                    • With {nextAppt.doctorName || "Dr. Jismon J"}
                   </p>
                 </div>
-                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-none text-xs">
+                <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-none text-xs font-semibold">
                   {nextAppt.status}
                 </Badge>
               </div>
@@ -274,7 +350,10 @@ export function IvfJourneyModal({
                 <div className="flex-1 space-y-3">
                   {diagnosticTimelineItems.length > 0 ? (
                     diagnosticTimelineItems.slice(0, 4).map((diag: any, i: number) => (
-                      <div key={diag.id || i} className="p-3 bg-white rounded-xl border border-gray-100 text-xs">
+                      <div
+                        key={diag.id || i}
+                        className="p-3 bg-white rounded-xl border border-gray-100 text-xs"
+                      >
                         <div className="flex items-center justify-between mb-1">
                           <span className="font-bold text-gray-800">{diag.title}</span>
                           <span className="text-[10px] text-gray-400">
@@ -290,13 +369,15 @@ export function IvfJourneyModal({
                     <div className="py-8 text-center text-gray-400 text-xs border border-dashed rounded-xl bg-white/50">
                       <Activity className="w-6 h-6 mx-auto mb-1 text-gray-300" />
                       <p>No lab measurements logged for this stage yet.</p>
-                      <p className="text-[10px] text-gray-400 mt-0.5">Diagnostic orders reflect here automatically.</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Diagnostic orders reflect here automatically.
+                      </p>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Real Tasks for this Stage */}
+              {/* Tasks for this Stage */}
               <div className="bg-[#F8F9FA] rounded-2xl p-5 border border-gray-100 flex flex-col">
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
@@ -304,23 +385,28 @@ export function IvfJourneyModal({
                     <h3 className="font-bold text-gray-900 text-sm">Active Stage Tasks</h3>
                   </div>
                   <span className="text-xs text-gray-500 font-medium">
-                    {tasks.filter((t) => t.status !== "completed").length} active
+                    {stageTasks.filter((t) => t.status !== "completed").length} active
                   </span>
                 </div>
 
                 <div className="flex-1 space-y-2.5 max-h-[300px] overflow-y-auto">
-                  {tasks.length > 0 ? (
-                    tasks.map((task) => (
+                  {stageTasks.length > 0 ? (
+                    stageTasks.map((task) => (
                       <div
                         key={task.id}
                         className="p-3 bg-white rounded-xl border border-gray-100 flex items-center justify-between gap-3 text-xs"
                       >
                         <div className="min-w-0 flex-1">
-                          <p className={cn("font-semibold truncate text-gray-800", task.status === "completed" && "line-through text-gray-400")}>
+                          <p
+                            className={cn(
+                              "font-semibold truncate text-gray-800",
+                              task.status === "completed" && "line-through text-gray-400"
+                            )}
+                          >
                             {task.title}
                           </p>
                           <p className="text-[11px] text-gray-400 mt-0.5">
-                            {task.category || "Care Task"} • {task.due || "Pending"}
+                            {task.category || "Milestone"} • {task.due || "Pending"}
                           </p>
                         </div>
 
@@ -330,7 +416,7 @@ export function IvfJourneyModal({
                             variant="outline"
                             disabled={completingTaskId === task.id}
                             onClick={() => handleCompleteTask(task.id, task.title)}
-                            className="h-7 text-[11px] font-semibold text-[#866BE3] border-[#866BE3]/30 hover:bg-[#866BE3]/10"
+                            className="h-7 text-[11px] font-semibold text-[#866BE3] border-[#866BE3]/30 hover:bg-[#866BE3]/10 cursor-pointer"
                           >
                             {completingTaskId === task.id ? (
                               <Loader2 className="w-3 h-3 animate-spin" />
@@ -339,7 +425,7 @@ export function IvfJourneyModal({
                             )}
                           </Button>
                         ) : (
-                          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                          <span className="text-[11px] text-emerald-600 font-bold px-2 py-0.5 bg-emerald-50 rounded-full border border-emerald-200">
                             Done
                           </span>
                         )}
@@ -348,13 +434,15 @@ export function IvfJourneyModal({
                   ) : (
                     <div className="py-8 text-center text-gray-400 text-xs border border-dashed rounded-xl bg-white/50">
                       <CheckCircle2 className="w-6 h-6 mx-auto mb-1 text-gray-300" />
-                      <p>All care loop tasks up to date.</p>
+                      <p>No active tasks for this stage.</p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        Care loop tasks activate automatically when stage starts.
+                      </p>
                     </div>
                   )}
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </DialogContent>
@@ -362,11 +450,32 @@ export function IvfJourneyModal({
       <EditTreatmentModal
         isOpen={isEditModalOpen}
         onOpenChange={setIsEditModalOpen}
-        coupleId={couple?.id || couple?.slug}
-        patientName={p360?.header?.patientName}
-        currentTreatment={p360?.header?.currentTreatment}
+        coupleId={couple?.id || p360?.couple?.id || ""}
+        patientName={p360?.header?.patientName || couple?.primary?.name}
+        currentTreatment={
+          p360?.header?.currentTreatment
+            ? {
+                id: p360.header.currentTreatment.id,
+                label: p360.header.currentTreatment.label,
+                kind: p360.header.currentTreatment.kind,
+                status: p360.header.currentTreatment.status,
+                stageIndex: p360.header.currentTreatment.stageIndex,
+                stageName: p360.header.currentTreatment.stageName,
+                cycleNumber: p360.header.currentTreatment.cycleNumber,
+                notes: p360.header.currentTreatment.notes,
+                startedAt: p360.header.currentTreatment.startedAt,
+              }
+            : couple?.treatment
+              ? {
+                  label: couple.treatment,
+                  kind: couple.treatment.includes("IUI") ? "IUI" : "IVF",
+                  status: "ACTIVE",
+                  stageName: couple?.stage,
+                }
+              : null
+        }
         onSaved={() => {
-          onTreatmentUpdated?.();
+          if (onTreatmentUpdated) onTreatmentUpdated();
         }}
       />
     </Dialog>

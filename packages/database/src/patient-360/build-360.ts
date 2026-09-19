@@ -190,7 +190,7 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
     prescriptions,
     invoices,
     docs,
-    identity,
+    identities,
     pendingConsents,
     exchanges,
     conversations,
@@ -281,8 +281,8 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       orderBy: { createdAt: "desc" },
       take: 40,
     }),
-    prisma.digitalHealthIdentity.findUnique({
-      where: { patientId: couple.primaryPatientId },
+    prisma.digitalHealthIdentity.findMany({
+      where: { patientId: { in: patientIds } },
     }),
     prisma.digitalHealthConsent.count({
       where: {
@@ -361,6 +361,12 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
     ["AWAITING_UPLOAD", "DOCTOR_REVIEW"].includes(d.status),
   ).length;
 
+  const primaryIdentity = identities.find((i) => i.patientId === couple.primaryPatientId);
+  const partnerIdentity = couple.partnerPatientId
+    ? identities.find((i) => i.patientId === couple.partnerPatientId)
+    : undefined;
+  const identity = primaryIdentity ?? partnerIdentity ?? null;
+
   const abhaPending =
     identity?.status === "PENDING" || identity?.status === "VERIFICATION_REQUIRED";
 
@@ -401,7 +407,39 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       doctor: couple.assignedDoctor?.name ?? "Unassigned",
       coordinator: couple.assignedCoordinator?.name ?? "Unassigned",
       treatment: treatment?.label ?? null,
+      primaryPatientId: couple.primaryPatientId,
+      partnerPatientId: couple.partnerPatientId,
     },
+    primaryPatient: {
+      id: primary.id,
+      firstName: primary.firstName,
+      lastName: primary.lastName,
+      name: personLabel(primary),
+      age: ageFromDob(primary.dateOfBirth),
+      gender: primary.gender,
+      phone: primary.phone ?? primary.whatsappNumber ?? "",
+      email: primary.email ?? "",
+      abdmConnected: primaryIdentity?.status === "LINKED",
+      abhaStatus: primaryIdentity?.status ?? "NOT_LINKED",
+      abhaNumber: primaryIdentity?.abhaMasked ?? null,
+      abhaAddress: primaryIdentity?.abhaAddress ?? null,
+    },
+    partnerPatient: partner
+      ? {
+          id: partner.id,
+          firstName: partner.firstName,
+          lastName: partner.lastName,
+          name: personLabel(partner),
+          age: ageFromDob(partner.dateOfBirth),
+          gender: partner.gender,
+          phone: partner.phone ?? partner.whatsappNumber ?? "",
+          email: partner.email ?? "",
+          abdmConnected: partnerIdentity?.status === "LINKED",
+          abhaStatus: partnerIdentity?.status ?? "NOT_LINKED",
+          abhaNumber: partnerIdentity?.abhaMasked ?? null,
+          abhaAddress: partnerIdentity?.abhaAddress ?? null,
+        }
+      : null,
     header: {
       patientName: personLabel(primary),
       patientId: primary.id,
@@ -410,8 +448,8 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       contact: primary.phone ?? primary.whatsappNumber ?? primary.email ?? null,
       partnerName: partner ? personLabel(partner) : null,
       partnerId: partner?.id ?? null,
-      abhaStatus: identity?.status ?? "NOT_LINKED",
-      abhaMasked: identity?.abhaMasked ?? null,
+      abhaStatus: primaryIdentity?.status ?? "NOT_LINKED",
+      abhaMasked: primaryIdentity?.abhaMasked ?? null,
       assignedDoctor: couple.assignedDoctor?.name ?? "Unassigned",
       assignedCoordinator: couple.assignedCoordinator?.name ?? "Unassigned",
       currentTreatment: treatment
@@ -433,6 +471,10 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
             type: activeCarePlan.type,
             name: activeCarePlan.name,
             status: activeCarePlan.status,
+            stageName: activeCarePlan.currentStageName,
+            stageIndex: activeCarePlan.currentStageIndex,
+            createdAt: activeCarePlan.createdAt.toISOString(),
+            startDate: activeCarePlan.startDate?.toISOString() ?? null,
             steps: activeCarePlan.steps.map((s) => ({
               id: s.id,
               name: s.name,
@@ -477,9 +519,20 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       note: "Prescribed vs dispensed from pharmacy records. AI cannot prescribe.",
     },
     digitalHealth: {
+      identity: identity
+        ? {
+            id: identity.id,
+            status: identity.status,
+            abhaMasked: identity.abhaMasked,
+            abhaAddress: identity.abhaAddress,
+            verificationStatus: identity.verificationStatus,
+            sandboxMode: identity.sandboxMode,
+          }
+        : null,
       abha: {
         status: identity?.status ?? "NOT_LINKED",
         abhaMasked: identity?.abhaMasked ?? null,
+        abhaAddress: identity?.abhaAddress ?? null,
         verificationStatus: identity?.verificationStatus ?? null,
         sandboxMode: identity?.sandboxMode ?? true,
       },

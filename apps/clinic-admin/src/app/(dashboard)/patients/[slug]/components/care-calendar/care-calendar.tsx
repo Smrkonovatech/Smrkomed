@@ -30,7 +30,8 @@ import { AddCareTaskModal } from "./add-care-task-modal";
 import { EventDetailsModal } from "./event-details-modal";
 
 interface CareCalendarProps {
-  couple: { id: string };
+  couple: { id: string; stage?: string; treatment?: string; slug?: string } | any;
+  p360?: any;
 }
 
 export type CalendarEvent = {
@@ -38,11 +39,12 @@ export type CalendarEvent = {
   title: string;
   date: Date;
   time?: string;
-  type: "task" | "appointment";
+  type: "task" | "appointment" | "milestone";
   status: string;
   category: string;
   assignedTo?: string;
   isCareLoop: boolean;
+  isMilestone?: boolean;
   raw: ClinicTask | ClinicAppointment;
 };
 
@@ -81,11 +83,12 @@ function parseSafeDateAndTime(dueStr: string | null | undefined, raw?: any): { d
     d = new Date();
     d.setDate(d.getDate() - 1);
   } else if (datePart) {
-    const parsed = new Date(datePart);
+    const normalized = datePart.replace(/Sept/i, "Sep");
+    const parsed = new Date(normalized);
     if (!isNaN(parsed.getTime())) {
       d = parsed;
     } else {
-      const withYear = new Date(`${datePart} ${now.getFullYear()}`);
+      const withYear = new Date(`${normalized} ${now.getFullYear()}`);
       if (!isNaN(withYear.getTime())) {
         d = withYear;
       } else {
@@ -117,7 +120,7 @@ function formatSafeDate(date: Date | null | undefined, formatStr: string, fallba
   }
 }
 
-export function CareCalendarWidget({ couple }: CareCalendarProps) {
+export function CareCalendarWidget({ couple, p360 }: CareCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [viewMode, setViewMode] = useState<"month" | "week" | "list">("month");
@@ -145,21 +148,62 @@ export function CareCalendarWidget({ couple }: CareCalendarProps) {
 
   useEffect(() => {
     fetchCalendarData();
-  }, [couple.id, (couple as any).slug]);
+  }, [
+    couple.id,
+    (couple as any).slug,
+    p360?.header?.currentTreatment?.stageName,
+    p360?.header?.currentTreatment?.status,
+    p360?.header?.currentCarePlan?.id,
+    p360?.updatedAt,
+  ]);
+
+  const default15Stages = useMemo(
+    () => [
+      "01. Lead / Appointment",
+      "02. Initial Consultation",
+      "03. Fertility Investigation / Workup",
+      "04. IVF Decision",
+      "05. Treatment Planning & Consent",
+      "06. Cycle Preparation",
+      "07. Ovarian Stimulation",
+      "08. Follicular Monitoring",
+      "09. Trigger",
+      "10. OPU (Oocyte Pick-Up)",
+      "11. Embryology",
+      "12. Transfer / FET",
+      "13. Post-Transfer (Two-Week Wait)",
+      "14. Pregnancy Test",
+      "15. Outcome",
+    ],
+    []
+  );
 
   const events: CalendarEvent[] = useMemo(() => {
     const taskEvents: CalendarEvent[] = tasks.map((t) => {
       const { date, time } = parseSafeDateAndTime(t.due, t);
+      const isMilestone =
+        t.category === "Milestone" ||
+        t.category === "Procedure" ||
+        (t as any).taskType === "CLINICAL_MILESTONE" ||
+        (t as any).isMilestone === true ||
+        /^\d{2}\.\s*/.test(t.title) ||
+        t.title.toLowerCase().includes("retrieval") ||
+        t.title.toLowerCase().includes("transfer") ||
+        t.title.toLowerCase().includes("trigger") ||
+        t.title.toLowerCase().includes("baseline") ||
+        t.title.toLowerCase().includes("beta hcg");
+
       return {
         id: t.id,
         title: t.title,
         date,
         time: time || (t.due && !t.due.includes("·") ? t.due : ""),
-        type: "task",
+        type: isMilestone ? "milestone" : "task",
         status: t.status,
-        category: t.category || "Task",
+        category: isMilestone ? "Milestone" : (t.category || "Task"),
         assignedTo: t.assignedTo,
         isCareLoop: t.targetRole !== null,
+        isMilestone,
         raw: t,
       };
     });
@@ -180,8 +224,79 @@ export function CareCalendarWidget({ couple }: CareCalendarProps) {
       };
     });
 
-    return [...taskEvents, ...apptEvents].sort((a, b) => a.date.getTime() - b.date.getTime());
-  }, [tasks, appointments]);
+    // Check if patient has active journey
+    const hasAssignedJourney = Boolean(
+      p360?.header?.currentCarePlan ||
+      (p360?.header?.currentTreatment && p360.header.currentTreatment.status !== "PENDING" && p360.header.currentTreatment.stageName) ||
+      (couple?.stage && couple.stage !== "Pending" && couple.stage !== "Unassigned") ||
+      (couple?.treatment && couple.treatment !== "Pending" && couple.treatment !== "Unassigned")
+    );
+
+    let rawSteps = p360?.header?.currentCarePlan?.steps || [];
+    if (rawSteps.length === 0 && hasAssignedJourney) {
+      const activeStageName =
+        p360?.header?.currentCarePlan?.stageName ||
+        p360?.header?.currentTreatment?.stageName ||
+        couple?.stage ||
+        "01. Lead / Appointment";
+      const cleanActive = activeStageName.toLowerCase().replace(/^\d+\.\s*/, "").trim();
+      const currentIdx = Math.max(
+        0,
+        default15Stages.findIndex((s) => s.toLowerCase().includes(cleanActive))
+      );
+
+      rawSteps = default15Stages.map((stName, idx) => ({
+        id: `tpl-stage-${idx}`,
+        sortOrder: idx,
+        name: stName,
+        status: idx < currentIdx ? "DONE" : idx === currentIdx ? "CURRENT" : "PENDING",
+      }));
+    }
+
+    const defaultStageOffsets = [0, 3, 6, 9, 12, 15, 18, 23, 27, 29, 31, 34, 36, 48, 50];
+    const planStartDate = p360?.header?.currentCarePlan?.startDate
+      ? new Date(p360.header.currentCarePlan.startDate)
+      : p360?.header?.currentTreatment?.startedAt
+      ? new Date(p360.header.currentTreatment.startedAt)
+      : new Date();
+
+    const planStepEvents: CalendarEvent[] = [];
+    for (const step of rawSteps) {
+      const stepClean = step.name.toLowerCase().replace(/^\d+\.\s*/, "").trim();
+      const exists = taskEvents.some(
+        (te) => te.id === `milestone-${step.id}` || te.title.toLowerCase().includes(stepClean)
+      );
+      if (!exists) {
+        const offsetDays = defaultStageOffsets[step.sortOrder] ?? (step.sortOrder * 3);
+        const milestoneDate = new Date(planStartDate.getTime() + offsetDays * 86_400_000);
+        planStepEvents.push({
+          id: `step-${step.id || step.sortOrder}`,
+          title: step.name,
+          date: milestoneDate,
+          time: "10:00 AM",
+          type: "milestone",
+          status: step.status || "PENDING",
+          category: "Milestone",
+          assignedTo: p360?.header?.assignedDoctor?.name || "Clinical Team",
+          isCareLoop: true,
+          isMilestone: true,
+          raw: {
+            id: `step-${step.id || step.sortOrder}`,
+            title: step.name,
+            category: "Milestone",
+            status: step.status || "PENDING",
+            priority: "HIGH",
+            due: milestoneDate.toISOString(),
+            assignedTo: p360?.header?.assignedDoctor?.name || "Clinical Team",
+            targetRole: "DOCTOR",
+            actionType: "PATIENT_WHATSAPP_UPDATE",
+          } as any,
+        });
+      }
+    }
+
+    return [...taskEvents, ...planStepEvents, ...apptEvents].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [tasks, appointments, p360?.header?.currentCarePlan, p360?.header?.currentTreatment, couple?.stage, default15Stages]);
 
   const handlePrev = () => setCurrentDate(subMonths(currentDate, 1));
   const handleNext = () => setCurrentDate(addMonths(currentDate, 1));

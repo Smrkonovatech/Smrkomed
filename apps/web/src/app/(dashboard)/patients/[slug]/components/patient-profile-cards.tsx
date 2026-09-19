@@ -47,20 +47,18 @@ export function PatientProfileCards({
   };
 
   const primaryAbdmConnected =
-    couple?.primary?.abdmConnected !== undefined
-      ? Boolean(couple.primary.abdmConnected)
-      : p360?.primaryPatient?.abdmConnected !== undefined
-      ? Boolean(p360.primaryPatient.abdmConnected)
-      : p360?.digitalHealth?.identity?.status === "LINKED"
-      ? true
-      : Boolean(primary?.abdmConnected);
+    primary?.abdmConnected === true ||
+    couple?.primary?.abdmConnected === true ||
+    p360?.primaryPatient?.abdmConnected === true ||
+    p360?.header?.abhaStatus === "LINKED" ||
+    p360?.header?.abhaStatus === "VERIFIED";
 
   const partnerAbdmConnected =
-    couple?.partner?.abdmConnected !== undefined
-      ? Boolean(couple.partner.abdmConnected)
-      : p360?.partnerPatient?.abdmConnected !== undefined
-      ? Boolean(p360.partnerPatient.abdmConnected)
-      : Boolean(partner?.abdmConnected);
+    partner?.abdmConnected === true ||
+    couple?.partner?.abdmConnected === true ||
+    p360?.partnerPatient?.abdmConnected === true ||
+    p360?.header?.partnerAbhaStatus === "LINKED" ||
+    p360?.header?.partnerAbhaStatus === "VERIFIED";
 
   const coupleIdDisplay = p360?.header?.patientId || couple?.id || couple?.slug || "SMR1029";
 

@@ -26,6 +26,7 @@ export const createCoupleSchema = z
     coordinatorName: z.string().trim().max(120).optional(),
     whatsappConsent: z.boolean().optional(),
     carePlanTemplate: z.string().trim().max(80).optional(),
+    clinicId: z.string().trim().optional(),
   })
   .strict();
 

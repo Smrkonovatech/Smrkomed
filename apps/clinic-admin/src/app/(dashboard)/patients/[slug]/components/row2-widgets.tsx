@@ -30,7 +30,7 @@ export function AbdmStatusWidget({ couple }: { couple: Couple }) {
         <div className="flex flex-wrap items-center gap-y-3 gap-x-4">
           <div className="flex items-center gap-3">
             <span className="text-[#866BE3] font-medium text-sm">{primaryName}</span>
-            {couple.primary.abdmConnected !== false ? (
+            {couple.primary.abdmConnected === true ? (
               <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 Connected
@@ -46,7 +46,7 @@ export function AbdmStatusWidget({ couple }: { couple: Couple }) {
           {couple.partner && (
             <div className="flex items-center gap-3">
               <span className="text-[#866BE3] font-medium text-sm">{partnerName}</span>
-              {couple.partner.abdmConnected !== false ? (
+              {couple.partner.abdmConnected === true ? (
                 <span className="flex items-center gap-1 text-xs font-semibold text-[#00A89D]">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                   Connected

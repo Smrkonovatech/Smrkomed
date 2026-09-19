@@ -47,18 +47,11 @@ export function DeleteEventDialog({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[440px] p-6 overflow-hidden bg-white border border-gray-100 shadow-2xl rounded-[28px]">
-        {/* Top bar with Icon & Close matching Image 5 */}
+        {/* Top bar with Icon matching Image 5 */}
         <div className="flex items-start justify-between">
           <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-500 border border-red-100 flex items-center justify-center shrink-0 shadow-xs">
             <Trash2 className="w-6 h-6" />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
         </div>
 
         {/* Content matching Image 5 */}

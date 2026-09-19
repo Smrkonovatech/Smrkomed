@@ -44,6 +44,9 @@ export type ClinicTask = {
   note?: string;
   targetRole?: string | null;
   targetPatientId?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  taskType?: string | null;
 };
 
 export type ClinicAppointment = {
@@ -129,6 +132,7 @@ export const clinicApi = {
       status?: string;
     },
   ) => apiPatch<ClinicCouple>(`/api/v1/couples/${id}`, body),
+  patchCoupleTreatment: (coupleId: string, body: unknown) => apiPatch<any>(`/api/v1/couples/${coupleId}/treatment`, body),
   tasks: () => apiGet<ClinicTask[]>("/api/v1/care-tasks"),
   createTask: (body: unknown) => apiPost<ClinicTask>("/api/v1/care-tasks", body),
   patchTask: (id: string, body: unknown) => apiPatch<ClinicTask>(`/api/v1/care-tasks/${id}`, body),

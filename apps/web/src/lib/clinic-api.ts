@@ -44,6 +44,9 @@ export type ClinicTask = {
   note?: string;
   targetRole?: string | null;
   targetPatientId?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  taskType?: string | null;
 };
 
 export type ClinicAppointment = {

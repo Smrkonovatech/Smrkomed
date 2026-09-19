@@ -314,13 +314,16 @@ function toDocument(row: ClinicDocument): AppDocument {
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<Role>("doctor");
-  const [clinicId, setClinicIdState] = useState<string>(() => {
+  const [clinicId, setClinicIdState] = useState<string>("blr");
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const stored = window.localStorage.getItem("smrkomed_active_clinic_id");
-      if (stored && clinics.some((c) => c.id === stored)) return stored;
+      if (stored && clinics.some((c) => c.id === stored)) {
+        setClinicIdState(stored);
+      }
     }
-    return "kochi";
-  });
+  }, []);
 
   const setClinicId = useCallback((id: string) => {
     setClinicIdState(id);
@@ -373,7 +376,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setLoadError(null);
     setStaffLoading(true);
     try {
-      const [couplesOutcome, tasksOutcome, apptsOutcome, docsOutcome, activityOutcome, staffOutcome, clinicOutcome] =
+      const [couplesOutcome, tasksOutcome, apptsOutcome, docsOutcome, activityOutcome, staffOutcome, clinicOutcome, exceptionsOutcome] =
         await Promise.all([
           clinicApi.couples().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
           clinicApi.tasks().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
@@ -382,6 +385,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           clinicApi.activity().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
           clinicApi.staff().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
           clinicApi.getCurrentClinic().then((row) => ({ ok: true as const, row })).catch((e) => ({ ok: false as const, error: e })),
+          clinicApi.exceptions().then((rows) => ({ ok: true as const, rows })).catch((e) => ({ ok: false as const, error: e })),
         ]);
 
       let activeCount = 0;
@@ -412,6 +416,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         setStaffError(null);
       } else {
         setStaffError(clinicErrorMessage(staffOutcome.error, "Unable to load clinic staff."));
+      }
+      if (exceptionsOutcome.ok && Array.isArray(exceptionsOutcome.rows)) {
+        setExceptionList(exceptionsOutcome.rows);
       }
       if (clinicOutcome.ok && clinicOutcome.row) {
         const raw = clinicOutcome.row as any;
@@ -704,8 +711,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
 
   const visibleCouples = useMemo(() => {
     const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    const isKochi = clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl";
+    const isChennai = clinicId === "chennai" || clinicId === "hospex-chennai-clinic";
+
     if (isBangalore) {
-      // In Bangalore, show Bangalore data including QR check-in records and explicit Bangalore clinic records
       return coupleList.filter(
         (c) =>
           c.clinicId === "cmt0exo9n000vl804rbaabh32" ||
@@ -713,35 +722,113 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
           isQrCheckinCouple(c),
       );
     }
-    // In Kochi or other locations, strictly hide Bangalore and QR check-in data
-    return coupleList.filter(
-      (c) =>
-        !isQrCheckinCouple(c) &&
-        c.clinicId !== "cmt0exo9n000vl804rbaabh32" &&
-        c.clinicId !== "blr",
-    );
+    if (isKochi) {
+      return coupleList.filter(
+        (c) =>
+          (c.clinicId === "cmu3nmx310026jy04gsi21hxl" || c.clinicId === "kochi") &&
+          !isQrCheckinCouple(c),
+      );
+    }
+    if (isChennai) {
+      return coupleList.filter(
+        (c) =>
+          (c.clinicId === "hospex-chennai-clinic" || c.clinicId === "chennai") &&
+          !isQrCheckinCouple(c),
+      );
+    }
+    return coupleList.filter((c) => c.clinicId === clinicId);
   }, [coupleList, clinicId]);
 
-  // The backend already scopes appointments correctly per user role (including cross-clinic for doctors),
-  // so we show all API-returned appointments without further couple-based filtering.
-  const visibleAppointments = appointmentList;
+  const visibleAppointments = useMemo(() => {
+    const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    const isKochi = clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl";
+    const isChennai = clinicId === "chennai" || clinicId === "hospex-chennai-clinic";
+    const visibleCoupleIds = new Set(visibleCouples.map((c) => c.id));
+    const visibleCoupleSlugs = new Set(visibleCouples.map((c) => c.slug).filter(Boolean));
+
+    return appointmentList.filter((a: any) => {
+      if (a.coupleId && (visibleCoupleIds.has(a.coupleId) || visibleCoupleSlugs.has(a.coupleId))) {
+        return true;
+      }
+      const aClinic = a.clinicId || "";
+      if (isBangalore) {
+        return aClinic === "cmt0exo9n000vl804rbaabh32" || aClinic === "blr";
+      }
+      if (isKochi) {
+        return aClinic === "cmu3nmx310026jy04gsi21hxl" || aClinic === "kochi";
+      }
+      if (isChennai) {
+        return aClinic === "hospex-chennai-clinic" || aClinic === "chennai";
+      }
+      return aClinic === clinicId;
+    });
+  }, [appointmentList, visibleCouples, clinicId]);
 
   const visibleTasks = useMemo(() => {
+    const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    const isKochi = clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl";
+    const isChennai = clinicId === "chennai" || clinicId === "hospex-chennai-clinic";
     const visibleCoupleIds = new Set(visibleCouples.map((c) => c.id));
-    return tasks.filter((t) => !t.coupleId || visibleCoupleIds.has(t.coupleId));
-  }, [tasks, visibleCouples]);
+    const visibleCoupleSlugs = new Set(visibleCouples.map((c) => c.slug).filter(Boolean));
+
+    return tasks.filter((t: any) => {
+      if (t.coupleId && (visibleCoupleIds.has(t.coupleId) || visibleCoupleSlugs.has(t.coupleId))) {
+        return true;
+      }
+      const tClinic = t.clinicId || "";
+      if (isBangalore) {
+        return tClinic === "cmt0exo9n000vl804rbaabh32" || tClinic === "blr" || (!tClinic && !t.coupleId);
+      }
+      if (isKochi) {
+        return tClinic === "cmu3nmx310026jy04gsi21hxl" || tClinic === "kochi";
+      }
+      if (isChennai) {
+        return tClinic === "hospex-chennai-clinic" || tClinic === "chennai";
+      }
+      return tClinic === clinicId;
+    });
+  }, [tasks, visibleCouples, clinicId]);
+
+  const visibleCycles = useMemo<AppCycle[]>(() => {
+    return visibleCouples
+      .filter((c) => c.treatment && c.treatment !== "Evaluation")
+      .map((c) => ({
+        id: `cycle-${c.id}`,
+        coupleId: c.id,
+        treatment: (c.treatment === "IVF" || c.treatment === "IUI" || c.treatment === "FET" ? c.treatment : "IVF") as Exclude<Treatment, "Evaluation">,
+        cycleLabel: c.cycleLabel || `${c.treatment} Cycle #1`,
+        stage: c.stage || "Consultation",
+        stageIndex: c.stageIndex ?? 1,
+        totalStages: 15,
+        doctor: c.doctor || "Unassigned",
+        coordinator: c.coordinator || "Unassigned",
+        status: c.status === "Needs Attention" ? "Needs Attention" : "Active",
+        startDate: c.since || "2026-09-01",
+        started: c.since || "2026-09-01",
+        nextStep: c.nextStep || "Initial consultation",
+        nextDate: "Upcoming",
+      }));
+  }, [visibleCouples]);
+
+  const visibleExceptions = useMemo(() => {
+    const visibleCoupleIds = new Set(visibleCouples.map((c) => c.id));
+    return exceptionList.filter((e: any) => !e.coupleId || visibleCoupleIds.has(e.coupleId));
+  }, [exceptionList, visibleCouples]);
 
   const visibleStaff = useMemo(() => {
     const isBangalore = clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32";
+    const isKochi = clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl";
     return staff.filter((s: any) => {
       const loc = (s.locationId || s.clinicId || "").toLowerCase();
       if (isBangalore) {
         if (loc === "kochi" || loc === "cmu3nmx310026jy04gsi21hxl") return false;
         return true;
-      } else {
+      }
+      if (isKochi) {
         if (loc === "blr" || loc === "cmt0exo9n000vl804rbaabh32" || loc.includes("bangalore")) return false;
         return true;
       }
+      return true;
     });
   }, [staff, clinicId]);
 
@@ -769,7 +856,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       appointments: visibleAppointments,
       addAppointment,
       patchAppointmentStatus,
-      cycles: cycleList,
+      cycles: visibleCycles,
       addCycle,
       documents: documentList,
       addDocument,
@@ -782,12 +869,14 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setTaskStatus,
       activity,
       pushActivity,
-      exceptions: exceptionList,
+      exceptions: visibleExceptions,
       resolveException,
       addException,
       kpis: {
-        ...kpis,
         active: visibleCouples.length,
+        completion: loopKpis.completion,
+        automatedToday: visibleTasks.filter((t) => t.status === "completed").length,
+        needAttention: visibleTasks.filter((t) => t.status === "overdue" || t.status === "escalated").length + visibleExceptions.length,
       },
       bumpKpis,
     }),
@@ -811,7 +900,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       visibleAppointments,
       addAppointment,
       patchAppointmentStatus,
-      cycleList,
+      visibleCycles,
       addCycle,
       documentList,
       addDocument,
@@ -824,10 +913,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       setTaskStatus,
       activity,
       pushActivity,
-      exceptionList,
+      visibleExceptions,
       resolveException,
       addException,
-      kpis,
       bumpKpis,
     ],
   );

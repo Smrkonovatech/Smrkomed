@@ -534,7 +534,7 @@ export default function CareLoopPage() {
   // Map real database couples, tasks, appointments, and activities into CareLoopItem[]
   const allItems = useMemo<CareLoopItem[]>(() => {
     if (!couples || couples.length === 0) {
-      return DEFAULT_CARE_LOOP_ITEMS;
+      return [];
     }
 
     return couples.map((c, index) => {
@@ -1212,7 +1212,18 @@ export default function CareLoopPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {paginatedItems.map((item) => {
+                    {paginatedItems.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="text-center py-12 text-slate-500">
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Users className="size-8 text-slate-300" />
+                            <p className="font-semibold text-slate-700 text-sm">No patients found</p>
+                            <p className="text-xs text-slate-400">There are no care loop records matching the selected location and filters.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedItems.map((item) => {
                       const isSelected = item.id === selectedId;
                       const isChecked = Boolean(checkedIds[item.id]);
 
@@ -1408,7 +1419,8 @@ export default function CareLoopPage() {
                           </td>
                         </tr>
                       );
-                    })}
+                    })
+                  )}
                   </tbody>
                 </table>
               </div>

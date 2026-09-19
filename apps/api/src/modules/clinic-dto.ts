@@ -26,6 +26,9 @@ export type PersonDto = {
   dob: string;
   language: string;
   status: string;
+  abdmConnected?: boolean;
+  abhaNumber?: string | null;
+  abhaAddress?: string | null;
 };
 
 export type CoupleDto = {
@@ -69,6 +72,9 @@ export type TaskDto = {
   patientResponse?: string | null;
   targetRole?: string | null;
   targetPatientId?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  taskType?: string | null;
 };
 
 export type AppointmentDto = {
@@ -119,7 +125,13 @@ export type CarePlanDto = {
   updatedAt?: string;
 };
 
-type PatientRow = Patient;
+type PatientRow = Patient & {
+  digitalHealthIdentity?: {
+    status: string;
+    abhaMasked?: string | null;
+    abhaAddress?: string | null;
+  } | null;
+};
 type CoupleRow = Couple & {
   primaryPatient: PatientRow;
   partnerPatient: PatientRow | null;
@@ -192,6 +204,7 @@ export function formatDue(value: Date | null, dueTime: string | null) {
 }
 
 export function serializePerson(patient: PatientRow): PersonDto {
+  const isLinked = patient.digitalHealthIdentity?.status === "LINKED";
   return {
     id: patient.id,
     name: `${patient.firstName} ${patient.lastName}`.trim(),
@@ -203,6 +216,9 @@ export function serializePerson(patient: PatientRow): PersonDto {
     dob: patient.dateOfBirth ? patient.dateOfBirth.toISOString().slice(0, 10) : "",
     language: patient.preferredLanguage,
     status: patient.status,
+    abdmConnected: isLinked,
+    abhaNumber: patient.digitalHealthIdentity?.abhaMasked ?? null,
+    abhaAddress: patient.digitalHealthIdentity?.abhaAddress ?? null,
   };
 }
 
@@ -270,6 +286,9 @@ export function serializeTask(
     patientResponse: task.patientResponse ?? null,
     targetRole: task.targetRole ?? null,
     targetPatientId: task.targetPatientId ?? null,
+    dueDate: task.dueDate ? task.dueDate.toISOString() : null,
+    dueTime: task.dueTime ?? null,
+    taskType: task.taskType ?? "PATIENT_TASK",
     ...(task.description ? { note: task.description } : {}),
   };
 }
