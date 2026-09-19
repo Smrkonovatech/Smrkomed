@@ -1,3 +1,6 @@
 library;
 
-export 'package:smrkomed_doctor_app/core/widgets/feature_placeholder_page.dart';
+export 'data/inbox_repository.dart';
+export 'presentation/chat_page.dart';
+export 'presentation/inbox_controller.dart';
+export 'presentation/inbox_page.dart';

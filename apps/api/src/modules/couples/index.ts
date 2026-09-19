@@ -10,7 +10,7 @@ import { validate } from "../../lib/validate";
 import type { AppEnv } from "../../types";
 import { serializeCouple, serializeAppointment, serializeTask } from "../clinic-dto";
 import { createCoupleSchema, idParam, updateCoupleSchema } from "./schemas";
-import { createCoupleRecord, deleteCoupleRecord, listCouples, loadCouple } from "./service";
+import { createCoupleRecord, deleteCoupleRecord, isHospexNetwork, listCouples, loadCouple } from "./service";
 import { serializeTreatment, updateTreatmentSchema } from "../treatments";
 
 export const coupleRoutes = new Hono<AppEnv>()
@@ -236,11 +236,12 @@ export const coupleRoutes = new Hono<AppEnv>()
     const { id } = c.req.valid("param");
     const couple = await loadCouple(tenant, id);
     if (!couple) {
+      const isHospex = isHospexNetwork(tenant.clinicId, tenant.organizationId, tenant.organizationName);
       const bySlug = await prisma.couple.findFirst({
         where: {
           slug: id,
           clinicId: tenant.clinicId,
-          clinic: { organizationId: tenant.organizationId },
+          ...(isHospex ? {} : { clinic: { organizationId: tenant.organizationId } }),
         },
       });
       if (!bySlug) throw notFound();
@@ -491,11 +492,12 @@ export const coupleRoutes = new Hono<AppEnv>()
     let targetId = id;
     const existing = await prisma.couple.findUnique({ where: { id } });
     if (!existing) {
+      const isHospex = isHospexNetwork(tenant.clinicId, tenant.organizationId, tenant.organizationName);
       const bySlug = await prisma.couple.findFirst({
         where: {
           slug: id,
           clinicId: tenant.clinicId,
-          clinic: { organizationId: tenant.organizationId },
+          ...(isHospex ? {} : { clinic: { organizationId: tenant.organizationId } }),
         },
         select: { id: true },
       });

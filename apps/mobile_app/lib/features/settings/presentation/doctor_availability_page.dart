@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:smrkomed_doctor_app/core/di/app_providers.dart';
 import 'package:smrkomed_doctor_app/core/routing/app_routes.dart';
 import 'package:smrkomed_doctor_app/core/theme/app_tokens.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/doctor_availability_data.dart';
@@ -27,6 +28,17 @@ class _DoctorAvailabilityPageState
   var _maxPatients = 15;
   var _minAdvanceHours = 2;
 
+  String _doctorName = AvailabilityPlaceholders.doctorName;
+  String _specialty = AvailabilityPlaceholders.specialty;
+  String _department = AvailabilityPlaceholders.department;
+  String _registration = AvailabilityPlaceholders.registration;
+  String _inCare = AvailabilityPlaceholders.inCare;
+  String _todaysAppts = AvailabilityPlaceholders.todaysAppts;
+  int _utilizationPercent = AvailabilityPlaceholders.utilizationPercent;
+  int _bookedSlots = AvailabilityPlaceholders.bookedSlots;
+  int _availableSlots = AvailabilityPlaceholders.availableSlots;
+  List<AvailabilitySlot> _slots = AvailabilityPlaceholders.slots;
+
   DateTime get _now => widget.now?.call() ?? DateTime.now();
 
   DateTime _dateOnly(DateTime value) =>
@@ -39,6 +51,7 @@ class _DoctorAvailabilityPageState
     _dayEnabled = {
       for (final day in AvailabilityPlaceholders.weeklyDays) day.day: true,
     };
+    Future.microtask(() => _fetchAvailability());
   }
 
   @override
@@ -49,24 +62,40 @@ class _DoctorAvailabilityPageState
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
         children: [
           _ProfileHeroCard(
+            doctorName: _doctorName,
+            specialty: _specialty,
+            department: _department,
+            registration: _registration,
             onEditProfile: () => context.push(AppRoutes.moreProfile),
             onPhoto: () => showChangePhotoSheet(context: context, ref: ref),
           ),
           const SizedBox(height: 14),
-          const _SummaryRow(),
+          _SummaryRow(
+            inCare: _inCare,
+            todaysAppts: _todaysAppts,
+          ),
           const SizedBox(height: 14),
-          const _SlotUtilizationCard(),
+          _SlotUtilizationCard(
+            utilizationPercent: _utilizationPercent,
+            bookedSlots: _bookedSlots,
+            availableSlots: _availableSlots,
+          ),
           const SizedBox(height: 14),
           _ChooseSlotsCard(
             now: _now,
             selectedDate: _selectedDate,
             selectedSlots: _selectedSlots,
-            onSelectToday: () =>
-                setState(() => _selectedDate = _dateOnly(_now)),
-            onSelectTomorrow: () => setState(
-              () =>
-                  _selectedDate = _dateOnly(_now).add(const Duration(days: 1)),
-            ),
+            slots: _slots,
+            onSelectToday: () {
+              setState(() => _selectedDate = _dateOnly(_now));
+              _fetchAvailability();
+            },
+            onSelectTomorrow: () {
+              setState(
+                () => _selectedDate = _dateOnly(_now).add(const Duration(days: 1)),
+              );
+              _fetchAvailability();
+            },
             onPickDate: _pickDate,
             onToggleSlot: _toggleSlot,
             onUpdate: _confirmUpdate,
@@ -140,6 +169,129 @@ class _DoctorAvailabilityPageState
     });
   }
 
+  Future<void> _fetchAvailability() async {
+    if (widget.now != null) return;
+    final client = ref.read(apiClientProvider);
+    final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+    try {
+      final res = await client.get<Map<String, dynamic>>(
+        '/doctors/availability',
+        query: {'date': dateStr},
+        parse: (data) {
+          if (data is Map) return Map<String, dynamic>.from(data);
+          return {};
+        },
+      );
+      if (!mounted || res.isEmpty) return;
+
+      setState(() {
+        if (res['doctorName'] != null && (res['doctorName'] as String).isNotEmpty) {
+          _doctorName = res['doctorName'] as String;
+        }
+        if (res['designation'] != null && (res['designation'] as String).isNotEmpty) {
+          _specialty = res['designation'] as String;
+        }
+        if (res['department'] != null && (res['department'] as String).isNotEmpty) {
+          _department = res['department'] as String;
+        }
+        if (res['docId'] != null && (res['docId'] as String).isNotEmpty) {
+          _registration = res['docId'] as String;
+        }
+        final metrics = res['metrics'] as Map?;
+        if (metrics != null) {
+          final inCareVal = metrics['inCareCount'] ?? metrics['inCare'];
+          if (inCareVal != null) {
+            _inCare = inCareVal.toString();
+          }
+          final apptsVal = metrics['todayAppointmentsCount'] ?? metrics['todaysAppts'];
+          if (apptsVal != null) {
+            _todaysAppts = apptsVal.toString();
+          }
+        }
+        final util = res['utilization'] as Map?;
+        if (util != null) {
+          final percent = util['bookedPercent'] ?? util['percent'];
+          if (percent is num) {
+            _utilizationPercent = percent.toInt();
+          }
+          final booked = util['bookedCount'] ?? util['booked'];
+          if (booked is num) {
+            _bookedSlots = booked.toInt();
+          }
+          final available = util['availableCount'] ?? util['available'];
+          if (available is num) {
+            _availableSlots = available.toInt();
+          }
+        }
+        final daySlots = res['daySlots'] as List?;
+        if (daySlots != null && daySlots.isNotEmpty) {
+          const defaultLabels = [
+            '09:00 - 09:30',
+            '09:30 - 10:00',
+            '10:00 - 10:30',
+            '10:30 - 11:00',
+            '11:00 - 11:30',
+            '11:30 - 12:00',
+            '14:00 - 14:30',
+            '14:30 - 15:00',
+            '15:00 - 15:30',
+            '15:30 - 16:00',
+            '16:00 - 16:30',
+            '16:30 - 17:00',
+          ];
+
+          _slots = daySlots.asMap().entries.map((entry) {
+            final idx = entry.key;
+            final s = entry.value;
+            final map = s is Map ? s : {};
+            final id = (map['time'] ?? '').toString();
+            var label = (map['timeLabel'] ?? id).toString().trim();
+            if (label == '09:00 AM' || label.isEmpty || label == '09:00') {
+              if (id.contains(' - ')) {
+                label = id;
+              } else if (idx < defaultLabels.length) {
+                label = defaultLabels[idx];
+              }
+            }
+            final status = (map['status'] ?? 'available').toString().toLowerCase();
+            final kind = status == 'available'
+                ? SlotKind.available
+                : status == 'booked'
+                    ? SlotKind.booked
+                    : SlotKind.closed;
+            return AvailabilitySlot(id: id.isNotEmpty ? id : label, label: label, kind: kind);
+          }).toList();
+        }
+        final settings = res['settings'] as Map?;
+        if (settings != null) {
+          final buffer = settings['autoBuffer'] ?? settings['bufferMins'];
+          if (buffer is num) {
+            _bufferMins = buffer.toInt();
+          } else if (buffer is String) {
+            final match = RegExp(r'\d+').firstMatch(buffer);
+            if (match != null) _bufferMins = int.tryParse(match.group(0)!) ?? _bufferMins;
+          }
+          final capacity = settings['maxCapacity'] ?? settings['maxPatients'];
+          if (capacity is num) {
+            _maxPatients = capacity.toInt();
+          } else if (capacity is String) {
+            final match = RegExp(r'\d+').firstMatch(capacity);
+            if (match != null) _maxPatients = int.tryParse(match.group(0)!) ?? _maxPatients;
+          }
+          final advance = settings['minAdvanceBooking'] ?? settings['minAdvanceHours'];
+          if (advance is num) {
+            _minAdvanceHours = advance.toInt();
+          } else if (advance is String) {
+            final match = RegExp(r'\d+').firstMatch(advance);
+            if (match != null) _minAdvanceHours = int.tryParse(match.group(0)!) ?? _minAdvanceHours;
+          }
+        }
+      });
+    } catch (_) {
+      // Graceful fallback to initial placeholders
+    }
+  }
+
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -149,9 +301,39 @@ class _DoctorAvailabilityPageState
     );
     if (picked == null) return;
     setState(() => _selectedDate = _dateOnly(picked));
+    _fetchAvailability();
   }
 
-  void _confirmUpdate() {
+  Future<void> _confirmUpdate() async {
+    if (widget.now == null) {
+      final client = ref.read(apiClientProvider);
+      final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
+      try {
+        final slotsToSend = _selectedSlots.isNotEmpty
+            ? _selectedSlots.toList()
+            : _slots
+                .where((s) => s.kind == SlotKind.available)
+                .map((s) => s.label)
+                .toList();
+        await client.post<Map<String, dynamic>>(
+          '/doctors/availability',
+          data: {
+            'date': dateStr,
+            'selectedSlots': slotsToSend,
+            'safeguards': {
+              'bufferMins': _bufferMins,
+              'maxPatients': _maxPatients,
+              'minAdvanceHours': _minAdvanceHours,
+            },
+            'weeklySchedule': _dayEnabled,
+          },
+        );
+      } catch (_) {
+        // Graceful fallback
+      }
+    }
+
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         behavior: SnackBarBehavior.floating,
@@ -184,10 +366,21 @@ class _DoctorAvailabilityPageState
 }
 
 class _ProfileHeroCard extends StatelessWidget {
-  const _ProfileHeroCard({required this.onEditProfile, required this.onPhoto});
+  const _ProfileHeroCard({
+    required this.onEditProfile,
+    required this.onPhoto,
+    this.doctorName = AvailabilityPlaceholders.doctorName,
+    this.specialty = AvailabilityPlaceholders.specialty,
+    this.department = AvailabilityPlaceholders.department,
+    this.registration = AvailabilityPlaceholders.registration,
+  });
 
   final VoidCallback onEditProfile;
   final VoidCallback onPhoto;
+  final String doctorName;
+  final String specialty;
+  final String department;
+  final String registration;
 
   @override
   Widget build(BuildContext context) {
@@ -220,31 +413,31 @@ class _ProfileHeroCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      AvailabilityPlaceholders.doctorName,
-                      style: TextStyle(
+                      doctorName,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: AppTokens.fontWeightBold,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      AvailabilityPlaceholders.specialty,
-                      style: TextStyle(
+                      specialty,
+                      style: const TextStyle(
                         color: Color(0xFFC8B8F0),
                         fontSize: 13,
                         fontWeight: AppTokens.fontWeightMedium,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      AvailabilityPlaceholders.department,
-                      style: TextStyle(color: Color(0xFF9A93A8), fontSize: 13),
+                      department,
+                      style: const TextStyle(color: Color(0xFF9A93A8), fontSize: 13),
                     ),
                   ],
                 ),
@@ -284,7 +477,7 @@ class _ProfileHeroCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                AvailabilityPlaceholders.registration,
+                registration,
                 style: const TextStyle(
                   color: Color(0xFFD8D2E4),
                   fontSize: 13,
@@ -300,22 +493,28 @@ class _ProfileHeroCard extends StatelessWidget {
 }
 
 class _SummaryRow extends StatelessWidget {
-  const _SummaryRow();
+  const _SummaryRow({
+    this.inCare = AvailabilityPlaceholders.inCare,
+    this.todaysAppts = AvailabilityPlaceholders.todaysAppts,
+  });
+
+  final String inCare;
+  final String todaysAppts;
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
         Expanded(
           child: _MetricCard(
-            value: AvailabilityPlaceholders.inCare,
+            value: inCare,
             label: 'IN CARE',
           ),
         ),
-        SizedBox(width: 12),
+        const SizedBox(width: 12),
         Expanded(
           child: _MetricCard(
-            value: AvailabilityPlaceholders.todaysAppts,
+            value: todaysAppts,
             label: "TODAY'S APPTS",
           ),
         ),
@@ -373,7 +572,15 @@ class _MetricCard extends StatelessWidget {
 }
 
 class _SlotUtilizationCard extends StatelessWidget {
-  const _SlotUtilizationCard();
+  const _SlotUtilizationCard({
+    this.utilizationPercent = AvailabilityPlaceholders.utilizationPercent,
+    this.bookedSlots = AvailabilityPlaceholders.bookedSlots,
+    this.availableSlots = AvailabilityPlaceholders.availableSlots,
+  });
+
+  final int utilizationPercent;
+  final int bookedSlots;
+  final int availableSlots;
 
   @override
   Widget build(BuildContext context) {
@@ -417,21 +624,21 @@ class _SlotUtilizationCard extends StatelessWidget {
                 height: 108,
                 child: CustomPaint(
                   painter: _UtilizationPainter(
-                    AvailabilityPlaceholders.utilizationPercent / 100,
+                    utilizationPercent / 100,
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '${AvailabilityPlaceholders.utilizationPercent}%',
-                          style: TextStyle(
+                          '$utilizationPercent%',
+                          style: const TextStyle(
                             fontSize: 22,
                             fontWeight: AppTokens.fontWeightBold,
                             color: AppTokens.colorHomeTitle,
                           ),
                         ),
-                        Text(
+                        const Text(
                           'BOOKED',
                           style: TextStyle(
                             fontSize: 10,
@@ -446,20 +653,18 @@ class _SlotUtilizationCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 20),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _UtilStat(
                       color: AppTokens.colorPrimary,
-                      label:
-                          'Booked ${AvailabilityPlaceholders.bookedSlots} slots',
+                      label: 'Booked $bookedSlots slots',
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     _UtilStat(
                       color: AppTokens.colorHomeSuccessRing,
-                      label:
-                          'Available ${AvailabilityPlaceholders.availableSlots} slots',
+                      label: 'Available $availableSlots slots',
                     ),
                   ],
                 ),
@@ -549,6 +754,7 @@ class _ChooseSlotsCard extends StatelessWidget {
     required this.onToggleSlot,
     required this.onUpdate,
     required this.onInfo,
+    this.slots = AvailabilityPlaceholders.slots,
   });
 
   final DateTime now;
@@ -560,6 +766,7 @@ class _ChooseSlotsCard extends StatelessWidget {
   final ValueChanged<AvailabilitySlot> onToggleSlot;
   final VoidCallback onUpdate;
   final VoidCallback onInfo;
+  final List<AvailabilitySlot> slots;
 
   DateTime _dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
@@ -656,7 +863,7 @@ class _ChooseSlotsCard extends StatelessWidget {
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
             children: [
-              for (final slot in AvailabilityPlaceholders.slots)
+              for (final slot in slots)
                 _SlotTile(
                   slot: slot,
                   selected: selectedSlots.contains(slot.id),

@@ -29,28 +29,6 @@ export async function getCarePlansForClinic(ctx: TenantContext, requestedClinicI
 export async function getAppointmentsForClinic(ctx: TenantContext, requestedClinicId?: string) {
   const clinic = await resolveAuthorizedClinic(ctx, requestedClinicId);
 
-  // If a doctor is logged in, return all clinic appointments PLUS appointments assigned to this doctor
-  if (ctx.role === "DOCTOR" && ctx.userId) {
-    const docUser = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { name: true },
-    });
-    const cleanDocName = docUser?.name?.replace(/^Dr\s*\.?\s*/i, "").trim();
-    if (cleanDocName) {
-      return prisma.appointment.findMany({
-        where: {
-          OR: [
-            { clinicId: clinic.id },
-            {
-              doctorName: { contains: cleanDocName, mode: "insensitive" },
-            },
-          ],
-        },
-        orderBy: { startsAt: "desc" },
-      });
-    }
-  }
-
   return prisma.appointment.findMany({
     where: { clinicId: clinic.id, clinic: { organizationId: ctx.organizationId } },
     orderBy: { startsAt: "desc" },

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:smrkomed_doctor_app/core/constants/api_paths.dart';
 import 'package:smrkomed_doctor_app/core/di/app_providers.dart';
+import 'package:smrkomed_doctor_app/core/routing/app_routes.dart';
+import 'package:smrkomed_doctor_app/core/routing/shell_tabs.dart';
 import 'package:smrkomed_doctor_app/core/theme/app_tokens.dart';
 import 'package:smrkomed_doctor_app/features/home/domain/home_metrics.dart';
 import 'package:smrkomed_doctor_app/features/home/domain/home_models.dart';
@@ -77,12 +80,128 @@ class PatientsPage extends ConsumerWidget {
                       row.detail,
                     ].where((part) => part.isNotEmpty).join(' · '),
                   ),
+                  onTap: () => _showPatientActionSheet(context, row),
                 );
               },
             ),
           );
         },
       ),
+    );
+  }
+
+  void _showPatientActionSheet(BuildContext context, PatientRow row) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 22,
+                      backgroundColor: colorForKind(row.kind),
+                      child: Text(
+                        row.initials,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            row.name,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppTokens.colorHomeTitle,
+                            ),
+                          ),
+                          if (row.code != null)
+                            Text(
+                              row.code!,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppTokens.colorHomeMuted,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Stage: ${row.detail}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF554477),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      context.push(
+                        '${AppRoutes.consultation}?coupleId=${row.id}&patientName=${Uri.encodeComponent(row.name)}',
+                      );
+                    },
+                    icon: const Icon(Icons.edit_note_rounded),
+                    label: const Text('Start Consultation'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF5B3FA0),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      openShellTab(context, ShellTabs.inbox);
+                    },
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    label: const Text('Message Patient'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -133,7 +252,16 @@ class PatientsController extends AsyncNotifier<List<PatientRow>> {
                 .toList();
           },
         );
-    final active = rows.where((couple) => couple.isActiveJourney).toList();
+    final active = rows.where((couple) {
+      final id = couple.clinicId.trim().toLowerCase();
+      if (id == 'cmt0exo9n000vl804rbaabh32' || id == 'blr' || id.contains('bangalore')) {
+        return false;
+      }
+      if (couple.isQrCheckin) {
+        return false;
+      }
+      return true;
+    }).toList();
     return active
         .map(
           (couple) => PatientRow(

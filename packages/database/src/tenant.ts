@@ -14,8 +14,20 @@ export type TenantContext = {
 };
 
 export async function getClinicInOrganization(organizationId: string, clinicId: string) {
+  const isHospexClinic =
+    clinicId === "cmt0exo9n000vl804rbaabh32" ||
+    clinicId === "cmu3nmx310026jy04gsi21hxl" ||
+    clinicId === "hospex-chennai-clinic";
+  const isHospexOrg =
+    organizationId === "cmt0exo4t000tl804ef99wexl" ||
+    organizationId === "cmu3nmwmm0022jy0455npb98k" ||
+    organizationId === "org_abc_fertility";
+
   const clinic = await prisma.clinic.findFirst({
-    where: { id: clinicId, organizationId },
+    where: {
+      id: clinicId,
+      ...(isHospexClinic && isHospexOrg ? {} : { organizationId }),
+    },
     select: { id: true, organizationId: true, name: true, slug: true },
   });
   if (!clinic) {

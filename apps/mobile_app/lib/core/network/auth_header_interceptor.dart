@@ -8,12 +8,14 @@ class AuthHeaderInterceptor extends Interceptor {
   AuthHeaderInterceptor({
     required SessionStore sessionStore,
     required AppLogger logger,
+    this.clinicId = 'kochi',
     this.onUnauthorized,
   }) : _sessionStore = sessionStore,
        _logger = logger;
 
   final SessionStore _sessionStore;
   final AppLogger _logger;
+  final String clinicId;
   final SessionExpiredCallback? onUnauthorized;
 
   @override
@@ -29,6 +31,7 @@ class AuthHeaderInterceptor extends Interceptor {
         options.headers['Cookie'] = '$cookieName=${session.accessToken}';
       }
     }
+    options.headers['x-clinic-id'] = clinicId;
     handler.next(options);
   }
 

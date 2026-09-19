@@ -3,11 +3,34 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:smrkomed_doctor_app/core/theme/app_tokens.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/settings_shared.dart';
 
+import 'package:smrkomed_doctor_app/features/authentication/presentation/auth_controller.dart';
+
 class DoctorProfilePage extends ConsumerWidget {
   const DoctorProfilePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authControllerProvider).user;
+    final doctorName =
+        (user != null && user.name != 'Dr Test' && user.name.trim().isNotEmpty)
+            ? user.name.trim()
+            : SettingsPlaceholders.doctorName;
+    final specialty = (user != null && user.title?.trim().isNotEmpty == true)
+        ? user.title!.trim()
+        : SettingsPlaceholders.specialty;
+    final clinic =
+        (user != null && user.clinicName != 'Clinic' && user.clinicName.trim().isNotEmpty)
+            ? user.clinicName.trim()
+            : SettingsPlaceholders.clinic;
+    final email =
+        (user != null && user.email != 'doctor@clinic.example' && user.email.trim().isNotEmpty)
+            ? user.email.trim()
+            : SettingsPlaceholders.email;
+    final phone = (user?.phone?.trim().isNotEmpty == true)
+        ? user!.phone!.trim()
+        : SettingsPlaceholders.phone;
+    final role = user?.role.apiValue ?? 'DOCTOR';
+
     return SettingsSubpage(
       title: 'Profile',
       child: ListView(
@@ -22,38 +45,38 @@ class DoctorProfilePage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            SettingsPlaceholders.doctorName,
+          Text(
+            doctorName,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 22,
               fontWeight: AppTokens.fontWeightBold,
               color: AppTokens.colorHomeTitle,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            SettingsPlaceholders.specialty,
+          Text(
+            specialty,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppTokens.colorPrimary,
               fontWeight: AppTokens.fontWeightSemibold,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
-            SettingsPlaceholders.clinic,
+          Text(
+            clinic,
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppTokens.colorHomeMuted),
+            style: const TextStyle(color: AppTokens.colorHomeMuted),
           ),
           const SizedBox(height: 24),
-          _ProfileField(label: 'Email', value: SettingsPlaceholders.email),
-          _ProfileField(label: 'Phone', value: SettingsPlaceholders.phone),
+          _ProfileField(label: 'Email', value: email),
+          _ProfileField(label: 'Phone', value: phone),
           const _ProfileField(
             label: 'Language',
             value: SettingsPlaceholders.language,
           ),
-          const _ProfileField(label: 'Role', value: 'Doctor'),
+          _ProfileField(label: 'Role', value: role),
         ],
       ),
     );

@@ -346,6 +346,9 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
       if (bookedLabels.has(slot.label)) {
         return {
           time: slot.label,
+          label: slot.label,
+          start: slot.start,
+          end: slot.end,
           startTime: slot.start,
           endTime: slot.end,
           status: "booked" as const,
@@ -353,20 +356,24 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
         };
       }
       if (savedOverrides) {
-        const isActive = savedOverrides.includes(slot.label);
+        const isActive = savedOverrides.some(
+          (o: string) => o === slot.label || o === slot.start || o.startsWith(slot.start)
+        );
         return {
           time: slot.label,
-          startTime: slot.start,
-          endTime: slot.end,
-          status: isActive ? ("active" as const) : ("available" as const),
+          label: slot.label,
+          start: slot.start,
+          end: slot.end,
+          status: isActive ? ("available" as const) : ("closed" as const),
         };
       }
       const isActive = defaultActiveSlots.has(slot.label);
       return {
         time: slot.label,
-        startTime: slot.start,
-        endTime: slot.end,
-        status: isActive ? ("active" as const) : ("available" as const),
+        label: slot.label,
+        start: slot.start,
+        end: slot.end,
+        status: isActive ? ("available" as const) : ("closed" as const),
       };
     });
   };
@@ -376,7 +383,7 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
   const allSlots = [...morningSlots, ...afternoonSlots];
 
   const bookedCount = allSlots.filter((s) => s.status === "booked").length;
-  const activeCount = allSlots.filter((s) => s.status === "active").length;
+  const activeCount = allSlots.filter((s) => s.status === "available").length;
   const availableCount = allSlots.filter((s) => s.status === "available").length;
   const blockedCount = Math.max(0, allSlots.length - (bookedCount + activeCount + availableCount));
   const utilizationPct = Math.min(100, Math.round(((bookedCount + activeCount) / allSlots.length) * 100)) || 67;
@@ -889,6 +896,24 @@ async function handleDoctorConsultations(c: any, targetId?: string) {
     ];
   }
 
+  const coupleId = c.req.query("coupleId");
+  const patientId = c.req.query("patientId");
+  const appointmentId = c.req.query("appointmentId");
+
+  if (coupleId) {
+    whereCondition.coupleId = coupleId;
+  } else if (patientId) {
+    whereCondition.couple = {
+      ...whereCondition.couple,
+      OR: [{ primaryPatientId: patientId }, { partnerPatientId: patientId }],
+    };
+  } else if (appointmentId) {
+    whereCondition.couple = {
+      ...whereCondition.couple,
+      appointments: { some: { id: appointmentId } },
+    };
+  }
+
   const notes = await prisma.consultationNote.findMany({
     where: whereCondition,
     include: {
@@ -943,9 +968,9 @@ async function handleDoctorAvailability(c: any, targetId?: string) {
       ...(slotData.morningSession?.slots || []),
       ...(slotData.afternoonSession?.slots || []),
     ].map((s: any) => ({
-      time: s.start || s.time || s.label?.slice(0, 5) || "09:00",
-      timeLabel: s.label || s.timeLabel || "09:00 AM",
-      status: s.status === "available" ? "available" : s.status === "booked" ? "booked" : "blocked",
+      time: s.label || s.time || s.start || "09:00 - 09:30",
+      timeLabel: s.label || s.time || s.timeLabel || "09:00 - 09:30",
+      status: s.status === "booked" ? "booked" : (s.status === "available" || s.status === "active") ? "available" : "closed",
       patientName: s.patientName || undefined,
     }));
 

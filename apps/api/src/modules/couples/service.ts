@@ -111,6 +111,19 @@ function isUnassigned(value?: string) {
   return normalized === "unassigned" || normalized === "__unassigned__";
 }
 
+export function isHospexNetwork(clinicId?: string, organizationId?: string, organizationName?: string) {
+  const isHospexClinic =
+    clinicId === "cmt0exo9n000vl804rbaabh32" ||
+    clinicId === "cmu3nmx310026jy04gsi21hxl" ||
+    clinicId === "hospex-chennai-clinic";
+  const isHospexOrg =
+    organizationId === "cmt0exo4t000tl804ef99wexl" ||
+    organizationId === "cmu3nmwmm0022jy0455npb98k" ||
+    organizationId === "org_abc_fertility" ||
+    organizationName?.toLowerCase().includes("hospex");
+  return isHospexClinic && isHospexOrg;
+}
+
 async function resolveStaffMember(
   clinicId: string,
   organizationId: string,
@@ -126,7 +139,6 @@ async function resolveStaffMember(
     const membership = await prisma.clinicMembership.findFirst({
       where: {
         clinicId,
-        clinic: { organizationId },
         userId,
         status: "ACTIVE",
         user: { isActive: true },
@@ -148,7 +160,6 @@ async function resolveStaffMember(
   const membership = await prisma.clinicMembership.findFirst({
     where: {
       clinicId,
-      clinic: { organizationId },
       status: "ACTIVE",
       user: { isActive: true, name: { equals: userName!, mode: "insensitive" } },
     },
@@ -187,64 +198,23 @@ async function runStep<T>(
 }
 
 export async function loadCouple(ctx: TenantContext, id: string) {
-  let docNameCondition: Record<string, unknown> | null = null;
-  if (ctx.role === "DOCTOR" && ctx.userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { name: true },
-    });
-    const cleanDocName = user?.name?.replace(/^Dr\s*\.?\s*/i, "").trim();
-    if (cleanDocName) {
-      docNameCondition = {
-        appointments: {
-          some: {
-            doctorName: { contains: cleanDocName, mode: "insensitive" },
-          },
-        },
-      };
-    }
-  }
-
+  const isHospex = isHospexNetwork(ctx.clinicId, ctx.organizationId, ctx.organizationName);
   return prisma.couple.findFirst({
     where: {
       id,
-      OR: [
-        { clinicId: ctx.clinicId, clinic: { organizationId: ctx.organizationId } },
-        ...(docNameCondition ? [docNameCondition] : []),
-      ],
+      clinicId: ctx.clinicId,
+      ...(isHospex ? {} : { clinic: { organizationId: ctx.organizationId } }),
     },
     include: coupleInclude,
   });
 }
 
 export async function listCouples(ctx: TenantContext) {
-  let docNameCondition: Record<string, unknown> | null = null;
-  if (ctx.role === "DOCTOR" && ctx.userId) {
-    const user = await prisma.user.findUnique({
-      where: { id: ctx.userId },
-      select: { name: true },
-    });
-    const cleanDocName = user?.name?.replace(/^Dr\s*\.?\s*/i, "").trim();
-    if (cleanDocName) {
-      docNameCondition = {
-        appointments: {
-          some: {
-            doctorName: { contains: cleanDocName, mode: "insensitive" },
-          },
-        },
-      };
-    }
-  }
-
+  const isHospex = isHospexNetwork(ctx.clinicId, ctx.organizationId, ctx.organizationName);
   return prisma.couple.findMany({
     where: {
-      OR: [
-        {
-          clinicId: ctx.clinicId,
-          clinic: { organizationId: ctx.organizationId },
-        },
-        ...(docNameCondition ? [docNameCondition] : []),
-      ],
+      clinicId: ctx.clinicId,
+      ...(isHospex ? {} : { clinic: { organizationId: ctx.organizationId } }),
       status: { not: "ARCHIVED" },
     },
     include: coupleInclude,
@@ -284,19 +254,25 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
   let step: CreateCoupleStep = "CLINIC_LOOKUP";
 
   const targetClinicId =
-    input.clinicId === "blr" || input.clinicId === "cmt0exo9n000vl804rbaabh32"
-      ? "cmt0exo9n000vl804rbaabh32"
-      : input.clinicId === "kochi" || input.clinicId === "cmu3nmx310026jy04gsi21hxl"
-        ? "cmu3nmx310026jy04gsi21hxl"
-        : input.clinicId === "chennai" || input.clinicId === "hospex-chennai-clinic"
-          ? "hospex-chennai-clinic"
-          : (input.clinicId || ctx.clinicId);
+    ctx.clinicId === "cmu3nmx310026jy04gsi21hxl"
+      ? "cmu3nmx310026jy04gsi21hxl"
+      : input.clinicId === "blr" || input.clinicId === "cmt0exo9n000vl804rbaabh32"
+        ? "cmt0exo9n000vl804rbaabh32"
+        : input.clinicId === "kochi" || input.clinicId === "cmu3nmx310026jy04gsi21hxl"
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : input.clinicId === "chennai" || input.clinicId === "hospex-chennai-clinic"
+            ? "hospex-chennai-clinic"
+            : (input.clinicId || ctx.clinicId);
 
   try {
+    const isHospex = isHospexNetwork(targetClinicId, ctx.organizationId, ctx.organizationName);
     const clinic = await runStep("CLINIC_LOOKUP", requestId, ctx, () =>
       prisma.clinic.findFirst({
-        where: { id: targetClinicId, organizationId: ctx.organizationId },
-        select: { id: true },
+        where: {
+          id: targetClinicId,
+          ...(isHospex ? {} : { organizationId: ctx.organizationId }),
+        },
+        select: { id: true, organizationId: true },
       }),
     );
     if (!clinic) {
@@ -319,7 +295,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     const doctorId = await runStep("STAFF_RESOLVE", requestId, ctx, () =>
       resolveStaffMember(
         targetClinicId,
-        ctx.organizationId,
+        clinic.organizationId,
         input.assignedDoctorId,
         input.doctorName,
         "doctor",
@@ -328,7 +304,7 @@ export async function createCoupleRecord(ctx: TenantContext, input: CreateCouple
     const coordinatorId = await runStep("STAFF_RESOLVE", requestId, ctx, () =>
       resolveStaffMember(
         targetClinicId,
-        ctx.organizationId,
+        clinic.organizationId,
         input.assignedCoordinatorId,
         input.coordinatorName,
         "coordinator",
@@ -515,11 +491,12 @@ export async function deleteCoupleRecord(
   id: string,
   options?: DeleteCoupleOptions,
 ) {
+  const isHospex = isHospexNetwork(ctx.clinicId, ctx.organizationId, ctx.organizationName);
   const existing = await prisma.couple.findFirst({
     where: {
       id,
       clinicId: ctx.clinicId,
-      clinic: { organizationId: ctx.organizationId },
+      ...(isHospex ? {} : { clinic: { organizationId: ctx.organizationId } }),
     },
     include: {
       primaryPatient: true,

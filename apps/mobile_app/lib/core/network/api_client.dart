@@ -23,9 +23,10 @@ class ApiClient {
                connectTimeout: config.connectTimeout,
                receiveTimeout: config.receiveTimeout,
                sendTimeout: config.sendTimeout,
-               headers: const {
+               headers: {
                  'Accept': 'application/json',
                  'Content-Type': 'application/json',
+                 'x-clinic-id': config.defaultClinicId,
                },
              ),
            ) {
@@ -34,6 +35,7 @@ class ApiClient {
         AuthHeaderInterceptor(
           sessionStore: sessionStore,
           logger: logger,
+          clinicId: config.defaultClinicId,
           onUnauthorized: onUnauthorized,
         ),
         SafeRetryInterceptor(_dio),
@@ -48,8 +50,13 @@ class ApiClient {
     Map<String, dynamic>? query,
     T Function(dynamic data)? parse,
   }) {
+    final mergedQuery = <String, dynamic>{
+      ...?query,
+      if (query == null || !query.containsKey('clinicId'))
+        'clinicId': 'kochi',
+    };
     return _send(
-      () => _dio.get<dynamic>(path, queryParameters: query),
+      () => _dio.get<dynamic>(path, queryParameters: mergedQuery),
       parse: parse,
     );
   }

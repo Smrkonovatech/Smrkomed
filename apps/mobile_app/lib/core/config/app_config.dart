@@ -31,6 +31,7 @@ class AppConfig {
     required this.apiBaseUrl,
     required this.webAuthBaseUrl,
     required this.deepLinkScheme,
+    this.defaultClinicId = 'kochi',
     this.connectTimeout = const Duration(seconds: 15),
     this.receiveTimeout = const Duration(seconds: 20),
     this.sendTimeout = const Duration(seconds: 20),
@@ -40,6 +41,7 @@ class AppConfig {
   final String apiBaseUrl;
   final String webAuthBaseUrl;
   final String deepLinkScheme;
+  final String defaultClinicId;
   final Duration connectTimeout;
   final Duration receiveTimeout;
   final Duration sendTimeout;
@@ -89,12 +91,17 @@ class AppConfig {
       'DEEP_LINK_SCHEME',
       defaultValue: 'smrkomed',
     );
+    const clinic = String.fromEnvironment(
+      'CLINIC_ID',
+      defaultValue: 'kochi',
+    );
     final environment = AppEnvironment.parse(envName);
     return AppConfig(
       environment: environment,
       apiBaseUrl: api.isEmpty ? _defaultApi(environment) : api,
       webAuthBaseUrl: web.isEmpty ? _defaultWeb(environment) : web,
       deepLinkScheme: scheme.isEmpty ? 'smrkomed' : scheme,
+      defaultClinicId: clinic.isEmpty ? 'kochi' : clinic,
     );
   }
 

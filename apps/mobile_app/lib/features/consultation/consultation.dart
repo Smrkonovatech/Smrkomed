@@ -1,3 +1,5 @@
 library;
 
-export 'package:smrkomed_doctor_app/core/widgets/feature_placeholder_page.dart';
+export 'data/consultation_repository.dart';
+export 'presentation/consultation_controller.dart';
+export 'presentation/consultation_page.dart';

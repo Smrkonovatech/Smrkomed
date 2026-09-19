@@ -360,7 +360,7 @@ export const analyticsRoutes = new Hono<AppEnv>()
         completedAppointments,
         noShowAppointments,
         activeTreatments,
-        activeJourneys,
+        activeJourneys: Math.max(activeJourneys, activeTreatments),
         taskCompletionRate,
         escalationsCount: escalatedTasks,
       },
@@ -390,7 +390,7 @@ export const analyticsRoutes = new Hono<AppEnv>()
         reportsPending,
         reportsReviewed,
         followUpsCount,
-        activeJourneys,
+        activeJourneys: Math.max(activeJourneys, activeTreatments),
         dischargeQueue: dischargeQueueCount,
       },
       fertility: {
@@ -658,7 +658,7 @@ export const analyticsRoutes = new Hono<AppEnv>()
       }
     }
 
-    const [followUpsCount, activeJourneys, dischargeQueue] = await Promise.all([
+    const [followUpsCount, activeCarePlans, activeTreatments, dischargeQueue] = await Promise.all([
       prisma.appointment.count({
         where: {
           ...clinicWhere,
@@ -670,6 +670,7 @@ export const analyticsRoutes = new Hono<AppEnv>()
         },
       }),
       prisma.carePlan.count({ where: { ...clinicWhere, status: "ACTIVE" } }),
+      prisma.treatment.count({ where: { clinicId: tenant.clinicId, status: "ACTIVE" } }),
       prisma.carePlan.count({
         where: {
           ...clinicWhere,
@@ -682,7 +683,7 @@ export const analyticsRoutes = new Hono<AppEnv>()
       reportsPending,
       reportsReviewed,
       followUpsCount,
-      activeJourneys,
+      activeJourneys: Math.max(activeCarePlans, activeTreatments),
       dischargeQueue,
     });
   })

@@ -23,7 +23,7 @@ export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
             ? "hospex-chennai-clinic"
             : requestedClinic;
 
-    if (targetId && targetId !== clinicId) {
+    if (targetId) {
       const clinic = await prisma.clinic.findUnique({
         where: { id: targetId },
         select: {

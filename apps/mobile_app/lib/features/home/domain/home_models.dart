@@ -45,6 +45,7 @@ class ClinicCouple {
     this.slug,
     this.doctor,
     this.assignedDoctorId,
+    this.clinicId = '',
   });
 
   final String id;
@@ -59,6 +60,7 @@ class ClinicCouple {
   final String? slug;
   final String? doctor;
   final String? assignedDoctorId;
+  final String clinicId;
 
   factory ClinicCouple.fromJson(Map<String, dynamic> json) {
     final partnerRaw = json['partner'];
@@ -81,13 +83,43 @@ class ClinicCouple {
       slug: json['slug']?.toString(),
       doctor: json['doctor']?.toString(),
       assignedDoctorId: json['assignedDoctorId']?.toString(),
+      clinicId: json['clinicId']?.toString() ?? '',
     );
   }
 
-  bool get isActiveJourney => careLoop.toLowerCase() == 'active';
+  bool get isQrCheckin {
+    final name = primary.name.toLowerCase().trim();
+    final s = (slug ?? '').toLowerCase().trim();
+    if (name.contains('hospextest') ||
+        name == 'manideep c' ||
+        name == 'priya hospextest' ||
+        name.contains('walk-in')) {
+      return true;
+    }
+    if (s.startsWith('qr-') ||
+        s.contains('hospextest') ||
+        s.contains('qr-checkin') ||
+        s.contains('walk-in')) {
+      return true;
+    }
+    return false;
+  }
+
+  bool get isActiveJourney {
+    final s = status.trim().toLowerCase();
+    if (s == 'archived' || s == 'completed' || s == 'cancelled') {
+      return false;
+    }
+    return true;
+  }
 
   String get patientCode {
     final value = slug?.trim() ?? '';
+    if (value.isEmpty) return '';
+    // Filter out system-generated CUID-like codes (e.g. "c-y7e0mtp2-mu7195yr")
+    // Only show human-readable slugs like "vijay-priya"
+    final cuidPattern = RegExp(r'^[a-z0-9]{20,}$|^c[a-z0-9]{10,}|^c-[a-z0-9]+-[a-z0-9]+$');
+    if (cuidPattern.hasMatch(value)) return '';
     return value;
   }
 
@@ -117,6 +149,7 @@ class ClinicAppointment {
     this.doctor = '',
     this.room = '',
     this.notes = '',
+    this.clinicId = '',
   });
 
   final String id;
@@ -128,6 +161,7 @@ class ClinicAppointment {
   final String doctor;
   final String room;
   final String notes;
+  final String clinicId;
 
   factory ClinicAppointment.fromJson(Map<String, dynamic> json) {
     return ClinicAppointment(
@@ -140,6 +174,7 @@ class ClinicAppointment {
       doctor: json['doctor']?.toString() ?? '',
       room: json['room']?.toString() ?? '',
       notes: json['notes']?.toString() ?? '',
+      clinicId: json['clinicId']?.toString() ?? '',
     );
   }
 

@@ -20,6 +20,8 @@ abstract final class AppRoutes {
   static const profile = '/profile';
   static const settings = '/settings';
   static const availability = '/availability';
+  static const consultation = '/consultation';
+  static const chat = '/inbox/chat';
 
   static const public = {splash, login, forgotPassword};
 }

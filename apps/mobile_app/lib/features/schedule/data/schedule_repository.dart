@@ -24,6 +24,7 @@ class ScheduleAppointment {
     required this.time,
     required this.subtitle,
     this.patientCode,
+    this.coupleId,
   });
 
   final String id;
@@ -32,6 +33,7 @@ class ScheduleAppointment {
   final String time;
   final String subtitle;
   final String? patientCode;
+  final String? coupleId;
 }
 
 abstract class ScheduleRepository {
@@ -57,11 +59,28 @@ class ScheduleRemoteRepository implements ScheduleRepository {
     String? clinicName,
   }) async {
     try {
-      final couples = await _list(ApiPaths.couples, ClinicCouple.fromJson);
-      final appointments = await _list(
+      final allCouples = await _list(ApiPaths.couples, ClinicCouple.fromJson);
+      final allAppointments = await _list(
         ApiPaths.appointments,
         ClinicAppointment.fromJson,
       );
+      // Strictly scope to Kochi clinic data only
+      final couples = allCouples.where((c) {
+        final id = c.clinicId.trim().toLowerCase();
+        if (id == 'cmt0exo9n000vl804rbaabh32' || id == 'blr' || id.contains('bangalore')) {
+          return false;
+        }
+        return true;
+      }).toList();
+
+      final appointments = allAppointments.where((a) {
+        final id = a.clinicId.trim().toLowerCase();
+        if (id == 'cmt0exo9n000vl804rbaabh32' || id == 'blr' || id.contains('bangalore')) {
+          return false;
+        }
+        return true;
+      }).toList();
+
       final clock = now ?? DateTime.now();
       final coupleById = {for (final couple in couples) couple.id: couple};
       final scoped = HomeMetrics.scopedAppointments(
@@ -110,6 +129,7 @@ class ScheduleRemoteRepository implements ScheduleRepository {
       patientCode: (couple?.patientCode.isNotEmpty ?? false)
           ? couple!.patientCode
           : null,
+      coupleId: item.coupleId,
     );
   }
 
@@ -122,7 +142,13 @@ class ScheduleRemoteRepository implements ScheduleRepository {
         type.contains('tele')) {
       return 'Online';
     }
-    return clinicName?.trim() ?? '';
+    if (clinicName != null &&
+        clinicName.trim().isNotEmpty &&
+        !clinicName.toLowerCase().contains('bangalore') &&
+        !clinicName.toLowerCase().contains('blr')) {
+      return clinicName.trim();
+    }
+    return 'Kochi Clinic';
   }
 
   Future<List<T>> _list<T>(

@@ -5,6 +5,7 @@ import 'package:smrkomed_doctor_app/core/routing/app_routes.dart';
 import 'package:smrkomed_doctor_app/core/routing/shell_tabs.dart';
 import 'package:smrkomed_doctor_app/core/theme/app_tokens.dart';
 import 'package:smrkomed_doctor_app/features/authentication/presentation/auth_controller.dart';
+import 'package:smrkomed_doctor_app/features/home/presentation/prepare_day_sheet.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/settings_shared.dart';
 
 class SettingsPage extends ConsumerWidget {
@@ -54,6 +55,36 @@ class SettingsPage extends ConsumerWidget {
                   _SettingsGroup(
                     children: [
                       _SettingsRow(
+                        icon: Icons.assignment_outlined,
+                        label: 'Clinical Reports',
+                        onTap: () => context.push(AppRoutes.reports),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.edit_note_rounded,
+                        label: 'Record Consultation',
+                        onTap: () => context.push(AppRoutes.consultation),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.warning_amber_rounded,
+                        label: 'Clinical Escalations & Alerts',
+                        onTap: () => context.push(AppRoutes.notifications),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.auto_awesome,
+                        label: 'Prepare My Day Briefing',
+                        onTap: () => showPrepareDaySheet(context: context),
+                      ),
+                      _SettingsRow(
+                        icon: Icons.access_time_rounded,
+                        label: 'Doctor Availability & Slots',
+                        onTap: () => context.push(AppRoutes.moreAvailability),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _SettingsGroup(
+                    children: [
+                      _SettingsRow(
                         icon: Icons.person_outline,
                         label: 'Profile',
                         onTap: () => context.push(AppRoutes.moreProfile),
@@ -80,14 +111,14 @@ class SettingsPage extends ConsumerWidget {
                         onTap: () => context.push(AppRoutes.moreLanguage),
                       ),
                       _SettingsRow(
+                        icon: Icons.help_outline_rounded,
+                        label: 'Support & Help',
+                        onTap: () => context.push(AppRoutes.moreHelp),
+                      ),
+                      _SettingsRow(
                         icon: Icons.description_outlined,
                         label: 'Terms and Privacy',
                         onTap: () => context.push(AppRoutes.moreTerms),
-                      ),
-                      _SettingsRow(
-                        icon: Icons.support_agent_outlined,
-                        label: 'Help & Support',
-                        onTap: () => context.push(AppRoutes.moreHelp),
                       ),
                       _SettingsRow(
                         icon: Icons.logout_rounded,
@@ -97,22 +128,24 @@ class SettingsPage extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 28),
-                  const Text(
-                    SettingsPlaceholders.versionLine,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTokens.colorHomeMuted,
+                  const SizedBox(height: 24),
+                  const Center(
+                    child: Text(
+                      SettingsPlaceholders.versionLine,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTokens.colorHomeMuted,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    SettingsPlaceholders.complianceLine,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppTokens.colorHomeMuted,
+                  const Center(
+                    child: Text(
+                      SettingsPlaceholders.complianceLine,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTokens.colorHomeMuted,
+                      ),
                     ),
                   ),
                 ],
@@ -133,6 +166,20 @@ class _DoctorCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authControllerProvider).user;
+    final doctorName =
+        (user != null && user.name != 'Dr Test' && user.name.trim().isNotEmpty)
+            ? user.name.trim()
+            : SettingsPlaceholders.doctorName;
+    final specialty =
+        (user != null && user.title?.trim().isNotEmpty == true)
+            ? user.title!.trim()
+            : SettingsPlaceholders.specialty;
+    final clinic =
+        (user != null && user.clinicName != 'Clinic' && user.clinicName.trim().isNotEmpty)
+            ? user.clinicName.trim()
+            : SettingsPlaceholders.clinic;
+
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(24),
@@ -150,31 +197,31 @@ class _DoctorCard extends ConsumerWidget {
                 onCamera: onCamera,
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      SettingsPlaceholders.doctorName,
-                      style: TextStyle(
+                      doctorName,
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: AppTokens.fontWeightBold,
                         color: AppTokens.colorHomeTitle,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      SettingsPlaceholders.specialty,
-                      style: TextStyle(
+                      specialty,
+                      style: const TextStyle(
                         fontSize: 14,
                         fontWeight: AppTokens.fontWeightSemibold,
                         color: AppTokens.colorPrimary,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      SettingsPlaceholders.clinic,
-                      style: TextStyle(
+                      clinic,
+                      style: const TextStyle(
                         fontSize: 13,
                         color: AppTokens.colorHomeMuted,
                       ),

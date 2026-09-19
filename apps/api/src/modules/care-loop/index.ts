@@ -834,10 +834,14 @@ export const careLoopRoutes = new Hono<AppEnv>()
   .get("/analytics", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
 
-    const [plans, tasks, escalations] = await Promise.all([
+    const [plans, treatments, tasks, escalations] = await Promise.all([
       prisma.carePlan.findMany({
         where: { clinicId: tenant.clinicId },
-        select: { id: true, status: true, currentStageName: true, type: true },
+        select: { id: true, coupleId: true, status: true, currentStageName: true, type: true },
+      }),
+      prisma.treatment.findMany({
+        where: { clinicId: tenant.clinicId, status: "ACTIVE" },
+        select: { id: true, coupleId: true, status: true, stageName: true, kind: true },
       }),
       prisma.careTask.findMany({
         where: { clinicId: tenant.clinicId },
@@ -849,7 +853,16 @@ export const careLoopRoutes = new Hono<AppEnv>()
       }),
     ]);
 
-    const activeJourneys = plans.filter((p) => p.status === "ACTIVE").length;
+    const activeCarePlans = plans.filter(
+      (p) => p.status === "ACTIVE" && p.type !== "FERTILITY_EVALUATION",
+    );
+    const activeTreatments = treatments.filter(
+      (t) => t.status === "ACTIVE" && t.kind !== "EVALUATION",
+    );
+    const activeJourneys = Math.max(
+      activeCarePlans.length,
+      activeTreatments.length,
+    );
     const completedJourneys = plans.filter((p) => p.status === "COMPLETED").length;
     const totalTasks = tasks.length;
     const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length;

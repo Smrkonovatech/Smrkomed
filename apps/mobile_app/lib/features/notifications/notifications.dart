@@ -1,3 +1,5 @@
 library;
 
-export 'package:smrkomed_doctor_app/core/widgets/feature_placeholder_page.dart';
+export 'data/notifications_repository.dart';
+export 'presentation/notifications_controller.dart';
+export 'presentation/notifications_page.dart';

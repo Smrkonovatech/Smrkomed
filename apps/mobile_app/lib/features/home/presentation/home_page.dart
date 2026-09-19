@@ -10,6 +10,7 @@ import 'package:smrkomed_doctor_app/features/authentication/presentation/auth_co
 import 'package:smrkomed_doctor_app/features/home/domain/home_metrics.dart';
 import 'package:smrkomed_doctor_app/features/home/presentation/home_controller.dart';
 import 'package:smrkomed_doctor_app/features/home/presentation/home_widgets.dart';
+import 'package:smrkomed_doctor_app/features/home/presentation/prepare_day_sheet.dart';
 import 'package:smrkomed_doctor_app/features/patients/presentation/patients_page.dart';
 import 'package:smrkomed_doctor_app/features/schedule/presentation/schedule_controller.dart';
 
@@ -142,15 +143,7 @@ class HomePage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 14),
                   PrepareMyDayCard(
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Coming soon. An assistive daily summary is not available on the existing API yet.',
-                          ),
-                        ),
-                      );
-                    },
+                    onTap: () => showPrepareDaySheet(context: context),
                   ),
                 ],
               ),

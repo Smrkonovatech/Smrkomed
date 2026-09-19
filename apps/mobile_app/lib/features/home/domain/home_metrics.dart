@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:intl/intl.dart';
 import 'package:smrkomed_doctor_app/features/home/domain/home_models.dart';
 
@@ -245,7 +246,8 @@ abstract final class HomeMetrics {
       timeByCouple.putIfAbsent(item.coupleId, () => item.time);
     }
 
-    final activeCouples = coupleList
+    final visibleCouples = coupleList.where((c) => !c.isQrCheckin).toList();
+    final activeCouples = visibleCouples
         .where((couple) => couple.isActiveJourney)
         .toList();
     final previews = <HomeJourneyPreview>[];
@@ -264,7 +266,7 @@ abstract final class HomeMetrics {
 
     final weekAgo = now.subtract(const Duration(days: 7));
     var addedThisWeek = 0;
-    for (final couple in coupleList) {
+    for (final couple in visibleCouples) {
       final created = parseSince(couple.since);
       if (created != null && !created.isBefore(weekAgo)) {
         addedThisWeek += 1;
@@ -278,7 +280,7 @@ abstract final class HomeMetrics {
         ? null
         : openExceptions.where((item) => item.isUrgent).length;
 
-    final needsAttention = coupleList
+    final needsAttention = visibleCouples
         .where((couple) => couple.status.toLowerCase() == 'needs attention')
         .length;
     final overdueOrEscalated =
@@ -299,7 +301,10 @@ abstract final class HomeMetrics {
         0;
 
     return HomeDashboard(
-      activeJourneyCount: analytics?.activeJourneys ?? activeCouples.length,
+      activeJourneyCount: math.max(
+        analytics?.activeJourneys ?? 0,
+        activeCouples.length,
+      ),
       todayVisitCount: today.length,
       todayAppointments: schedule,
       journeyPreviews: previews,
@@ -307,15 +312,15 @@ abstract final class HomeMetrics {
           ? needsAttention
           : overdueOrEscalated,
       urgentEscalationCount: urgent,
-      patientsUnderCare: coupleList.length,
-      ivfCount: coupleList
+      patientsUnderCare: visibleCouples.length,
+      ivfCount: visibleCouples
           .where((couple) => couple.treatment.toUpperCase() == 'IVF')
           .length,
-      iuiCount: coupleList
+      iuiCount: visibleCouples
           .where((couple) => couple.treatment.toUpperCase() == 'IUI')
           .length,
       addedThisWeek: addedThisWeek,
-      onTrackCount: coupleList
+      onTrackCount: visibleCouples
           .where((couple) => couple.status.toLowerCase() == 'on track')
           .length,
       dueTodayCount: dueToday,

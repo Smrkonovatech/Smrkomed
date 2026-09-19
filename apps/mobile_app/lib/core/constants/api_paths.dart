@@ -18,6 +18,10 @@ abstract final class ApiPaths {
   static const analyticsSummary = '/analytics/summary';
   static const whatsappInbox = '/whatsapp-automation/inbox';
   static const realtimeEvents = '/realtime/events';
+  static const doctorReports = '/doctors/reports';
+  static const doctorConsultations = '/doctors/consultations';
+  static const doctorSchedule = '/doctors/schedule';
+  static const doctorPrepareDay = '/doctors/prepare-my-day';
 }
 
 /// Auth.js routes hosted by `apps/web`, not the Hono API.

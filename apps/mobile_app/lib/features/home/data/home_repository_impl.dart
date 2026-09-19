@@ -55,12 +55,27 @@ class HomeRemoteDataSource {
     final exceptionResult = results[4];
 
     if (coupleResult is _Ok<List<ClinicCouple>>) {
-      couples = coupleResult.value;
+      couples = coupleResult.value.where((c) {
+        final id = c.clinicId.trim().toLowerCase();
+        if (id == 'cmt0exo9n000vl804rbaabh32' || id == 'blr' || id.contains('bangalore')) {
+          return false;
+        }
+        if (c.isQrCheckin) {
+          return false;
+        }
+        return true;
+      }).toList();
     } else if (coupleResult is _Fail) {
       couplesError = coupleResult.message;
     }
     if (appointmentResult is _Ok<List<ClinicAppointment>>) {
-      appointments = appointmentResult.value;
+      appointments = appointmentResult.value.where((a) {
+        final id = a.clinicId.trim().toLowerCase();
+        if (id == 'cmt0exo9n000vl804rbaabh32' || id == 'blr' || id.contains('bangalore')) {
+          return false;
+        }
+        return true;
+      }).toList();
     } else if (appointmentResult is _Fail) {
       appointmentsError = appointmentResult.message;
     }

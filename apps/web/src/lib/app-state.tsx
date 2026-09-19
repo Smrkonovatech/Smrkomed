@@ -511,7 +511,16 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         : {}),
       whatsappConsent: input.whatsappConsent,
       carePlanTemplate: input.carePlanTemplate,
-      clinicId: clinicId === "blr" ? "cmt0exo9n000vl804rbaabh32" : clinicId === "kochi" ? "cmu3nmx310026jy04gsi21hxl" : clinicId,
+      clinicId:
+        (typeof window !== "undefined" &&
+        (window.localStorage.getItem("smrkomed_active_clinic_id") === "kochi" ||
+          window.localStorage.getItem("smrkomed_active_clinic_id") === "cmu3nmx310026jy04gsi21hxl"))
+          ? "cmu3nmx310026jy04gsi21hxl"
+          : clinicId === "kochi" || clinicId === "cmu3nmx310026jy04gsi21hxl"
+            ? "cmu3nmx310026jy04gsi21hxl"
+            : clinicId === "blr" || clinicId === "cmt0exo9n000vl804rbaabh32"
+              ? "cmt0exo9n000vl804rbaabh32"
+              : clinicId,
     });
     // Use the real API create response, then refetch the clinic couple list.
     // Never wipe the list if the follow-up refetch fails.
@@ -529,7 +538,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       );
     }
     return couple;
-  }, []);
+  }, [clinicId]);
 
   const updatePatient = useCallback(async (patientId: string, patch: { phone?: string; email?: string }) => {
     await clinicApi.patchPatient(patientId, patch);

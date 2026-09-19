@@ -4,20 +4,22 @@ import 'package:go_router/go_router.dart';
 import 'package:smrkomed_doctor_app/core/config/app_config.dart';
 import 'package:smrkomed_doctor_app/core/routing/app_routes.dart';
 import 'package:smrkomed_doctor_app/core/routing/app_shell.dart';
-import 'package:smrkomed_doctor_app/core/widgets/feature_placeholder_page.dart';
 import 'package:smrkomed_doctor_app/features/authentication/presentation/auth_controller.dart';
 import 'package:smrkomed_doctor_app/features/authentication/presentation/biometric_unlock_page.dart';
 import 'package:smrkomed_doctor_app/features/authentication/presentation/forgot_password_page.dart';
 import 'package:smrkomed_doctor_app/features/authentication/presentation/login_page.dart';
 import 'package:smrkomed_doctor_app/features/authentication/presentation/splash_page.dart';
+import 'package:smrkomed_doctor_app/features/consultation/consultation.dart';
 import 'package:smrkomed_doctor_app/features/home/home_page.dart';
+import 'package:smrkomed_doctor_app/features/inbox/inbox.dart';
+import 'package:smrkomed_doctor_app/features/notifications/notifications.dart';
 import 'package:smrkomed_doctor_app/features/patients/presentation/patients_page.dart';
+import 'package:smrkomed_doctor_app/features/reports/reports.dart';
 import 'package:smrkomed_doctor_app/features/schedule/presentation/schedule_page.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/doctor_availability_page.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/doctor_profile_page.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/settings_page.dart';
 import 'package:smrkomed_doctor_app/features/settings/presentation/settings_placeholders.dart';
-import 'package:smrkomed_doctor_app/l10n/generated/app_localizations.dart';
 
 class GoRouterRefresh extends ChangeNotifier {
   GoRouterRefresh(Ref ref) {
@@ -113,8 +115,22 @@ GoRouter createAppRouter({
             routes: [
               GoRoute(
                 path: AppRoutes.inbox,
-                builder: (context, state) =>
-                    FeaturePlaceholderPage(title: _t(context).navInbox),
+                builder: (context, state) => const InboxPage(),
+                routes: [
+                  GoRoute(
+                    path: ':conversationId',
+                    builder: (context, state) {
+                      final conversationId =
+                          state.pathParameters['conversationId'] ?? '';
+                      final patientName =
+                          state.uri.queryParameters['name'];
+                      return ChatPage(
+                        conversationId: conversationId,
+                        initialPatientName: patientName,
+                      );
+                    },
+                  ),
+                ],
               ),
             ],
           ),
@@ -176,13 +192,24 @@ GoRouter createAppRouter({
       ),
       GoRoute(
         path: AppRoutes.reports,
-        builder: (context, state) =>
-            FeaturePlaceholderPage(title: _t(context).navReports),
+        builder: (context, state) => const ReportsPage(),
       ),
       GoRoute(
         path: AppRoutes.notifications,
-        builder: (context, state) =>
-            FeaturePlaceholderPage(title: _t(context).navNotifications),
+        builder: (context, state) => const NotificationsPage(),
+      ),
+      GoRoute(
+        path: AppRoutes.consultation,
+        builder: (context, state) {
+          final appointmentId = state.uri.queryParameters['appointmentId'];
+          final patientName = state.uri.queryParameters['patientName'];
+          final coupleId = state.uri.queryParameters['coupleId'];
+          return ConsultationPage(
+            appointmentId: appointmentId,
+            patientName: patientName,
+            coupleId: coupleId,
+          );
+        },
       ),
       GoRoute(
         path: AppRoutes.profile,
@@ -199,8 +226,6 @@ GoRouter createAppRouter({
     ],
   );
 }
-
-AppLocalizations _t(BuildContext context) => AppLocalizations.of(context);
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final config = ref.watch(appConfigProvider);
