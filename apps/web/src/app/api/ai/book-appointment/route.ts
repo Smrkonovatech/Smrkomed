@@ -378,7 +378,7 @@ export async function POST(request: Request) {
           data: {
             startsAt: startsAt,
             doctorName: doctorName,
-            notes: `Rescheduled in real-time via Sarvam AI Voice Call. ${inputNotes ? `Notes: ${inputNotes}` : ""
+            notes: `Rescheduled in real-time via Hospex Care Voice Call. ${inputNotes ? `Notes: ${inputNotes}` : ""
               }`.trim(),
           },
         });
@@ -397,7 +397,7 @@ export async function POST(request: Request) {
           startsAt: startsAt,
           durationMin: 30,
           status: "CONFIRMED",
-          notes: `Booked in real-time via Sarvam AI Voice Call. ${inputNotes ? `Patient notes: ${inputNotes}` : ""
+          notes: `Booked in real-time via Hospex Care Voice Call. ${inputNotes ? `Patient notes: ${inputNotes}` : ""
             }`.trim(),
         },
       });

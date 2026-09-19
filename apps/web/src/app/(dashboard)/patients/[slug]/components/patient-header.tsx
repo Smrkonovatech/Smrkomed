@@ -50,12 +50,14 @@ export function PatientHeader({
   }, [p360, couple]);
 
   const coupleId = couple?.id || couple?.slug || "SMR-1025";
+  const partnerName = p360?.header?.partnerName || couple?.partner?.name;
+  const isIndividual = !partnerName;
 
   const handleCopyCoupleId = () => {
     if (coupleId) {
       navigator.clipboard.writeText(coupleId);
       setCopiedId(true);
-      toast.success("Couple ID copied to clipboard");
+      toast.success(`${isIndividual ? "Patient" : "Couple"} ID copied to clipboard`);
       setTimeout(() => setCopiedId(false), 2000);
     }
   };
@@ -68,7 +70,6 @@ export function PatientHeader({
     : "Today 03 Sept 2026. 09:00 AM";
 
   const patientName = p360?.header?.patientName || couple?.primary?.name || "Patient";
-  const partnerName = p360?.header?.partnerName || couple?.partner?.name;
   const treatmentName = p360?.header?.currentTreatment?.label || couple?.treatment || "IVF Journey";
   const currentStage = p360?.header?.currentCarePlan?.stageName || couple?.stage || "Consultation";
 
@@ -130,14 +131,14 @@ export function PatientHeader({
               </div>
             </div>
 
-            {/* Couple ID */}
+            {/* Patient or Couple ID */}
             <div>
-              <p className="text-[11px] text-gray-500 font-medium mb-1">Couple ID:</p>
+              <p className="text-[11px] text-gray-500 font-medium mb-1">{isIndividual ? "Patient ID:" : "Couple ID:"}</p>
               <button
                 type="button"
                 onClick={handleCopyCoupleId}
                 className="text-xs font-bold text-gray-800 hover:text-[#866BE3] flex items-center gap-1.5 transition-colors group cursor-pointer"
-                title="Click to copy Couple ID"
+                title={`Click to copy ${isIndividual ? "Patient" : "Couple"} ID`}
               >
                 <span>{coupleId}</span>
                 {copiedId ? (

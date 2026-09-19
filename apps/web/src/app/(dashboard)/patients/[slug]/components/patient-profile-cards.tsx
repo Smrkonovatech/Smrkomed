@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Phone, CheckCircle2, ArrowRight } from "lucide-react";
+import { Phone, CheckCircle2, ArrowRight, User } from "lucide-react";
 import type { Couple } from "@/lib/demo-data";
 import { PatientDetailsModal } from "./patient-details-modal";
 
@@ -18,23 +18,27 @@ export function PatientProfileCards({
   const [isPartnerModal, setIsPartnerModal] = useState(false);
 
   const primary = couple?.primary || p360?.primaryPatient || {
-    name: p360?.header?.patientName || "Mohit",
+    name: p360?.header?.patientName || "Patient",
     age: p360?.header?.age || 29,
-    gender: "Male",
-    phone: p360?.header?.contact || "+91 9822419302",
+    gender: p360?.header?.gender || "Female",
+    phone: p360?.header?.contact || "",
   };
 
-  const partner = couple?.partner || p360?.partnerPatient || (p360?.header?.partnerName ? {
-    name: p360.header.partnerName,
-    age: 29,
-    gender: "Female",
-    phone: "+91 9822419302",
-  } : {
-    name: "Shruti",
-    age: 29,
-    gender: "Female",
-    phone: "+91 9822419302",
-  });
+  // Determine if there is a real registered partner
+  const hasPartner = Boolean(
+    (couple?.partner && couple.partner.name && couple.partner.name.trim()) ||
+    (p360?.partnerPatient && (p360.partnerPatient.firstName || p360.partnerPatient.name)) ||
+    (p360?.header?.partnerName && p360.header.partnerName.trim())
+  );
+
+  const partner = hasPartner
+    ? couple?.partner || p360?.partnerPatient || {
+        name: p360?.header?.partnerName || "Partner",
+        age: 30,
+        gender: "Male",
+        phone: p360?.header?.contact || "",
+      }
+    : null;
 
   const handleOpenPrimary = () => {
     setIsPartnerModal(false);
@@ -56,28 +60,28 @@ export function PatientProfileCards({
           {/* Top Banner */}
           <div className="h-20 bg-[#F3F0FF] w-full relative">
             <div className="absolute top-3 right-3 bg-white/60 text-[#866BE3] text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-[#866BE3]/20">
-              Primary
+              {hasPartner ? "Primary" : "Individual Patient"}
             </div>
           </div>
           
           {/* Overlapping Avatar */}
           <div className="absolute top-[52px] left-4 w-14 h-14 rounded-full bg-[#866BE3] text-white flex items-center justify-center text-lg font-bold border-4 border-white shadow-sm">
-            {primary?.name?.[0] || "M"}
+            {primary?.name?.[0] || "P"}
           </div>
           
           <div className="pt-10 px-4 pb-4 flex-1 flex flex-col justify-between">
             <div>
               <h2 className="text-base font-bold text-gray-900 leading-tight">
-                {p360?.header?.patientName || primary?.name || "Mohit"}
+                {p360?.header?.patientName || primary?.name || "Patient"}
               </h2>
               <p className="text-xs text-gray-500 mb-4 mt-0.5">
-                {p360?.header?.age || primary?.age || "29"} yrs, {p360?.header?.gender || primary?.gender || "Male"}
+                {p360?.header?.age || primary?.age || "29"} yrs, {p360?.header?.gender || primary?.gender || "Female"}
               </p>
 
               <div className="space-y-2 mb-4 text-xs text-gray-600">
                 <div className="flex items-center gap-2">
                   <Phone className="w-3.5 h-3.5 text-[#866BE3]" />
-                  <span>{p360?.header?.contact || primary?.phone || "+91 9822419302"}</span>
+                  <span>{p360?.header?.contact || primary?.phone || "Phone not provided"}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-gray-500">ABDM:</span>
@@ -104,30 +108,34 @@ export function PatientProfileCards({
           </div>
         </div>
 
-        {/* Partner Card (Right) */}
-        {partner && (
+        {/* Partner Card (Right) or Individual Status Card */}
+        {partner ? (
           <div className="flex-1 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col relative">
             {/* Top Banner */}
-            <div className="h-20 bg-[#F3F0FF] w-full relative" />
+            <div className="h-20 bg-[#F3F0FF] w-full relative">
+              <div className="absolute top-3 right-3 bg-white/60 text-[#866BE3] text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-[#866BE3]/20">
+                Partner
+              </div>
+            </div>
             
             {/* Overlapping Avatar */}
             <div className="absolute top-[52px] left-4 w-14 h-14 rounded-full bg-[#866BE3] text-white flex items-center justify-center text-lg font-bold border-4 border-white shadow-sm">
-              {partner.name?.[0] || "S"}
+              {partner.name?.[0] || "P"}
             </div>
             
             <div className="pt-10 px-4 pb-4 flex-1 flex flex-col justify-between">
               <div>
                 <h2 className="text-base font-bold text-gray-900 leading-tight">
-                  {p360?.header?.partnerName || partner?.name || "Shruti"}
+                  {p360?.header?.partnerName || partner?.name || "Partner"}
                 </h2>
                 <p className="text-xs text-gray-500 mb-4 mt-0.5">
-                  {partner?.age || "29"} yrs, {partner?.gender || "Female"}
+                  {partner?.age || "30"} yrs, {partner?.gender || "Male"}
                 </p>
 
                 <div className="space-y-2 mb-4 text-xs text-gray-600">
                   <div className="flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5 text-[#866BE3]" />
-                    <span>{partner?.phone || "+91 9822419302"}</span>
+                    <span>{partner?.phone || "Phone not provided"}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-gray-500">ABDM:</span>
@@ -139,7 +147,7 @@ export function PatientProfileCards({
                 </div>
 
                 <div className="mb-4 text-xs text-gray-500">
-                  Patient ID: <span className="font-semibold text-gray-800">{coupleIdDisplay}</span>
+                  Partner ID: <span className="font-semibold text-gray-800">{p360?.header?.partnerId || coupleIdDisplay}</span>
                 </div>
               </div>
               
@@ -152,6 +160,19 @@ export function PatientProfileCards({
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
+          </div>
+        ) : (
+          <div className="flex-1 bg-white/70 rounded-2xl border border-dashed border-gray-200 p-6 flex flex-col items-center justify-center text-center shadow-2xs">
+            <div className="w-12 h-12 rounded-2xl bg-[#866BE3]/10 text-[#866BE3] flex items-center justify-center mb-3">
+              <User className="w-6 h-6" />
+            </div>
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 mb-2">
+              QR Scanner Registration
+            </span>
+            <h3 className="text-sm font-bold text-gray-800">Individual Patient Registration</h3>
+            <p className="text-xs text-gray-500 mt-1 max-w-xs leading-relaxed">
+              This patient checked in as an individual via the reception QR scanner. No spouse or partner profile is linked.
+            </p>
           </div>
         )}
       </div>

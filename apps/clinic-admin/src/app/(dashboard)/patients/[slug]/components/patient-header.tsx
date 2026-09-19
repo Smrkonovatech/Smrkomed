@@ -15,6 +15,7 @@ export function PatientHeader({ couple, p360 }: { couple: { id: string, slug?: s
   const coordinatorName = p360?.header?.assignedCoordinator || couple?.coordinator || "Anjali Desai";
   const treatmentName = p360?.header?.currentTreatment?.label || couple?.treatment || "IVF Journey";
   const coupleId = couple?.id || couple?.slug || "SMR-1025";
+  const hasPartner = Boolean(couple?.partner?.name || p360?.partnerPatient || p360?.header?.partnerName);
 
   return (
     <div className="flex flex-col gap-4">
@@ -41,9 +42,9 @@ export function PatientHeader({ couple, p360 }: { couple: { id: string, slug?: s
               </div>
             </div>
 
-            {/* Couple ID */}
+            {/* Patient or Couple ID */}
             <div>
-              <p className="text-[11px] text-gray-500 font-medium mb-1">Couple ID:</p>
+              <p className="text-[11px] text-gray-500 font-medium mb-1">{hasPartner ? "Couple ID:" : "Patient ID:"}</p>
               <p className="text-xs font-bold text-gray-800">{coupleId}</p>
             </div>
           </div>

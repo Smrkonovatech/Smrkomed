@@ -500,10 +500,10 @@ export const couples: Couple[] = [
 ];
 
 export const coupleLabel = (c: Couple | any) => {
-  if (!c) return "Couple";
+  if (!c) return "Patient";
   const pName = (c.primary?.name || c.primary?.firstName || "Patient").trim();
   const pFirst = pName.split(" ")[0] || pName;
-  if (c.partner) {
+  if (c.partner && (c.partner.name || c.partner.firstName)) {
     const partName = (c.partner.name || c.partner.firstName || "").trim();
     const partFirst = partName ? partName.split(" ")[0] || partName : "";
     if (partFirst) return `${pFirst} + ${partFirst}`;
@@ -512,9 +512,9 @@ export const coupleLabel = (c: Couple | any) => {
 };
 
 export const coupleFullLabel = (c: Couple | any) => {
-  if (!c) return "Couple";
+  if (!c) return "Patient";
   const pName = (c.primary?.name || c.primary?.firstName || "Patient").trim();
-  if (c.partner) {
+  if (c.partner && (c.partner.name || c.partner.firstName)) {
     const partName = (c.partner.name || c.partner.firstName || "").trim();
     if (partName) return `${pName} + ${partName}`;
   }

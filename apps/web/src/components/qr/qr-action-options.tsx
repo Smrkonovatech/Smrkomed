@@ -413,6 +413,20 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                       </button>
                     ))}
                   </div>
+
+                  {/* Greeting Preview */}
+                  <div className="mt-2.5 rounded-xl border border-primary/15 bg-primary-soft/40 p-2.5 text-[11px] text-muted-foreground">
+                    <span className="font-semibold text-primary block mb-0.5">Opening Greeting:</span>
+                    {selectedLanguage === "kn"
+                      ? `“ನಮಸ್ಕಾರ ${patient.firstName} ಅವರೇ, ನಾನು Hospex Fertility Clinic ಪರವಾಗಿ ಕರೆ ಮಾಡುತ್ತಿರುವ ಕೇರ್ ವಾಯ್ಸ್ (Care Voice). ಇಂದು ನಾವು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?”`
+                      : selectedLanguage === "hi"
+                      ? `“नमस्ते ${patient.firstName} जी, मैं Hospex Fertility Clinic की ओर से बात कर रहा हूँ। आज हम आपकी क्या सहायता कर सकते हैं?”`
+                      : selectedLanguage === "ta"
+                      ? `“வணக்கம் ${patient.firstName}, நான் Hospex Fertility Clinic சார்பாக பேசும் கேர் வாய்ஸ். இன்று நாங்கள் உங்களுக்கு எவ்வாறு உதவலாம்?”`
+                      : selectedLanguage === "te"
+                      ? `“నమస్కారం ${patient.firstName} గారూ, నేను Hospex Fertility Clinic తరపున మాట్లాడుతున్న కేర్ వాయిస్. ఈరోజు మేము మీకు ఎలా సహాయపడగలము?”`
+                      : `“Hi ${patient.firstName}, I’m Care Voice, calling on behalf of Hospex Fertility Clinic. How can we help you today?”`}
+                  </div>
                 </div>
 
                 {/* Call Initiation Action */}
@@ -425,7 +439,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                     Call My Phone Now (90s Max)
                   </Button>
                   <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                    Free instant call · Powered by SmrkoMed Care Voice & Sarvam AI
+                    Free instant call · Powered by Hospex & SmrkoMed Care Voice
                   </p>
                 </div>
               </div>
@@ -442,7 +456,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                     Dispatching Care Voice Call...
                   </h4>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Connecting to {targetPhone} via Sarvam AI Voice Gateway
+                    Connecting to {targetPhone} via Hospex Secure Voice Gateway
                   </p>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-3 text-xs text-muted-foreground">
@@ -473,10 +487,10 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
 
                 <div className="rounded-2xl border border-success/30 bg-success-soft/30 p-3.5 text-xs text-foreground">
                   <p className="font-semibold text-success">
-                    Hospex Care Voice is waiting to speak with you
+                    Hospex Care Voice is connecting with you
                   </p>
                   <p className="text-muted-foreground text-[11px] mt-0.5">
-                    Confirm your check-in and ask any arrival questions.
+                    Pick up to speak directly with our AI concierge regarding your visit and consultation.
                   </p>
                 </div>
 
@@ -537,10 +551,10 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                 <div className="rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground space-y-1">
                   <p className="font-semibold text-foreground flex items-center gap-1.5">
                     <Volume2 className="h-3.5 w-3.5 text-primary" />
-                    Talking with AI Care Concierge:
+                    Speaking with Care Voice Concierge:
                   </p>
                   <p className="text-[11px]">
-                    Confirm your check-in, inquire about doctor consultation queue, or find the right waiting lounge. The call will automatically wrap up within 90 seconds.
+                    Ask about doctor consultation queues, specialist availability, or hospital amenities. The call will automatically conclude within 90 seconds.
                   </p>
                 </div>
 
