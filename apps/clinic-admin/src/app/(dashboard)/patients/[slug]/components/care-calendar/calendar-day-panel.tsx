@@ -97,7 +97,10 @@ export function CalendarDayPanel({
           </div>
 
           {/* List of Tasks matching Image 2 */}
-          <div className="divide-y divide-gray-100/80 max-h-[360px] overflow-y-auto pr-1">
+          <div
+            className="divide-y divide-gray-100/80 max-h-[380px] overflow-y-auto overflow-x-hidden [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
             {events.length === 0 ? (
               <div className="py-12 flex flex-col items-center justify-center text-center">
                 <div className="w-10 h-10 rounded-full bg-purple-50 text-[#866BE3] flex items-center justify-center mb-2">
@@ -118,19 +121,19 @@ export function CalendarDayPanel({
                   <div
                     key={event.id}
                     onClick={() => setSelectedEvent(event)}
-                    className="py-3.5 group cursor-pointer hover:bg-slate-50/80 -mx-2 px-2 rounded-xl transition-all"
+                    className="py-3 px-2 group cursor-pointer hover:bg-slate-50/80 rounded-xl transition-all"
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-start gap-2.5">
+                    <div className="flex items-start justify-between gap-2 min-w-0">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
                         <div className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
                         <span className="text-xs font-semibold text-gray-500 w-16 shrink-0 pt-0.5">
                           {event.time || "09:00 AM"}
                         </span>
-                        <div>
-                          <h4 className="font-bold text-xs text-gray-900 group-hover:text-[#7C5CE5] transition-colors leading-snug">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-xs text-gray-900 group-hover:text-[#7C5CE5] transition-colors leading-snug line-clamp-1 break-words">
                             {event.title}
                           </h4>
-                          <p className="text-[11px] text-gray-400 font-medium mt-0.5">
+                          <p className="text-[11px] text-gray-400 font-medium mt-0.5 truncate">
                             Patient: <span className="text-gray-600 font-semibold">{patient}</span>
                           </p>
                         </div>
