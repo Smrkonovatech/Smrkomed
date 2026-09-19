@@ -261,7 +261,11 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
         OR: [{ coupleId: couple.id }, { patientId: { in: patientIds } }],
         status: { not: "CANCELLED" },
       },
-      include: { items: true, doctor: { select: { name: true } } },
+      include: {
+        items: true,
+        doctor: { select: { name: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, gender: true } },
+      },
       orderBy: { prescriptionDate: "desc" },
       take: 20,
     }),
@@ -329,6 +333,11 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       .filter((item) => !item.endDate || item.endDate.getTime() >= now.getTime())
       .map((item) => ({
         prescriptionId: rx.id,
+        patientId: rx.patientId,
+        patientName: rx.patient
+          ? `${rx.patient.firstName || ""} ${rx.patient.lastName || ""}`.trim()
+          : null,
+        patientGender: rx.patient?.gender ?? null,
         medicineName: item.medicineName,
         dosage: item.dosage,
         frequency: item.frequency,
