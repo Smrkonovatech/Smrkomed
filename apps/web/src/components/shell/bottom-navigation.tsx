@@ -183,8 +183,6 @@ const DOCTOR_NAV_CATEGORIES: AppNavCategory[] = [
     href: "/home",
     items: [
       { href: "/home", label: "Dashboard", icon: LayoutDashboard },
-      { href: "/doctor", label: "Doctor App", icon: Stethoscope },
-      { href: "/home", label: "Smrko AI", icon: Sparkles, openAi: true },
     ],
   },
   {

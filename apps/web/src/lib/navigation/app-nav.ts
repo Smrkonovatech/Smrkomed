@@ -66,10 +66,8 @@ export const APP_NAV_CATEGORIES: AppNavCategory[] = [
     href: "/home",
     columns: 1,
     items: [
-      { href: "/doctor", label: "Doctor App", icon: Stethoscope },
       { href: "/home", label: "My Dashboard", icon: LayoutDashboard },
       { href: "/tasks", label: "Tasks", icon: ListChecks },
-      { href: "/home", label: "Smrko AI", icon: Sparkles, openAi: true },
     ],
   },
   {
