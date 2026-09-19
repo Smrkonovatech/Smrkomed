@@ -4,7 +4,7 @@ import type { ZodError } from "zod";
 export type ApiErrorStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500 | 501 | 502;
 
 export function ok<T>(c: Context, data: T, status: 200 | 201 = 200) {
-  return c.json({ success: true as const, data }, status);
+  return c.json({ success: true as const, ok: true as const, data }, status);
 }
 
 export function fail(
@@ -18,6 +18,7 @@ export function fail(
   return c.json(
     {
       success: false as const,
+      ok: false as const,
       error: {
         code,
         message,

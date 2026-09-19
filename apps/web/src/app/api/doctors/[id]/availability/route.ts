@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@smrkomed/database";
+import { auth } from "@/lib/auth/auth";
 import {
   getDoctorAvailability,
   getDoctorDaySlots,
@@ -14,14 +15,21 @@ export async function GET(
   props: { params: Promise<{ id: string }> },
 ) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+
     const { id } = await props.params;
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date");
+    const clinicId = session.user.clinicId;
+    const cleanId = id === "me" ? session.user.id : id.replace(/^doc_/, "");
 
-    const clinic = await prisma.clinic.findFirst();
-    const clinicId = clinic?.id || "clinic_default";
-
-    const availability = await getDoctorAvailability(clinicId, id);
+    const availability = await getDoctorAvailability(clinicId, cleanId);
 
     let daySlots = null;
     if (dateParam) {
@@ -54,13 +62,20 @@ export async function POST(
   props: { params: Promise<{ id: string }> },
 ) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+
     const { id } = await props.params;
     const json = await request.json();
+    const clinicId = session.user.clinicId;
+    const cleanId = id === "me" ? session.user.id : id.replace(/^doc_/, "");
 
-    const clinic = await prisma.clinic.findFirst();
-    const clinicId = clinic?.id || "clinic_default";
-
-    const seedDoc = SEED_DOCTORS.find((d) => d.id === id);
+    const seedDoc = SEED_DOCTORS.find((d) => d.id === cleanId || d.id === id);
     const doctorName = json.doctorName || seedDoc?.displayName || "Dr. Ananya Rao";
 
     const saved = await saveDoctorAvailability(

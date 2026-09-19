@@ -27,11 +27,15 @@ const default15Stages = [
 export function IvfCycleWidget({ couple, p360 }: { couple: { stage: string } | any, p360?: any }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  let currentStageName = p360?.header?.currentCarePlan?.stageName || couple?.stage || "07. Ovarian Stimulation";
+  let currentStageName = p360?.header?.currentTreatment?.stageName || p360?.header?.currentCarePlan?.stageName || couple?.stage || "07. Ovarian Stimulation";
   let nextStageName = "08. Follicular Monitoring";
   let carePlanStepsArr = default15Stages;
 
-  if (p360?.header?.currentCarePlan) {
+  if (typeof p360?.header?.currentTreatment?.stageIndex === "number" && p360.header.currentTreatment.stageIndex >= 0) {
+    const idx = Math.min(p360.header.currentTreatment.stageIndex, carePlanStepsArr.length - 1);
+    currentStageName = carePlanStepsArr[idx] || currentStageName;
+    nextStageName = idx + 1 < carePlanStepsArr.length ? (carePlanStepsArr[idx + 1] || "Complete") : "Complete";
+  } else if (p360?.header?.currentCarePlan) {
     const steps = p360.header.currentCarePlan.steps || [];
     const sortedSteps = [...steps].sort((a: any, b: any) => a.sortOrder - b.sortOrder);
     if (sortedSteps.length > 0) {

@@ -852,6 +852,139 @@ const handlePrepareMyDay = async (c: any) => {
     });
 };
 
+async function handleDoctorConsultations(c: any, targetId?: string) {
+  const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+  const id = targetId || c.req.param("id") || "me";
+  const cleanId = id === "me" ? tenant.userId : id.replace(/^doc_/, "");
+
+  let targetUserId = cleanId;
+  if (cleanId && cleanId !== "me") {
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [{ id: cleanId }, { email: cleanId }],
+      },
+      select: { id: true },
+    });
+    if (user) {
+      targetUserId = user.id;
+    } else {
+      // Check if membership exists for this ID
+      const membership = await prisma.clinicMembership.findFirst({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [{ userId: cleanId }, { userId: id }],
+        },
+      });
+      if (!membership) {
+        return fail(c, 404, "NOT_FOUND", "Doctor profile not found in this clinic.");
+      }
+    }
+  }
+
+  const whereCondition: any = { clinicId: tenant.clinicId };
+  if (targetUserId) {
+    whereCondition.OR = [
+      { createdById: targetUserId },
+      { couple: { assignedDoctorId: targetUserId } },
+    ];
+  }
+
+  const notes = await prisma.consultationNote.findMany({
+    where: whereCondition,
+    include: {
+      createdBy: { select: { id: true, name: true } },
+      couple: {
+        include: {
+          primaryPatient: { select: { id: true, firstName: true, lastName: true } },
+          partnerPatient: { select: { id: true, firstName: true, lastName: true } },
+          appointments: {
+            where: { status: { not: "CANCELLED" } },
+            orderBy: { startsAt: "desc" },
+            take: 1,
+            select: { id: true, startsAt: true, status: true, type: true },
+          },
+        },
+      },
+    },
+    orderBy: { consultationDate: "desc" },
+    take: 50,
+  });
+
+  const formatted = notes.map((n) => ({
+    id: n.id,
+    appointmentId: n.couple?.appointments?.[0]?.id ?? null,
+    coupleId: n.coupleId,
+    patientName: n.couple?.primaryPatient
+      ? `${n.couple.primaryPatient.firstName} ${n.couple.primaryPatient.lastName}`.trim()
+      : "Patient",
+    partnerName: n.couple?.partnerPatient
+      ? `${n.couple.partnerPatient.firstName} ${n.couple.partnerPatient.lastName}`.trim()
+      : null,
+    doctorId: n.createdBy?.id ?? n.createdById,
+    doctorName: n.createdBy?.name ?? "Doctor",
+    consultationDate: n.consultationDate.toISOString(),
+    reasonForVisit: n.reasonForVisit,
+    summary: n.summary,
+    nextSteps: n.nextSteps,
+    createdAt: n.createdAt.toISOString(),
+  }));
+
+  return ok(c, formatted);
+}
+
+async function handleDoctorAvailability(c: any, targetId?: string) {
+  const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+  const id = targetId || c.req.param("id") || "me";
+  const dateQuery = c.req.query("date");
+
+  try {
+    const slotData = await getSlotManagementData(tenant, id, dateQuery);
+    const daySlots = [
+      ...(slotData.morningSession?.slots || []),
+      ...(slotData.afternoonSession?.slots || []),
+    ].map((s: any) => ({
+      time: s.start || s.time || s.label?.slice(0, 5) || "09:00",
+      timeLabel: s.label || s.timeLabel || "09:00 AM",
+      status: s.status === "available" ? "available" : s.status === "booked" ? "booked" : "blocked",
+      patientName: s.patientName || undefined,
+    }));
+
+    return ok(c, {
+      doctorId: slotData.doctor.id,
+      docId: slotData.doctor.docId,
+      doctorName: slotData.doctor.name,
+      designation: slotData.doctor.designation,
+      department: slotData.doctor.department,
+      room: slotData.doctor.room,
+      date: slotData.selectedDate,
+      daySlots,
+      weeklySchedule: slotData.weeklySchedule,
+      settings: slotData.safeguards,
+      metrics: slotData.metrics,
+      morningSession: slotData.morningSession,
+      afternoonSession: slotData.afternoonSession,
+      utilization: slotData.utilization,
+    });
+  } catch (err: any) {
+    return fail(c, 404, "NOT_FOUND", err?.message || "Doctor availability not found");
+  }
+}
+
+async function handleSaveDoctorAvailability(c: any, targetId?: string) {
+  const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+  const id = targetId || c.req.param("id") || "me";
+  const body = await c.req.json();
+  try {
+    const data = await saveSlotManagementData(tenant, id, body);
+    return ok(c, {
+      message: "Doctor availability saved successfully",
+      data,
+    });
+  } catch (err: any) {
+    return fail(c, 400, "UPDATE_FAILED", err?.message || "Failed to update doctor availability");
+  }
+}
+
 export const doctorRoutes = new Hono<AppEnv>()
   .get("/prepare-my-day", handlePrepareMyDay)
   .get("/prepare-day", handlePrepareMyDay)
@@ -1039,6 +1172,9 @@ export const doctorRoutes = new Hono<AppEnv>()
       },
     }, 201);
   })
+
+  .get("/consultations", async (c) => handleDoctorConsultations(c, "me"))
+  .get("/:id/consultations", async (c) => handleDoctorConsultations(c, c.req.param("id")))
 
   // ─── 4. Reports Requiring Review ───────────────────────────────────────────
   .get("/reports", async (c) => {
@@ -1337,6 +1473,12 @@ export const doctorRoutes = new Hono<AppEnv>()
       return fail(c, 400, "APPLY_FAILED", err?.message || "Failed to apply template");
     }
   })
+
+  // ─── Doctor Availability & Slots ───────────────────────────────────────────
+  .get("/availability", async (c) => handleDoctorAvailability(c, "me"))
+  .get("/:id/availability", async (c) => handleDoctorAvailability(c, c.req.param("id")))
+  .post("/availability", async (c) => handleSaveDoctorAvailability(c, "me"))
+  .post("/:id/availability", async (c) => handleSaveDoctorAvailability(c, c.req.param("id")))
 
   // ─── 9. Doctor Management: Get Single Doctor Profile ─────────────────────────
   .get("/:id", validate("param", idParam), async (c) => {

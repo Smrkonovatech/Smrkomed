@@ -127,6 +127,21 @@ export async function ensureDefaultRoles() {
 
 /** Creates the ABC Fertility demo clinic and staff in PostgreSQL. Does not create patients. */
 export async function ensureDemoWorkspace() {
+  const existingClinic = await prisma.clinic.findFirst({
+    where: { slug: "abc-fertility-bangalore" },
+    include: { organization: true },
+  });
+  const existingAdmin = await prisma.user.findFirst({
+    where: { email: "admin@abcfertility.demo" },
+  });
+
+  if (existingClinic && existingAdmin) {
+    const pharmacyCount = await prisma.pharmacyProduct.count({ where: { clinicId: existingClinic.id } }).catch(() => 0);
+    if (pharmacyCount > 0) {
+      return { organization: existingClinic.organization, clinic: existingClinic };
+    }
+  }
+
   // Always upsert demo staff so new roles appear after seed updates.
   const roles = await ensureDefaultRoles();
   const roleByKey = Object.fromEntries(roles.map((role) => [role.key, role]));

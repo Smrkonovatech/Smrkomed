@@ -32,73 +32,53 @@ const DEFAULT_WEEKLY_SCHEDULE = [
   { day: "Sun", active: false, tag: "Off Day", timeRange: "", slotDuration: "", focus: "No general OPD appointments scheduled" },
 ];
 
-async function resolveTargetDoctor(reqDoctorId?: string | null, sessionUserId?: string | null) {
-  const cleanId = (reqDoctorId || sessionUserId || "").replace(/^doc_/, "");
+async function resolveTargetDoctor(reqDoctorId?: string | null, sessionUserId?: string | null, clinicId?: string | null) {
+  const targetId = reqDoctorId || sessionUserId;
+  if (!targetId) return null;
 
-  if (cleanId) {
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { id: cleanId },
-          { memberships: { some: { userId: cleanId } } },
-        ],
-      },
-      include: {
-        memberships: {
-          include: { clinic: true, role: true },
-        },
-      },
-    });
-    if (user) return user;
-  }
-
-  // Fallback to Dr. Jismon J
-  const jismon = await prisma.user.findFirst({
-    where: { name: { contains: "Jismon", mode: "insensitive" } },
-    include: {
-      memberships: {
-        include: { clinic: true, role: true },
-      },
-    },
-  });
-  if (jismon) return jismon;
-
-  // Fallback to any active doctor
-  return prisma.user.findFirst({
+  const cleanId = targetId.replace(/^doc_/, "");
+  const user = await prisma.user.findFirst({
     where: {
-      memberships: {
-        some: {
-          role: {
-            OR: [
-              { key: "DOCTOR" },
-              { name: { contains: "Doctor", mode: "insensitive" } },
-            ],
-          },
-        },
-      },
+      OR: [{ id: cleanId }, { email: cleanId }],
+      ...(clinicId ? { memberships: { some: { clinicId } } } : {}),
     },
     include: {
-      memberships: {
-        include: { clinic: true, role: true },
-      },
+      memberships: clinicId
+        ? {
+            where: { clinicId },
+            include: { clinic: true, role: true },
+          }
+        : {
+            include: { clinic: true, role: true },
+          },
     },
   });
+
+  return user;
 }
 
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date");
     const doctorIdParam = searchParams.get("doctorId");
+    const clinicId = session.user.clinicId;
 
-    const doctorUser = await resolveTargetDoctor(doctorIdParam, session?.user?.id);
+    const doctorUser = await resolveTargetDoctor(doctorIdParam, session.user.id, clinicId);
     if (!doctorUser) {
-      return NextResponse.json({ success: false, error: "Doctor not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, ok: false, error: "Doctor not found in this clinic" },
+        { status: 404 },
+      );
     }
-
-    const activeMembership = doctorUser.memberships[0];
-    const clinicId = session?.user?.clinicId || activeMembership?.clinicId || "cmu3nmx310026jy04gsi21hxl";
 
     const requestedDate =
       dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)
@@ -335,16 +315,23 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
     const body = await request.json();
     const { doctorId, date, selectedSlots, weeklySchedule, safeguards, doctorDetails, room } = body;
+    const clinicId = session.user.clinicId;
 
-    const doctorUser = await resolveTargetDoctor(doctorId, session?.user?.id);
+    const doctorUser = await resolveTargetDoctor(doctorId, session.user.id, clinicId);
     if (!doctorUser) {
-      return NextResponse.json({ success: false, error: "Doctor not found" }, { status: 404 });
+      return NextResponse.json(
+        { success: false, ok: false, error: "Doctor not found in this clinic" },
+        { status: 404 },
+      );
     }
-
-    const activeMembership = doctorUser.memberships[0];
-    const clinicId = session?.user?.clinicId || activeMembership?.clinicId || "cmu3nmx310026jy04gsi21hxl";
     const targetDate = date || new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
 
     // 1. Save date slot overrides if provided

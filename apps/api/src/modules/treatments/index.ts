@@ -88,12 +88,57 @@ export function serializeTreatment(treatment: any) {
 }
 
 export const treatmentRoutes = new Hono<AppEnv>()
+  .get("/", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const coupleId = c.req.query("coupleId");
+    const status = c.req.query("status") as any;
+    const kind = c.req.query("kind") as any;
+    const limitParam = c.req.query("limit");
+    const limit = limitParam ? Math.min(100, Math.max(1, parseInt(limitParam, 10))) : 50;
+
+    const where: any = { clinicId: tenant.clinicId };
+    if (coupleId) {
+      where.coupleId = coupleId;
+    }
+    if (status && ["ACTIVE", "NEEDS_ATTENTION", "COMPLETED", "CANCELLED"].includes(status)) {
+      where.status = status;
+    }
+    if (kind && ["IVF", "IUI", "EVALUATION", "FET"].includes(kind)) {
+      where.kind = kind;
+    }
+
+    const treatments = await prisma.treatment.findMany({
+      where,
+      include: {
+        ivfCycle: true,
+        iuiCycle: true,
+        carePlan: true,
+        couple: {
+          include: {
+            primaryPatient: true,
+            partnerPatient: true,
+            assignedDoctor: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+    });
+
+    return ok(c, treatments.map(serializeTreatment));
+  })
   .get("/:id", validate("param", idParam), async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const { id } = c.req.valid("param");
 
     const treatment = await prisma.treatment.findFirst({
-      where: { id, clinicId: tenant.clinicId },
+      where: {
+        id,
+        OR: [
+          { clinicId: tenant.clinicId },
+          { couple: { clinicId: tenant.clinicId } },
+        ],
+      },
       include: {
         ivfCycle: true,
         iuiCycle: true,
@@ -117,7 +162,13 @@ export const treatmentRoutes = new Hono<AppEnv>()
     const body = c.req.valid("json");
 
     const existing = await prisma.treatment.findFirst({
-      where: { id, clinicId: tenant.clinicId },
+      where: {
+        id,
+        OR: [
+          { clinicId: tenant.clinicId },
+          { couple: { clinicId: tenant.clinicId } },
+        ],
+      },
       include: {
         ivfCycle: true,
         iuiCycle: true,
@@ -129,12 +180,15 @@ export const treatmentRoutes = new Hono<AppEnv>()
       },
     });
     if (!existing) throw notFound();
-    await requireClinicOwned(tenant, existing);
+    if (existing.clinicId !== tenant.clinicId && existing.couple?.clinicId !== tenant.clinicId) {
+      throw notFound();
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const treatment = await tx.treatment.update({
         where: { id: existing.id },
         data: {
+          ...(existing.clinicId !== tenant.clinicId ? { clinicId: tenant.clinicId } : {}),
           ...(body.kind ? { kind: body.kind } : {}),
           ...(body.label ? { label: body.label } : {}),
           ...(body.status ? { status: body.status } : {}),
@@ -178,19 +232,48 @@ export const treatmentRoutes = new Hono<AppEnv>()
         }
       }
 
-      if (existing.carePlanId && body.status) {
+      const carePlanIdToUpdate =
+        existing.carePlanId ||
+        (
+          await tx.carePlan.findFirst({
+            where: { coupleId: existing.coupleId, status: "ACTIVE" },
+            select: { id: true },
+          })
+        )?.id;
+
+      if (carePlanIdToUpdate) {
         const planStatus =
           body.status === "COMPLETED"
             ? "COMPLETED"
             : body.status === "CANCELLED"
               ? "CANCELLED"
-              : "ACTIVE";
+              : undefined;
+
         await tx.carePlan.update({
-          where: { id: existing.carePlanId },
+          where: { id: carePlanIdToUpdate },
           data: {
-            status: planStatus,
+            ...(planStatus ? { status: planStatus } : {}),
+            ...(body.stageIndex !== undefined ? { currentStageIndex: body.stageIndex } : {}),
+            ...(body.stageName !== undefined ? { currentStageName: body.stageName } : {}),
           },
         }).catch(() => undefined);
+
+        if (body.stageIndex !== undefined) {
+          const steps = await tx.carePlanStep.findMany({
+            where: { carePlanId: carePlanIdToUpdate },
+            orderBy: { sortOrder: "asc" },
+          });
+          for (let i = 0; i < steps.length; i++) {
+            const step = steps[i];
+            if (!step) continue;
+            const stepStatus =
+              i < body.stageIndex ? "DONE" : i === body.stageIndex ? "CURRENT" : "PENDING";
+            await tx.carePlanStep.update({
+              where: { id: step.id },
+              data: { status: stepStatus },
+            }).catch(() => undefined);
+          }
+        }
       }
 
       return tx.treatment.findUnique({

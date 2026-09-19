@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@smrkomed/database";
+import { auth } from "@/lib/auth/auth";
 import { getDoctorDaySlots } from "@/lib/doctors/db-availability";
 import { SEED_DOCTORS } from "@/lib/doctors/seed";
 
@@ -7,12 +8,18 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        { success: false, ok: false, error: "Authentication required" },
+        { status: 401 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get("date") || new Date().toISOString().slice(0, 10);
     const targetDate = new Date(`${dateParam}T00:00:00`);
-
-    const clinic = await prisma.clinic.findFirst();
-    const clinicId = clinic?.id || "clinic_default";
+    const clinicId = session.user.clinicId;
 
     // Query active doctors
     const doctors = SEED_DOCTORS.filter((d) => d.status === "active").slice(0, 5);

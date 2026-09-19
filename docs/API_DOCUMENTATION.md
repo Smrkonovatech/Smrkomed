@@ -25,9 +25,12 @@ All protected endpoints enforce multi-tenant isolation and role-based access con
   - Clinical Authority: Sensitive clinical actions (prescriptions, diagnostic approvals, consultation notes) strictly enforce medical authority (`DOCTOR`). AI cannot independently diagnose or prescribe.
 
 ### 1.3 Standard Response Format
+SmrkoMed standardizes all API responses with dual-compatible envelope fields (`success` and `ok`) so all web clients, mobile apps, and automated test runners receive consistent payloads:
+
 #### Success Response (`200 OK` / `201 Created`)
 ```json
 {
+  "success": true,
   "ok": true,
   "data": { ... }
 }
@@ -37,6 +40,7 @@ All protected endpoints enforce multi-tenant isolation and role-based access con
 #### Error Response (`4xx` / `5xx`)
 ```json
 {
+  "success": false,
   "ok": false,
   "error": {
     "code": "RESOURCE_NOT_FOUND",
@@ -205,6 +209,11 @@ All protected endpoints enforce multi-tenant isolation and role-based access con
 
 ### 3.4 Treatments & IVF Journeys
 
+#### `GET /api/v1/treatments`
+- **Auth:** `patients:read`
+- **Query Params:** `coupleId` (filter by couple), `status` (`ACTIVE` | `NEEDS_ATTENTION` | `COMPLETED` | `CANCELLED`), `kind` (`IVF` | `IUI` | `EVALUATION` | `FET`), `limit` (default 50)
+- **Description:** Lists treatments for the clinic, supporting filtering by couple, status, and kind.
+
 #### `GET /api/v1/treatments/:id`
 - **Auth:** `patients:read`
 - **Description:** Retrieves treatment cycle details, cycle type (`IVF`, `IUI`, `ICSI`, `FET`), protocol, start date, and status.
@@ -255,6 +264,7 @@ SmrkoMed's core autonomous workflow engine tracks treatments through exactly 15 
 - `POST /:id/verify-payment`: Verify payment prerequisite for task completion.
 
 #### Care Loop Operations (`/api/v1/care-loop`)
+- `GET /`: Care Loop overview including attention summary metrics, open escalations, urgent/overdue tasks, and active journeys.
 - `GET /exceptions`: List open clinical escalations requiring human intervention.
 - `POST /exceptions/:id/resolve`: Resolve escalation with resolution notes.
 - `GET /analytics`: Care loop completion rate, overdue tasks, and stage distribution.
@@ -273,6 +283,10 @@ SmrkoMed's core autonomous workflow engine tracks treatments through exactly 15 
 - **Auth:** `PATIENTS_READ`
 - **Query Params:** `date` (YYYY-MM-DD), `range` (`day` | `week`)
 - **Description:** Doctor's schedule filtered by assigned appointments, rooms, and patient treatment contexts.
+
+#### `GET /api/v1/doctors/:id/consultations` & `GET /api/v1/doctors/consultations`
+- **Auth:** `PATIENTS_READ` / `DOCTOR`
+- **Description:** Retrieves consultation history for a specific doctor (`:id` accepts `"me"`, `doc_<id>`, or cuid) or the authenticated doctor.
 
 #### `POST /api/v1/doctors/consultations/:appointmentId`
 - **Auth:** `DOCTOR`, `CLINIC_ADMIN`, `CARE_COORDINATOR` (Clinical Authority Enforced)
@@ -310,10 +324,13 @@ SmrkoMed's core autonomous workflow engine tracks treatments through exactly 15 
 - **Auth:** `PATIENTS_READ`
 - **Description:** List active doctors in the clinic with specialties and qualifications.
 
-#### Doctor Scheduling & Slots
-- `GET /api/v1/doctors/slot-management` & `GET /:id/slot-management`: View doctor's recurring availability.
+#### Doctor Scheduling, Slots & Availability
+- `GET /api/v1/doctors/:id/availability` & `GET /api/v1/doctors/availability`: Doctor's daily slots, weekly recurring availability schedule, and booked status (`:id` accepts `"me"`, `doc_<id>`, or cuid).
+- `POST /api/v1/doctors/:id/availability` & `POST /api/v1/doctors/availability`: Update doctor's recurring weekly availability and overrides.
+- `GET /api/v1/doctors/slot-management` & `GET /:id/slot-management`: View doctor's slot management metrics, morning/afternoon sessions, and slot overrides.
 - `POST /api/v1/doctors/slot-management` & `POST /:id/slot-management`: Configure time slots, slot duration, and max bookings.
 - `POST /api/v1/doctors/apply-schedule-template`: Bulk apply a recurring weekly schedule template.
+- `GET/POST /api/doctors/slot-management` (Web route): Strictly requires authenticated session belonging to the clinic. Unauthenticated access is denied with 401.
 
 ---
 

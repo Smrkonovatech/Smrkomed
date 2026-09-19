@@ -656,6 +656,126 @@ export const careTaskRoutes = new Hono<AppEnv>()
 // ─── Care Loop Exceptions & Analytics ────────────────────────────────────────
 
 export const careLoopRoutes = new Hono<AppEnv>()
+  .get("/", async (c) => {
+    const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    const isDoctor = tenant.role === "DOCTOR";
+    const doctorFilter = isDoctor ? { couple: { assignedDoctorId: tenant.userId } } : {};
+
+    const [plans, tasks, escalations, urgentTasks] = await Promise.all([
+      prisma.carePlan.findMany({
+        where: { clinicId: tenant.clinicId, status: "ACTIVE" },
+        include: {
+          couple: {
+            include: {
+              primaryPatient: { select: { id: true, firstName: true, lastName: true } },
+              assignedDoctor: { select: { id: true, name: true } },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 30,
+      }),
+      prisma.careTask.findMany({
+        where: { clinicId: tenant.clinicId },
+        select: { id: true, status: true, priority: true, dueDate: true },
+      }),
+      prisma.escalation.findMany({
+        where: { clinicId: tenant.clinicId, status: "OPEN" },
+        include: {
+          couple: { include: { primaryPatient: true, assignedDoctor: true, assignedCoordinator: true } },
+          careTask: true,
+          assignedTo: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 30,
+      }),
+      prisma.careTask.findMany({
+        where: {
+          clinicId: tenant.clinicId,
+          OR: [
+            { status: "OVERDUE" },
+            { priority: "HIGH" },
+            { priority: "CLINICAL" },
+            { lastAction: { in: ["ESCALATED", "ESCALATE", "PATIENT_UNWELL", "NEED_HELP", "EXCEPTION"] } },
+          ],
+          ...doctorFilter,
+        },
+        include: {
+          couple: {
+            include: {
+              primaryPatient: { select: { id: true, firstName: true, lastName: true } },
+            },
+          },
+        },
+        orderBy: { dueDate: "asc" },
+        take: 20,
+      }),
+    ]);
+
+    const activeJourneysCount = plans.length;
+    const totalTasks = tasks.length;
+    const completedTasks = tasks.filter((t) => t.status === "COMPLETED").length;
+    const overdueTasks = tasks.filter((t) => t.status === "OVERDUE" || t.status === "BLOCKED").length;
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const openExceptionsCount = escalations.length;
+
+    const formattedExceptions = escalations.map((e) => ({
+      id: e.id,
+      coupleId: e.coupleId,
+      coupleName: e.couple ? `${e.couple.primaryPatient.firstName} ${e.couple.primaryPatient.lastName}` : "Couple",
+      slug: e.couple?.slug,
+      careTaskId: e.careTaskId,
+      taskTitle: e.careTask?.title,
+      type: e.type,
+      severity: e.severity,
+      reason: e.reason,
+      status: e.status,
+      assignedTo: e.assignedTo?.name ?? "Care Team",
+      createdAt: e.createdAt.toISOString(),
+    }));
+
+    const formattedUrgentTasks = urgentTasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: t.priority,
+      category: t.category,
+      dueDate: t.dueDate?.toISOString() ?? null,
+      lastAction: t.lastAction,
+      patientName: t.couple?.primaryPatient
+        ? `${t.couple.primaryPatient.firstName} ${t.couple.primaryPatient.lastName}`.trim()
+        : "Patient",
+      coupleId: t.coupleId,
+    }));
+
+    const formattedPlans = plans.map((p) => ({
+      id: p.id,
+      coupleId: p.coupleId,
+      coupleName: p.couple?.primaryPatient
+        ? `${p.couple.primaryPatient.firstName} ${p.couple.primaryPatient.lastName}`.trim()
+        : "Couple",
+      currentStageIndex: p.currentStageIndex,
+      currentStep: p.currentStep,
+      currentStageName: p.currentStageName,
+      status: p.status,
+      updatedAt: p.updatedAt.toISOString(),
+    }));
+
+    return ok(c, {
+      summary: {
+        openExceptions: openExceptionsCount,
+        activeJourneys: activeJourneysCount,
+        totalTasks,
+        completedTasks,
+        overdueTasks,
+        completionRate,
+      },
+      exceptions: formattedExceptions,
+      urgentTasks: formattedUrgentTasks,
+      activeJourneys: formattedPlans,
+    });
+  })
   .get("/exceptions", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
     const escalations = await prisma.escalation.findMany({

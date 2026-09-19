@@ -97,12 +97,19 @@ export function EditTreatmentModal({
       setStatus(validStatus);
 
       // Resolve stage
-      const stageName = currentTreatment?.stageName || "";
-      const matchedStage = FERTILITY_STAGES.find(
-        (s) => s.toLowerCase().includes(stageName.toLowerCase()) || stageName.toLowerCase().includes(s.toLowerCase())
-      );
-      const fallbackStage = FERTILITY_STAGES[currentTreatment?.stageIndex ?? 1] || defaultStage;
-      setSelectedStage(matchedStage || fallbackStage);
+      let resolvedStage: string = defaultStage;
+      if (typeof currentTreatment?.stageIndex === "number" && currentTreatment.stageIndex >= 0) {
+        const stageAtIndex = FERTILITY_STAGES[currentTreatment.stageIndex];
+        if (stageAtIndex) resolvedStage = stageAtIndex;
+      } else if (currentTreatment?.stageName) {
+        const clean = currentTreatment.stageName.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const matched = FERTILITY_STAGES.find((s) => {
+          const sClean = s.toLowerCase().replace(/[^a-z0-9]/g, "");
+          return sClean.includes(clean) || clean.includes(sClean);
+        });
+        if (matched) resolvedStage = matched;
+      }
+      setSelectedStage(resolvedStage);
 
       setCycleNumber(currentTreatment?.cycleNumber ?? 1);
 

@@ -61,11 +61,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const password = parsed.data.password;
 
         try {
-          if (isDemoLogin(email, password)) {
-            await ensureDemoWorkspace();
-          }
-
-          const user = await prisma.user.findUnique({
+          let user = await prisma.user.findUnique({
             where: { email },
             include: {
               memberships: {
@@ -75,6 +71,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               },
             },
           });
+
+          // Only seed demo workspace on-demand if the user or active membership does not exist yet
+          if ((!user || !user.memberships.length) && isDemoLogin(email, password)) {
+            await ensureDemoWorkspace();
+            user = await prisma.user.findUnique({
+              where: { email },
+              include: {
+                memberships: {
+                  where: { status: "ACTIVE" },
+                  include: { clinic: { include: { organization: true } }, role: true },
+                  take: 1,
+                },
+              },
+            });
+          }
 
           if (!user?.isActive) return null;
           const valid = await compare(password, user.passwordHash);

@@ -25,21 +25,27 @@ function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      if (isDemoLogin(email.trim().toLowerCase(), password)) {
-        const setup = await fetch("/api/demo/setup", { method: "POST" });
-        const setupBody = (await setup.json().catch(() => null)) as
-          | { success?: boolean; error?: { message: string } }
-          | null;
-        if (!setup.ok || setupBody?.success === false) {
-          setError(setupBody?.error?.message ?? "Could not create demo accounts. Check the database connection.");
-          return;
-        }
-      }
-      const result = await signIn("credentials", {
+      let result = await signIn("credentials", {
         email: email.trim().toLowerCase(),
         password,
         redirect: false,
       });
+
+      // If initial sign-in fails for a demo account, trigger setup as fallback and retry
+      if (result?.error && isDemoLogin(email.trim().toLowerCase(), password)) {
+        const setup = await fetch("/api/demo/setup", { method: "POST" });
+        const setupBody = (await setup.json().catch(() => null)) as
+          | { success?: boolean; error?: { message: string } }
+          | null;
+        if (setup.ok && setupBody?.success !== false) {
+          result = await signIn("credentials", {
+            email: email.trim().toLowerCase(),
+            password,
+            redirect: false,
+          });
+        }
+      }
+
       if (result?.error) {
         setError(
           result.error === "CredentialsSignin"

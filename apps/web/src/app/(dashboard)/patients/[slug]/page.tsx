@@ -105,6 +105,10 @@ export default function PatientProfile() {
         if (matchedCouple) {
             return {
                 ...matchedCouple,
+                treatment: p360?.header?.currentTreatment?.kind || matchedCouple.treatment || "IVF",
+                cycleLabel: p360?.header?.currentTreatment?.label || matchedCouple.cycleLabel || "IVF / ICSI Treatment",
+                stage: p360?.header?.currentCarePlan?.stageName || p360?.header?.currentTreatment?.stageName || matchedCouple.stage,
+                stageIndex: p360?.header?.currentCarePlan?.stageIndex ?? p360?.header?.currentTreatment?.stageIndex ?? matchedCouple.stageIndex,
                 primary: {
                     ...matchedCouple.primary,
                     abdmConnected: isPrimaryConnected,

@@ -36,7 +36,6 @@ export const authConfig = {
         pathname.startsWith("/api/create-order") ||
         pathname.startsWith("/api/verify-payment") ||
         pathname.startsWith("/api/pay") ||
-        pathname.startsWith("/api/doctors") ||
         pathname.startsWith("/api/v1") ||
         pathname.startsWith("/api/qr");
 
@@ -87,6 +86,27 @@ export const authConfig = {
         session.user.role = token.role as StaffRole;
       }
       return session;
+    },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      try {
+        const parsed = new URL(url);
+        if (parsed.origin === new URL(baseUrl).origin) return url;
+        if (
+          parsed.hostname === "app.smrkomed.com" ||
+          parsed.hostname === "smrkomed.com" ||
+          parsed.hostname === "www.smrkomed.com" ||
+          parsed.hostname.endsWith(".smrkomed.com") ||
+          parsed.hostname.endsWith(".vercel.app") ||
+          parsed.hostname === "localhost" ||
+          parsed.hostname === "127.0.0.1"
+        ) {
+          return url;
+        }
+      } catch {
+        // Return default baseUrl on invalid URL
+      }
+      return baseUrl;
     },
   },
 } satisfies NextAuthConfig;

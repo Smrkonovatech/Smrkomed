@@ -64,23 +64,42 @@ export function IvfCycleWidget({
   // 2. Resolve current active stage index
   let currentStageIndex = 0; // Default to Stage 1 if just started
 
-  const activeStepIdx = sortedSteps.findIndex(
-    (s: any) => s.status === "CURRENT" || s.status === "IN_PROGRESS"
-  );
-  if (activeStepIdx !== -1) {
-    currentStageIndex = activeStepIdx;
-  } else if (p360?.header?.currentCarePlan?.stageName) {
-    const rawName = p360.header.currentCarePlan.stageName.toLowerCase().replace(/^\d+\.\s*/, "").trim();
-    const idx = carePlanStepsArr.findIndex((s) => s.toLowerCase().includes(rawName));
-    if (idx !== -1) currentStageIndex = idx;
-  } else if (p360?.header?.currentTreatment?.stageName) {
-    const rawName = p360.header.currentTreatment.stageName.toLowerCase().replace(/^\d+\.\s*/, "").trim();
-    const idx = carePlanStepsArr.findIndex((s) => s.toLowerCase().includes(rawName));
-    if (idx !== -1) currentStageIndex = idx;
-  } else if (couple?.stage) {
-    const rawName = couple.stage.toLowerCase().replace(/^\d+\.\s*/, "").trim();
-    const idx = carePlanStepsArr.findIndex((s) => s.toLowerCase().includes(rawName));
-    if (idx !== -1) currentStageIndex = idx;
+  if (typeof p360?.header?.currentTreatment?.stageIndex === "number" && p360.header.currentTreatment.stageIndex >= 0) {
+    currentStageIndex = Math.min(p360.header.currentTreatment.stageIndex, carePlanStepsArr.length - 1);
+  } else if (typeof p360?.header?.currentCarePlan?.stageIndex === "number" && p360.header.currentCarePlan.stageIndex >= 0) {
+    currentStageIndex = Math.min(p360.header.currentCarePlan.stageIndex, carePlanStepsArr.length - 1);
+  } else if (typeof couple?.stageIndex === "number" && couple.stageIndex >= 0) {
+    currentStageIndex = Math.min(couple.stageIndex, carePlanStepsArr.length - 1);
+  } else {
+    const activeStepIdx = sortedSteps.findIndex(
+      (s: any) => s.status === "CURRENT" || s.status === "IN_PROGRESS"
+    );
+    if (activeStepIdx !== -1) {
+      currentStageIndex = activeStepIdx;
+    } else {
+      const findFuzzyStage = (name?: string) => {
+        if (!name) return -1;
+        const clean = name.toLowerCase().replace(/^\d+[\.\s]*/, "").replace(/[^a-z0-9]/g, "");
+        if (!clean) return -1;
+        return carePlanStepsArr.findIndex((s) => {
+          const stepClean = s.toLowerCase().replace(/^\d+[\.\s]*/, "").replace(/[^a-z0-9]/g, "");
+          return stepClean.includes(clean) || clean.includes(stepClean);
+        });
+      };
+
+      const tIdx = findFuzzyStage(p360?.header?.currentTreatment?.stageName);
+      if (tIdx !== -1) {
+        currentStageIndex = tIdx;
+      } else {
+        const cpIdx = findFuzzyStage(p360?.header?.currentCarePlan?.stageName);
+        if (cpIdx !== -1) {
+          currentStageIndex = cpIdx;
+        } else {
+          const cIdx = findFuzzyStage(couple?.stage);
+          if (cIdx !== -1) currentStageIndex = cIdx;
+        }
+      }
+    }
   }
 
   const currentStageName = carePlanStepsArr[currentStageIndex] || "01. Lead / Appointment";
