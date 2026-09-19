@@ -29,9 +29,15 @@ Clinic Key Information:
   * Egg & Embryo Vitrification / Cryopreservation
   * In-house Specialized Fertility Pharmacy & Diagnostics
 
+AI Identity and Model Rule:
+- You are developed directly and exclusively by SmrkoMed.
+- If asked "which model are you?", "what AI is this?", "are you Sarvam / ChatGPT / OpenAI?", or "who made you?":
+  * NEVER say Sarvam, OpenAI, ChatGPT, Anthropic, or any third-party company/model name under ANY circumstances.
+  * ALWAYS reply: "I am Smrko AI, developed by SmrkoMed specifically for patient care and healthcare operations."
+
 Tone, Medical Ethics, and Formatting:
 - Warm, polite, reassuring, professional, and clear.
-- Welcome patients warmly if they just registered via QR check-in.
+- Welcome patients warmly if they just checked in.
 - Advise patients where to proceed: Reception Desk Counter 2 on Ground Floor for vital check, or First Floor Waiting Lounge.
 - If asked about medications or dosages: Explain the general process but remind them that prescriptions are approved exclusively by the doctor.
 - Structure answers cleanly with short paragraphs and bullet points (•).
@@ -40,6 +46,19 @@ Tone, Medical Ethics, and Formatting:
 function generateFallbackResponse(userPrompt: string, patientName?: string): string {
   const query = userPrompt.toLowerCase();
   const nameGreeting = patientName ? `Hello ${patientName}! ` : "Hello! ";
+
+  if (
+    query.includes("model") ||
+    query.includes("sarvam") ||
+    query.includes("chatgpt") ||
+    query.includes("openai") ||
+    query.includes("who made you") ||
+    query.includes("who built you") ||
+    query.includes("what ai") ||
+    query.includes("which ai")
+  ) {
+    return `${nameGreeting}I am Smrko AI, developed by SmrkoMed specifically for patient care and healthcare operations.`;
+  }
 
   if (query.includes("where") || query.includes("location") || query.includes("address") || query.includes("reach")) {
     return `${nameGreeting}Hospex Clinic Bangalore is located at 12 Lavelle Road, Bangalore 560001 (near Richmond Circle & UB City).\n\nIf you are already at the clinic, please proceed to Reception Desk Counter 2 on the Ground Floor for token confirmation.`;
@@ -50,7 +69,7 @@ function generateFallbackResponse(userPrompt: string, patientName?: string): str
   }
 
   if (query.includes("wait") || query.includes("time") || query.includes("turn") || query.includes("token")) {
-    return `${nameGreeting}Your QR check-in has notified our front desk team. The typical wait time for vitals check is 5–10 minutes.\n\nPlease relax in the 1st Floor Patient Lounge where tea, coffee, and WiFi are available.`;
+    return `${nameGreeting}Your arrival has notified our front desk team. The typical wait time for vitals check is 5–10 minutes.\n\nPlease relax in the 1st Floor Patient Lounge where tea, coffee, and WiFi are available.`;
   }
 
   if (query.includes("ivf") || query.includes("treatment") || query.includes("procedure") || query.includes("cost")) {
@@ -69,7 +88,7 @@ function generateFallbackResponse(userPrompt: string, patientName?: string): str
     return `${nameGreeting}Our official WhatsApp Care Concierge number is +91 866 071 7328. Tap the 'Chat in WhatsApp' button below to open a pre-filled chat with our Bangalore desk!`;
   }
 
-  return `${nameGreeting}Welcome to Hospex Bangalore Clinic! I am Smrko AI, your personal clinical care assistant. Your check-in is verified in our Bangalore reception system. Feel free to ask me about our doctors, clinic location at Lavelle Road, IVF journeys, or preparation for today's appointment.`;
+  return `${nameGreeting}Welcome to Hospex Bangalore Clinic! I am Smrko AI, developed by Hospex and SmrkoMed. Your check-in is verified in our Bangalore reception system. Feel free to ask me about our doctors, clinic location at Lavelle Road, IVF journeys, or preparation for today's appointment.`;
 }
 
 export async function POST(request: Request) {

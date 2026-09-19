@@ -444,9 +444,12 @@ test("16. Full appointment confirmation chain with system-webhook tenant execute
     },
   });
 
-  const tomorrow = new Date(Date.now() + 86400000 * 2);
-  // Ensure time is within clinic working hours (e.g. 11:00 AM UTC)
-  tomorrow.setUTCHours(11, 0, 0, 0);
+  const nowUtc = new Date();
+  const utcDay = nowUtc.getUTCDay();
+  const daysToNextMonday = ((1 - utcDay + 7) % 7 || 7) + 7;
+  const tomorrow = new Date(nowUtc.getTime() + daysToNextMonday * 86_400_000);
+  // 11:00 AM IST is 05:30 UTC, comfortably inside clinic working hours
+  tomorrow.setUTCHours(5, 30, 0, 0);
   const testDoctor = `Dr. ConfirmTest ${Date.now().toString().slice(-4)}`;
   const { encodeSlotId } = await import("./modules/appointments/availability");
   const validSlotId = encodeSlotId({

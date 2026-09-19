@@ -5,6 +5,7 @@ import type { TenantContext } from "@smrkomed/database";
 import { prisma, writeTenantAuditLog, isSystemTenantUserId } from "@smrkomed/database";
 
 import { normalizeWhatsAppPhone, phonesMatch } from "../../integrations/providers/whatsapp/phone";
+import { formatTimeIST, formatDateIST, formatTime12IST } from "../appointments/availability";
 
 function splitName(name: string) {
   const parts = name.trim().split(/\s+/);
@@ -1238,8 +1239,8 @@ async function executeNode(
         if (appt) {
           enriched = {
             appointment_id: appt.id,
-            appointment_date: appt.startsAt.toISOString().slice(0, 10),
-            appointment_time: appt.startsAt.toISOString().slice(11, 16),
+            appointment_date: formatDateIST(appt.startsAt),
+            appointment_time: formatTime12IST(appt.startsAt),
             doctor_name: appt.doctorName ?? "",
           };
           Object.assign(vars, enriched);
@@ -1458,7 +1459,7 @@ async function executeNode(
               title: "Available Slots",
               rows: (slots as any[]).slice(0, 10).map((s: any) => ({
                 id: `appt_slot_${s.slotId}`,
-                title: s.startTime?.slice(11, 16) || "Available Slot",
+                title: s.timeLabel || (s.startTime ? formatTime12IST(s.startTime) : "Available Slot"),
                 description: "Available consultation slot",
               })),
             },
@@ -1681,11 +1682,12 @@ async function executeNode(
         vars["doctor.name"] = cleanDocName;
         vars["doctor_name"] = `Dr. ${cleanDocName}`;
         vars["doctor.displayName"] = `Dr. ${cleanDocName}`;
-        vars["doctor.specialty"] = doc.specialty;
-        vars["doctor.experience"] = doc.experience;
-        vars["doctor.bio"] = doc.bio;
         vars["doctor.location"] = doc.location || "";
         vars["doctor.clinicId"] = doc.clinicId || "";
+        if (doc.location) {
+          vars["clinic.name"] = `Hospex, ${doc.location}`;
+          vars["clinic_name"] = `Hospex, ${doc.location}`;
+        }
         if (doc.photoUrl) vars["doctor.photoUrl"] = doc.photoUrl;
         vars["doctor.languages"] = Array.isArray(doc.languages) ? doc.languages.join(" • ") : String(doc.languages || "English • Hindi");
       }
@@ -1787,11 +1789,7 @@ async function executeNode(
         const decoded = decodeSlotId(vars["selectedSlotId"]);
         if (decoded) {
           const d = new Date(decoded.startMs);
-          const hours = d.getUTCHours();
-          const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-          const ampm = hours >= 12 ? "PM" : "AM";
-          const h12 = hours % 12 || 12;
-          time = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
+          time = formatTime12IST(d);
         }
       }
 
@@ -1905,15 +1903,18 @@ async function executeNode(
 
       vars["appointment_id"] = booked.appointmentId;
       vars["appointmentId"] = booked.appointmentId;
-      vars["appointment_date"] = booked.startsAt.slice(0, 10);
-      vars["appointment_time"] = booked.startsAt.slice(11, 16);
-      vars["appointment.date"] = booked.startsAt.slice(0, 10);
-      vars["appointment.time"] = booked.startsAt.slice(11, 16);
+      vars["appointment_date"] = formatDateIST(booked.startsAt);
+      vars["appointment_time"] = formatTime12IST(booked.startsAt);
+      vars["appointment.date"] = formatDateIST(booked.startsAt);
+      vars["appointment.time"] = formatTime12IST(booked.startsAt);
       if (booked.doctorName) {
         vars["doctor.name"] = booked.doctorName;
         vars["doctor_name"] = booked.doctorName;
       }
-      if (!vars["clinic.name"] && !vars["clinic_name"]) {
+      if (booked.clinicName) {
+        vars["clinic.name"] = booked.clinicName;
+        vars["clinic_name"] = booked.clinicName;
+      } else if (!vars["clinic.name"] && !vars["clinic_name"]) {
         vars["clinic.name"] = tenant.clinicName || "our clinic";
         vars["clinic_name"] = tenant.clinicName || "our clinic";
       }
@@ -2072,16 +2073,6 @@ async function executeNode(
 
       let branch = "new_patient";
       if (foundPatient) {
-        branch = "existing_patient";
-        vars["patient.id"] = foundPatient.id;
-        vars["patientId"] = foundPatient.id;
-        vars["patient.name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
-        vars["patient.firstName"] = foundPatient.firstName;
-        vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
-        vars["patient_first_name"] = foundPatient.firstName;
-        vars["patient_exists"] = "true";
-        vars["is_new_patient"] = "false";
-
         const couple = await prisma.couple.findFirst({
           where: {
             clinicId: tenant.clinicId,
@@ -2089,24 +2080,47 @@ async function executeNode(
           },
           select: { id: true },
         });
+
         if (couple) {
+          branch = "existing_patient";
+          vars["patient.id"] = foundPatient.id;
+          vars["patientId"] = foundPatient.id;
+          vars["patient.name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+          vars["patient.firstName"] = foundPatient.firstName;
+          vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+          vars["patient_first_name"] = foundPatient.firstName;
+          vars["patient_exists"] = "true";
+          vars["is_new_patient"] = "false";
           vars["couple.id"] = couple.id;
           vars["coupleId"] = couple.id;
-        }
 
-        if (execution.conversationId) {
-          await prisma.conversation.updateMany({
-            where: { id: execution.conversationId, clinicId: tenant.clinicId },
-            data: { patientId: foundPatient.id, unmatched: false },
+          if (execution.conversationId) {
+            await prisma.conversation.updateMany({
+              where: { id: execution.conversationId, clinicId: tenant.clinicId },
+              data: { patientId: foundPatient.id, coupleId: couple.id, unmatched: false },
+            });
+          }
+
+          console.log("[PATIENT_FOUND]", {
+            clinicId: tenant.clinicId,
+            executionId: execution.id,
+            patientId: foundPatient.id,
+            coupleId: couple.id,
+          });
+        } else {
+          // Patient record exists but no registered couple file -> route to new patient registration
+          branch = "new_patient";
+          vars["patient_exists"] = "false";
+          vars["is_new_patient"] = "true";
+          vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
+          vars["patient_first_name"] = foundPatient.firstName;
+
+          console.log("[PATIENT_FOUND_NO_COUPLE_REQUIRING_REGISTRATION]", {
+            clinicId: tenant.clinicId,
+            executionId: execution.id,
+            patientId: foundPatient.id,
           });
         }
-
-        console.log("[PATIENT_FOUND]", {
-          clinicId: tenant.clinicId,
-          executionId: execution.id,
-          patientId: foundPatient.id,
-          hasCouple: Boolean(couple),
-        });
       } else {
         branch = "new_patient";
         vars["patient_exists"] = "false";

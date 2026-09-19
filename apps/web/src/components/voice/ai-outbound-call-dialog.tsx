@@ -122,7 +122,7 @@ export function AiOutboundCallDialog({
           }!`,
         });
         toast.success(
-          `📞 Sarvam AI is calling ${patientName} at ${phoneNumber}!`,
+          `📞 Care Voice is calling ${patientName} at ${phoneNumber}!`,
         );
       }
     } catch (err) {
@@ -155,7 +155,7 @@ export function AiOutboundCallDialog({
             </div>
             <div>
               <DialogTitle className="text-base font-semibold">
-                AI Voice Call — Sarvam AI
+                AI Voice Call — SmrkoMed Care Voice
               </DialogTitle>
               <DialogDescription className="text-xs text-muted-foreground">
                 Outbound call from caller <strong className="font-mono text-foreground">+918064265889</strong>
@@ -208,7 +208,7 @@ export function AiOutboundCallDialog({
               className="h-10 text-base sm:text-sm font-mono font-semibold bg-background border-emerald-300 dark:border-emerald-700 focus-visible:ring-emerald-500"
             />
             <p className="text-[11px] text-muted-foreground">
-              Sarvam AI will dial this exact number from caller ID <strong className="font-mono text-foreground">+918064265889</strong>.
+              Care Voice will dial this exact number from caller ID <strong className="font-mono text-foreground">+918064265889</strong>.
             </p>
           </div>
 

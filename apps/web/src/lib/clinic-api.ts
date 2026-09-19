@@ -60,6 +60,7 @@ export type ClinicAppointment = {
   date: string;
   duration: number;
   notes: string;
+  startsAt?: string;
 };
 
 export type ClinicDocument = {

@@ -360,7 +360,7 @@ export async function handleMenuAction(input: {
 
       for (const dateIso of upcomingDates.slice(0, 2)) {
         const slots = await getDoctorDaySlots(input.tenant.clinicId, doc.id, dateIso);
-        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 4);
+        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 8);
 
         const d = new Date(`${dateIso}T00:00:00`);
         const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
@@ -429,7 +429,7 @@ export async function handleMenuAction(input: {
       let hasSlots = false;
       for (const dateIso of upcomingDates.slice(0, 2)) {
         const slots = await getDoctorDaySlots(input.tenant.clinicId, doc.id, dateIso);
-        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 4);
+        const freeSlots = slots.filter((s) => s.status === "available").slice(0, 10);
         const d = new Date(`${dateIso}T00:00:00`);
         const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
         if (freeSlots.length > 0) {
@@ -447,17 +447,33 @@ export async function handleMenuAction(input: {
   }
 
   // 3. Book Consultation / Appointment (menu item 2)
-  if (
+  const isBookCmd =
     clean === MENU_ACTIONS.BOOK_APPOINTMENT ||
     clean === "2" ||
     clean === "btn_book_wa" ||
     clean === "btn_ai_call" ||
     clean === "book" ||
     clean === "book appointment" ||
-    clean === "appointment"
-  ) {
-    // If unregistered, route to couple registration
-    if (!conversation.patientId || conversation.unmatched) {
+    clean === "appointment" ||
+    clean === "consultation" ||
+    /\b(book\s*(an?\s*)?(appointment|consultation)|schedule\s*(an?\s*)?(appointment|consultation)|need\s*(an?\s*)?appointment|want\s*to\s*book|see\s*a?\s*doctor|book\s*doctor)\b/i.test(clean);
+
+  if (isBookCmd) {
+    // Resolve if patient has a registered couple
+    let hasCouple = Boolean(conversation.coupleId);
+    if (!hasCouple && conversation.patientId) {
+      const c = await prisma.couple.findFirst({
+        where: {
+          clinicId: input.tenant.clinicId,
+          OR: [{ primaryPatientId: conversation.patientId }, { partnerPatientId: conversation.patientId }],
+        },
+        select: { id: true },
+      });
+      hasCouple = Boolean(c);
+    }
+
+    // If unregistered or lacks couple registration, route to couple registration
+    if (!conversation.patientId || conversation.unmatched || !hasCouple) {
       const { tryHandleRegistrationMessage } = await import("./registration");
       const reg = await tryHandleRegistrationMessage({
         tenant: input.tenant,
@@ -646,6 +662,7 @@ export async function handleMenuAction(input: {
   // 8. Couple Registration (menu item 9)
   if (
     clean === MENU_ACTIONS.REGISTER ||
+    clean === "menu_register" ||
     clean === "9" ||
     /\b(register|couple\s*registration|new\s*patient|sign\s*up)\b/i.test(clean)
   ) {

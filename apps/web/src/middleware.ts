@@ -33,7 +33,7 @@ export default auth((req) => {
     pathname.startsWith("/api/verify-payment") ||
     pathname.startsWith("/api/razorpay") ||
     pathname.startsWith("/api/pay") ||
-    pathname.startsWith("/api/payments") ||
+    pathname.startsWith("/api/doctors") ||
     pathname.startsWith("/api/qr") ||
     pathname.startsWith("/api/consultations");
 

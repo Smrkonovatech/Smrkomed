@@ -211,7 +211,12 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
     const updatedConversation = await prisma.conversation.update({
       where: { id: conversation.id },
       data: {
-        status: conversation.status === "CLOSED" ? "OPEN" : "WAITING_PATIENT",
+        status:
+          conversation.status === "CLOSED"
+            ? "OPEN"
+            : conversation.status === "WAITING_STAFF"
+              ? "WAITING_STAFF"
+              : "WAITING_PATIENT",
         updatedAt: new Date(),
         lastStaffReadAt: new Date(),
       },
@@ -481,7 +486,12 @@ export async function sendWhatsAppSessionText(
     const updatedConv = await prisma.conversation.update({
       where: { id: conversation.id },
       data: {
-        status: conversation.status === "CLOSED" ? "OPEN" : "WAITING_PATIENT",
+        status:
+          conversation.status === "CLOSED"
+            ? "OPEN"
+            : conversation.status === "WAITING_STAFF"
+              ? "WAITING_STAFF"
+              : "WAITING_PATIENT",
         updatedAt: new Date(),
         ...(senderType === "STAFF" ? { lastStaffReadAt: new Date() } : {}),
       },

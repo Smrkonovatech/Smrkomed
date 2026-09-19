@@ -11,7 +11,7 @@ import { runExecution } from "./engine";
 import { dispatchWhatsAppTrigger } from "./triggers";
 import { mergeExecutionContext, parseExecutionContext } from "./context";
 import { nextNodes, parseDefinition } from "./validate";
-import { decodeSlotId } from "../appointments/availability";
+import { decodeSlotId, formatTime12IST, formatDateFriendlyIST } from "../appointments/availability";
 
 /** Start work immediately (do not wait for setImmediate — more reliable on Railway). */
 function scheduleBackground(task: () => Promise<void>) {
@@ -106,15 +106,8 @@ export function buildIncomingWhatsAppVars(input: {
           let dateStr = "";
           if (decoded) {
             const d = new Date(decoded.startMs);
-            const hours = d.getUTCHours();
-            const minutes = String(d.getUTCMinutes()).padStart(2, "0");
-            const ampm = hours >= 12 ? "PM" : "AM";
-            const h12 = hours % 12 || 12;
-            timeLabel = `${String(h12).padStart(2, "0")}:${minutes} ${ampm}`;
-            const weekday = d.toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short" });
-            const month = d.toLocaleDateString("en-US", { timeZone: "UTC", month: "short" });
-            const day = d.getUTCDate();
-            dateStr = `${weekday}, ${day} ${month}`;
+            timeLabel = formatTime12IST(d);
+            dateStr = formatDateFriendlyIST(d);
           }
           return {
             selectedSlotId: slotId,
@@ -177,15 +170,16 @@ async function resolveLeadId(clinicId: string, phone: string | null): Promise<st
 async function clinicTenant(clinicId: string): Promise<TenantContext | null> {
   const clinic = await prisma.clinic.findUnique({
     where: { id: clinicId },
-    select: { id: true, name: true, organizationId: true },
+    select: { id: true, name: true, city: true, organizationId: true },
   });
   if (!clinic) return null;
+  const clinicDisplay = clinic.city ? `${clinic.name}, ${clinic.city}` : clinic.name;
   return {
     userId: "system-webhook",
     role: "CLINIC_ADMIN",
     clinicId: clinic.id,
     organizationId: clinic.organizationId,
-    clinicName: clinic.name,
+    clinicName: clinicDisplay,
     organizationName: "",
   };
 }
@@ -310,7 +304,7 @@ export async function resumeWaitForReplyExecutions(input: {
                   slots.find((s: any) => {
                     const d = new Date(s.startTime);
                     const h12 = d
-                      .toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true })
+                      .toLocaleString("en-US", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true })
                       .toLowerCase();
                     return cleanLower.includes(h12) || cleanLower.includes(s.timeLabel?.toLowerCase() || "");
                   }) ?? null;
@@ -847,8 +841,18 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     }
   }
 
-  // 1.5. Check if contact is unregistered/unmatched and replying to registration
-  if (input.unmatched || !input.patientId) {
+  // 1.5. Check if contact is unregistered/unmatched, asks to register, or asks to book without couple registration
+  const isExplicitRegister =
+    cleanInboundText === "menu_register" ||
+    (/\b(register|sign\s*up|new\s*patient|create\s*(my\s*)?account|registration|couple\s*registration)\b/i.test(cleanInboundText) &&
+      !cleanInboundText.includes("how"));
+  const isExplicitBooking =
+    cleanInboundText === "btn_book_wa" ||
+    cleanInboundText === "menu_book_appt" ||
+    cleanInboundText === "btn_ai_call" ||
+    /\b(book\s*(an?\s*)?(appointment|consultation)|schedule\s*(an?\s*)?(appointment|consultation)|need\s*(an?\s*)?appointment|want\s*to\s*book|book\s*doctor|book\s*appointment|book\s*consultation|book|appointment|consultation)\b/i.test(cleanInboundText);
+
+  if (input.unmatched || !input.patientId || isExplicitRegister || (isExplicitBooking && !coupleId)) {
     if (input.skipAi) {
       return { resumed, dispatched: null, ai: { skipped: true as const, reason: "already_ran_in_webhook" } };
     }
@@ -866,7 +870,7 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
       });
 
     if (regResult.handled) {
-      console.log("[WhatsApp inbound] unregistered contact registration handled", {
+      console.log("[WhatsApp inbound] contact registration handled", {
         conversationId: input.conversationId,
         registered: regResult.registered,
         patientId: regResult.patientId,
@@ -879,17 +883,17 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
       };
     }
 
-    // Unregistered contact message didn't contain registration data (e.g. "Hi", "Appointment", inquiry).
-    // Route directly to AI to explain they are not yet registered, prompt for registration, and answer queries.
-    // Do NOT trigger automated flows that create ghost appointments without patient records.
-    console.log("[WhatsApp inbound] unregistered contact — routing to registration AI", {
-      conversationId: input.conversationId,
-      phone: input.contactPhone,
-    });
-    const ai = input.skipAi
-      ? { skipped: true as const, reason: "already_ran_in_webhook" }
-      : await runInboundWhatsAppAi(input);
-    return { resumed, dispatched: null, ai };
+    // If contact is unregistered/unmatched, route directly to AI to explain they are not yet registered
+    if (input.unmatched || !input.patientId) {
+      console.log("[WhatsApp inbound] unregistered contact — routing to registration AI", {
+        conversationId: input.conversationId,
+        phone: input.contactPhone,
+      });
+      const ai = input.skipAi
+        ? { skipped: true as const, reason: "already_ran_in_webhook" }
+        : await runInboundWhatsAppAi(input);
+      return { resumed, dispatched: null, ai };
+    }
   }
 
   // 1.5. Check for Payment Intent or "Pay Now" button reply

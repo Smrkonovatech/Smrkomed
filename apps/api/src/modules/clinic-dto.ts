@@ -89,6 +89,7 @@ export type AppointmentDto = {
   date: string;
   duration: number;
   notes: string;
+  startsAt?: string;
 };
 
 export type DocumentDto = {
@@ -116,13 +117,25 @@ export type CarePlanDto = {
   id: string;
   coupleId: string;
   name: string;
-  type: CarePlanType;
+  type: string;
   status: string;
-  startDate: string | null;
-  currentStep: number;
   templateVersion?: number;
-  createdAt?: string;
   updatedAt?: string;
+  createdAt?: string;
+  startDate?: string | null;
+  currentStep?: number;
+};
+
+export type AuditLogDto = {
+  id: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  actorId: string;
+  actorName: string;
+  actorRole: string;
+  createdAt: string;
+  metadata?: Record<string, unknown> | null;
 };
 
 type PatientRow = Patient & {
@@ -303,13 +316,14 @@ export function serializeAppointment(row: Appointment): AppointmentDto {
     room: row.room ?? "",
     status: APPOINTMENT_UI[row.status],
     time: row.startsAt.toLocaleTimeString("en-IN", {
-      timeZone: "UTC",
+      timeZone: "Asia/Kolkata",
       hour: "2-digit",
       minute: "2-digit",
     }),
-    date: row.startsAt.toISOString().slice(0, 10),
+    date: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(row.startsAt),
     duration: row.durationMin,
     notes: row.notes ?? "",
+    startsAt: row.startsAt.toISOString(),
   };
 }
 

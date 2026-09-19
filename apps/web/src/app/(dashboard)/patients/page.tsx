@@ -66,7 +66,7 @@ export default function PatientsPage() {
     <div className="mx-auto max-w-[1500px]">
       <PageHeader
         title="Patients"
-        subtitle="Manage every couple’s treatment journey, care owner, and next clinical step."
+        subtitle="Manage every patient & couple’s treatment journey, care owner, and next clinical step."
         actions={
           <Button className="rounded-lg" onClick={() => openAction("add-couple")}>
             <UserPlus className="size-4" /> Add Couple
@@ -90,7 +90,7 @@ export default function PatientsPage() {
             <Input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search couples, stage, doctor, coordinator, or next step"
+              placeholder="Search patients, stage, doctor, coordinator, or next step"
               className="h-9 rounded-lg pl-9 shadow-none"
               aria-label="Search patients"
             />
@@ -162,9 +162,9 @@ export default function PatientsPage() {
               <RecordCard key={c.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">{coupleLabel(c)}</p>
+                    <p className="truncate font-semibold">{c.partner?.name ? coupleLabel(c) : (c.primary?.name || "Patient")}</p>
                     <p className="mt-0.5 text-sm text-muted-foreground">
-                      {c.treatment} · {c.status}
+                      {c.partner?.name ? "Couple" : (c.slug?.startsWith("qr-") ? "Individual · QR Check-In" : "Individual Patient")} · {c.treatment} · {c.status}
                     </p>
                   </div>
                   <StatusBadge label={c.status} tone={patientStatusTone[c.status] ?? "muted"} />
@@ -187,7 +187,7 @@ export default function PatientsPage() {
                     onClick={() =>
                       setTargetCouple({
                         id: c.id,
-                        name: coupleLabel(c),
+                        name: c.partner?.name ? coupleLabel(c) : (c.primary?.name || "Patient"),
                         slug: c.slug,
                       })
                     }
@@ -202,7 +202,7 @@ export default function PatientsPage() {
             <table className="w-full min-w-[1080px] text-sm">
               <thead>
                 <tr className="border-b bg-muted/35 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
-                  <th className="px-4 py-2.5 font-medium">Couple</th>
+                  <th className="px-4 py-2.5 font-medium">Patient / Couple</th>
                   <th className="px-3 py-2.5 font-medium">Treatment</th>
                   <th className="px-3 py-2.5 font-medium">Current stage</th>
                   <th className="px-3 py-2.5 font-medium">Doctor</th>
@@ -229,16 +229,27 @@ export default function PatientsPage() {
                             .map((p) => p[0])
                             .join("")
                             .slice(0, 2)}
-                          tone="primary"
+                          tone={c.partner?.name ? "primary" : "teal"}
                           className="size-8"
                         />
                         <span className="min-w-0">
                           <span className="block truncate font-semibold group-hover:text-primary">
-                            {coupleLabel(c)}
+                            {c.partner?.name ? coupleLabel(c) : (c.primary?.name || "Patient")}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
-                            {c.primary?.name ?? ""}
-                            {c.partner?.name ? ` · ${c.partner.name}` : ""}
+                            {c.partner?.name ? (
+                              <>
+                                <span>{c.primary?.name ?? ""} · {c.partner.name}</span>
+                                <span className="ml-1.5 inline-flex items-center rounded-sm bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary">Couple</span>
+                              </>
+                            ) : (
+                              <>
+                                <span>Individual Patient</span>
+                                {c.slug?.startsWith("qr-") && (
+                                  <span className="ml-1.5 inline-flex items-center rounded-sm bg-emerald-500/10 px-1 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">QR Check-In</span>
+                                )}
+                              </>
+                            )}
                           </span>
                         </span>
                       </Link>

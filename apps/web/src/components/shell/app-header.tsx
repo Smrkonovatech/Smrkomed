@@ -8,9 +8,12 @@ import {
   ChevronDown,
   FilePlus2,
   ListPlus,
+  LogOut,
   MessageSquare,
   Plus,
   Search,
+  Settings,
+  User,
   UserPlus,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
@@ -77,7 +80,18 @@ export function AppHeader() {
       .slice(0, 2)
       .toUpperCase() ?? currentUser.initials;
   const sessionRoleLabel = session?.user?.role?.replaceAll("_", " ") ?? roleLabels[role];
-  const clinic = clinics.find((c) => c.id === clinicId) ?? clinics.find((c) => c.id === "kochi") ?? clinics[0]!;
+  const doctorPhotoUrl = session?.user?.id
+    ? `/api/v1/public/doctors/${encodeURIComponent(session.user.id)}/photo`
+    : `/api/v1/public/doctors/cmu6rkn080000njfo34n9spvq/photo`;
+  const clinic =
+    clinics.find(
+      (c) =>
+        c.id === clinicId ||
+        (c.id === "kochi" && (clinicId === "cmu3nmx310026jy04gsi21hxl" || clinicId.toLowerCase().includes("kochi"))) ||
+        (c.id === "blr" && (clinicId === "cmt0exo9n000vl804rbaabh32" || clinicId.toLowerCase().includes("blr") || clinicId.toLowerCase().includes("bangalore"))),
+    ) ??
+    clinics.find((c) => c.id === "kochi") ??
+    clinics[0]!;
   const displayClinicName = `${currentClinic?.name || clinicName || clinic.name} · ${clinic.city}`;
 
   const results = useMemo<SearchResult[]>(() => {
@@ -267,32 +281,42 @@ export function AppHeader() {
                 className="flex items-center gap-2.5 rounded-full pl-1 pr-2 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label="User profile menu"
               >
-                <Avatar initials={sessionInitials} />
+                <Avatar initials={sessionInitials} src={doctorPhotoUrl} />
                 <span className="hidden text-left lg:block">
                   <span className="block text-[13px] font-bold text-gray-800 leading-tight">{sessionName}</span>
                   <span className="block text-[10px] text-gray-500 font-medium tracking-wide uppercase">{sessionRoleLabel}</span>
                 </span>
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52 rounded-xl">
-              <DropdownMenuLabel>Dashboard view</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {(Object.keys(roleLabels) as Role[]).map((r) => (
-                <DropdownMenuItem key={r} onSelect={() => setRole(r)}>
-                  {roleLabels[r]}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
+            <DropdownMenuContent align="end" className="w-52 rounded-xl p-1.5 shadow-lg">
               <DropdownMenuItem asChild>
-                <Link href="/settings">Settings</Link>
+                <Link
+                  href="/doctor/profile"
+                  className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors hover:bg-muted"
+                >
+                  <User className="size-4 text-primary" />
+                  Profile
+                </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  href="/settings"
+                  className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors hover:bg-muted"
+                >
+                  <Settings className="size-4 text-muted-foreground" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1" />
               <DropdownMenuItem
+                className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors text-destructive focus:text-destructive hover:bg-destructive/10"
                 onSelect={() => {
                   void exitAppFullscreen().finally(() => {
                     void signOut({ callbackUrl: "/login" });
                   });
                 }}
               >
+                <LogOut className="size-4" />
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>

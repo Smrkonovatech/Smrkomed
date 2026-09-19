@@ -514,12 +514,46 @@ export async function tryHandleRegistrationMessage(input: {
 
   const conversation = await prisma.conversation.findFirst({
     where: { id: input.conversationId, clinicId: input.tenant.clinicId },
-    select: { id: true, patientId: true, unmatched: true, pendingAction: true },
+    select: { id: true, patientId: true, coupleId: true, unmatched: true, pendingAction: true },
   });
   if (!conversation) return { handled: false };
 
-  // If already matched/registered, do not hijack normal chat
-  if (conversation.patientId && !conversation.unmatched) {
+  // Resolve whether the patient has a registered couple record
+  let hasCouple = Boolean(conversation.coupleId);
+  if (!hasCouple && conversation.patientId) {
+    const c = await prisma.couple.findFirst({
+      where: {
+        clinicId: input.tenant.clinicId,
+        OR: [{ primaryPatientId: conversation.patientId }, { partnerPatientId: conversation.patientId }],
+      },
+      select: { id: true },
+    });
+    hasCouple = Boolean(c);
+  }
+
+  // Check existing pending action draft
+  const pending = conversation.pendingAction as RegistrationDraft | null;
+  const inDraft = pending?.kind === "REGISTRATION";
+
+  // Try parsing composite registration (e.g. "Priya Sharma, 28, Female, Partner: Rahul Sharma, 31, IVF")
+  const composite = parseCompositeRegistration(clean);
+
+  // If user explicitly asks to register or taps "Couple Registration"
+  const isRegisterTrigger =
+    clean === "menu_register" ||
+    (/\b(register|sign\s*up|new\s*patient|create\s*(my\s*)?account|registration|couple\s*registration)\b/i.test(clean) &&
+      !clean.includes("how"));
+
+  // If user asks to book an appointment or consultation
+  const isBookingTrigger =
+    /\b(book\s*(an?\s*)?(appointment|consultation)|schedule\s*(an?\s*)?(appointment|consultation)|need\s*(an?\s*)?appointment|want\s*to\s*book|book\s*doctor|book\s*appointment|book\s*consultation|book|appointment|consultation|schedule|doctor)\b/i.test(clean) ||
+    clean.startsWith("appt_") ||
+    clean === "btn_book_wa" ||
+    clean === "btn_ai_call" ||
+    clean === "menu_book_appt";
+
+  // If already matched/registered with an active couple and NOT triggering registration, booking or in draft, do not hijack normal chat
+  if (conversation.patientId && !conversation.unmatched && hasCouple && !isRegisterTrigger && !isBookingTrigger && !inDraft && !composite) {
     return { handled: false };
   }
 
@@ -529,28 +563,8 @@ export async function tryHandleRegistrationMessage(input: {
   });
   const clinicName = clinic?.name ?? input.tenant.clinicName ?? "SmrkoMed";
 
-  // Check existing pending action draft
-  const pending = conversation.pendingAction as RegistrationDraft | null;
-  const inDraft = pending?.kind === "REGISTRATION";
-
-  // Try parsing composite registration (e.g. "Priya Sharma, 28, Female, Partner: Rahul Sharma, 31, IVF")
-  const composite = parseCompositeRegistration(clean);
-
-  // If user says "register" or "i want to register" or "new patient"
-  const isRegisterTrigger =
-    /\b(register|sign\s*up|new\s*patient|create\s*(my\s*)?account|registration|couple\s*registration)\b/i.test(clean) &&
-    !clean.includes("how");
-
-  // Or if unregistered user asks to book an appointment
-  const isBookingTrigger =
-    /\b(book\s*appointment|book\s*consultation|book|appointment|consultation|schedule|doctor)\b/i.test(clean) ||
-    clean.startsWith("appt_") ||
-    clean === "btn_book_wa" ||
-    clean === "btn_ai_call" ||
-    clean === "menu_book_appt";
-
-  // When user triggers registration or booking, ALWAYS start fresh at Step 1
-  if ((isRegisterTrigger || isBookingTrigger) && !composite) {
+  // 1. Explicit registration trigger ALWAYS starts fresh at Step 1 (or processes composite)
+  if (isRegisterTrigger && !composite) {
     const draft: RegistrationDraft = { kind: "REGISTRATION", subStep: 1 };
     await prisma.conversation.update({
       where: { id: conversation.id },
@@ -559,9 +573,26 @@ export async function tryHandleRegistrationMessage(input: {
         pendingActionExpiresAt: new Date(Date.now() + 60 * 60_000), // 1 hour TTL
       },
     });
-    const prompt = isBookingTrigger
-      ? `👋 Welcome to *${clinicName}*!\n\nTo schedule your consultation and create your clinic file, clinic guidelines require completing your registration first (3 quick steps) 📝\n\n${formatRegistrationStepPrompt(draft)}`
-      : formatRegistrationStepPrompt(draft);
+    const prompt = formatRegistrationStepPrompt(draft);
+    await sendWhatsAppAiSessionText(input.tenant, {
+      conversationId: conversation.id,
+      body: prompt,
+    }).catch(() => undefined);
+    return { handled: true, responseMessage: prompt };
+  }
+
+  // 2. Booking trigger for unregistered visitor or patient without couple ALWAYS starts fresh at Step 1
+  const requiresRegistrationForBooking = !conversation.patientId || conversation.unmatched || !hasCouple;
+  if (isBookingTrigger && requiresRegistrationForBooking && !composite) {
+    const draft: RegistrationDraft = { kind: "REGISTRATION", subStep: 1 };
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        pendingAction: draft,
+        pendingActionExpiresAt: new Date(Date.now() + 60 * 60_000), // 1 hour TTL
+      },
+    });
+    const prompt = `👋 Welcome to *${clinicName}*!\n\nTo schedule your consultation and create your clinic file, clinic guidelines require completing your registration first (3 quick steps) 📝\n\n${formatRegistrationStepPrompt(draft)}`;
 
     await sendWhatsAppAiSessionText(input.tenant, {
       conversationId: conversation.id,

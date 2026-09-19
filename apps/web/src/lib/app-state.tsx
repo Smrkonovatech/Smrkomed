@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useSession } from "next-auth/react";
 
 import {
   clinicApi,
@@ -106,6 +107,7 @@ export interface AppAppointment extends Appointment {
   partner?: string;
   duration?: number;
   notes?: string;
+  startsAt?: string | undefined;
   whatsappConfirmation?: boolean;
   whatsappReminder?: boolean;
   careLoop?: boolean;
@@ -294,6 +296,7 @@ function toAppointment(row: ClinicAppointment): AppAppointment {
     date: row.date,
     duration: row.duration,
     notes: row.notes,
+    ...(row.startsAt ? { startsAt: row.startsAt } : {}),
   };
 }
 
@@ -313,6 +316,7 @@ function toDocument(row: ClinicDocument): AppDocument {
 }
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
+  const { data: session } = useSession();
   const [role, setRole] = useState<Role>("doctor");
   const [clinicId, setClinicIdState] = useState<string>("blr");
 
@@ -331,6 +335,24 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       window.localStorage.setItem("smrkomed_active_clinic_id", id);
     }
   }, []);
+
+  // When session loads, auto-align active clinic to user's assigned clinic if not explicitly set
+  useEffect(() => {
+    if (session?.user?.clinicId) {
+      const userClinicId = session.user.clinicId;
+      if (userClinicId === "cmu3nmx310026jy04gsi21hxl" || userClinicId.toLowerCase().includes("kochi")) {
+        setClinicIdState("kochi");
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("smrkomed_active_clinic_id", "kochi");
+        }
+      } else if (userClinicId === "cmt0exo9n000vl804rbaabh32" || userClinicId.toLowerCase().includes("blr") || userClinicId.toLowerCase().includes("bangalore")) {
+        setClinicIdState("blr");
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("smrkomed_active_clinic_id", "blr");
+        }
+      }
+    }
+  }, [session?.user?.clinicId]);
   const [currentClinic, setCurrentClinic] = useState<ClinicProfile | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);

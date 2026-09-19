@@ -259,9 +259,9 @@ export async function getDoctorDaySlots(
     };
   }
 
-  // Fetch confirmed appointments for this doctor on this day
-  const dayStart = new Date(`${isoDate}T00:00:00.000Z`);
-  const dayEnd = new Date(`${isoDate}T23:59:59.999Z`);
+  // Fetch confirmed appointments for this doctor on this day (IST)
+  const dayStart = new Date(`${isoDate}T00:00:00+05:30`);
+  const dayEnd = new Date(`${isoDate}T23:59:59.999+05:30`);
 
   const bookedAppointments = await prisma.appointment.findMany({
     where: {
@@ -281,8 +281,14 @@ export async function getDoctorDaySlots(
   });
 
   const bookedWindows = bookedAppointments.map((appt) => {
-    const hours = appt.startsAt.getUTCHours();
-    const mins = appt.startsAt.getUTCMinutes();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Asia/Kolkata",
+      hour: "numeric",
+      minute: "numeric",
+      hourCycle: "h23",
+    }).formatToParts(appt.startsAt);
+    const hours = parseInt(parts.find((p) => p.type === "hour")?.value || "0", 10);
+    const mins = parseInt(parts.find((p) => p.type === "minute")?.value || "0", 10);
     const startMins = hours * 60 + mins;
     const endMins = startMins + (appt.durationMin || 30);
     return { startMins, endMins };
@@ -293,6 +299,17 @@ export async function getDoctorDaySlots(
   const step = duration + buffer;
 
   const slots: DoctorSlotInfo[] = [];
+
+  const overrideRule = await prisma.automationRule.findFirst({
+    where: {
+      trigger: "DOCTOR_SLOT_OVERRIDES",
+      OR: [
+        { name: `${avail.doctorId}_${isoDate}` },
+        { name: `doc_${avail.doctorId}_${isoDate}` },
+      ],
+    },
+  });
+  const savedActiveSlots = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
 
   for (const window of dayConfig.slots) {
     let cursor = parseTimeToMinutes(window.start);
@@ -317,9 +334,15 @@ export async function getDoctorDaySlots(
         return cursor < bEnd && slotEnd > bStart;
       });
 
+      const endH = Math.floor(slotEnd / 60);
+      const endM = slotEnd % 60;
+      const endStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+      const slotLabel = `${timeStr} - ${endStr}`;
+      const isDoctorEnabled = savedActiveSlots ? savedActiveSlots.includes(slotLabel) : true;
+
       let status: DoctorSlotInfo["status"] = "available";
       if (isBooked) status = "booked";
-      else if (isBlocked) status = "blocked";
+      else if (isBlocked || !isDoctorEnabled) status = "blocked";
 
       slots.push({
         time: timeStr,

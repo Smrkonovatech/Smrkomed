@@ -285,16 +285,61 @@ export async function getDoctorDaySlots(
     return nameInAppt.includes(docNameClean) || docNameClean.includes(nameInAppt);
   });
 
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayName = dayNames[dateObj.getDay()];
+
+  // 1. Fetch date-specific slot overrides set by doctor on Doctor Profile & Slot Management page
+  const overrideRule = await prisma.automationRule.findFirst({
+    where: {
+      trigger: "DOCTOR_SLOT_OVERRIDES",
+      OR: [
+        { name: `${doctorUser?.id || cleanDocId}_${dateIso}` },
+        { name: `${cleanDocId}_${dateIso}` },
+        { name: `doc_${cleanDocId}_${dateIso}` },
+      ],
+    },
+  });
+  const savedActiveSlots = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+
+  // If doctor explicitly configured overrides for this specific date:
+  if (savedActiveSlots !== undefined) {
+    if (savedActiveSlots.length === 0) {
+      // Doctor explicitly set this date to have 0 available slots (day off override)
+      return [];
+    }
+  } else {
+    // 2. Fall back to doctor's weekly recurring schedule
+    const profileRule = await prisma.automationRule.findFirst({
+      where: {
+        trigger: "DOCTOR_PROFILE",
+        OR: [
+          { name: cleanDocId },
+          { name: `doc_${cleanDocId}` },
+          ...(doctorUser ? [{ name: doctorUser.id }, { name: `doc_${doctorUser.id}` }] : []),
+        ],
+      },
+    });
+    const profileCfg = (profileRule?.config as any) || {};
+
+    if (Array.isArray(profileCfg.weeklyScheduleStructured)) {
+      const dayCfg = profileCfg.weeklyScheduleStructured.find((d: any) => d.day === dayName);
+      if (dayCfg && (!dayCfg.active || dayCfg.tag === "Off Day")) {
+        return [];
+      }
+    }
+  }
+
   const slots: BookingSlot[] = [];
 
   for (const timeStr of STANDARD_SLOT_TIMES) {
     const [h, m] = timeStr.split(":").map(Number);
     const slotStart = new Date(`${dateIso}T${timeStr}:00${tzOffset}`);
     const slotEnd = new Date(slotStart.getTime() + 30 * 60 * 1000);
+    const slotEndStr = `${String(m === 30 ? h! + 1 : h!).padStart(2, "0")}:${m === 30 ? "00" : "30"}`;
+    const slotLabel = `${timeStr} - ${slotEndStr}`;
 
     // 1. PAST TIME CHECK:
-    // If the slot is in the past (e.g. current time is 3:00 PM, slots at 09:00 - 15:00 are past)
-    // We add a 10-minute grace window so patients cannot book immediately expiring slots
+    // If the slot is in the past, add a 10-minute grace window
     const isPast = slotStart.getTime() <= (now.getTime() + 10 * 60 * 1000);
 
     // 2. OVERLAP CONFLICT CHECK:
@@ -305,13 +350,17 @@ export async function getDoctorDaySlots(
       return slotStart.getTime() < apptEnd && slotEnd.getTime() > apptStart;
     });
 
-    const isAvailable = !isPast && !isConflict;
+    // 3. DOCTOR AVAILABILITY OVERRIDE:
+    // If doctor explicitly configured active slots for this day, respect their selection
+    const isDoctorEnabled = savedActiveSlots ? savedActiveSlots.includes(slotLabel) : true;
+
+    const isAvailable = !isPast && !isConflict && isDoctorEnabled;
 
     slots.push({
       time: timeStr,
       timeLabel: formatSlotTimeLabel(h!, m!),
       start: timeStr,
-      end: `${String(m === 30 ? h! + 1 : h!).padStart(2, "0")}:${m === 30 ? "00" : "30"}`,
+      end: slotEndStr,
       status: isAvailable ? "available" : "booked",
     });
   }
@@ -385,6 +434,23 @@ export async function recheckSlotAvailability(
 
     if (hasConflict) {
       return { available: false, reason: "SLOT_TAKEN" };
+    }
+
+    // 3. Check if slot was manually disabled by doctor in slot management
+    const override = await prisma.automationRule.findFirst({
+      where: {
+        trigger: "DOCTOR_SLOT_OVERRIDES",
+        name: { contains: dateIso },
+      },
+    });
+    if (override?.config) {
+      const activeSlots = (override.config as any)?.activeSlots as string[] | undefined;
+      const endH = m === 30 ? h + 1 : h;
+      const endM = m === 30 ? 0 : 30;
+      const slotLabel = `${timeFormatted} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
+      if (Array.isArray(activeSlots) && !activeSlots.includes(slotLabel)) {
+        return { available: false, reason: "SLOT_CLOSED_BY_DOCTOR" };
+      }
     }
 
     return { available: true };

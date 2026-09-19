@@ -169,19 +169,42 @@ export function Avatar({
   initials,
   tone = "primary",
   className,
+  src,
 }: {
   initials: string;
   tone?: Tone;
   className?: string;
+  src?: string | null;
 }) {
+  if (src) {
+    return (
+      <span
+        className={cn(
+          "relative grid size-9 shrink-0 place-items-center overflow-hidden rounded-full select-none",
+          toneClasses[tone],
+          className,
+        )}
+      >
+        <span className="text-xs font-semibold uppercase">{initials}</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={initials}
+          className="absolute inset-0 size-full rounded-full object-cover"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
+        />
+      </span>
+    );
+  }
   return (
     <span
       className={cn(
-        "grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold",
+        "grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold uppercase select-none",
         toneClasses[tone],
         className,
       )}
-      aria-hidden
     >
       {initials}
     </span>
