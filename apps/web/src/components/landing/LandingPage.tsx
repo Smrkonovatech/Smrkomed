@@ -21,6 +21,9 @@ import { Header } from "./component/Header";
 import { HeroBanner } from "./component/HeroBanner";
 import { CareRoles } from "./component/CareRoles";
 import { HealthcarePlatform } from "./component/HealthcarePlatform";
+import { SmrkoAISection } from "./component/SmrkoAISection";
+import { BuiltToGrow } from "./component/BuiltToGrow";
+import { BuiltForCare } from "./component/BuiltForCare";
 
 export function LandingPage() {
   const [demoOpen, setDemoOpen] = useState(false);
@@ -47,6 +50,9 @@ export function LandingPage() {
         <PatientWhatsApp />
         <Multilingual />
         <CareLoop />
+        <SmrkoAISection />
+        <BuiltToGrow />
+        <BuiltForCare />
         <Pricing />
         <Closing />
       </div>
