@@ -201,7 +201,8 @@ export async function handleMenuAction(input: {
       patientId: true,
       coupleId: true,
       unmatched: true,
-      patient: { select: { firstName: true, lastName: true } },
+      contactPhone: true,
+      patient: { select: { firstName: true, lastName: true, phone: true, whatsappNumber: true } },
     },
   });
   if (!conversation) return { handled: false };
@@ -720,16 +721,160 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "APPOINTMENT_CANCELLED", responseText: "Appointment booking cancelled." };
   }
 
-  // 3. Book Consultation / Appointment (menu item 2)
+  // 3A. AI Phone Call requested (via button tap "btn_ai_call" or text)
+  const isAiCallCmd =
+    clean === "btn_ai_call" ||
+    clean === "ai phone call" ||
+    clean === "ai call" ||
+    clean === "call me" ||
+    clean === "phone call";
+
+  if (isAiCallCmd) {
+    const callerPhone =
+      input.contactPhone ||
+      conversation.patient?.phone ||
+      conversation.patient?.whatsappNumber ||
+      "";
+
+    const patientName = conversation.patient
+      ? `${conversation.patient.firstName} ${conversation.patient.lastName || ""}`.trim()
+      : "Valued Patient";
+
+    const docMembership = await prisma.clinicMembership.findFirst({
+      where: {
+        clinicId: input.tenant.clinicId,
+        status: "ACTIVE",
+        OR: [
+          { role: { key: "DOCTOR" } },
+          { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+        ],
+      },
+      include: { user: { select: { name: true } } },
+    });
+    const rawDocName = docMembership?.user?.name || "Dr. Jismon J";
+    const cleanDocName = rawDocName.replace(/^(dr\s*\.?\s*)+/i, "").trim();
+    const activeDoctor = cleanDocName ? `Dr. ${cleanDocName.replace(/\b\w/g, (c: string) => c.toUpperCase())}` : "Dr. Jismon J";
+
+    const callAckBody = `📞 Calling you right now!\n\nOur AI Care Assistant is dialing your phone number to assist you with booking your consultation with ${activeDoctor} or our specialists.\n\nPlease pick up when your phone rings! 📲\n\n_If you miss the call, reply *CALL* to retry, or *1* to book here on WhatsApp._`;
+
+    await sendWhatsAppAiSessionText(input.tenant, {
+      conversationId: input.conversationId,
+      body: callAckBody,
+    }).catch(() => undefined);
+
+    if (callerPhone) {
+      try {
+        const { triggerSarvamOutboundCall } = await import("../appointment-booking/channels/voice");
+        await triggerSarvamOutboundCall({
+          phoneNumber: callerPhone,
+          patientName: patientName !== "Valued Patient" ? patientName : undefined,
+          clinicName: input.tenant.clinicName || "SmrkoMed",
+          doctorName: activeDoctor,
+        });
+      } catch (err) {
+        console.error("[WhatsApp Menu] Sarvam AI outbound call error:", err);
+      }
+    }
+
+    return { handled: true, action: "AI_CALL_INITIATED", responseText: callAckBody };
+  }
+
+  // 3B. WhatsApp Chat Booking requested (via button tap "btn_book_wa" or text)
+  const isBookWaCmd =
+    clean === "btn_book_wa" ||
+    clean === "book on whatsapp" ||
+    clean === "chat" ||
+    clean === "whatsapp";
+
+  if (isBookWaCmd) {
+    // Resolve if patient has a registered couple
+    let hasCouple = Boolean(conversation.coupleId);
+    if (!hasCouple && conversation.patientId) {
+      const c = await prisma.couple.findFirst({
+        where: {
+          clinicId: input.tenant.clinicId,
+          OR: [{ primaryPatientId: conversation.patientId }, { partnerPatientId: conversation.patientId }],
+        },
+        select: { id: true },
+      });
+      hasCouple = Boolean(c);
+    }
+
+    // If unregistered or lacks couple registration, route to couple registration
+    if (!conversation.patientId || conversation.unmatched || !hasCouple) {
+      const { tryHandleRegistrationMessage } = await import("./registration");
+      const reg = await tryHandleRegistrationMessage({
+        tenant: input.tenant,
+        conversationId: input.conversationId,
+        contactPhone: input.contactPhone,
+        messageText: "book appointment",
+      });
+      return { handled: true, action: "REGISTRATION_START", responseText: reg.responseMessage };
+    }
+
+    // Send friendly acknowledgment message exactly as requested
+    const introMsg = `Absolutely! 👋\nI can help you find the right doctor and appointment time.\n\nLet's find the right doctor for you:`;
+    await sendWhatsAppAiSessionText(input.tenant, {
+      conversationId: input.conversationId,
+      body: introMsg,
+    }).catch(() => undefined);
+
+    // Cancel any stale WAITING flow executions
+    await prisma.whatsAppFlowExecution.updateMany({
+      where: {
+        clinicId: input.tenant.clinicId,
+        conversationId: input.conversationId,
+        status: "WAITING",
+      },
+      data: {
+        status: "CANCELLED",
+        error: "Superseded by user booking request",
+        completedAt: new Date(),
+      },
+    });
+
+    const doctors = await getClinicDoctors(input.tenant.clinicId);
+    if (doctors.length > 0) {
+      const seenDocIds = new Set<string>();
+      const uniqueDocs = doctors.filter((d) => {
+        if (!d?.id || seenDocIds.has(d.id)) return false;
+        seenDocIds.add(d.id);
+        return true;
+      });
+
+      await sendWhatsAppInteractiveList(input.tenant, {
+        conversationId: input.conversationId,
+        body: "Choose your doctor 👩‍⚕️\n\nPlease select a specialist from the list below to view available slots and book your consultation:",
+        buttonLabel: "Choose Doctor",
+        sections: [
+          {
+            title: "Fertility Specialists",
+            rows: uniqueDocs.slice(0, 10).map((d) => {
+              const locPrefix = d.location ? `📍 ${d.location} · ` : "";
+              return {
+                id: `appt_doctor_${d.id}`,
+                title: d.displayName.slice(0, 24),
+                description: `${locPrefix}${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
+              };
+            }),
+          },
+        ],
+      }).catch(() => undefined);
+    }
+
+    return { handled: true, action: "BOOK_ON_WHATSAPP", responseText: introMsg };
+  }
+
+  // 3C. Initial Book Appointment choice prompt (Book on WhatsApp vs AI Phone Call)
   const isBookCmd =
     clean === MENU_ACTIONS.BOOK_APPOINTMENT ||
+    clean === "menu_book_appt" ||
     clean === "2" ||
-    clean === "btn_book_wa" ||
-    clean === "btn_ai_call" ||
-    clean === "book" ||
+    clean === "book appt" ||
     clean === "book appointment" ||
     clean === "appointment" ||
     clean === "consultation" ||
+    clean === "book" ||
     /\b(book\s*(an?\s*)?(appointment|consultation)|schedule\s*(an?\s*)?(appointment|consultation)|need\s*(an?\s*)?appointment|want\s*to\s*book|see\s*a?\s*doctor|book\s*doctor)\b/i.test(clean);
 
   if (isBookCmd) {
@@ -758,81 +903,26 @@ export async function handleMenuAction(input: {
       return { handled: true, action: "REGISTRATION_START", responseText: reg.responseMessage };
     }
 
-    // Registered user booking consultation -> launch interactive appointment booking automation
-    await prisma.whatsAppFlowExecution.updateMany({
-      where: {
-        clinicId: input.tenant.clinicId,
-        conversationId: input.conversationId,
-        status: "WAITING",
-      },
-      data: {
-        status: "CANCELLED",
-        error: "Superseded by user booking request",
-        completedAt: new Date(),
-      },
-    });
+    const clinicName = input.tenant.clinicName || "SmrkoMed";
+    const body = `👋 Welcome to *${clinicName}*!\n\nHow would you like to book your consultation today?`;
 
-    const patientName = conversation.patient
-      ? `${conversation.patient.firstName} ${conversation.patient.lastName || ""}`.trim()
-      : "Valued Patient";
-
-    const { dispatchWhatsAppTrigger } = await import("../whatsapp-automation/triggers");
-    const dispatched = await dispatchWhatsAppTrigger({
-      tenant: input.tenant,
-      triggerType: "INCOMING_WHATSAPP",
-      triggerEventId: `wa_menu_book_${Date.now()}_${input.conversationId}`,
-      patientId: conversation.patientId,
-      coupleId: conversation.coupleId,
+    await sendWhatsAppInteractiveButtons(input.tenant, {
       conversationId: input.conversationId,
-      vars: {
-        message_text: "Appointment",
-        message_content: "Appointment",
-        sender_phone: input.contactPhone,
-        contact_phone: input.contactPhone,
-        patient_name: patientName,
-        "patient.name": patientName,
-        detected_intent: "APPOINTMENT_BOOKING",
-        is_appointment_intent: "true",
-      },
-      isAppointmentIntent: true,
-    }).catch((err) => {
-      console.error("[WhatsApp Menu] dispatch booking error:", err);
-      return { matched: 0, results: [] };
+      body,
+      footer: `${clinicName} • Choose booking option`,
+      buttons: [
+        { id: "btn_book_wa", title: "💬 Book on WhatsApp" },
+        { id: "btn_ai_call", title: "📞 AI Phone Call" },
+      ],
+    }).catch(async (err) => {
+      console.warn("[WhatsApp Menu] Failed to send channel choice buttons, falling back to text:", err);
+      await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: input.conversationId,
+        body: `${body}\n\n1️⃣ 💬 *Book on WhatsApp*\n2️⃣ 📞 *AI Phone Call*\n\nReply *1* or *2* to choose.`,
+      }).catch(() => undefined);
     });
 
-    // Fallback: If no active flow triggered, send the interactive doctor dropdown list directly
-    if (!dispatched || dispatched.matched === 0) {
-      const doctors = await getClinicDoctors(input.tenant.clinicId);
-      if (doctors.length > 0) {
-        const seenDocIds = new Set<string>();
-        const uniqueDocs = doctors.filter((d) => {
-          if (!d?.id || seenDocIds.has(d.id)) return false;
-          seenDocIds.add(d.id);
-          return true;
-        });
-
-        await sendWhatsAppInteractiveList(input.tenant, {
-          conversationId: input.conversationId,
-          body: "Choose your doctor 👩‍⚕️\n\nPlease select a specialist from the list below to view available slots and book your consultation:",
-          buttonLabel: "Choose Doctor",
-          sections: [
-            {
-              title: "Fertility Specialists",
-              rows: uniqueDocs.slice(0, 10).map((d) => {
-                const locPrefix = d.location ? `📍 ${d.location} · ` : "";
-                return {
-                  id: `appt_doctor_${d.id}`,
-                  title: d.displayName.slice(0, 24),
-                  description: `${locPrefix}${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
-                };
-              }),
-            },
-          ],
-        }).catch(() => undefined);
-      }
-    }
-
-    return { handled: true, action: "BOOK_APPOINTMENT" };
+    return { handled: true, action: "BOOK_CHANNEL_PROMPT", responseText: body };
   }
 
   // 4. Treatments & Services (menu item 5)
