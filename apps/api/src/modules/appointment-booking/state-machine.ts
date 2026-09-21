@@ -676,9 +676,9 @@ export class AppointmentBookingMachine {
           startsAt,
           durationMin: 30,
           status: "CONFIRMED",
-          notes: `Booked via AI Appointment Flow (${session.channel}). Patient: ${
-            session.registrationDraft.patientName || "Patient"
-          }. Partner: ${session.registrationDraft.partnerName || "N/A"}`,
+          notes: session.channel === "CALL"
+            ? `Booked via Sarvam AI Voice Call. Patient: ${session.registrationDraft.patientName || "Patient"}. Partner: ${session.registrationDraft.partnerName || "N/A"}`
+            : `Booked via WhatsApp AI Booking Flow. Patient: ${session.registrationDraft.patientName || "Patient"}. Partner: ${session.registrationDraft.partnerName || "N/A"}`,
         },
       });
 

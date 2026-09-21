@@ -290,7 +290,7 @@ function toTask(row: ClinicTask): CareTask {
 function toAppointment(row: ClinicAppointment): AppAppointment {
   const notes = (row.notes || "").toLowerCase();
   const isWhatsapp = notes.includes("whatsapp");
-  const isVoiceCall = notes.includes("voice") || notes.includes("sarvam") || notes.includes("phone call");
+  const isVoiceCall = notes.includes("voice") || notes.includes("sarvam") || notes.includes("phone call") || notes.includes("(call)");
   return {
     id: row.id,
     ...(row.clinicId ? { clinicId: row.clinicId } : {}),
