@@ -90,6 +90,9 @@ export type AppointmentDto = {
   duration: number;
   notes: string;
   startsAt?: string;
+  patientName?: string;
+  coupleTitle?: string;
+  coupleSlug?: string;
 };
 
 export type DocumentDto = {
@@ -306,7 +309,26 @@ export function serializeTask(
   };
 }
 
-export function serializeAppointment(row: Appointment): AppointmentDto {
+export function serializeAppointment(
+  row: Appointment & {
+    couple?: (Couple & {
+      primaryPatient?: Patient | null;
+      partnerPatient?: Patient | null;
+    }) | null;
+  },
+): AppointmentDto {
+  const primaryName = row.couple?.primaryPatient
+    ? `${row.couple.primaryPatient.firstName} ${row.couple.primaryPatient.lastName}`.trim()
+    : null;
+  const partnerName = row.couple?.partnerPatient
+    ? `${row.couple.partnerPatient.firstName} ${row.couple.partnerPatient.lastName}`.trim()
+    : null;
+  const coupleTitle = primaryName
+    ? partnerName
+      ? `${primaryName} + ${partnerName}`
+      : primaryName
+    : undefined;
+
   return {
     id: row.id,
     clinicId: row.clinicId,
@@ -324,6 +346,8 @@ export function serializeAppointment(row: Appointment): AppointmentDto {
     duration: row.durationMin,
     notes: row.notes ?? "",
     startsAt: row.startsAt.toISOString(),
+    ...(coupleTitle ? { patientName: coupleTitle, coupleTitle } : {}),
+    ...(row.couple?.slug ? { coupleSlug: row.couple.slug } : {}),
   };
 }
 

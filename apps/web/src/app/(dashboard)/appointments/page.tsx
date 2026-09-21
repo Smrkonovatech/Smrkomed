@@ -163,8 +163,8 @@ export default function AppointmentsPage() {
     return tabFilteredAppointments
       .filter((appointment) => {
         const couple = coupleById.get(appointment.coupleId);
-        const coupleName = couple ? coupleLabel(couple).toLowerCase() : "";
-        const primaryName = couple?.primary?.name?.toLowerCase() ?? "";
+        const coupleName = (couple ? coupleLabel(couple) : (appointment as any).patientName || "").toLowerCase();
+        const primaryName = (couple?.primary?.name ?? (appointment as any).patientName ?? "").toLowerCase();
         const partnerName = couple?.partner?.name?.toLowerCase() ?? "";
         const doctorName = appointment.doctor.toLowerCase();
         const typeName = appointment.type.toLowerCase();
@@ -249,11 +249,19 @@ export default function AppointmentsPage() {
   // List of unique couples for filtering
   const availableCouples = useMemo(() => {
     const list: Array<{ id: string; label: string }> = [];
+    const seen = new Set<string>();
     couples.forEach((c) => {
+      seen.add(c.id);
       list.push({ id: c.id, label: coupleLabel(c) });
     });
+    appointments.forEach((a: any) => {
+      if (a.coupleId && !seen.has(a.coupleId)) {
+        seen.add(a.coupleId);
+        list.push({ id: a.coupleId, label: a.patientName || a.coupleTitle || "Patient" });
+      }
+    });
     return list;
-  }, [couples]);
+  }, [couples, appointments]);
 
   const isFilterActive =
     searchQuery.trim() !== "" ||
@@ -866,7 +874,7 @@ function MonthCalendarGrid({
                 <div className="space-y-1 flex-1 overflow-hidden">
                   {cell.dayAppointments.slice(0, 3).map((appt) => {
                     const couple = coupleById.get(appt.coupleId);
-                    const patientLabel = couple ? coupleLabel(couple) : "Patient";
+                    const patientLabel = couple ? coupleLabel(couple) : (appt as any).patientName || "Patient";
                     const isCompleted = appt.status === "Completed";
                     const isConfirmed = appt.status === "Confirmed";
                     return (
@@ -1015,7 +1023,8 @@ function WeekCalendarGrid({
               ) : (
                 day.appointments.map((appt) => {
                   const couple = coupleById.get(appt.coupleId);
-                  const patientLabel = couple ? coupleLabel(couple) : "Patient";
+                  const patientLabel = couple ? coupleLabel(couple) : (appt as any).patientName || "Patient";
+                  const patientSlug = couple?.slug || (appt as any).coupleSlug;
                   return (
                     <div
                       key={appt.id}
@@ -1038,9 +1047,9 @@ function WeekCalendarGrid({
                         <span className="flex items-center gap-1">
                           <Building2 className="size-3" /> {getAppointmentRoom(appt)}
                         </span>
-                        {couple && (
+                        {patientSlug && (
                           <Link
-                            href={`/patients/${couple.slug}`}
+                            href={`/patients/${patientSlug}`}
                             className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
                           >
                             Open <ExternalLink className="size-2.5" />
@@ -1281,8 +1290,10 @@ function AppointmentCardsList({
       {appointments.map((appointment) => {
         const couple = coupleById.get(appointment.coupleId);
         const reminded = remindedIds.includes(appointment.id);
-        const patient = couple ? coupleLabel(couple) : "Patient";
+        const patient = couple ? coupleLabel(couple) : (appointment as any).patientName || "Patient";
+        const patientSlug = couple?.slug || (appointment as any).coupleSlug;
         const room = getAppointmentRoom(appointment);
+        const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
 
         return (
           <div
@@ -1295,6 +1306,11 @@ function AppointmentCardsList({
                   <p className="text-sm font-bold tabular-nums text-foreground flex items-center gap-1.5">
                     <Clock className="size-3.5 text-muted-foreground" />
                     {appointment.time}
+                    {isWhatsapp && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Booked via WhatsApp AI">
+                        WhatsApp
+                      </span>
+                    )}
                   </p>
                   {showDate && appointment.date && (
                     <p className="text-xs text-muted-foreground font-medium mt-0.5">
@@ -1309,9 +1325,9 @@ function AppointmentCardsList({
               </div>
 
               <div className="mt-2.5">
-                {couple ? (
+                {patientSlug ? (
                   <Link
-                    href={`/patients/${couple.slug}`}
+                    href={`/patients/${patientSlug}`}
                     className="font-bold text-sm text-foreground hover:text-primary hover:underline inline-flex items-center gap-1"
                   >
                     {patient}
@@ -1413,14 +1429,23 @@ function AppointmentTableView({
         {appointments.map((appointment) => {
           const couple = coupleById.get(appointment.coupleId);
           const reminded = remindedIds.includes(appointment.id);
-          const patient = couple ? coupleLabel(couple) : "Patient";
+          const patient = couple ? coupleLabel(couple) : (appointment as any).patientName || "Patient";
+          const patientSlug = couple?.slug || (appointment as any).coupleSlug;
           const room = getAppointmentRoom(appointment);
+          const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
 
           return (
             <RecordCard key={appointment.id}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold tabular-nums">{appointment.time}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold tabular-nums">{appointment.time}</p>
+                    {isWhatsapp && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Booked via WhatsApp AI">
+                        WhatsApp
+                      </span>
+                    )}
+                  </div>
                   {showDateColumn && appointment.date && (
                     <p className="text-xs text-muted-foreground">{formatDate(appointment.date)}</p>
                   )}
@@ -1430,7 +1455,16 @@ function AppointmentTableView({
                   tone={appointmentTone[appointment.status] ?? "muted"}
                 />
               </div>
-              <p className="mt-2 font-semibold">{patient}</p>
+              {patientSlug ? (
+                <Link
+                  href={`/patients/${patientSlug}`}
+                  className="mt-2 font-semibold hover:text-primary hover:underline block"
+                >
+                  {patient}
+                </Link>
+              ) : (
+                <p className="mt-2 font-semibold">{patient}</p>
+              )}
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {appointment.type} · {appointment.doctor}
               </p>
@@ -1473,9 +1507,9 @@ function AppointmentTableView({
                     {reminded ? "Sent" : "Remind"}
                   </Button>
                 )}
-                {couple && (
+                {patientSlug && (
                   <Button variant="ghost" size="sm" asChild>
-                    <Link href={`/patients/${couple.slug}`}>
+                    <Link href={`/patients/${patientSlug}`}>
                       <ExternalLink className="size-3.5" /> Open
                     </Link>
                   </Button>
@@ -1504,8 +1538,10 @@ function AppointmentTableView({
             {appointments.map((appointment) => {
               const couple = coupleById.get(appointment.coupleId);
               const reminded = remindedIds.includes(appointment.id);
-              const patient = couple ? coupleLabel(couple) : "Patient";
+              const patient = couple ? coupleLabel(couple) : (appointment as any).patientName || "Patient";
+              const patientSlug = couple?.slug || (appointment as any).coupleSlug;
               const room = getAppointmentRoom(appointment);
+              const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
 
               return (
                 <tr
@@ -1518,18 +1554,25 @@ function AppointmentTableView({
                     </td>
                   )}
                   <td className="px-4 py-2.5 font-bold tabular-nums text-foreground">
-                    {appointment.time}
+                    <div className="flex items-center gap-1.5">
+                      {appointment.time}
+                      {isWhatsapp && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Booked via WhatsApp AI">
+                          WhatsApp
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2.5">
-                    {couple ? (
+                    {patientSlug ? (
                       <Link
-                        href={`/patients/${couple.slug}`}
+                        href={`/patients/${patientSlug}`}
                         className="font-semibold hover:text-primary hover:underline"
                       >
-                        {coupleLabel(couple)}
+                        {patient}
                       </Link>
                     ) : (
-                      <span className="text-muted-foreground">Unknown couple</span>
+                      <span className="font-semibold text-foreground">{patient}</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 font-medium">{appointment.type}</td>
@@ -1581,9 +1624,9 @@ function AppointmentTableView({
                           {reminded ? "Sent" : "Remind"}
                         </Button>
                       )}
-                      {couple && (
+                      {patientSlug && (
                         <Button variant="ghost" size="sm" asChild>
-                          <Link href={`/patients/${couple.slug}`}>
+                          <Link href={`/patients/${patientSlug}`}>
                             <ExternalLink className="size-3.5" /> Open
                           </Link>
                         </Button>

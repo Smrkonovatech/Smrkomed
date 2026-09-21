@@ -51,6 +51,7 @@ export type ClinicTask = {
 
 export type ClinicAppointment = {
   id: string;
+  clinicId?: string;
   coupleId: string;
   type: string;
   doctor: string;
@@ -61,6 +62,9 @@ export type ClinicAppointment = {
   duration: number;
   notes: string;
   startsAt?: string;
+  patientName?: string;
+  coupleTitle?: string;
+  coupleSlug?: string;
 };
 
 export type ClinicDocument = {

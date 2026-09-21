@@ -31,6 +31,14 @@ export async function getAppointmentsForClinic(ctx: TenantContext, requestedClin
 
   return prisma.appointment.findMany({
     where: { clinicId: clinic.id, clinic: { organizationId: ctx.organizationId } },
+    include: {
+      couple: {
+        include: {
+          primaryPatient: true,
+          partnerPatient: true,
+        },
+      },
+    },
     orderBy: { startsAt: "desc" },
   });
 }

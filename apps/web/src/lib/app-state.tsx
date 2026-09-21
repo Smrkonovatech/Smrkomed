@@ -72,7 +72,6 @@ export function isQrCheckinCouple(couple: AppCouple): boolean {
 
   if (
     primaryName.includes("hospextest") ||
-    primaryName === "manideep c" ||
     primaryName === "priya hospextest" ||
     primaryName.includes("walk-in")
   ) {
@@ -80,7 +79,6 @@ export function isQrCheckinCouple(couple: AppCouple): boolean {
   }
 
   if (
-    slug.startsWith("qr-") ||
     slug.includes("hospextest") ||
     slug.includes("qr-checkin") ||
     slug.includes("walkin")
@@ -103,14 +101,18 @@ export function isQrCheckinCouple(couple: AppCouple): boolean {
 }
 
 export interface AppAppointment extends Appointment {
+  clinicId?: string;
   date?: string;
   partner?: string;
   duration?: number;
   notes?: string;
-  startsAt?: string | undefined;
+  startsAt?: string;
   whatsappConfirmation?: boolean;
   whatsappReminder?: boolean;
   careLoop?: boolean;
+  patientName?: string;
+  coupleTitle?: string;
+  coupleSlug?: string;
 }
 
 export interface AppCycle extends TreatmentCycle {
@@ -285,17 +287,23 @@ function toTask(row: ClinicTask): CareTask {
 }
 
 function toAppointment(row: ClinicAppointment): AppAppointment {
+  const isWhatsapp = Boolean((row.notes || "").toLowerCase().includes("whatsapp"));
   return {
     id: row.id,
+    ...(row.clinicId ? { clinicId: row.clinicId } : {}),
     coupleId: row.coupleId,
     type: row.type,
     doctor: row.doctor,
     room: row.room,
     status: row.status,
     time: row.time,
-    date: row.date,
-    duration: row.duration,
-    notes: row.notes,
+    ...(row.date ? { date: row.date } : {}),
+    ...(row.duration !== undefined ? { duration: row.duration } : {}),
+    ...(row.notes ? { notes: row.notes } : {}),
+    whatsappConfirmation: isWhatsapp,
+    ...(row.patientName ? { patientName: row.patientName } : {}),
+    ...(row.coupleTitle ? { coupleTitle: row.coupleTitle } : {}),
+    ...(row.coupleSlug ? { coupleSlug: row.coupleSlug } : {}),
     ...(row.startsAt ? { startsAt: row.startsAt } : {}),
   };
 }
@@ -750,21 +758,19 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         (c) =>
           c.clinicId === "cmt0exo9n000vl804rbaabh32" ||
           c.clinicId === "blr" ||
-          isQrCheckinCouple(c),
+          (!c.clinicId && isQrCheckinCouple(c)),
       );
     }
     if (isKochi) {
       return coupleList.filter(
         (c) =>
-          (c.clinicId === "cmu3nmx310026jy04gsi21hxl" || c.clinicId === "kochi") &&
-          !isQrCheckinCouple(c),
+          c.clinicId === "cmu3nmx310026jy04gsi21hxl" || c.clinicId === "kochi",
       );
     }
     if (isChennai) {
       return coupleList.filter(
         (c) =>
-          (c.clinicId === "hospex-chennai-clinic" || c.clinicId === "chennai") &&
-          !isQrCheckinCouple(c),
+          c.clinicId === "hospex-chennai-clinic" || c.clinicId === "chennai",
       );
     }
     return coupleList.filter((c) => c.clinicId === clinicId);
@@ -783,15 +789,15 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       }
       const aClinic = a.clinicId || "";
       if (isBangalore) {
-        return aClinic === "cmt0exo9n000vl804rbaabh32" || aClinic === "blr";
+        return aClinic === "cmt0exo9n000vl804rbaabh32" || aClinic === "blr" || !aClinic;
       }
       if (isKochi) {
-        return aClinic === "cmu3nmx310026jy04gsi21hxl" || aClinic === "kochi";
+        return aClinic === "cmu3nmx310026jy04gsi21hxl" || aClinic === "kochi" || !aClinic;
       }
       if (isChennai) {
-        return aClinic === "hospex-chennai-clinic" || aClinic === "chennai";
+        return aClinic === "hospex-chennai-clinic" || aClinic === "chennai" || !aClinic;
       }
-      return aClinic === clinicId;
+      return !aClinic || aClinic === clinicId;
     });
   }, [appointmentList, visibleCouples, clinicId]);
 
@@ -811,10 +817,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
         return tClinic === "cmt0exo9n000vl804rbaabh32" || tClinic === "blr" || (!tClinic && !t.coupleId);
       }
       if (isKochi) {
-        return tClinic === "cmu3nmx310026jy04gsi21hxl" || tClinic === "kochi";
+        return tClinic === "cmu3nmx310026jy04gsi21hxl" || tClinic === "kochi" || (!tClinic && !t.coupleId);
       }
       if (isChennai) {
-        return tClinic === "hospex-chennai-clinic" || tClinic === "chennai";
+        return tClinic === "hospex-chennai-clinic" || tClinic === "chennai" || (!tClinic && !t.coupleId);
       }
       return tClinic === clinicId;
     });
