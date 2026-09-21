@@ -28,7 +28,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 import { Clinical15StageFlowViewer } from "@/components/care-loop/clinical-15-stage-flow-viewer";
 import { useCreateTask } from "@/components/create-task-drawer";
@@ -489,12 +489,29 @@ export default function CareLoopPage() {
   const { couples } = useAppState();
   const { open: openCreateTask } = useCreateTask();
 
+  const tabParam = searchParams.get("tab") || searchParams.get("filter") || searchParams.get("status");
+  const resolveTab = (param: string | null): FilterTab => {
+    if (!param) return "All";
+    const lower = param.toLowerCase().replace(/[-_]/g, " ").trim();
+    if (lower === "needs attention" || lower === "attention" || lower === "needsattention") return "Needs Attention";
+    if (lower === "waiting" || lower === "waiting on patient") return "Waiting";
+    if (lower === "escalated") return "Escalated";
+    if (lower === "on track" || lower === "ontrack") return "On Track";
+    return "All";
+  };
+
   // Navigation & View mode
   const [showSimulator, setShowSimulator] = useState(false);
-  const [activeTab, setActiveTab] = useState<FilterTab>("All");
+  const [activeTab, setActiveTab] = useState<FilterTab>(() => resolveTab(tabParam));
   const [journeyFilter, setJourneyFilter] = useState("All");
   const [doctorFilter, setDoctorFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(resolveTab(tabParam));
+    }
+  }, [tabParam]);
 
   // Selected item for drawer
   const [selectedId, setSelectedId] = useState<string>("cpl-00124");

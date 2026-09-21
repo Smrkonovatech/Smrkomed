@@ -14,6 +14,8 @@ export type UnifiedTimelineItem = {
   relatedTreatmentId: string | null;
   href: string | null;
   recordStatus: string | null;
+  content?: string | null;
+  description?: string | null;
 };
 
 /**
@@ -215,6 +217,8 @@ export async function buildUnifiedTimeline(
       relatedTreatmentId: null,
       href: null,
       recordStatus: null,
+      content: c.summary,
+      description: c.summary,
     });
   }
 

@@ -10,7 +10,7 @@ import { AppointmentsTimeline } from "./doctor-appointments-timeline";
 
 /** Strip leading "Dr."/"Dr" prefix from a name string (case-insensitive). */
 export function stripDrPrefix(name: string): string {
-  return name.replace(/^(?:Dr\.?|DR)\s+/i, "").replace(/^(?:Dr\.?|DR)\s+/i, "").trim();
+  return name.replace(/^(?:Dr\.?|DR)\s*/i, "").replace(/^(?:Dr\.?|DR)\s*/i, "").trim();
 }
 
 /** Fuzzy match: does one cleaned name contain the other, or share the same primary name token? */
@@ -25,6 +25,28 @@ function nameMatch(a: string, b: string): boolean {
   return false;
 }
 
+function isDoctorMatch(doctorName: string, appointmentDoctor?: string, coupleDoctor?: string): boolean {
+  if (!doctorName) return true;
+  const cleanDoc = stripDrPrefix(doctorName).toLowerCase();
+  if (!cleanDoc) return true;
+
+  if (appointmentDoctor) {
+    const cleanApptDoc = stripDrPrefix(appointmentDoctor).toLowerCase();
+    if (nameMatch(cleanDoc, cleanApptDoc)) return true;
+    // Generic labels in clinic belong to current attending doctor or assigned doctor
+    if (cleanApptDoc === "doctor" || cleanApptDoc === "doctor / care team" || cleanApptDoc === "unassigned") {
+      if (!coupleDoctor || nameMatch(cleanDoc, stripDrPrefix(coupleDoctor).toLowerCase())) {
+        return true;
+      }
+    }
+  } else if (coupleDoctor) {
+    return nameMatch(cleanDoc, stripDrPrefix(coupleDoctor).toLowerCase());
+  } else {
+    return true;
+  }
+  return false;
+}
+
 const DoctorAppointmentsCtx = createContext<AppAppointment[]>([]);
 
 /** Returns only the appointments that belong to the currently logged-in doctor. */
@@ -34,19 +56,38 @@ export function useDoctorAppointments(): AppAppointment[] {
 
 function DoctorAppointmentsProvider({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession();
-  const { appointments } = useAppState();
+  const { appointments, couples } = useAppState();
 
   const doctorAppointments = useMemo(() => {
     const rawName = session?.user?.name ?? "";
-    if (!rawName) return appointments;
-    const cleanDocName = stripDrPrefix(rawName).toLowerCase();
-    if (!cleanDocName) return appointments;
-    return appointments.filter((a) => {
-      if (!a.doctor) return false;
-      const cleanApptDoc = stripDrPrefix(a.doctor).toLowerCase();
-      return nameMatch(cleanDocName, cleanApptDoc);
+    const coupleById = new Map((couples ?? []).map((c) => [c.id, c]));
+
+    // 1. Filter by doctor / assigned couple
+    const docFiltered = appointments.filter((a) => {
+      const couple = a.coupleId ? coupleById.get(a.coupleId) : undefined;
+      return isDoctorMatch(rawName, a.doctor, couple?.doctor);
     });
-  }, [appointments, session?.user?.name]);
+
+    // 2. Deduplicate: A couple appointment counts as 1 (never counted twice for both partners)
+    const seen = new Set<string>();
+    const deduplicated = docFiltered.filter((a) => {
+      const normTime = (a.time || "").replace(/\s+/g, "").toLowerCase();
+      const normDate = a.date || (a.startsAt ? a.startsAt.slice(0, 10) : "");
+      const key = a.coupleId ? `c_${a.coupleId}_${normDate}_${normTime}` : a.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // 3. Filter strictly for TODAY'S appointments (in Indian Standard Time)
+    const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+    const todayList = deduplicated.filter((a) => {
+      const apptDate = a.date || (a.startsAt ? a.startsAt.slice(0, 10) : "");
+      return apptDate === todayStr;
+    });
+
+    return todayList;
+  }, [appointments, couples, session?.user?.name]);
 
   return (
     <DoctorAppointmentsCtx.Provider value={doctorAppointments}>

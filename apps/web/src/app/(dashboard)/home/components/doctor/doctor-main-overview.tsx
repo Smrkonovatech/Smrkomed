@@ -2,18 +2,20 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useAppState } from "@/lib/app-state";
 import { currentUser, findCouple } from "@/lib/demo-data";
 import { useDoctorAppointments, stripDrPrefix } from "./doctor-dashboard";
 
 export function DoctorMainOverview() {
+   const router = useRouter();
    const { data: session } = useSession();
    const { kpis, tasks, exceptions, couples } = useAppState();
    const appointments = useDoctorAppointments();
 
    // Strip leading "Dr." so we don't get "Good Evening Dr. Dr."
-   const cleanName = stripDrPrefix(session?.user?.name ?? currentUser.name);
+   const cleanName = stripDrPrefix(stripDrPrefix(session?.user?.name ?? currentUser.name));
    const firstName = cleanName.split(" ")[0] || "Doctor";
    const hour = new Date().getHours();
    const greeting = hour < 12 ? "Good Morning" : hour < 17 ? "Good Afternoon" : "Good Evening";
@@ -192,11 +194,18 @@ export function DoctorMainOverview() {
             </div>
          </div>
 
-         <div className="flex justify-end mt-[clamp(0.5rem,1.5vh,1rem)]">
-            <a href="/care-loop" className="bg-[#866BE3] text-white px-[clamp(1rem,2vw,1.5rem)] py-[clamp(0.3rem,0.8vh,0.5rem)] rounded-full text-[clamp(0.7rem,1.1vw,0.9rem)] font-medium hover:bg-[#7254d1] transition-colors shadow-md flex items-center gap-2">
+         <div className="flex justify-end mt-[clamp(0.5rem,1.5vh,1rem)] relative z-30">
+            <Link
+               href="/care-loop"
+               onClick={(e) => {
+                  e.preventDefault();
+                  router.push("/care-loop");
+               }}
+               className="bg-[#866BE3] text-white px-[clamp(1rem,2vw,1.5rem)] py-[clamp(0.3rem,0.8vh,0.5rem)] rounded-full text-[clamp(0.7rem,1.1vw,0.9rem)] font-medium hover:bg-[#7254d1] active:scale-95 transition-all shadow-md flex items-center gap-2 cursor-pointer select-none"
+            >
                <Image src="/images/dashboard/med-icon.svg" alt="Med Icon" width={16} height={16} style={{ width: "auto", height: "auto" }} />
                <span>Open care loop</span>
-            </a>
+            </Link>
          </div>
       </div>
    );

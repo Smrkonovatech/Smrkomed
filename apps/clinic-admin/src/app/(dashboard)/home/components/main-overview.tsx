@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
+import Link from "next/link";
 import { User, Calendar, Activity, HeartPulse, MessageSquare, PlusCircle, Stethoscope } from "lucide-react";
 
 export function MainOverview() {
@@ -68,7 +69,8 @@ export function MainOverview() {
                     { label: "Escalated", value: 4, color: "bg-[#EF4444]" }
                 ],
                 progress: { percent: 72, color: "#059669", label: "On track", subLabel: "51 tasks completed today", trend: "↑ 12%" },
-                buttonText: "Open Care Loop"
+                buttonText: "Open Care Loop",
+                href: "/care-loop"
             }
         },
         { 
@@ -224,9 +226,9 @@ export function MainOverview() {
                                             </div>
 
                                             {/* Button */}
-                                            <button className="w-full py-2.5 border border-[#E2E8F0] rounded-xl text-[12px] font-bold text-[#866BE3] hover:bg-[#F4F0FC]/50 transition-colors flex items-center justify-center gap-1">
+                                            <Link href={(pData as any).href || "/care-loop"} className="w-full py-2.5 border border-[#E2E8F0] rounded-xl text-[12px] font-bold text-[#866BE3] hover:bg-[#F4F0FC]/50 transition-colors flex items-center justify-center gap-1 cursor-pointer">
                                                 {pData.buttonText} <span className="text-[14px] leading-none">→</span>
-                                            </button>
+                                            </Link>
                                         </div>
                                     )}
                                 </div>
@@ -245,10 +247,10 @@ export function MainOverview() {
 
                     {/* Live Activity Button */}
                     <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 z-40">
-                        <button className="bg-white px-5 py-2.5 lg:px-6 lg:py-3 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-gray-100 flex items-center gap-2 hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-shadow">
+                        <Link href="/care-loop" className="bg-white px-5 py-2.5 lg:px-6 lg:py-3 rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.08)] border border-gray-100 flex items-center gap-2 hover:shadow-[0_8px_30px_rgba(0,0,0,0.12)] transition-shadow cursor-pointer">
                             <Activity className="w-4 h-4 lg:w-5 lg:h-5 text-[#00A89D]" />
                             <span className="text-sm lg:text-base font-semibold text-[#1a1c29]">Live clinic activity</span>
-                        </button>
+                        </Link>
                     </div>
                 </div>
 

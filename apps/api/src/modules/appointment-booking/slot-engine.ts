@@ -140,7 +140,25 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
         if (rule.name) profileMap.set(rule.name, rule.config);
       }
 
-      return realMemberships.map((m, idx) => {
+      // Deduplicate memberships by userId so each doctor appears only once
+      const uniqueMemberships: typeof realMemberships = [];
+      const seenUserIds = new Set<string>();
+
+      // Sort so memberships matching the requested clinicId come first
+      const sorted = [...realMemberships].sort((a, b) => {
+        if (a.clinicId === clinicId && b.clinicId !== clinicId) return -1;
+        if (b.clinicId === clinicId && a.clinicId !== clinicId) return 1;
+        return 0;
+      });
+
+      for (const m of sorted) {
+        if (m.user?.id && !seenUserIds.has(m.user.id)) {
+          seenUserIds.add(m.user.id);
+          uniqueMemberships.push(m);
+        }
+      }
+
+      return uniqueMemberships.map((m, idx) => {
         const u = m.user;
         const saved = (profileMap.get(u.id) || profileMap.get(`doc_${u.id}`) || {}) as any;
         const rawName = saved.displayName || u.name || `Doctor ${idx + 1}`;

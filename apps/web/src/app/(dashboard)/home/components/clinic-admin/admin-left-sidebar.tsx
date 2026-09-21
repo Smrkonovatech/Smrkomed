@@ -1,7 +1,9 @@
 "use client";
 
+import { useMemo } from "react";
 import { ArrowUpRight } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useAppState } from "@/lib/app-state";
 
 export function AdminLeftSidebar() {
@@ -9,17 +11,36 @@ export function AdminLeftSidebar() {
 
   const activeTasks = tasks.filter((t) => t.status !== "completed").length;
 
+  const todaysAppointmentsCount = useMemo(() => {
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+    const seen = new Set<string>();
+    const deduplicated = appointments.filter((a) => {
+      const normTime = (a.time || "").replace(/\s+/g, "").toLowerCase();
+      const normDate = a.date || (a.startsAt ? a.startsAt.slice(0, 10) : "");
+      const key = a.coupleId ? `c_${a.coupleId}_${normDate}_${normTime}` : a.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const todayList = deduplicated.filter((a) => {
+      const apptDate = a.date || (a.startsAt ? a.startsAt.slice(0, 10) : "");
+      return apptDate === todayStr;
+    });
+    return todayList.length;
+  }, [appointments]);
+
   const cards = [
     {
       title: "Today's",
       subtitle: "Appointments",
       icon: "/images/dashboard/calender.svg",
-      value: String(appointments.length).padStart(2, '0'),
+      value: String(todaysAppointmentsCount).padStart(2, '0'),
       color: "indigo",
       bgClass: "bg-indigo-100/50 hover:bg-indigo-100",
       textClass: "text-indigo-800",
       valueClass: "text-indigo-500",
       btnClass: "bg-indigo-500 hover:bg-indigo-600",
+      href: "/appointments",
     },
     {
       title: "Patients",
@@ -31,6 +52,7 @@ export function AdminLeftSidebar() {
       textClass: "text-purple-800",
       valueClass: "text-purple-400",
       btnClass: "bg-purple-400 hover:bg-purple-500",
+      href: "/patients",
     },
     {
       title: "Needs",
@@ -42,6 +64,7 @@ export function AdminLeftSidebar() {
       textClass: "text-blue-800",
       valueClass: "text-blue-500",
       btnClass: "bg-blue-500 hover:bg-blue-600",
+      href: "/care-loop?tab=needs-attention",
     },
     {
       title: "Active",
@@ -53,13 +76,14 @@ export function AdminLeftSidebar() {
       textClass: "text-emerald-800",
       valueClass: "text-emerald-600",
       btnClass: "bg-emerald-500 hover:bg-emerald-600",
+      href: "/care-loop",
     },
   ];
 
   return (
     <div className="flex flex-col gap-2.5 h-full">
       {cards.map((card, index) => (
-        <div key={index} className="relative group flex-1">
+        <Link key={index} href={card.href} className="relative group flex-1 block cursor-pointer">
           {/* Card background */}
           <div
             className={`rounded-3xl transition-colors ${card.bgClass} h-full p-[clamp(0.75rem,1.5vw,1.25rem)] min-h-[clamp(7rem,12vh,10rem)]`}
@@ -78,12 +102,12 @@ export function AdminLeftSidebar() {
           </div>
 
           {/* Floating Action Button */}
-          <button
+          <div
             className={`absolute bottom-0 right-0 ${card.btnClass} text-white flex items-center justify-center rounded-full transition-transform group-hover:scale-105 shadow-sm w-[clamp(2.5rem,4vw,3.5rem)] h-[clamp(2.5rem,4vw,3.5rem)]`}
           >
             <ArrowUpRight className="w-[clamp(1rem,1.5vw,1.5rem)] h-[clamp(1rem,1.5vw,1.5rem)]" />
-          </button>
-        </div>
+          </div>
+        </Link>
       ))}
     </div>
   );

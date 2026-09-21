@@ -385,6 +385,13 @@ export async function handleMenuAction(input: {
 
     // Send interactive list dropdown so patient can select doctor and slots directly
     if (doctors.length > 0) {
+      const seenDocIds = new Set<string>();
+      const uniqueDocs = doctors.filter((d) => {
+        if (!d?.id || seenDocIds.has(d.id)) return false;
+        seenDocIds.add(d.id);
+        return true;
+      });
+
       await sendWhatsAppInteractiveList(input.tenant, {
         conversationId: input.conversationId,
         body: "Choose your doctor 👩‍⚕️\n\nTap below to select a doctor and view their available consultation slots:",
@@ -392,7 +399,7 @@ export async function handleMenuAction(input: {
         sections: [
           {
             title: "Available Specialists",
-            rows: doctors.slice(0, 10).map((d) => {
+            rows: uniqueDocs.slice(0, 10).map((d) => {
               const locPrefix = d.location ? `📍 ${d.location} · ` : "";
               return {
                 id: `appt_doctor_${d.id}`,
@@ -530,6 +537,13 @@ export async function handleMenuAction(input: {
     if (!dispatched || dispatched.matched === 0) {
       const doctors = await getClinicDoctors(input.tenant.clinicId);
       if (doctors.length > 0) {
+        const seenDocIds = new Set<string>();
+        const uniqueDocs = doctors.filter((d) => {
+          if (!d?.id || seenDocIds.has(d.id)) return false;
+          seenDocIds.add(d.id);
+          return true;
+        });
+
         await sendWhatsAppInteractiveList(input.tenant, {
           conversationId: input.conversationId,
           body: "Choose your doctor 👩‍⚕️\n\nPlease select a specialist from the list below to view available slots and book your consultation:",
@@ -537,7 +551,7 @@ export async function handleMenuAction(input: {
           sections: [
             {
               title: "Fertility Specialists",
-              rows: doctors.slice(0, 10).map((d) => {
+              rows: uniqueDocs.slice(0, 10).map((d) => {
                 const locPrefix = d.location ? `📍 ${d.location} · ` : "";
                 return {
                   id: `appt_doctor_${d.id}`,

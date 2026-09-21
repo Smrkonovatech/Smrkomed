@@ -433,19 +433,41 @@ export async function sendInteractiveList(input: {
   headerText?: string;
   footerText?: string;
 }) {
+  const seenRowIds = new Set<string>();
+  let totalRows = 0;
+  const sanitizedSections: InteractiveListSection[] = [];
+
+  for (const sec of input.sections) {
+    if (totalRows >= 10) break;
+    const validRows: InteractiveListRow[] = [];
+    for (const r of sec.rows) {
+      if (totalRows >= 10) break;
+      const rawId = (r.id || "").trim();
+      if (!rawId) continue;
+      const finalId = rawId.slice(0, 200);
+      if (seenRowIds.has(finalId)) continue;
+      seenRowIds.add(finalId);
+      validRows.push({
+        id: finalId,
+        title: (r.title || "Option").slice(0, 24),
+        ...(r.description ? { description: r.description.slice(0, 72) } : {}),
+      });
+      totalRows++;
+    }
+    if (validRows.length > 0) {
+      sanitizedSections.push({
+        title: (sec.title || "Options").slice(0, 24),
+        rows: validRows,
+      });
+    }
+  }
+
   const interactive: GraphJson = {
     type: "list",
     body: { text: input.body.slice(0, 1024) },
     action: {
       button: (input.buttonLabel || "Select").slice(0, 20),
-      sections: input.sections.map((sec) => ({
-        title: sec.title.slice(0, 24),
-        rows: sec.rows.slice(0, 10).map((r) => ({
-          id: r.id.slice(0, 200),
-          title: r.title.slice(0, 24),
-          ...(r.description ? { description: r.description.slice(0, 72) } : {}),
-        })),
-      })),
+      sections: sanitizedSections,
     },
   };
 

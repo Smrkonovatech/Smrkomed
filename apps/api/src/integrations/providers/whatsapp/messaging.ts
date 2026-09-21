@@ -458,11 +458,7 @@ export async function sendWhatsAppSessionText(
         }
       } catch (metaErr) {
         console.error("[WhatsApp Outbound] Meta dispatch failed:", metaErr);
-        if (process.env["NODE_ENV"] === "production" && process.env["WHATSAPP_ACCESS_TOKEN"]) {
-          throw metaErr;
-        }
-        // Keep pending_meta_ prefix so Railway worker can retry dispatch
-        providerMessageId = `pending_meta_${Date.now()}`;
+        throw metaErr;
       }
     }
     if (!dispatchedToMeta) {

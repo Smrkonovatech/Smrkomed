@@ -102,7 +102,7 @@ export function WhatsAppPhoneSimulator({
     }
   }, [defaultMessages, primaryDoctor, primaryDoctorName]);
 
-  function handleSendUserMessage(customText?: string) {
+  function handleSendUserMessage(customText?: string, actionId?: string) {
     const text = (customText || inputText).trim();
     if (!text) return;
 
@@ -120,31 +120,102 @@ export function WhatsAppPhoneSimulator({
 
     // Simulate automated response
     setTimeout(() => {
-      handleFlowResponse(text);
+      handleFlowResponse(text, actionId);
     }, 600);
   }
 
-  function handleFlowResponse(input: string) {
+  function handleFlowResponse(input: string, actionId?: string) {
     const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    const lower = input.toLowerCase();
+    const action = actionId || input;
+    const lower = (actionId ? `${actionId} ${input}` : input).toLowerCase();
 
-    // Check if user selected or typed a doctor's name
+    // 1. Other Doctors or Browse Doctors
+    if (action === "appt_other_doc" || lower.includes("other doctor") || lower.includes("all doctor") || lower.includes("choose doctor")) {
+      const docItems = realDoctors.length > 0
+        ? realDoctors.map((d) => ({
+            id: `appt_doctor_${d.id}`,
+            title: displayNameOf(d),
+            subtitle: `${d.primarySpecialty || d.designation || "Fertility Specialist"}`,
+          }))
+        : [
+            { id: "appt_doctor_doc_ananya", title: "Dr. Ananya Rao", subtitle: "Fertility Specialist" },
+            { id: "appt_doctor_doc_rahul", title: "Dr. Rahul Mehta", subtitle: "IVF Specialist" },
+            { id: "appt_doctor_doc_priya", title: "Dr. Priya Nair", subtitle: "Gynecologist" },
+          ];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `c_${Date.now()}`,
+          sender: "clinic",
+          time,
+          type: "list",
+          text: `Here are our fertility specialists at ${clinicName}:`,
+          listButtonLabel: "👩‍⚕️ Choose Doctor",
+          listItems: docItems,
+        },
+      ]);
+      return;
+    }
+
+    // 2. Change Time or Reschedule
+    if (action === "appt_change" || action === "appt_reschedule" || lower.includes("reschedule") || lower.includes("change time") || lower.includes("change date")) {
+      onSimulateStep?.("GET_AVAILABLE_DATES");
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `c_${Date.now()}`,
+          sender: "clinic",
+          time,
+          type: "list",
+          text: `No problem! 📅 Please select a new date for your consultation with ${selectedDoctor}:`,
+          listButtonLabel: "📅 Choose Date",
+          listItems: [
+            { id: "appt_date_2026-09-07", title: "Mon, 7 Sep 2026", subtitle: "8 slots available" },
+            { id: "appt_date_2026-09-08", title: "Tue, 8 Sep 2026", subtitle: "6 slots available" },
+            { id: "appt_date_2026-09-09", title: "Wed, 9 Sep 2026", subtitle: "5 slots available" },
+          ],
+        },
+      ]);
+      return;
+    }
+
+    // 3. Cancel Booking
+    if (action === "appt_cancel" || action === "appt_cancel_btn" || lower.includes("cancel booking") || lower.includes("cancel appointment") || (lower.startsWith("cancel") && !lower.includes("don't"))) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `c_${Date.now()}`,
+          sender: "clinic",
+          time,
+          type: "buttons",
+          text: `Your appointment request has been cancelled. ❌\n\nIf you'd like to book a visit at any time, just tap below:`,
+          buttons: [
+            { id: "btn_book_appointment", title: "📅 Book New Visit" },
+            { id: "btn_talk_to_team", title: "💬 Talk to Coordinator" },
+          ],
+        },
+      ]);
+      return;
+    }
+
+    // 4. Check if user selected or typed a doctor's name
     const matchedDoctor = realDoctors.find((d) => {
       const name = displayNameOf(d).toLowerCase();
       const first = (d.firstName || "").toLowerCase();
       const last = (d.lastName || "").toLowerCase();
-      const cleanInput = lower.replace(/^dr\.?\s*/i, "").trim();
+      const cleanInput = input.replace(/^dr\.?\s*/i, "").trim().toLowerCase();
       return (
         lower.includes(name) ||
         (first && lower.includes(first)) ||
         (last && lower.includes(last)) ||
         (first && cleanInput.includes(first)) ||
         (last && cleanInput.includes(last)) ||
-        input.includes(d.id)
+        action.includes(d.id)
       );
     });
 
-    if (matchedDoctor && (lower.includes("dr") || lower.includes(matchedDoctor.firstName.toLowerCase()) || lower.includes("profile") || input.startsWith("btn_doc_"))) {
+    if (matchedDoctor && (lower.includes("dr") || lower.includes(matchedDoctor.firstName.toLowerCase()) || lower.includes("profile") || action.startsWith("btn_doc_"))) {
       const docName = displayNameOf(matchedDoctor);
       setSelectedDoctor(docName);
       const docImg = matchedDoctor.photoDataUrl || (matchedDoctor.staffUserId || matchedDoctor.id ? `/api/v1/public/doctors/${matchedDoctor.staffUserId || matchedDoctor.id}/photo` : undefined);
@@ -174,7 +245,8 @@ export function WhatsAppPhoneSimulator({
       return;
     }
 
-    if (lower.includes("slot") || lower.includes("doctor") || input.startsWith("appt_doctor_")) {
+    // 5. Doctor slots or book appointment action -> show available dates
+    if (lower.includes("slot") || action.startsWith("appt_doctor_") || action === "btn_book_appointment") {
       onSimulateStep?.("GET_AVAILABLE_DATES");
       setMessages((prev) => [
         ...prev,
@@ -192,7 +264,11 @@ export function WhatsAppPhoneSimulator({
           ],
         },
       ]);
-    } else if (lower.includes("sep") || lower.includes("mon") || input.startsWith("appt_date_")) {
+      return;
+    }
+
+    // 6. Date selected -> show available times
+    if (action.startsWith("appt_date_") || lower.includes("sep") || lower.includes("mon") || lower.includes("tue") || lower.includes("wed") || lower.includes("thu") || lower.includes("fri") || lower.includes("sat") || lower.includes("today") || lower.includes("tomorrow")) {
       onSimulateStep?.("GET_AVAILABLE_SLOTS");
       setMessages((prev) => [
         ...prev,
@@ -201,7 +277,7 @@ export function WhatsAppPhoneSimulator({
           sender: "clinic",
           time,
           type: "buttons",
-          text: `Available times for Monday, 7 Sep with ${selectedDoctor} ⏰\n\n☀️ Morning Slots:`,
+          text: `Available times for ${input.startsWith("appt_") ? "Monday, 7 Sep" : input} with ${selectedDoctor} ⏰\n\n☀️ Morning Slots:`,
           buttons: [
             { id: "appt_slot_0930", title: "09:30 AM" },
             { id: "appt_slot_1000", title: "10:00 AM" },
@@ -209,7 +285,11 @@ export function WhatsAppPhoneSimulator({
           ],
         },
       ]);
-    } else if (lower.includes("am") || lower.includes("pm") || input.startsWith("appt_slot_")) {
+      return;
+    }
+
+    // 7. Slot selected -> show booking summary
+    if (action.startsWith("appt_slot_") || lower.includes("am") || lower.includes("pm") || /\b\d{1,2}:\d{2}\b/.test(lower)) {
       onSimulateStep?.("BOOKING_SUMMARY");
       setMessages((prev) => [
         ...prev,
@@ -218,7 +298,7 @@ export function WhatsAppPhoneSimulator({
           sender: "clinic",
           time,
           type: "summary",
-          text: `Please confirm your appointment ✨\n\n👩‍⚕️ ${selectedDoctor}\nFertility Specialist\n\n📅 Monday, 7 Sep 2026\n⏰ 10:00 AM\n📍 ${clinicName}`,
+          text: `Please confirm your appointment ✨\n\n👩‍⚕️ ${selectedDoctor}\nFertility Specialist\n\n📅 Monday, 7 Sep 2026\n⏰ ${action.startsWith("appt_slot_") ? input : "10:00 AM"}\n📍 ${clinicName}`,
           buttons: [
             { id: "appt_confirm", title: "Confirm Appointment ✅" },
             { id: "appt_change", title: "Change Time ⏰" },
@@ -226,7 +306,11 @@ export function WhatsAppPhoneSimulator({
           ],
         },
       ]);
-    } else if (lower.includes("confirm") || input === "appt_confirm") {
+      return;
+    }
+
+    // 8. Confirmation
+    if (action === "appt_confirm" || lower.includes("confirm") || lower === "yes" || lower === "1") {
       onSimulateStep?.("BOOK_APPOINTMENT");
       setMessages((prev) => [
         ...prev,
@@ -242,34 +326,36 @@ export function WhatsAppPhoneSimulator({
           ],
         },
       ]);
-    } else {
-      const docButtons = realDoctors.length > 0
-        ? realDoctors.slice(0, 3).map((d) => ({
-            id: `btn_doc_${d.id}`,
-            title: displayNameOf(d),
-          }))
-        : [
-            { id: "btn_doc_ananya", title: "Dr. Ananya Rao" },
-            { id: "btn_doc_rahul", title: "Dr. Rahul Mehta" },
-            { id: "btn_doc_priya", title: "Dr. Priya Nair" },
-          ];
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `c_${Date.now()}`,
-          sender: "clinic",
-          time,
-          type: "buttons",
-          text: "Let's find the right doctor for you 👩‍⚕️",
-          buttons: docButtons,
-        },
-      ]);
+      return;
     }
+
+    // 9. Generic / Natural conversation fallback -> show doctor options
+    const docButtons = realDoctors.length > 0
+      ? realDoctors.slice(0, 3).map((d) => ({
+          id: `btn_doc_${d.id}`,
+          title: displayNameOf(d),
+        }))
+      : [
+          { id: "btn_doc_ananya", title: "Dr. Ananya Rao" },
+          { id: "btn_doc_rahul", title: "Dr. Rahul Mehta" },
+          { id: "btn_doc_priya", title: "Dr. Priya Nair" },
+        ];
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `c_${Date.now()}`,
+        sender: "clinic",
+        time,
+        type: "buttons",
+        text: "Let's find the right doctor for you 👩‍⚕️",
+        buttons: docButtons,
+      },
+    ]);
   }
 
   function handleButtonClick(button: { id: string; title: string }) {
-    handleSendUserMessage(button.title);
+    handleSendUserMessage(button.title, button.id);
   }
 
   function openListSheet(label: string, items?: Array<{ id: string; title: string; subtitle?: string }>) {
@@ -281,7 +367,7 @@ export function WhatsAppPhoneSimulator({
 
   function handleSelectListItem(item: { id: string; title: string }) {
     setIsListModalOpen(false);
-    handleSendUserMessage(item.title);
+    handleSendUserMessage(item.title, item.id);
   }
 
   function resetSimulation() {

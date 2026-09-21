@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { User, FileText, AlertTriangle, Target, Calendar, CheckCircle2, X, ArrowRight } from "lucide-react";
 import Image from "next/image";
 import { useAppState } from "@/lib/app-state";
@@ -152,30 +153,71 @@ export function AppointmentsTimeline() {
 
    const colors = ["#866BE3", "#C178F5", "#00A89D", "#00A89D", "#F39C12"];
 
-   // Compute lane (0 = up, 1 = down) to prevent overlapping pills
-   const sortedWithPos = [...appointments]
-      .map((app, index) => ({
-         app,
-         index,
-         leftPercent: getLeftPercentage(app.time),
-      }))
-      .sort((a, b) => a.leftPercent - b.leftPercent);
+   // Deduplicate: If an appointment is for a couple, ensure it counts as 1
+   const uniqueAppointments = useMemo(() => {
+      const seen = new Set<string>();
+      return appointments.filter((app) => {
+         const normTime = (app.time || "").replace(/\s+/g, "").toLowerCase();
+         const normDate = app.date || (app.startsAt ? app.startsAt.slice(0, 10) : "");
+         const key = app.coupleId ? `c_${app.coupleId}_${normDate}_${normTime}` : app.id;
+         if (seen.has(key)) return false;
+         seen.add(key);
+         return true;
+      });
+   }, [appointments]);
 
-   const laneMap = new Map<string, number>();
-   let lastLane = 1;
-   let lastPercent = -100;
+   // Compute lane (0 = top, 1 = middle, 2 = bottom, ...) so overlapping or same-time pills stack one below the other
+   const positionedAppointments = useMemo(() => {
+      const sortedWithPos = uniqueAppointments
+         .map((app, index) => {
+            const leftPercent = getLeftPercentage(app.time);
+            const isUpNext = index === 0;
+            // Up-next pill is wider with subtitle & badge (~16% width), normal pills are ~10% width
+            const estimatedWidthPercent = isUpNext ? 16 : 10;
+            return {
+               app,
+               originalIndex: index,
+               isUpNext,
+               leftPercent,
+               startPercent: Math.max(0, leftPercent - estimatedWidthPercent / 2),
+               endPercent: Math.min(100, leftPercent + estimatedWidthPercent / 2),
+            };
+         })
+         .sort((a, b) => {
+            if (Math.abs(a.leftPercent - b.leftPercent) > 0.05) {
+               return a.leftPercent - b.leftPercent;
+            }
+            return a.originalIndex - b.originalIndex;
+         });
 
-   sortedWithPos.forEach((item) => {
-      let lane = 0;
-      if (Math.abs(item.leftPercent - lastPercent) < 14) {
-         lane = lastLane === 0 ? 1 : 0;
-      } else {
-         lane = 0;
-      }
-      laneMap.set(item.app.id, lane);
-      lastLane = lane;
-      lastPercent = item.leftPercent;
-   });
+      // Track rightmost occupied percent per lane to prevent horizontal collision
+      const laneEnds: number[] = [];
+      return sortedWithPos.map((item) => {
+         let assignedLane = -1;
+         for (let l = 0; l < laneEnds.length; l++) {
+            // Fits in existing lane if placed after previous pill's right edge with safety margin
+            if (laneEnds[l]! + 2.0 <= item.startPercent) {
+               assignedLane = l;
+               laneEnds[l] = item.endPercent;
+               break;
+            }
+         }
+
+         // If overlapping with all existing lanes, allocate a new lane directly below
+         if (assignedLane === -1) {
+            assignedLane = laneEnds.length;
+            laneEnds.push(item.endPercent);
+         }
+
+         return {
+            ...item,
+            lane: assignedLane,
+         };
+      });
+   }, [uniqueAppointments]);
+
+   const maxLane = Math.max(1, ...positionedAppointments.map((p) => p.lane), 0);
+   const containerHeight = Math.max(150, 44 + (maxLane + 1) * 52);
 
    return (
       <div className="px-4 pt-4 pb-0">
@@ -183,7 +225,7 @@ export function AppointmentsTimeline() {
 
          <div className="overflow-x-auto pb-6 -mt-[350px] pt-[350px]">
             <div className="min-w-[1000px] lg:min-w-full px-6">
-               <div className="relative mx-[100px] min-h-[150px]">
+               <div className="relative mx-[100px]" style={{ minHeight: `${containerHeight}px` }}>
                   {/* Timeline intervals */}
                   <div className="flex justify-between relative z-0">
                      {Array.from({ length: 23 }, (_, i) => {
@@ -195,30 +237,37 @@ export function AppointmentsTimeline() {
                         return (
                            <div key={i} className="flex flex-col items-center">
                               <span className={`mb-4 text-gray-400 ${isHour ? 'text-[11px] font-semibold' : 'text-[11px]'}`}>{label}</span>
-                              <div className={`rounded-full bg-gray-300/80 ${isHour ? 'w-[2px] h-28' : 'w-[1.5px] h-28 opacity-60'}`}></div>
+                              <div
+                                 className={`rounded-full bg-gray-300/80 ${isHour ? 'w-[2px]' : 'w-[1.5px] opacity-60'}`}
+                                 style={{ height: `${containerHeight - 35}px` }}
+                              ></div>
                            </div>
                         );
                      })}
                   </div>
 
-                  {appointments.length === 0 && (
+                  {positionedAppointments.length === 0 && (
                      <div className="absolute top-16 left-1/2 -translate-x-1/2 text-xs text-muted-foreground bg-white/80 px-4 py-1.5 rounded-full border border-gray-200 shadow-sm">
                         No appointments scheduled for today
                      </div>
                   )}
 
                   {/* Appointment Pills */}
-                  {appointments.map((app, index) => {
+                  {positionedAppointments.map((item) => {
+                     const app = item.app;
                      const couple = findCouple(app.coupleId, couples ?? []);
-                     const leftPercent = getLeftPercentage(app.time);
-                     const color = colors[index % colors.length] || "#866BE3";
+                     const leftPercent = item.leftPercent;
+                     const color = colors[item.originalIndex % colors.length] || "#866BE3";
                      const initial = couple?.primary?.name?.[0] || 'P';
-                     const isUpNext = index === 0;
-                     const lane = laneMap.get(app.id) ?? 0;
-                     const topClass = lane === 1 ? "top-[70px]" : "top-[18px]";
+                     const isUpNext = item.isUpNext;
+                     const topOffset = 18 + item.lane * 52;
 
                      return (
-                        <div key={app.id} className={`absolute ${topClass} z-20 hover:z-30 group cursor-pointer transition-all`} style={{ left: `${leftPercent}%`, transform: 'translateX(-50%)' }}>
+                        <div
+                           key={`${app.id}_${item.originalIndex}`}
+                           className="absolute z-20 hover:z-40 group cursor-pointer transition-all"
+                           style={{ left: `${leftPercent}%`, top: `${topOffset}px`, transform: 'translateX(-50%)' }}
+                        >
                            {!isUpNext && <TooltipCard appointment={app} couple={couple} color={color} initial={initial} leftPercent={leftPercent} />}
                            
                            <div className={`relative rounded-full px-4 py-2 flex items-center gap-3 shadow-sm border border-white`} style={{ backgroundColor: `${color}15` }}>

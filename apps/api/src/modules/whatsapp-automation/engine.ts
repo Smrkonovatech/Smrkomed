@@ -1401,11 +1401,17 @@ async function executeNode(
 
       if (dataSource === "doctors") {
         const doctorsJson = vars["_availableDoctorsJson"];
-        const doctors = doctorsJson ? JSON.parse(doctorsJson) : await resolveClinicDoctors(tenant.clinicId);
+        const doctors = (doctorsJson ? JSON.parse(doctorsJson) : await resolveClinicDoctors(tenant.clinicId)) as any[];
+        const seenDocIds = new Set<string>();
+        const uniqueDoctors = doctors.filter((d: any) => {
+          if (!d?.id || seenDocIds.has(String(d.id))) return false;
+          seenDocIds.add(String(d.id));
+          return true;
+        });
         sections = [
           {
             title: "Available Doctors",
-            rows: (doctors as any[]).slice(0, 10).map((d: any) => {
+            rows: uniqueDoctors.slice(0, 10).map((d: any) => {
               const locPrefix = d.location ? `📍 ${d.location} · ` : "";
               return {
                 id: `appt_doctor_${d.id}`,

@@ -1158,11 +1158,22 @@ export const doctorRoutes = new Hono<AppEnv>()
       .filter(Boolean)
       .join("\n\n");
 
+    let validAuthorId: string | null = null;
+    if (tenant.userId) {
+      const existingUser = await prisma.user.findUnique({
+        where: { id: tenant.userId },
+        select: { id: true },
+      });
+      if (existingUser) {
+        validAuthorId = existingUser.id;
+      }
+    }
+
     const note = await prisma.consultationNote.create({
       data: {
         clinicId: tenant.clinicId,
         coupleId: appointment.coupleId,
-        createdById: tenant.userId,
+        createdById: validAuthorId,
         consultationDate: new Date(),
         summary: fullSummary,
         reasonForVisit: body.reasonForVisit ?? appointment.type,
