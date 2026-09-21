@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const sarvamApiKey =
       process.env["SARVAM_API_KEY"] || "sk_l0nfgdq0_MRxkA28Stuh6JXP2AE4Anbcp";
 
-    const requestedLang = (formData.get("language_code") as string) || "unknown";
+    const requestedLang = (formData.get("language_code") as string) || "ml-IN";
     const requestedMode = (formData.get("mode") as string) || "transcribe";
 
     // 1. Prepare form data for Sarvam AI
@@ -24,10 +24,12 @@ export async function POST(req: NextRequest) {
     sarvamFormData.append("file", audioFile, fileName);
     sarvamFormData.append("model", "saaras:v3");
     sarvamFormData.append("mode", requestedMode);
-    if (requestedLang && requestedLang !== "auto") {
+    if (requestedLang && requestedLang !== "auto" && requestedLang !== "unknown") {
       sarvamFormData.append("language_code", requestedLang);
     } else {
-      sarvamFormData.append("language_code", "unknown");
+      // Default to Malayalam (ml-IN) for Hospex Kochi clinic instead of "unknown",
+      // which prevents Sarvam AI from misclassifying Malayalam Dravidian speech as Tamil (ta-IN).
+      sarvamFormData.append("language_code", "ml-IN");
     }
 
     // Call Sarvam AI STT API

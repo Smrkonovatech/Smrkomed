@@ -66,7 +66,7 @@ export function ActiveConsultationModal({
   const [audioLevels, setAudioLevels] = useState<number[]>([12, 20, 28, 18, 30, 24, 32, 16, 10]);
   const [transcript, setTranscript] = useState<string>("");
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [detectedLang, setDetectedLang] = useState<string>("auto");
+  const [detectedLang, setDetectedLang] = useState<string>("ml-IN");
   const [providerTag, setProviderTag] = useState<string>("Sarvam AI (Saaras)");
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -236,7 +236,7 @@ export function ActiveConsultationModal({
       const formData = new FormData();
       formData.append("file", audioBlob, "consultation_recording.webm");
       formData.append("mode", "transcribe");
-      formData.append("language_code", detectedLang === "auto" ? "unknown" : detectedLang);
+      formData.append("language_code", detectedLang || "ml-IN");
 
       const res = await fetch("/api/ai/transcribe-consultation", {
         method: "POST",
@@ -405,9 +405,19 @@ export function ActiveConsultationModal({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="rounded bg-white border border-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600 uppercase">
-                    {detectedLang === "auto" ? "Indic / English" : detectedLang}
-                  </span>
+                  <select
+                    value={detectedLang}
+                    onChange={(e) => setDetectedLang(e.target.value)}
+                    className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#866BE3] cursor-pointer"
+                    title="Consultation Language"
+                  >
+                    <option value="ml-IN">Malayalam (മലയാളം)</option>
+                    <option value="en-IN">English</option>
+                    <option value="kn-IN">Kannada (ಕನ್ನಡ)</option>
+                    <option value="ta-IN">Tamil (தமிழ்)</option>
+                    <option value="hi-IN">Hindi (हिन्दी)</option>
+                    <option value="te-IN">Telugu (తెలుగు)</option>
+                  </select>
                   {transcript && (
                     <button
                       type="button"

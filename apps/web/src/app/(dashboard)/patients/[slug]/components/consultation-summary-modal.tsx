@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -71,6 +71,24 @@ export function ConsultationSummaryModal({
 
   // Parse structured AI analysis (English dialogue, Critical details, original audio transcript)
   const parsed = parseConsultationContent(rawContent);
+
+  // Derive clean doctor assessment & clinical plan, ensuring no audio transcripts or raw scripts bleed through
+  const displaySummary = useMemo(() => {
+    let text = parsed.summary || rawContent || "";
+    // Strip any raw Audio Transcript headers and quoted audio strings
+    text = text.replace(/Audio Transcript\s*(?:\([^)]+\))?:\s*(?:"[^"]*"|[^\n]+(\n"[^"]*")?)/gi, "");
+    text = text.replace(/Audio Transcript\s*(?:\([^)]+\))?:\s*["'][^"']+["']/gi, "");
+    // If dialogue already exists, strip English Dialogue Transcript section
+    if (parsed.dialogue.length > 0) {
+      text = text.replace(/English Dialogue Transcript:\s*([\s\S]*?)(?=(?:Critical (?:Clinical )?Details|Doctor Assessment|Clinical Notes|$))/gi, "");
+    }
+    // If criticalDetails already exists, strip Critical Details section
+    if (parsed.criticalDetails.length > 0) {
+      text = text.replace(/Critical (?:Clinical )?Details:\s*([\s\S]*?)(?=(?:Doctor Assessment|Clinical Notes|$))/gi, "");
+    }
+    text = text.replace(/^Doctor Assessment:\s*/gim, "").trim();
+    return text || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+  }, [parsed.summary, rawContent, parsed.dialogue.length, parsed.criticalDetails.length]);
 
   const handleCopy = (text: string) => {
     if (!text) return;
@@ -196,59 +214,16 @@ export function ConsultationSummaryModal({
             </div>
           )}
 
-          {/* 3. Original Audio Transcript (Collapsible for Sarvam AI Indic Audio) */}
-          {parsed.originalTranscript && (
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={() => setShowOriginal(!showOriginal)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 transition text-left"
-                >
-                  <Globe className="w-3.5 h-3.5 text-[#866BE3]" />
-                  <span>Original Audio Transcript (Sarvam AI)</span>
-                  {showOriginal ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                  )}
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] bg-slate-200/70 text-slate-600 font-semibold px-2 py-0.5 rounded">
-                    {parsed.detectedLanguage || "Kannada / Indic"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(parsed.originalTranscript)}
-                    title="Copy original transcript"
-                    className="text-slate-400 hover:text-slate-700 transition"
-                  >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              {showOriginal && (
-                <div className="mt-2 p-2.5 rounded-lg bg-white border border-slate-100 text-xs text-slate-700 leading-relaxed font-normal animate-in fade-in duration-150">
-                  <p className="italic">"{parsed.originalTranscript}"</p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 4. Doctor Impressions & Clinical Notes */}
-          {(!parsed.hasAiAnalysis || parsed.summary) && (
-            <div className="p-4 rounded-xl bg-[#F8F9FA] border border-gray-100 space-y-2">
-              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-                <FileText className="w-3.5 h-3.5 text-[#866BE3]" />
-                Doctor Assessment & Clinical Plan
-              </h4>
-              <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
-                {parsed.summary || rawContent}
-              </p>
-            </div>
-          )}
+          {/* 3. Doctor Impressions & Clinical Notes */}
+          <div className="p-4 rounded-xl bg-[#F8F9FA] border border-gray-100 space-y-2">
+            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-[#866BE3]" />
+              Doctor Assessment & Clinical Plan
+            </h4>
+            <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
+              {displaySummary}
+            </p>
+          </div>
 
           {/* 5. Follicle Tracking Table */}
           <div className="p-4 rounded-xl bg-white border border-gray-100 space-y-2.5 shadow-xs">

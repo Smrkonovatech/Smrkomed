@@ -46,7 +46,11 @@ export function ConsultationSummaryModal({
     }
   }
   const doctor = latestConsultation?.actor || p360?.header?.assignedDoctor || "Primary Doctor";
-  const notes = latestConsultation?.content || latestConsultation?.description || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+  const rawNotes = latestConsultation?.content || latestConsultation?.description || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+  const notes = rawNotes
+    .replace(/Audio Transcript\s*(?:\([^)]+\))?:\s*(?:"[^"]*"|[^\n]+(\n"[^"]*")?)/gi, "")
+    .replace(/Audio Transcript\s*(?:\([^)]+\))?:\s*["'][^"']+["']/gi, "")
+    .trim() || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
