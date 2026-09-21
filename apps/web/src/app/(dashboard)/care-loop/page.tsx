@@ -1199,10 +1199,10 @@ export default function CareLoopPage() {
             {/* Table Area */}
             <div className="min-w-0 flex-1 overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xs">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
+                <table className="w-full min-w-[1180px] text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-slate-200/80 bg-slate-50/70 text-[11px] font-semibold tracking-wider text-slate-500 uppercase">
-                      <th className="w-10 px-3 py-3 text-center">
+                      <th className="w-12 min-w-12 px-3 py-3 text-center shrink-0">
                         <input
                           type="checkbox"
                           checked={isAllChecked}
@@ -1210,28 +1210,28 @@ export default function CareLoopPage() {
                           className="size-4 rounded border-slate-300 text-[#5046e5] focus:ring-[#5046e5]"
                         />
                       </th>
-                      <th className="px-3 py-3 font-semibold">Patient / Couple</th>
-                      <th className="px-3 py-3 font-semibold">Journey & Stage</th>
-                      <th className="px-3 py-3 font-semibold">Status</th>
-                      <th className="px-3 py-3 font-semibold">
+                      <th className="w-64 min-w-[220px] px-3 py-3 font-semibold">Patient / Couple</th>
+                      <th className="w-52 min-w-[180px] px-3 py-3 font-semibold">Journey & Stage</th>
+                      <th className="w-36 min-w-[140px] px-3 py-3 font-semibold">Status</th>
+                      <th className="w-60 min-w-[200px] px-3 py-3 font-semibold">
                         <div>Care Loop Activity</div>
                         <div className="text-[10px] font-normal normal-case text-slate-400">Recent actions</div>
                       </th>
-                      <th className="px-3 py-3 font-semibold">
+                      <th className="w-60 min-w-[200px] px-3 py-3 font-semibold">
                         <div>AI Assistance</div>
                         <div className="text-[10px] font-normal normal-case text-slate-400">What AI has done</div>
                       </th>
-                      <th className="px-3 py-3 font-semibold">
+                      <th className="w-48 min-w-[160px] px-3 py-3 font-semibold">
                         <div>Next Action</div>
                         <div className="text-[10px] font-normal normal-case text-slate-400">What happens next</div>
                       </th>
-                      <th className="px-3 py-3 font-semibold">Last Activity</th>
+                      <th className="w-36 min-w-[130px] px-3 py-3 font-semibold">Last Activity</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {paginatedItems.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="text-center py-12 text-slate-500">
+                        <td colSpan={8} className="text-center py-12 text-slate-500">
                           <div className="flex flex-col items-center justify-center gap-2">
                             <Users className="size-8 text-slate-300" />
                             <p className="font-semibold text-slate-700 text-sm">No patients found</p>
@@ -1257,7 +1257,7 @@ export default function CareLoopPage() {
                         >
                           {/* Checkbox */}
                           <td
-                            className="px-3 py-3.5 text-center"
+                            className="w-12 min-w-12 px-3 py-3.5 text-center shrink-0"
                             onClick={(e) => toggleCheck(item.id, e)}
                           >
                             <input
@@ -1269,20 +1269,20 @@ export default function CareLoopPage() {
                           </td>
 
                           {/* Patient / Couple */}
-                          <td className="px-3 py-3.5">
+                          <td className="w-64 min-w-[220px] px-3 py-3.5">
                             <div className="flex items-center gap-3">
                               {item.type === "couple" ? (
                                 <div className="flex -space-x-2 shrink-0">
                                   <img
                                     src={item.partnerA.avatar}
                                     alt={item.partnerA.name}
-                                    className="size-8 rounded-full border-2 border-white object-cover"
+                                    className="size-8 rounded-full border-2 border-white object-cover shrink-0"
                                   />
                                   {item.partnerB && (
                                     <img
                                       src={item.partnerB.avatar}
                                       alt={item.partnerB.name}
-                                      className="size-8 rounded-full border-2 border-white object-cover"
+                                      className="size-8 rounded-full border-2 border-white object-cover shrink-0"
                                     />
                                   )}
                                 </div>
@@ -1293,11 +1293,11 @@ export default function CareLoopPage() {
                                   className="size-8 shrink-0 rounded-full object-cover"
                                 />
                               )}
-                              <div>
-                                <p className="font-bold text-slate-900 text-xs leading-snug">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-bold text-slate-900 text-xs leading-snug truncate">
                                   {item.name}
                                 </p>
-                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5">
+                                <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5 whitespace-nowrap">
                                   <span>{item.code}</span>
                                   <span>•</span>
                                   <span>{item.age}</span>
@@ -1307,21 +1307,23 @@ export default function CareLoopPage() {
                           </td>
 
                           {/* Journey & Stage */}
-                          <td className="px-3 py-3.5">
-                            <p className="font-bold text-slate-800 text-xs leading-snug">
-                              {item.journey}
-                            </p>
-                            <p className="text-[11px] text-slate-400 mt-0.5 whitespace-nowrap">
-                              {item.stage}
-                            </p>
+                          <td className="w-52 min-w-[180px] px-3 py-3.5">
+                            <div className="min-w-0">
+                              <p className="font-bold text-slate-800 text-xs leading-snug truncate">
+                                {item.journey}
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5 truncate">
+                                {item.stage}
+                              </p>
+                            </div>
                           </td>
 
                           {/* Status */}
-                          <td className="px-3 py-3.5">
+                          <td className="w-36 min-w-[140px] px-3 py-3.5">
                             <div>
                               <span
                                 className={cn(
-                                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold",
+                                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold whitespace-nowrap",
                                   item.status === "On Track" && "bg-emerald-50 text-emerald-700 border border-emerald-200",
                                   item.status === "Waiting" && "bg-amber-50 text-amber-700 border border-amber-200",
                                   item.status === "Needs Attention" && "bg-rose-50 text-rose-700 border border-rose-200",
@@ -1355,8 +1357,8 @@ export default function CareLoopPage() {
                           </td>
 
                           {/* Care Loop Activity */}
-                          <td className="px-3 py-3.5">
-                            <ul className="space-y-1 text-[11px] text-slate-600 min-w-[170px]">
+                          <td className="w-60 min-w-[200px] px-3 py-3.5">
+                            <ul className="space-y-1 text-[11px] text-slate-600">
                               {item.activities.map((act, idx) => (
                                 <li key={idx} className="flex items-center gap-1.5 leading-snug">
                                   {act.includes("reminder") || act.includes("confirmed") || act.includes("responded") || act.includes("updated") || act.includes("completed") || act.includes("summarised") || act.includes("scheduled") ? (
@@ -1371,8 +1373,8 @@ export default function CareLoopPage() {
                           </td>
 
                           {/* AI Assistance */}
-                          <td className="px-3 py-3.5">
-                            <ul className="space-y-1 text-[11px] text-slate-600 min-w-[170px]">
+                          <td className="w-60 min-w-[200px] px-3 py-3.5">
+                            <ul className="space-y-1 text-[11px] text-slate-600">
                               {item.aiAssistance.map((ai, idx) => (
                                 <li key={idx} className="flex items-center gap-1.5 leading-snug">
                                   <Check className="size-3 shrink-0 text-purple-600 stroke-[2.5]" />
@@ -1383,8 +1385,8 @@ export default function CareLoopPage() {
                           </td>
 
                           {/* Next Action */}
-                          <td className="px-3 py-3.5">
-                            <div className="flex items-start gap-2 min-w-[140px]">
+                          <td className="w-48 min-w-[160px] px-3 py-3.5">
+                            <div className="flex items-start gap-2">
                               {item.nextAction.isUrgent ? (
                                 <AlertCircle className="size-3.5 shrink-0 text-rose-500 mt-0.5" />
                               ) : item.nextAction.type === "document" ? (
@@ -1392,13 +1394,13 @@ export default function CareLoopPage() {
                               ) : (
                                 <Calendar className="size-3.5 shrink-0 text-[#5046e5] mt-0.5" />
                               )}
-                              <div>
-                                <p className="font-semibold text-slate-800 text-[11px] leading-snug">
+                              <div className="min-w-0 flex-1">
+                                <p className="font-semibold text-slate-800 text-[11px] leading-snug truncate">
                                   {item.nextAction.title}
                                 </p>
                                 <p
                                   className={cn(
-                                    "text-[10px] mt-0.5 font-medium",
+                                    "text-[10px] mt-0.5 font-medium whitespace-nowrap",
                                     item.nextAction.isUrgent ? "text-rose-600 font-semibold" : "text-slate-400"
                                   )}
                                 >
@@ -1409,7 +1411,7 @@ export default function CareLoopPage() {
                           </td>
 
                           {/* Last Activity */}
-                          <td className="px-3 py-3.5 whitespace-nowrap">
+                          <td className="w-36 min-w-[130px] px-3 py-3.5 whitespace-nowrap">
                             <div className="text-[11px]">
                               <p className="text-slate-400 text-[10px]">{item.lastActivity.time}</p>
                               <div className="flex items-center gap-1.5 mt-0.5">
