@@ -792,6 +792,8 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
 
   // 1.2. Check for Interactive Main Menu trigger, greeting, or interactive menu action
   const cleanInboundText = input.messageText.trim().toLowerCase();
+  // Also route appointment interactive list selections (appt_doctor_*, appt_doctors_list, menu_book_appt,
+  // btn_book_wa, btn_ai_call, etc.) through handleMenuAction which has the correct handlers for each.
   const isMenuTrigger =
     cleanInboundText === "menu" ||
     cleanInboundText === "main_menu" ||
@@ -799,7 +801,14 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     cleanInboundText === "options" ||
     cleanInboundText === "btn_menu" ||
     cleanInboundText === "more services" ||
+    cleanInboundText === "btn_book_wa" ||
+    cleanInboundText === "btn_ai_call" ||
+    cleanInboundText === "menu_book_appt" ||
+    cleanInboundText === "appt_doctors_list" ||
+    cleanInboundText === "menu_doctor_slots" ||
     cleanInboundText.startsWith("menu_") ||
+    cleanInboundText.startsWith("appt_doctor_") ||
+    cleanInboundText.startsWith("appt_slot_") ||
     /^(hi|hello|hey|namaste|start|good\s*(morning|afternoon|evening))$/i.test(cleanInboundText);
 
   if (isMenuTrigger) {
