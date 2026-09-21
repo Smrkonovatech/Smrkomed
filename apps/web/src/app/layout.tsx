@@ -28,19 +28,18 @@ export const metadata: Metadata = {
   },
 };
 
+import { Inter } from "next/font/google";
 import { DesktopScaler } from "@/components/ui/desktop-scaler";
+
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+});
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="en" className={inter.className}>
       <body className="h-[100dvh] w-[100vw] overflow-hidden font-sans antialiased bg-background text-foreground">
         <DesktopScaler desktopWidth={1440} bgColor="transparent">
           <AuthSessionProvider>{children}</AuthSessionProvider>
