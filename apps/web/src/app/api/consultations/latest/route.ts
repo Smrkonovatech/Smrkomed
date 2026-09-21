@@ -1,10 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@smrkomed/database";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    // Query the latest consultation note from the PostgreSQL database
+    const { searchParams } = new URL(req.url);
+    const coupleId = searchParams.get("coupleId");
+
+    // Query the latest consultation note from the PostgreSQL database (optionally filtered by coupleId)
     const latestNote = await prisma.consultationNote.findFirst({
+      where: coupleId ? { coupleId } : {},
       orderBy: { consultationDate: "desc" },
       include: {
         createdBy: {

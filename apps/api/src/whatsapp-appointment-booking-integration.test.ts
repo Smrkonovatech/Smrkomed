@@ -76,12 +76,12 @@ async function cleanup() {
 function nextWeekdaySlotStart(daysAhead = 1, hour = 10): Date {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() + daysAhead);
-  // Skip Sunday (DEFAULT_HOURS.sun = null)
-  while (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
+  // Skip weekends (Saturday and Sunday) so appointments always fall on regular full clinic working days
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1);
   d.setUTCHours(hour, 0, 0, 0);
   if (d.getTime() <= Date.now()) {
     d.setUTCDate(d.getUTCDate() + 1);
-    while (d.getUTCDay() === 0) d.setUTCDate(d.getUTCDate() + 1);
+    while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() + 1);
     d.setUTCHours(hour, 0, 0, 0);
   }
   return d;

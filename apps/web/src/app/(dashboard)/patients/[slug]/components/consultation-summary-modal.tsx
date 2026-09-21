@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,24 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Stethoscope, Calendar, User, FileText, Pill, ArrowRight, Activity } from "lucide-react";
+import {
+  Stethoscope,
+  Calendar,
+  User,
+  FileText,
+  Pill,
+  Activity,
+  AlertTriangle,
+  MessageSquare,
+  Globe,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Sparkles,
+} from "lucide-react";
+import { parseConsultationContent } from "@/lib/ai/consultation-analyzer";
+import { toast } from "sonner";
 
 interface ConsultationSummaryModalProps {
   isOpen: boolean;
@@ -24,6 +42,9 @@ export function ConsultationSummaryModal({
   consultation,
   p360,
 }: ConsultationSummaryModalProps) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const [copied, setCopied] = useState(false);
+
   const latestConsultation =
     consultation ||
     p360?.timeline?.items?.find((i: any) => i.type === "Consultation") ||
@@ -46,26 +67,45 @@ export function ConsultationSummaryModal({
     }
   }
   const doctor = latestConsultation?.actor || p360?.header?.assignedDoctor || "Primary Doctor";
-  const notes = latestConsultation?.content || latestConsultation?.description || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+  const rawContent = latestConsultation?.content || latestConsultation?.description || "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+
+  // Parse structured AI analysis (English dialogue, Critical details, original audio transcript)
+  const parsed = parseConsultationContent(rawContent);
+
+  const handleCopy = (text: string) => {
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    toast.success("Copied to clipboard");
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[580px] p-0 overflow-hidden bg-white border-0 shadow-2xl rounded-2xl">
-        <DialogHeader className="p-6 pb-4 border-b border-gray-100 flex flex-row items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-[#866BE3]/10 text-[#866BE3] flex items-center justify-center">
-            <Stethoscope className="w-5 h-5" />
-          </div>
-          <div>
-            <DialogTitle className="text-lg font-bold text-gray-900">
-              {title}
-            </DialogTitle>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Verified clinical consultation records
-            </p>
+      <DialogContent className="sm:max-w-[640px] p-0 overflow-hidden bg-white border-0 shadow-2xl rounded-2xl">
+        <DialogHeader className="p-6 pb-4 border-b border-gray-100 flex flex-row items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#866BE3]/10 text-[#866BE3] flex items-center justify-center shrink-0">
+              <Stethoscope className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <DialogTitle className="text-lg font-bold text-gray-900">
+                  {title}
+                </DialogTitle>
+                <span className="bg-[#F4F0FC] text-[#866BE3] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#E9E1F9] flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  AI Analyzed
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Verified clinical consultation & multilingual transcription
+              </p>
+            </div>
           </div>
         </DialogHeader>
 
-        <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
+        <div className="p-6 space-y-4 max-h-[68vh] overflow-y-auto">
           {/* Metadata chips */}
           <div className="flex flex-wrap items-center gap-3 text-xs bg-gray-50 p-3 rounded-xl border border-gray-100">
             <div className="flex items-center gap-1.5 text-gray-600">
@@ -83,18 +123,134 @@ export function ConsultationSummaryModal({
             </Badge>
           </div>
 
-          {/* Clinical Notes */}
-          <div className="p-4 rounded-xl bg-[#F8F9FA] border border-gray-100 space-y-2">
-            <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-[#866BE3]" />
-              Doctor Impressions & Clinical Notes
-            </h4>
-            <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
-              {notes}
-            </p>
-          </div>
+          {/* 1. Critical Clinical Details Box (Red Flags / Key Complaints) */}
+          {parsed.criticalDetails.length > 0 && (
+            <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200/90 shadow-xs space-y-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-md bg-amber-500 text-white">
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider">
+                  Critical Details & Patient Symptoms
+                </h4>
+                <span className="ml-auto text-[10px] font-bold bg-amber-200/80 text-amber-800 px-2 py-0.5 rounded-full">
+                  Clinical Attention
+                </span>
+              </div>
+              <ul className="space-y-1.5 pt-1">
+                {parsed.criticalDetails.map((detail, idx) => (
+                  <li
+                    key={idx}
+                    className="text-xs font-medium text-amber-900 flex items-start gap-2"
+                  >
+                    <span className="text-amber-500 font-bold">•</span>
+                    <span>{detail}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
-          {/* Follicle Tracking Table (Image 2) */}
+          {/* 2. English Dialogue Transcript (Doctor & Patient Conversation) */}
+          {parsed.dialogue.length > 0 && (
+            <div className="p-4 rounded-xl bg-[#FBF9FE] border border-[#ECE5F8] space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-[#5B3EA6] uppercase tracking-wider flex items-center gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-[#866BE3]" />
+                  English Dialogue Transcript (Diarized)
+                </h4>
+                <span className="text-[10px] bg-purple-100 text-[#7254d1] font-semibold px-2 py-0.5 rounded-md">
+                  Doctor & Patient
+                </span>
+              </div>
+
+              <div className="space-y-2.5 pt-1">
+                {parsed.dialogue.map((turn, i) => {
+                  const isDoctor = turn.speaker.toLowerCase().includes("doc") || turn.speaker.toLowerCase().includes("dr");
+                  return (
+                    <div
+                      key={i}
+                      className={`p-3 rounded-xl text-xs flex flex-col gap-1 ${
+                        isDoctor
+                          ? "bg-white border border-[#E6DEF5] shadow-xs"
+                          : "bg-[#F3EEFC] border border-[#DFD3F7] text-purple-950"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-[11px]">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isDoctor ? "bg-[#866BE3]" : "bg-emerald-500"
+                          }`}
+                        />
+                        <span className={isDoctor ? "text-[#7254d1]" : "text-emerald-800 font-bold"}>
+                          {isDoctor ? "Doctor" : "Patient"}:
+                        </span>
+                      </div>
+                      <p className="text-gray-800 pl-3 leading-relaxed font-medium">
+                        "{turn.text}"
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 3. Original Audio Transcript (Collapsible for Sarvam AI Indic Audio) */}
+          {parsed.originalTranscript && (
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setShowOriginal(!showOriginal)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-700 hover:text-slate-900 transition text-left"
+                >
+                  <Globe className="w-3.5 h-3.5 text-[#866BE3]" />
+                  <span>Original Audio Transcript (Sarvam AI)</span>
+                  {showOriginal ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  )}
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] bg-slate-200/70 text-slate-600 font-semibold px-2 py-0.5 rounded">
+                    {parsed.detectedLanguage || "Kannada / Indic"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(parsed.originalTranscript)}
+                    title="Copy original transcript"
+                    className="text-slate-400 hover:text-slate-700 transition"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {showOriginal && (
+                <div className="mt-2 p-2.5 rounded-lg bg-white border border-slate-100 text-xs text-slate-700 leading-relaxed font-normal animate-in fade-in duration-150">
+                  <p className="italic">"{parsed.originalTranscript}"</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 4. Doctor Impressions & Clinical Notes */}
+          {(!parsed.hasAiAnalysis || parsed.summary) && (
+            <div className="p-4 rounded-xl bg-[#F8F9FA] border border-gray-100 space-y-2">
+              <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-[#866BE3]" />
+                Doctor Assessment & Clinical Plan
+              </h4>
+              <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-line">
+                {parsed.summary || rawContent}
+              </p>
+            </div>
+          )}
+
+          {/* 5. Follicle Tracking Table */}
           <div className="p-4 rounded-xl bg-white border border-gray-100 space-y-2.5 shadow-xs">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -136,7 +292,7 @@ export function ConsultationSummaryModal({
             </div>
           </div>
 
-          {/* Prescribed Medications */}
+          {/* 6. Prescribed Medications */}
           {p360?.medications?.current && p360.medications.current.length > 0 && (
             <div className="space-y-2">
               <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center gap-1.5">

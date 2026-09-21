@@ -515,12 +515,29 @@ export default function CareLoopPage() {
   const { couples, tasks, appointments, activity, staff } = useAppState();
   const { open: openCreateTask } = useCreateTask();
 
+  const tabParam = searchParams.get("tab") || searchParams.get("filter") || searchParams.get("status");
+  const resolveTab = (param: string | null): FilterTab => {
+    if (!param) return "All";
+    const lower = param.toLowerCase().replace(/[-_]/g, " ").trim();
+    if (lower === "needs attention" || lower === "attention" || lower === "needsattention") return "Needs Attention";
+    if (lower === "waiting" || lower === "waiting on patient") return "Waiting";
+    if (lower === "escalated") return "Escalated";
+    if (lower === "on track" || lower === "ontrack") return "On Track";
+    return "All";
+  };
+
   // Navigation & View mode
   const [showSimulator, setShowSimulator] = useState(false);
-  const [activeTab, setActiveTab] = useState<FilterTab>("All");
+  const [activeTab, setActiveTab] = useState<FilterTab>(() => resolveTab(tabParam));
   const [journeyFilter, setJourneyFilter] = useState("All");
   const [doctorFilter, setDoctorFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(resolveTab(tabParam));
+    }
+  }, [tabParam]);
 
   // Selected item for drawer
   const [selectedId, setSelectedId] = useState<string>(initialCoupleId || "");

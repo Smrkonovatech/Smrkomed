@@ -326,10 +326,11 @@ export async function bookAppointmentFromSlot(input: {
       appointmentClinicId = localMembership.clinic.id;
       targetClinicProfile = localMembership.clinic;
       assignedDoctorUserId = localMembership.userId;
-    } else {
-      // Check other branches/clinics (e.g. Dr. Jismon J in Hospex Kochi)
+    } else if (input.tenant.organizationId) {
+      // Check other branches/clinics within the same healthcare organization (e.g. Dr. Jismon J in Hospex Kochi)
       const docMembership = await prisma.clinicMembership.findFirst({
         where: {
+          clinic: { organizationId: input.tenant.organizationId },
           user: {
             name: { contains: cleanDocName, mode: "insensitive" },
           },

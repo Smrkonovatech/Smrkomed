@@ -16,6 +16,7 @@ import {
   formatSecondsToTime,
 } from "@/components/consultation/active-consultation";
 import { ConsultationSummaryModal } from "@/app/(dashboard)/patients/[slug]/components/consultation-summary-modal";
+import { parseConsultationContent } from "@/lib/ai/consultation-analyzer";
 import { toast } from "sonner";
 
 export function DoctorRightSidebar() {
@@ -361,29 +362,50 @@ export function DoctorRightSidebar() {
             <h2 className="text-sm font-bold text-white tracking-tight">Last Consultation Summary</h2>
           </div>
 
-          {lastConsultation ? (
-            <>
-              {/* Subtitle & AI Generated Badge */}
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="font-bold text-sm text-white">
-                  {lastConsultation.title}
-                </h3>
-                <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
-                  AI Generated
-                </span>
-              </div>
+          {lastConsultation ? (() => {
+            const parsed = parseConsultationContent(lastConsultation.content);
+            return (
+              <>
+                {/* Subtitle & AI Generated Badge */}
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-bold text-sm text-white">
+                    {lastConsultation.title}
+                  </h3>
+                  <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
+                    AI Analyzed
+                  </span>
+                </div>
 
-              {/* Date */}
-              <p className="text-[11px] text-white/70 mb-2 font-medium">
-                {lastConsultation.date}
-              </p>
+                {/* Date */}
+                <p className="text-[11px] text-white/70 mb-2 font-medium">
+                  {lastConsultation.date}
+                </p>
 
-              {/* Body */}
-              <p className="text-xs text-white/90 leading-relaxed font-normal line-clamp-3">
-                {lastConsultation.content}
-              </p>
-            </>
-          ) : (
+                {/* Critical Details Highlight Banner */}
+                {parsed.criticalDetails && parsed.criticalDetails.length > 0 && (
+                  <div className="mb-2 px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/30 text-amber-200 text-[11px] font-semibold flex items-center gap-1.5 line-clamp-1">
+                    <span className="text-amber-300">⚠️</span>
+                    <span className="truncate">Critical: {parsed.criticalDetails[0]}</span>
+                  </div>
+                )}
+
+                {/* Body / Dialogue Preview */}
+                {parsed.dialogue && parsed.dialogue.length > 0 ? (
+                  <div className="space-y-1 text-xs text-white/90 leading-snug">
+                    {parsed.dialogue.slice(0, 2).map((d, i) => (
+                      <div key={i} className="line-clamp-1 text-[11px]">
+                        <span className="font-bold text-white/70">{d.speaker}:</span> "{d.text}"
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/90 leading-relaxed font-normal line-clamp-3">
+                    {lastConsultation.content}
+                  </p>
+                )}
+              </>
+            );
+          })() : (
             <div className="py-3">
               <p className="text-xs text-white/80 font-medium">No recent consultation recorded</p>
               <p className="text-[11px] text-white/60 mt-1">Start a consultation session above to record voice notes and clinical summaries.</p>

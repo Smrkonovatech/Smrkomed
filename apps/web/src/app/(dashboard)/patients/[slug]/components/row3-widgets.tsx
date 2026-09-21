@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wand2, ArrowRight, Activity, Plus, Stethoscope, Sparkles, Pill, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { LoopActivity, Appointment } from "@/lib/demo-data";
@@ -8,6 +8,7 @@ import { ConsultationSummaryModal } from "./consultation-summary-modal";
 import { ConsultationHistoryModal } from "./consultation-history-modal";
 import { AddPrescriptionModal } from "./add-prescription-modal";
 import { ConsultationModal } from "./consultation-modal";
+import { parseConsultationContent } from "@/lib/ai/consultation-analyzer";
 
 export function LastSessionSummaryWidget({
   p360,
@@ -20,14 +21,51 @@ export function LastSessionSummaryWidget({
 }) {
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [newConsultModalOpen, setNewConsultModalOpen] = useState(false);
+  const [dbConsultation, setDbConsultation] = useState<any>(null);
+
+  // Fetch patient-specific consultation note from DB whenever couple or p360 updates
+  const fetchCoupleConsultation = async () => {
+    if (!couple?.id) return;
+    try {
+      const res = await fetch(`/api/consultations/latest?coupleId=${encodeURIComponent(couple.id)}`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setDbConsultation(json.data);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to fetch patient consultation from DB:", e);
+    }
+
+    // Check localStorage fallback for this couple
+    try {
+      const saved = localStorage.getItem("smrkomed_last_consultation");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.coupleId === couple.id || parsed.patientName?.toLowerCase().includes(couple.primary?.name?.toLowerCase())) {
+          setDbConsultation(parsed);
+        }
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchCoupleConsultation();
+  }, [couple?.id, p360]);
 
   const latestConsultation =
-    p360?.timeline?.items?.find((i: any) => i.type === "Consultation") ||
-    p360?.timeline?.items?.[0] || {
-      title: "IVF Monitoring - Day 5",
-      date: "2026-03-12",
-      content: "Couples reviewed. Follicular growth appropriate. Medication dose continued. Next scan in..",
+    dbConsultation ||
+    p360?.latestConsultation ||
+    p360?.timeline?.items?.find((i: any) => i.type === "Consultation" && (i.content || i.description)) || {
+      title: "Fertility Initial Consultation",
+      date: new Date().toISOString(),
+      content: "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.",
     };
+
+  const parsed = parseConsultationContent(latestConsultation.content || latestConsultation.description);
+  const dateStr = latestConsultation.date
+    ? new Date(latestConsultation.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+    : "Recent";
 
   return (
     <>
@@ -37,34 +75,55 @@ export function LastSessionSummaryWidget({
 
         <div>
           {/* Header */}
-          <div className="flex items-center gap-2.5 mb-6">
+          <div className="flex items-center gap-2.5 mb-4">
             <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-sm">
               <Sparkles className="w-4 h-4 text-white" />
             </div>
             <h2 className="text-base font-bold text-white tracking-tight">Last Consultation Summary</h2>
           </div>
 
-          {/* Subtitle & AI Generated Badge */}
-          <div className="flex items-center gap-2 mb-1.5">
+          {/* Subtitle & AI Analyzed Badge */}
+          <div className="flex items-center gap-2 mb-1">
             <h3 className="font-bold text-base text-white">
-              {latestConsultation.title || "IVF Monitoring - Day 5"}
+              {latestConsultation.title || "Fertility Initial Consultation"}
             </h3>
             <span className="bg-white/20 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full backdrop-blur-sm border border-white/20">
-              AI Generated
+              {parsed.hasAiAnalysis ? "AI Analyzed" : "AI Generated"}
             </span>
           </div>
 
           {/* Date */}
-          <p className="text-xs text-white/70 mb-3">
-            {latestConsultation.date
-              ? new Date(latestConsultation.date).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
-              : "12 Mar 2026"}
+          <p className="text-xs text-white/70 mb-2.5">
+            {dateStr}
           </p>
 
           {/* Body */}
-          <p className="text-xs text-white/90 leading-relaxed font-normal">
-            {latestConsultation.content || "Couples reviewed. Follicular growth appropriate. Medication dose continued. Next scan in.."}
-          </p>
+          {(() => {
+            const parsed = parseConsultationContent(latestConsultation.content || latestConsultation.description);
+            return (
+              <div className="space-y-2">
+                {parsed.criticalDetails && parsed.criticalDetails.length > 0 && (
+                  <div className="px-2.5 py-1 rounded-lg bg-amber-400/20 border border-amber-300/30 text-amber-200 text-[11px] font-semibold flex items-center gap-1.5 line-clamp-1">
+                    <span className="text-amber-300">⚠️</span>
+                    <span className="truncate">Critical: {parsed.criticalDetails[0]}</span>
+                  </div>
+                )}
+                {parsed.dialogue && parsed.dialogue.length > 0 ? (
+                  <div className="space-y-1 text-xs text-white/90 leading-snug">
+                    {parsed.dialogue.slice(0, 2).map((d, i) => (
+                      <div key={i} className="line-clamp-1 text-[11px]">
+                        <span className="font-bold text-white/70">{d.speaker}:</span> "{d.text}"
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/90 leading-relaxed font-normal line-clamp-3">
+                    {latestConsultation.content || "Couples reviewed. Follicular growth appropriate. Medication dose continued. Next scan in.."}
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Action Button */}

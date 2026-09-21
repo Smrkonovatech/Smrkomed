@@ -517,6 +517,7 @@ export function ConsultationModal({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             coupleId: coupleId || undefined,
+            appointmentId: apptId || appointment?.id || undefined,
             patientName: patientName,
             doctorName: appointment?.doctorName || "Doctor",
             reasonForVisit: reasonForVisit || "Fertility Consultation",

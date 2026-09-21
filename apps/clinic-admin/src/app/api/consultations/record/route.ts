@@ -9,6 +9,7 @@ export async function POST(req: NextRequest) {
 
     const {
       coupleId: requestedCoupleId,
+      appointmentId,
       patientName,
       doctorName,
       reasonForVisit = "Fertility Initial Consultation",
@@ -57,12 +58,25 @@ export async function POST(req: NextRequest) {
       ? contentParts.join("\n\n")
       : "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
 
+    // Determine current author/doctor if valid in DB
+    let validAuthorUserId: string | null = null;
+    const candidateId = session?.user?.id || couple.assignedDoctorId;
+    if (candidateId) {
+      const existingUser = await prisma.user.findUnique({
+        where: { id: candidateId },
+        select: { id: true },
+      });
+      if (existingUser) {
+        validAuthorUserId = existingUser.id;
+      }
+    }
+
     // Save directly into the PostgreSQL database: ConsultationNote table
     const note = await prisma.consultationNote.create({
       data: {
         clinicId: couple.clinicId,
         coupleId: couple.id,
-        createdById: authorUserId ?? null,
+        createdById: validAuthorUserId,
         consultationDate: new Date(),
         summary: finalSummary,
         reasonForVisit: reasonForVisit || "Fertility Initial Consultation",
@@ -70,21 +84,48 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Also update or create an appointment record marked COMPLETED
+    // Update existing appointment marked COMPLETED or create if none exists
     try {
-      await prisma.appointment.create({
-        data: {
-          clinicId: couple.clinicId,
-          coupleId: couple.id,
-          type: reasonForVisit || "Doctor Consultation",
-          startsAt: new Date(),
-          status: "COMPLETED",
-          doctorName: doctorName || session?.user?.name || "Doctor",
-          notes: finalSummary,
-        },
-      });
+      let targetApptId = appointmentId;
+      if (!targetApptId) {
+        // Look for an existing appointment for this couple created recently (last 2 hours)
+        const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+        const existing = await prisma.appointment.findFirst({
+          where: {
+            coupleId: couple.id,
+            startsAt: { gte: twoHoursAgo },
+          },
+          orderBy: { startsAt: "desc" },
+        });
+        if (existing) {
+          targetApptId = existing.id;
+        }
+      }
+
+      if (targetApptId) {
+        await prisma.appointment.update({
+          where: { id: targetApptId },
+          data: {
+            status: "COMPLETED",
+            notes: finalSummary,
+            ...(doctorName ? { doctorName } : {}),
+          },
+        });
+      } else {
+        await prisma.appointment.create({
+          data: {
+            clinicId: couple.clinicId,
+            coupleId: couple.id,
+            type: reasonForVisit || "Doctor Consultation",
+            startsAt: new Date(),
+            status: "COMPLETED",
+            doctorName: doctorName || session?.user?.name || "Doctor",
+            notes: finalSummary,
+          },
+        });
+      }
     } catch (apptErr) {
-      console.warn("Failed to create appointment log:", apptErr);
+      console.warn("Failed to update/create appointment log:", apptErr);
     }
 
     const patientDisplayName = couple.primaryPatient

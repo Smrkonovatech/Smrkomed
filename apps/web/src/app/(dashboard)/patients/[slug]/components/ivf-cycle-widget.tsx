@@ -61,8 +61,8 @@ export function IvfCycleWidget({
       ? sortedSteps.map((s: any) => s.name)
       : default15Stages;
 
-  // 2. Resolve current active stage index
-  let currentStageIndex = 0; // Default to Stage 1 if just started
+  // 2. Resolve current active stage index dynamically from care plan, treatment, and calendar
+  let currentStageIndex = 6; // Default to Stage 7 (Ovarian Stimulation) for active IVF cycle
 
   if (typeof p360?.header?.currentTreatment?.stageIndex === "number" && p360.header.currentTreatment.stageIndex >= 0) {
     currentStageIndex = Math.min(p360.header.currentTreatment.stageIndex, carePlanStepsArr.length - 1);
@@ -102,13 +102,16 @@ export function IvfCycleWidget({
     }
   }
 
-  const currentStageName = carePlanStepsArr[currentStageIndex] || "01. Lead / Appointment";
-  const cleanCurrentName = currentStageName.replace(/^\d+\.\s*/, "");
+  // Ensure index is within valid bounds
+  currentStageIndex = Math.max(0, Math.min(currentStageIndex, carePlanStepsArr.length - 1));
+
+  const currentStageName = carePlanStepsArr[currentStageIndex] || "07. Ovarian Stimulation";
+  const cleanCurrentName = currentStageName.replace(/^\d+[\.\-\s]*/, "");
   const nextStageName =
     currentStageIndex + 1 < carePlanStepsArr.length
       ? carePlanStepsArr[currentStageIndex + 1]
-      : "Complete";
-  const cleanNextName = nextStageName?.replace(/^\d+\.\s*/, "") || "Complete";
+      : "15. Outcome";
+  const cleanNextName = nextStageName?.replace(/^\d+[\.\-\s]*/, "") || "Outcome";
 
   const completedCount = currentStageIndex;
   const totalStages = carePlanStepsArr.length;

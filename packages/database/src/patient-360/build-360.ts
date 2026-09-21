@@ -195,6 +195,7 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
     exchanges,
     conversations,
     insurancePolicies,
+    consultationNotes,
     timeline,
   ] = await Promise.all([
     prisma.appointment.findFirst({
@@ -315,6 +316,15 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       },
       take: 10,
       orderBy: { updatedAt: "desc" },
+    }),
+    prisma.consultationNote.findMany({
+      where: {
+        clinicId: tenant.clinicId,
+        coupleId: couple.id,
+      },
+      include: { createdBy: { select: { name: true } } },
+      orderBy: { consultationDate: "desc" },
+      take: 5,
     }),
     buildUnifiedTimeline(tenant, { patientIds, coupleIds, limit: 80 }),
   ]);
@@ -616,6 +626,16 @@ export async function buildPatient360(tenant: TenantContext, coupleIdOrSlug: str
       documentStorageNote: timeline.documentStorageNote,
       items: timeline.items,
     },
+    latestConsultation: consultationNotes[0]
+      ? {
+          id: consultationNotes[0].id,
+          title: consultationNotes[0].reasonForVisit || "Fertility Initial Consultation",
+          date: consultationNotes[0].consultationDate.toISOString(),
+          content: consultationNotes[0].summary,
+          actor: consultationNotes[0].createdBy?.name || "Doctor",
+          nextSteps: consultationNotes[0].nextSteps,
+        }
+      : null,
   };
 }
 
