@@ -479,71 +479,72 @@ export async function handleMenuAction(input: {
     }
 
     const upcomingDates = getUpcomingDates(3);
-    const locText = doc.location ? ` (📍 ${doc.location})` : "";
-    let msg = `🩺 *${doc.displayName}*${locText}\n`;
-    if (doc.location) msg += `📍 *Branch:* ${doc.location}\n`;
-    msg += `_${doc.specialty} (${doc.experienceYears}+ yrs exp)_\n\n`;
-    if (doc.bio) msg += `"${doc.bio}"\n\n`;
-    msg += `📅 *Available Consultation Slots:*\n\n`;
 
     const { encodeSlotId } = await import("../appointments/availability");
-    const slotRows: Array<{ id: string; title: string; description: string }> = [];
+
+    // Build slot sections grouped by day — max 10 rows total (WA limit)
+    const sections: Array<{ title: string; rows: Array<{ id: string; title: string; description: string }> }> = [];
     let hasSlots = false;
+    let totalRows = 0;
 
     for (const dateIso of upcomingDates.slice(0, 3)) {
+      if (totalRows >= 10) break;
       const slots = await getDoctorDaySlots(input.tenant.clinicId, doc.id, dateIso);
-      const freeSlots = slots.filter((s) => s.status === "available").slice(0, 8);
+      const freeSlots = slots.filter((s) => s.status === "available");
+      if (freeSlots.length === 0) continue;
+
+      hasSlots = true;
       const d = new Date(`${dateIso}T00:00:00`);
       const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
-      if (freeSlots.length > 0) {
-        hasSlots = true;
-        const times = freeSlots.map((s) => s.timeLabel).join(", ");
-        msg += `• *${dayLabel}*: ${times}\n`;
-        // Add interactive slot rows for up to 3 per day — generate slotId from date+time
-        for (const s of freeSlots.slice(0, 3)) {
-          const startMs = new Date(`${dateIso}T${s.time}:00+05:30`).getTime();
-          const computedSlotId = encodeSlotId({
-            startMs,
-            durationMin: 30,
-            doctorName: doc.displayName,
-            appointmentType: "Consultation",
-          });
-          slotRows.push({
-            id: `appt_slot_${computedSlotId}`,
-            title: `${dayLabel} ${s.timeLabel}`.slice(0, 24),
-            description: `${doc.displayName} • Book this slot`.slice(0, 72),
-          });
-        }
-      } else {
-        msg += `• *${dayLabel}*: No open slots\n`;
+
+      const rows: Array<{ id: string; title: string; description: string }> = [];
+      for (const s of freeSlots) {
+        if (totalRows >= 10) break;
+        const startMs = new Date(`${dateIso}T${s.time}:00+05:30`).getTime();
+        const computedSlotId = encodeSlotId({
+          startMs,
+          durationMin: 30,
+          doctorName: doc.displayName,
+          appointmentType: "Consultation",
+        });
+        rows.push({
+          id: `appt_slot_${computedSlotId}`,
+          title: `${dayLabel} ${s.timeLabel}`.slice(0, 24),
+          description: `Tap to book with ${doc.displayName}`.slice(0, 72),
+        });
+        totalRows++;
+      }
+
+      if (rows.length > 0) {
+        sections.push({ title: dayLabel.slice(0, 24), rows });
       }
     }
 
     if (!hasSlots) {
-      msg += `\n_No open slots in the next few days. Please contact the clinic for assistance._`;
-      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
-      return { handled: true, action: "DOCTOR_SELECTED_NO_SLOTS", responseText: msg };
+      const noSlotMsg = `🩺 *${doc.displayName}*\n_${doc.specialty}_\n\nNo open slots in the next few days. Please contact the clinic for assistance.`;
+      await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: noSlotMsg }).catch(() => undefined);
+      return { handled: true, action: "DOCTOR_SELECTED_NO_SLOTS", responseText: noSlotMsg };
     }
 
-    msg += `\nTap a slot below to confirm your booking with ${doc.displayName}:`;
-    await sendWhatsAppAiSessionText(input.tenant, { conversationId: input.conversationId, body: msg }).catch(() => undefined);
+    // Single interactive list with doctor info in body + image header — NO duplicate text message
+    const locLine = doc.location ? `📍 ${doc.location}` : "";
+    const listBody = [
+      `🩺 *${doc.displayName}*${locLine ? ` · ${locLine}` : ""}`,
+      `_${doc.specialty} (${doc.experienceYears}+ yrs exp)_`,
+      ``,
+      `Tap a slot to book your appointment 👇`,
+    ].join("\n").slice(0, 1024);
 
-    // Send interactive slot list so patient can tap to book
-    if (slotRows.length > 0) {
-      await sendWhatsAppInteractiveList(input.tenant, {
-        conversationId: input.conversationId,
-        body: `Select a slot for ${doc.displayName}:`,
-        buttonLabel: "Choose Slot",
-        sections: [
-          {
-            title: `${doc.displayName} — Available Slots`,
-            rows: slotRows.slice(0, 10),
-          },
-        ],
-      }).catch(() => undefined);
-    }
+    await sendWhatsAppInteractiveList(input.tenant, {
+      conversationId: input.conversationId,
+      body: listBody,
+      buttonLabel: "Choose Slot",
+      sections,
+      ...(doc.photoUrl ? { headerImageUrl: doc.photoUrl } : {}),
+      footerText: `${input.tenant.clinicName || "Smrkomed"} · Tap a slot to confirm`,
+    }).catch(() => undefined);
 
-    return { handled: true, action: "DOCTOR_SELECTED", responseText: msg };
+    return { handled: true, action: "DOCTOR_SELECTED", responseText: listBody };
   }
 
   // Slot selection via interactive list tap — show confirmation prompt
