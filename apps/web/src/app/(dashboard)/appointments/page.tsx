@@ -18,11 +18,23 @@ import {
   List,
   RefreshCw,
   Search,
+  Trash2,
   User,
   Users,
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 import { DoctorAvailabilityDialog } from "@/components/doctors/doctor-availability-dialog";
 import { useGlobalActions } from "@/components/actions/global-action-provider";
@@ -112,8 +124,31 @@ export default function AppointmentsPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
 
   const { openAction } = useGlobalActions();
-  const { appointments, couples, pushActivity, patchAppointmentStatus, loadState, reload } = useAppState();
+  const { appointments, couples, pushActivity, patchAppointmentStatus, deleteAppointment, loadState, reload } = useAppState();
   const [refreshing, setRefreshing] = useState(false);
+  const [appointmentToDelete, setAppointmentToDelete] = useState<AppAppointment | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    if (!appointmentToDelete) return;
+    setIsDeleting(true);
+    try {
+      const couple = coupleById.get(appointmentToDelete.coupleId);
+      const patientLabel = couple ? coupleLabel(couple) : (appointmentToDelete as any).patientName || "Patient";
+      await deleteAppointment(appointmentToDelete.id);
+      pushActivity({
+        patient: patientLabel,
+        activity: `Deleted appointment for ${appointmentToDelete.type || "Consultation"} with ${appointmentToDelete.doctor}`,
+        time: "just now",
+        tone: "danger",
+      });
+      setAppointmentToDelete(null);
+    } catch (err) {
+      console.error("Failed to delete appointment:", err);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -661,6 +696,7 @@ export default function AppointmentsPage() {
                 setRemindedIds={setRemindedIds}
                 patchAppointmentStatus={patchAppointmentStatus}
                 pushActivity={pushActivity}
+                onDelete={setAppointmentToDelete}
               />
             )}
 
@@ -673,6 +709,7 @@ export default function AppointmentsPage() {
                 setRemindedIds={setRemindedIds}
                 patchAppointmentStatus={patchAppointmentStatus}
                 pushActivity={pushActivity}
+                onDelete={setAppointmentToDelete}
               />
             )}
 
@@ -684,6 +721,7 @@ export default function AppointmentsPage() {
                 setRemindedIds={setRemindedIds}
                 patchAppointmentStatus={patchAppointmentStatus}
                 pushActivity={pushActivity}
+                onDelete={setAppointmentToDelete}
               />
             )}
 
@@ -696,12 +734,58 @@ export default function AppointmentsPage() {
                 setRemindedIds={setRemindedIds}
                 patchAppointmentStatus={patchAppointmentStatus}
                 pushActivity={pushActivity}
+                onDelete={setAppointmentToDelete}
                 showDateColumn={true}
               />
             )}
           </div>
         )}
       </section>
+
+      {/* Delete Appointment Confirmation Dialog */}
+      <AlertDialog
+        open={Boolean(appointmentToDelete)}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setAppointmentToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="size-5" /> Delete Appointment
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2 text-sm text-muted-foreground pt-1">
+              <span>Are you sure you want to delete this appointment? This action cannot be undone.</span>
+              {appointmentToDelete && (
+                <span className="block rounded-lg border bg-muted/30 p-3 text-xs space-y-1 text-foreground mt-2">
+                  <span className="block font-semibold">
+                    Patient: {coupleById.get(appointmentToDelete.coupleId) ? coupleLabel(coupleById.get(appointmentToDelete.coupleId)!) : (appointmentToDelete as any).patientName || "Patient"}
+                  </span>
+                  <span className="block">Doctor: {appointmentToDelete.doctor}</span>
+                  <span className="block">
+                    Time & Date: {appointmentToDelete.time} · {appointmentToDelete.date ? formatDate(appointmentToDelete.date) : "Scheduled"}
+                  </span>
+                  <span className="block">Type: {appointmentToDelete.type}</span>
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmDelete();
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-1.5"
+            >
+              <Trash2 className="size-4" />
+              {isDeleting ? "Deleting…" : "Delete Appointment"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -720,6 +804,7 @@ function VisualCalendarView({
   setRemindedIds,
   patchAppointmentStatus,
   pushActivity,
+  onDelete,
 }: {
   view: (typeof views)[number];
   selectedDate: string;
@@ -730,6 +815,7 @@ function VisualCalendarView({
   setRemindedIds: React.Dispatch<React.SetStateAction<string[]>>;
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   if (view === "Week") {
     return (
@@ -742,6 +828,7 @@ function VisualCalendarView({
         setRemindedIds={setRemindedIds}
         patchAppointmentStatus={patchAppointmentStatus}
         pushActivity={pushActivity}
+        onDelete={onDelete}
       />
     );
   }
@@ -756,6 +843,7 @@ function VisualCalendarView({
         setRemindedIds={setRemindedIds}
         patchAppointmentStatus={patchAppointmentStatus}
         pushActivity={pushActivity}
+        onDelete={onDelete}
       />
     );
   }
@@ -771,6 +859,7 @@ function VisualCalendarView({
       setRemindedIds={setRemindedIds}
       patchAppointmentStatus={patchAppointmentStatus}
       pushActivity={pushActivity}
+      onDelete={onDelete}
     />
   );
 }
@@ -785,6 +874,7 @@ function MonthCalendarGrid({
   setRemindedIds,
   patchAppointmentStatus,
   pushActivity,
+  onDelete,
 }: {
   selectedDate: string;
   onSelectDate: (date: string) => void;
@@ -794,6 +884,7 @@ function MonthCalendarGrid({
   setRemindedIds: React.Dispatch<React.SetStateAction<string[]>>;
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   const { year, month } = parseYmd(selectedDate);
 
@@ -997,6 +1088,7 @@ function MonthCalendarGrid({
             setRemindedIds={setRemindedIds}
             patchAppointmentStatus={patchAppointmentStatus}
             pushActivity={pushActivity}
+            onDelete={onDelete}
           />
         )}
       </div>
@@ -1014,6 +1106,7 @@ function WeekCalendarGrid({
   setRemindedIds,
   patchAppointmentStatus,
   pushActivity,
+  onDelete,
 }: {
   selectedDate: string;
   onSelectDate: (date: string) => void;
@@ -1023,6 +1116,7 @@ function WeekCalendarGrid({
   setRemindedIds: React.Dispatch<React.SetStateAction<string[]>>;
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   const { year, month, day } = parseYmd(selectedDate);
   const current = new Date(year, month, day, 12, 0, 0);
@@ -1104,14 +1198,29 @@ function WeekCalendarGrid({
                         <span className="flex items-center gap-1">
                           <Building2 className="size-3" /> {getAppointmentRoom(appt)}
                         </span>
-                        {patientSlug && (
-                          <Link
-                            href={`/patients/${patientSlug}`}
-                            className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
-                          >
-                            Open <ExternalLink className="size-2.5" />
-                          </Link>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {onDelete && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(appt);
+                              }}
+                              className="text-destructive hover:text-destructive/80 transition-colors p-0.5 rounded hover:bg-destructive/10"
+                              title="Delete appointment"
+                            >
+                              <Trash2 className="size-2.5" />
+                            </button>
+                          )}
+                          {patientSlug && (
+                            <Link
+                              href={`/patients/${patientSlug}`}
+                              className="text-primary font-medium hover:underline inline-flex items-center gap-0.5"
+                            >
+                              Open <ExternalLink className="size-2.5" />
+                            </Link>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -1134,6 +1243,7 @@ function DayTimelineGrid({
   setRemindedIds,
   patchAppointmentStatus,
   pushActivity,
+  onDelete,
 }: {
   selectedDate: string;
   appointments: AppAppointment[];
@@ -1142,6 +1252,7 @@ function DayTimelineGrid({
   setRemindedIds: React.Dispatch<React.SetStateAction<string[]>>;
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   const dayAppointments = useMemo(() => {
     return appointments
@@ -1170,6 +1281,7 @@ function DayTimelineGrid({
         setRemindedIds={setRemindedIds}
         patchAppointmentStatus={patchAppointmentStatus}
         pushActivity={pushActivity}
+        onDelete={onDelete}
       />
     </div>
   );
@@ -1186,6 +1298,7 @@ function GroupedByDateView({
   setRemindedIds,
   patchAppointmentStatus,
   pushActivity,
+  onDelete,
 }: {
   appointmentsByDate: Array<[string, AppAppointment[]]>;
   coupleById: Map<string, AppCouple>;
@@ -1193,6 +1306,7 @@ function GroupedByDateView({
   setRemindedIds: React.Dispatch<React.SetStateAction<string[]>>;
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   const todayStr = getTodayIst();
 
@@ -1227,6 +1341,7 @@ function GroupedByDateView({
                 setRemindedIds={setRemindedIds}
                 patchAppointmentStatus={patchAppointmentStatus}
                 pushActivity={pushActivity}
+                onDelete={onDelete}
               />
             </div>
           </div>
@@ -1246,12 +1361,14 @@ function GroupedByCoupleView({
   setRemindedIds,
   patchAppointmentStatus,
   pushActivity,
+  onDelete,
 }: {
   appointmentsByCouple: Array<[string, { couple: AppCouple | undefined; appointments: AppAppointment[] }]>;
   remindedIds: string[];
   setRemindedIds: React.Dispatch<React.SetStateAction<string[]>>;
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   return (
     <div className="p-4 space-y-6">
@@ -1312,6 +1429,7 @@ function GroupedByCoupleView({
                 patchAppointmentStatus={patchAppointmentStatus}
                 pushActivity={pushActivity}
                 showDate={true}
+                onDelete={onDelete}
               />
             </div>
           </div>
@@ -1333,6 +1451,7 @@ function AppointmentCardsList({
   patchAppointmentStatus,
   pushActivity,
   showDate = false,
+  onDelete,
 }: {
   appointments: AppAppointment[];
   coupleById: Map<string, AppCouple>;
@@ -1341,6 +1460,7 @@ function AppointmentCardsList({
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
   showDate?: boolean;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -1457,6 +1577,21 @@ function AppointmentCardsList({
                   </Link>
                 </Button>
               )}
+
+              {onDelete && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    "h-7 text-xs gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive",
+                    !couple && "ml-auto",
+                  )}
+                  onClick={() => onDelete(appointment)}
+                  title="Delete appointment"
+                >
+                  <Trash2 className="size-3 text-destructive" /> Delete
+                </Button>
+              )}
             </div>
           </div>
         );
@@ -1477,6 +1612,7 @@ function AppointmentTableView({
   patchAppointmentStatus,
   pushActivity,
   showDateColumn = false,
+  onDelete,
 }: {
   appointments: AppAppointment[];
   coupleById: Map<string, AppCouple>;
@@ -1485,6 +1621,7 @@ function AppointmentTableView({
   patchAppointmentStatus: (id: string, status: AppAppointment["status"]) => Promise<void>;
   pushActivity: (a: { patient: string; activity: string; time: string; tone: "success" | "info" | "warning" | "danger" }) => void;
   showDateColumn?: boolean;
+  onDelete?: ((appt: AppAppointment) => void) | undefined;
 }) {
   return (
     <div>
@@ -1581,6 +1718,16 @@ function AppointmentTableView({
                     <Link href={`/patients/${patientSlug}`}>
                       <ExternalLink className="size-3.5" /> Open
                     </Link>
+                  </Button>
+                )}
+                {onDelete && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive gap-1"
+                    onClick={() => onDelete(appointment)}
+                  >
+                    <Trash2 className="size-3.5" /> Delete
                   </Button>
                 )}
               </div>
@@ -1704,6 +1851,18 @@ function AppointmentTableView({
                           <Link href={`/patients/${patientSlug}`}>
                             <ExternalLink className="size-3.5" /> Open
                           </Link>
+                        </Button>
+                      )}
+                      {onDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 text-destructive hover:bg-destructive/10 hover:text-destructive gap-1"
+                          onClick={() => onDelete(appointment)}
+                          title="Delete appointment"
+                        >
+                          <Trash2 className="size-3.5" />
+                          <span className="sr-only sm:not-sr-only sm:inline">Delete</span>
                         </Button>
                       )}
                     </div>

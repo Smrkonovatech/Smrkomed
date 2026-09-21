@@ -205,6 +205,7 @@ export interface AppState {
   appointments: AppAppointment[];
   addAppointment: (input: AddAppointmentInput) => Promise<AppAppointment>;
   patchAppointmentStatus: (id: string, status: Appointment["status"]) => Promise<void>;
+  deleteAppointment: (id: string) => Promise<void>;
   cycles: AppCycle[];
   addCycle: (input: AddCycleInput) => AppCycle;
   documents: AppDocument[];
@@ -630,6 +631,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const deleteAppointment = useCallback(async (id: string) => {
+    await clinicApi.deleteAppointment(id);
+    setAppointmentList((previous) => previous.filter((row) => row.id !== id));
+  }, []);
+
   const addCycle = useCallback((input: AddCycleInput) => {
     const created: AppCycle = {
       id: makeId("cy"),
@@ -916,6 +922,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       appointments: visibleAppointments,
       addAppointment,
       patchAppointmentStatus,
+      deleteAppointment,
       cycles: visibleCycles,
       addCycle,
       documents: documentList,
