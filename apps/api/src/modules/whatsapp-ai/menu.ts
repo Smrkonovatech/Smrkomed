@@ -303,18 +303,19 @@ export async function handleMenuAction(input: {
         for (const appt of upcoming) {
           const d = new Date(appt.startsAt);
           const dateStr = d.toLocaleDateString("en-IN", {
-            timeZone: "UTC",
+            timeZone: "Asia/Kolkata",
             weekday: "short",
             month: "short",
             day: "numeric",
             year: "numeric",
           });
           const timeStr = d.toLocaleTimeString("en-IN", {
-            timeZone: "UTC",
+            timeZone: "Asia/Kolkata",
             hour: "2-digit",
             minute: "2-digit",
           });
-          const doc = appt.doctorName || "Fertility Specialist";
+          const rawDoc = appt.doctorName ? appt.doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim() : "";
+          const doc = rawDoc ? `Dr. ${rawDoc.replace(/\b\w/g, (c: string) => c.toUpperCase())}` : "Fertility Specialist";
           const statusIcon = appt.status === "CONFIRMED" ? "✅" : "⏳";
           msg += `🗓️ *${dateStr} at ${timeStr}*\n`;
           msg += `   👩‍⚕️ Specialist: ${doc}\n`;
@@ -363,7 +364,7 @@ export async function handleMenuAction(input: {
         const freeSlots = slots.filter((s) => s.status === "available").slice(0, 8);
 
         const d = new Date(`${dateIso}T00:00:00`);
-        const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
+        const dayLabel = d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", month: "short", day: "numeric" });
 
         if (freeSlots.length > 0) {
           const times = freeSlots.map((s) => s.timeLabel).join(", ");
@@ -495,7 +496,7 @@ export async function handleMenuAction(input: {
 
       hasSlots = true;
       const d = new Date(`${dateIso}T00:00:00`);
-      const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", month: "short", day: "numeric" });
+      const dayLabel = d.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", month: "short", day: "numeric" });
 
       const rows: Array<{ id: string; title: string; description: string }> = [];
       for (const s of freeSlots) {
@@ -567,7 +568,7 @@ export async function handleMenuAction(input: {
 
     const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
     const doctors = await getClinicDoctors(input.tenant.clinicId);
-    const cleanDocName = doctorName.toLowerCase().replace(/^dr\.?\s*/i, "").trim();
+    const cleanDocName = doctorName.toLowerCase().replace(/^(dr\s*\.?\s*)+/i, "").trim();
     const doc = doctors.find((d) =>
       cleanDocName && (
         d.displayName.toLowerCase().includes(cleanDocName) ||
@@ -577,7 +578,9 @@ export async function handleMenuAction(input: {
 
     const photoUrl = doc?.photoUrl && doc.photoUrl.startsWith("http") ? doc.photoUrl : undefined;
     const docSpecialty = doc?.specialty || "Fertility Specialist";
-    const docDisplayName = doc?.displayName || (doctorName ? `Dr. ${doctorName.replace(/^dr\.?\s*/i, "")}` : "Specialist");
+    const rawDocName = doc?.displayName || doctorName || "Specialist";
+    const cleanRaw = rawDocName.replace(/^(dr\s*\.?\s*)+/i, "").trim();
+    const docDisplayName = cleanRaw ? `Dr. ${cleanRaw.replace(/\b\w/g, (c: string) => c.toUpperCase())}` : "Specialist";
 
     // Persist pending action as BOOK_CONFIRM so affirmative reply ("Yes" or appt_confirm button) immediately books it
     await setConversationPendingAction({
@@ -657,16 +660,13 @@ export async function handleMenuAction(input: {
       });
 
       if (res.ok) {
-        const when = new Date(res.startsAt).toLocaleString("en-IN", {
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-          hour: "numeric",
-          minute: "2-digit",
-          hour12: true,
-        });
-        const docText = res.doctorName ? ` with *${res.doctorName}*` : "";
-        const bookedMsg = `✅ *Appointment Confirmed!*\n\n📅 *${when}*${docText}\n📍 ${res.clinicName}\n\nYour appointment has been successfully scheduled. We look forward to seeing you!`;
+        const { formatDateFriendlyIST, formatTime12IST } = await import("../appointments/availability");
+        const apptDate = new Date(res.startsAt);
+        const dayLabel = formatDateFriendlyIST(apptDate);
+        const timeLabel = formatTime12IST(apptDate);
+        const rawDoc = res.doctorName ? res.doctorName.replace(/^(dr\.?\s*)+/i, "").trim() : "";
+        const docText = rawDoc ? ` with *Dr. ${rawDoc.replace(/\b\w/g, (c: string) => c.toUpperCase())}*` : "";
+        const bookedMsg = `✅ *Appointment Confirmed!*\n\n📅 *${dayLabel}* at *${timeLabel}*${docText}\n📍 ${res.clinicName}\n\nYour appointment has been successfully scheduled. We look forward to seeing you!`;
 
         await sendWhatsAppAiSessionText(input.tenant, {
           conversationId: input.conversationId,

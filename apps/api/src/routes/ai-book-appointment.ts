@@ -347,6 +347,7 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
 
     let conflictResolved = false;
     let originalRequestedTime = startsAt.toLocaleTimeString("en-IN", {
+      timeZone: "Asia/Kolkata",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
@@ -434,14 +435,14 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
 
     const patientDisplayName = `${patient.firstName} ${patient.lastName || ""}`.trim();
     const formattedDate = startsAt.toLocaleDateString("en-IN", {
-      timeZone: "UTC",
+      timeZone: "Asia/Kolkata",
       weekday: "long",
       year: "numeric",
       month: "short",
       day: "numeric",
     });
     const formattedTime = startsAt.toLocaleTimeString("en-IN", {
-      timeZone: "UTC",
+      timeZone: "Asia/Kolkata",
       hour: "numeric",
       minute: "2-digit",
       hour12: true,

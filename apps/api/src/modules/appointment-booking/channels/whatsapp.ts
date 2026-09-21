@@ -147,12 +147,15 @@ export function formatConfirmationPrompt(session: BookingSession): string {
 export function formatBookingSuccessPrompt(session: BookingSession): string {
   const d = new Date(`${session.selectedDate}T00:00:00`);
   const apptId = session.appointmentId || `APT-${Date.now().toString().slice(-6)}`;
+  const cleanDoc = session.doctorName
+    ? `Dr. ${session.doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`
+    : "Specialist";
 
   return (
     `🎉 *Appointment Confirmed!*\n\n` +
     `Your appointment has been successfully scheduled.\n\n` +
     `🔖 *Appointment ID:* #${apptId}\n` +
-    `👨‍⚕️ *Doctor:* ${session.doctorName}\n` +
+    `👨‍⚕️ *Doctor:* ${cleanDoc}\n` +
     `📅 *Date:* ${formatDateLabel(d)}\n` +
     `⏰ *Time:* ${session.selectedSlot}\n` +
     `🏥 *Location:* Consultation Room 1, ABC Fertility Centre\n\n` +

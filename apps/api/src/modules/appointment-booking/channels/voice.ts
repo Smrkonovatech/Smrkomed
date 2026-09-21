@@ -345,6 +345,7 @@ function scheduleSarvamPostCallSync(params: {
 
           if (conv) {
             const dateStr = tomorrow.toLocaleDateString("en-IN", {
+              timeZone: "Asia/Kolkata",
               weekday: "long",
               year: "numeric",
               month: "short",
@@ -352,7 +353,10 @@ function scheduleSarvamPostCallSync(params: {
             });
             const timeStr = "09:00 AM";
             const patientName = `${patient.firstName} ${patient.lastName || ""}`.trim();
-            const text = `You're all set, ${patientName}! 🎉\n\nYour appointment is confirmed from your phone call:\n\n👩‍⚕️ ${doctorName}\n📅 ${dateStr}\n⏰ ${timeStr}\n📍 ${patient.clinic?.name || "Hospex"}\n\nWe'll remind you before your appointment!`;
+            const cleanDoc = doctorName
+              ? `Dr. ${doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`
+              : "Doctor";
+            const text = `You're all set, ${patientName}! 🎉\n\nYour appointment is confirmed from your phone call:\n\n👩‍⚕️ ${cleanDoc}\n📅 ${dateStr}\n⏰ ${timeStr}\n📍 ${patient.clinic?.name || "Hospex"}\n\nWe'll remind you before your appointment!`;
 
             await prisma.message.create({
               data: {

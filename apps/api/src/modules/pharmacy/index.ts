@@ -1334,6 +1334,7 @@ export const pharmacyRoutes = new Hono<AppEnv>()
     if (body.scheduleReminders !== false) {
       const appointmentLabel = appointment
         ? `Your ${appointment.type} is scheduled for ${appointment.startsAt.toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
             dateStyle: "medium",
             timeStyle: "short",
           })}.`

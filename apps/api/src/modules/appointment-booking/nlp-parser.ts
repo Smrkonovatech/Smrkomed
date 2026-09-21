@@ -114,6 +114,7 @@ export function formatDateIso(d: Date): string {
 
 export function formatDateLabel(d: Date): string {
   return d.toLocaleDateString("en-IN", {
+    timeZone: "Asia/Kolkata",
     weekday: "short",
     day: "numeric",
     month: "short",

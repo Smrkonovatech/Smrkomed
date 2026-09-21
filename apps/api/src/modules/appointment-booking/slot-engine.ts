@@ -172,7 +172,7 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
         const u = m.user;
         const saved = (profileMap.get(u.id) || profileMap.get(`doc_${u.id}`) || {}) as any;
         const rawName = saved.displayName || u.name || `Doctor ${idx + 1}`;
-        const cleanName = rawName.replace(/^Dr\s*\.?\s*/i, "").trim();
+        const cleanName = rawName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase());
         const displayName = `Dr. ${cleanName}`;
         const specialty = saved.primarySpecialty || saved.department || u.title || "Reproductive Medicine & Fertility Specialist";
         const experienceYears = saved.yearsExperience ? Number(saved.yearsExperience) : (10 + idx);

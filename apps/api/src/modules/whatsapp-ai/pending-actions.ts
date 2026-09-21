@@ -83,7 +83,7 @@ function matchSlotByTimeLabel(
     const label = s.label.toLowerCase();
     if (label.includes(m[0]!.toLowerCase().replace(/\s+/g, " "))) return true;
     // Compare 12h display fragments
-    const h12 = d.toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase();
+    const h12 = d.toLocaleString("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase();
     return t.includes(h12) || label.includes(h12);
   });
   if (matches.length === 1) return matches[0]!;
@@ -286,6 +286,7 @@ export async function tryResolvePendingAppointmentAction(input: {
         };
       }
       const when = new Date(result.startsAt).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -293,10 +294,13 @@ export async function tryResolvePendingAppointmentAction(input: {
         minute: "2-digit",
         hour12: true,
       });
+      const cleanDoc = result.doctorName
+        ? `Dr. ${result.doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`
+        : null;
       return {
         handled: true,
         booked: true,
-        text: `✦ Smrko AI\n\nYour appointment is confirmed.\n\n${result.type}\n${when}${result.doctorName ? `\n${result.doctorName}` : ""}\n${input.tenant.clinicName}\n\nReply if you need to reschedule or cancel.`,
+        text: `✦ Smrko AI\n\nYour appointment is confirmed.\n\n${result.type}\n${when}${cleanDoc ? `\n${cleanDoc}` : ""}\n${input.tenant.clinicName}\n\nReply if you need to reschedule or cancel.`,
       };
     }
     if (isNegative(msg)) {
@@ -344,6 +348,7 @@ export async function tryResolvePendingAppointmentAction(input: {
         };
       }
       const when = new Date(result.startsAt).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
         weekday: "short",
         day: "numeric",
         month: "short",

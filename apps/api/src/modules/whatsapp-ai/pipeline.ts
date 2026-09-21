@@ -774,6 +774,7 @@ export async function runWhatsAppAiPipeline(input: {
   if (intentResult.intent === "APPOINTMENT_CANCEL" && !input.simulation && input.mode === "send") {
     if (cancelData?.needsConfirmation && cancelData.startsAt) {
       const when = new Date(cancelData.startsAt).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -781,7 +782,10 @@ export async function runWhatsAppAiPipeline(input: {
         minute: "2-digit",
         hour12: true,
       });
-      const text = `✦ Smrko AI\n\nWould you like to cancel your appointment on ${when}${cancelData.doctorName ? ` with ${cancelData.doctorName}` : ""}?\n\nReply Yes to cancel, or No to keep it.`;
+      const cleanDoc = cancelData.doctorName
+        ? `Dr. ${cancelData.doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`
+        : null;
+      const text = `✦ Smrko AI\n\nWould you like to cancel your appointment on ${when}${cleanDoc ? ` with ${cleanDoc}` : ""}?\n\nReply Yes to cancel, or No to keep it.`;
       try {
         const sent = await sendWhatsAppAiSessionText(input.tenant, {
           conversationId: conversation.id,

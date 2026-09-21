@@ -292,14 +292,16 @@ export async function bookAppointmentFromSlot(input: {
 
   const startTime = new Date(decoded.startMs);
   let doctorName = decoded.doctorName || null;
-  if (doctorName && !doctorName.startsWith("Dr.") && !doctorName.startsWith("Dr ")) {
-    doctorName = `Dr. ${doctorName.trim()}`;
+  if (doctorName) {
+    const raw = doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim();
+    doctorName = raw ? `Dr. ${raw.replace(/\b\w/g, (c: string) => c.toUpperCase())}` : null;
   }
   if (!doctorName) {
     const { getClinicDoctors } = await import("../appointment-booking/slot-engine");
     const docs = await getClinicDoctors(input.tenant.clinicId);
     if (docs.length > 0 && docs[0]?.displayName) {
-      doctorName = docs[0].displayName;
+      const raw = docs[0].displayName.replace(/^(dr\s*\.?\s*)+/i, "").trim();
+      doctorName = raw ? `Dr. ${raw.replace(/\b\w/g, (c: string) => c.toUpperCase())}` : null;
     }
   }
 
@@ -627,7 +629,11 @@ export async function rescheduleAppointmentFromSlot(input: {
   if (!existing) return { ok: false, reason: "APPOINTMENT_NOT_FOUND", handoffRecommended: true };
 
   const startTime = new Date(decoded.startMs);
-  const doctorName = decoded.doctorName ?? existing.doctorName;
+  let doctorName = decoded.doctorName ?? existing.doctorName;
+  if (doctorName) {
+    const raw = doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim();
+    doctorName = raw ? `Dr. ${raw.replace(/\b\w/g, (c: string) => c.toUpperCase())}` : null;
+  }
   const valid = await validateSlotStillAvailable({
     clinicId: input.tenant.clinicId,
     startTime,
@@ -790,6 +796,7 @@ export async function cancelAppointmentForWhatsApp(input: {
 export function formatSlotLabel(slot: { startTime: string; doctorName: string | null; appointmentType: string }): string {
   const d = new Date(slot.startTime);
   const when = d.toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -798,9 +805,7 @@ export function formatSlotLabel(slot: { startTime: string; doctorName: string | 
     hour12: true,
   });
   const cleanDoc = slot.doctorName
-    ? slot.doctorName.startsWith("Dr.")
-      ? slot.doctorName
-      : `Dr. ${slot.doctorName.replace(/^Dr\.?\s*/i, "").trim()}`
+    ? `Dr. ${slot.doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`
     : null;
   const doc = cleanDoc ? ` · ${cleanDoc}` : "";
   return `${when}${doc} · ${slot.appointmentType}`;
