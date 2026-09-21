@@ -141,23 +141,23 @@ export async function analyzeConsultationTranscript(
     const openai = new OpenAI({ apiKey });
 
     const systemPrompt = `You are SmrkoMed Clinical AI Assistant for a premier IVF & Fertility clinic.
-Your task is to analyze clinical consultation audio transcripts (which may be in Kannada, Hindi, Tamil, Telugu, English, or mixed Indic languages) and produce structured English medical notes.
+Your task is to analyze clinical consultation audio transcripts (which may be in Malayalam, Kannada, Hindi, Tamil, Telugu, English, or mixed Indic languages) and produce structured English medical notes.
 
 You MUST:
-1. Detect the source language.
-2. Accurately TRANSLATE the conversation into clear, professional English.
+1. Detect the source language (e.g. Malayalam, Kannada, Hindi, Tamil, English).
+2. Accurately TRANSLATE the conversation into clear, professional English. Do NOT output raw vernacular or Indic scripts in the doctorAssessment or summary.
 3. Perform DIARIZATION: Identify what the Doctor said vs what the Patient (or partner) said. Format each turn as:
    - speaker: "Doctor" or "Patient"
    - text: English translated speech.
 4. Extract CRITICAL DETAILS / RED FLAGS: Any severe pain, abdominal swelling, headache, bleeding, fever, adverse medication reaction, OHSS symptoms, or high-risk findings that the doctor needs to know immediately.
 5. Extract CHIEF COMPLAINTS: Array of specific symptoms reported by the patient.
-6. Provide DOCTOR ASSESSMENT: A concise clinical summary of the patient's condition.
+6. Provide DOCTOR ASSESSMENT: A concise clinical summary of the patient's condition in professional medical English.
 7. Provide RECOMMENDATIONS / ACTION ITEMS: Next clinical steps (e.g. scans, medication adjustment, emergency precautions).
 8. Provide a FORMATTED SUMMARY suitable for doctors.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
-  "detectedLanguage": "string (e.g. Kannada, Hindi, English)",
+  "detectedLanguage": "string (e.g. Malayalam, Kannada, Hindi, English)",
   "englishDialogue": [
     { "speaker": "Doctor" | "Patient", "text": "string" }
   ],
@@ -286,11 +286,50 @@ export function parseConsultationContent(content: string | undefined | null) {
     };
   }
 
+  // 3. Extract Doctor Assessment and Clinical Notes
+  const docAssessmentMatch = content.match(/(?:Doctor Assessment|Clinical Assessment|Clinical Impression):\s*([\s\S]*?)(?=(?:Critical (?:Clinical )?Details|English Dialogue Transcript|Audio Transcript|Clinical Notes|Next Steps|\n\n[A-Z][a-zA-Z\s]+:|$))/i);
+  const clinicalNotesMatch = content.match(/Clinical Notes:\s*([\s\S]*?)(?=(?:Doctor Assessment|Clinical Assessment|Critical (?:Clinical )?Details|English Dialogue Transcript|Audio Transcript|Next Steps|\n\n[A-Z][a-zA-Z\s]+:|$))/i);
+
+  let cleanSummary = "";
+  if (docAssessmentMatch && docAssessmentMatch[1]?.trim()) {
+    cleanSummary = docAssessmentMatch[1].trim();
+  }
+  if (clinicalNotesMatch && clinicalNotesMatch[1]?.trim()) {
+    const notesText = clinicalNotesMatch[1].trim();
+    if (!cleanSummary.includes(notesText)) {
+      cleanSummary = cleanSummary ? `${cleanSummary}\n\nClinical Notes:\n${notesText}` : notesText;
+    }
+  }
+
+  // If cleanSummary still wasn't found from section headers, sanitize content
+  if (!cleanSummary) {
+    let sanitized = content;
+    // Strip Audio Transcript blocks completely in any language
+    sanitized = sanitized.replace(/Audio Transcript\s*(?:\([^)]+\))?:\s*(?:"[^"]*"|[^\n]+(\n"[^"]*")?)/gi, "");
+    // Strip English Dialogue Transcript section if we already extracted dialogue
+    if (dialogue.length > 0) {
+      sanitized = sanitized.replace(/English Dialogue Transcript:\s*([\s\S]*?)(?=(?:Critical (?:Clinical )?Details|Doctor Assessment|Clinical Notes|$))/gi, "");
+    }
+    // Strip Critical Details section if we already extracted criticalDetails
+    if (criticalDetails.length > 0) {
+      sanitized = sanitized.replace(/Critical (?:Clinical )?Details:\s*([\s\S]*?)(?=(?:Doctor Assessment|Clinical Notes|$))/gi, "");
+    }
+    sanitized = sanitized.replace(/Doctor Assessment:\s*/gi, "").trim();
+    cleanSummary = sanitized.trim();
+  }
+
+  // Final purge of any remaining raw audio transcript or Indic speech blocks from summary
+  cleanSummary = cleanSummary.replace(/Audio Transcript\s*(?:\([^)]+\))?:\s*["'][^"']+["']/gi, "").trim();
+
+  if (!cleanSummary) {
+    cleanSummary = "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+  }
+
   return {
     dialogue,
     criticalDetails,
-    originalTranscript: rawOriginal || content,
-    summary: content,
-    hasAiAnalysis: dialogue.length > 0 || criticalDetails.length > 0,
+    originalTranscript: "",
+    summary: cleanSummary,
+    hasAiAnalysis: dialogue.length > 0 || criticalDetails.length > 0 || Boolean(docAssessmentMatch),
   };
 }

@@ -6,21 +6,32 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 import { 
-  LayoutGrid, MessageSquare, Network, Database, FileText, BookOpen, 
+  LayoutGrid, MessageSquare, PhoneCall, Network, Database, FileText, BookOpen, 
   FileSignature, Megaphone, PieChart, Clock, Settings 
 } from "lucide-react";
 
-const links = [
-  { href: "/whatsapp", label: "Overview", icon: LayoutGrid, exact: true },
-  { href: "/whatsapp/inbox", label: "Inbox", icon: MessageSquare },
-  { href: "/whatsapp/automations", label: "Automations", icon: Network },
-  { href: "/whatsapp/flows", label: "Flows", icon: Database },
-  { href: "/whatsapp/templates", label: "Templates", icon: FileText },
-  { href: "/whatsapp/knowledge-base", label: "Knowledge Base", icon: BookOpen },
-  { href: "/whatsapp/consent", label: "Consent", icon: FileSignature },
-  { href: "/whatsapp/broadcasts", label: "Broadcasts", icon: Megaphone },
-  { href: "/whatsapp/analytics", label: "Analytics", icon: PieChart },
-  { href: "/whatsapp/logs", label: "Logs", icon: Clock },
+interface NavLinkItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  exact?: boolean;
+  hidden?: boolean;
+}
+
+const links: NavLinkItem[] = [
+  { href: "/whatsapp", label: "Dashboard", icon: LayoutGrid, exact: true },
+  { href: "/whatsapp/inbox", label: "Messages", icon: MessageSquare },
+  { href: "/communication/calls", label: "Calls", icon: PhoneCall },
+  // Retained hidden items (not deleted)
+  { href: "/whatsapp/automations", label: "Automations", icon: Network, hidden: true },
+  { href: "/whatsapp/flows", label: "Flows", icon: Database, hidden: true },
+  { href: "/whatsapp/templates", label: "Templates", icon: FileText, hidden: true },
+  { href: "/whatsapp/knowledge-base", label: "Knowledge Base", icon: BookOpen, hidden: true },
+  { href: "/whatsapp/consent", label: "Consent", icon: FileSignature, hidden: true },
+  { href: "/whatsapp/broadcasts", label: "Broadcasts", icon: Megaphone, hidden: true },
+  { href: "/whatsapp/analytics", label: "Analytics", icon: PieChart, hidden: true },
+  { href: "/whatsapp/logs", label: "Logs", icon: Clock, hidden: true },
+  // Settings kept active
   { href: "/whatsapp/settings", label: "Settings", icon: Settings },
 ];
 
@@ -29,7 +40,7 @@ export function WhatsAppNav() {
 
   return (
     <nav className="flex flex-col gap-2 bg-white border border-gray-100 rounded-xl p-2 w-14 shrink-0 shadow-sm" aria-label="WhatsApp Automation Center">
-      {links.map((link) => {
+      {links.filter((link) => !link.hidden).map((link) => {
         const active = link.exact
           ? pathname === link.href
           : pathname === link.href || pathname.startsWith(`${link.href}/`);

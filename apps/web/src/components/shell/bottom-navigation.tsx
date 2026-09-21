@@ -229,15 +229,15 @@ const DOCTOR_NAV_CATEGORIES: AppNavCategory[] = [
     ],
   },
   {
-    id: "doctor_reports",
-    label: "Reports",
-    description: "Reports & Analytics",
-    icon: FileText,
-    href: "/reports",
+    id: "doctor_diagnostics",
+    label: "Diagnostics",
+    description: "Clinical Diagnostics",
+    icon: Activity,
+    href: "/clinical-diagnostics",
     items: [
+      { href: "/clinical-diagnostics", label: "Diagnostics", icon: Activity },
       { href: "/reports", label: "Reports", icon: FileText },
       { href: "/analytics", label: "Analytics", icon: BarChart3 },
-      { href: "/clinical-diagnostics", label: "Diagnostics", icon: Activity },
     ],
   },
   {
@@ -309,10 +309,11 @@ export function BottomNavigation() {
 
   const openCategory = useCallback(
     (id: string) => {
+      if (isDoctor || id.startsWith("doctor_")) return;
       clearCloseTimer();
       setOpenId(id);
     },
-    [clearCloseTimer],
+    [clearCloseTimer, isDoctor],
   );
 
   useEffect(() => {
@@ -366,7 +367,8 @@ export function BottomNavigation() {
             const Icon = category.icon;
             const panelId = `${menuId}-${category.id}`;
             const lit = active || expanded;
-            const hasMenu = category.id !== "dashboard" && category.items.length > 1;
+            const isDoctorCategory = isDoctor || category.id.startsWith("doctor_");
+            const hasMenu = !isDoctorCategory && category.id !== "dashboard" && category.items.length > 1;
 
             return (
               <div

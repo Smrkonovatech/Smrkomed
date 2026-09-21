@@ -535,25 +535,23 @@ export function ChatComposer({
         </div>
       ) : null}
 
-      {coupleId && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-emerald-50/80 border border-emerald-200/80 text-xs">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <Users className="size-3.5 text-emerald-700 shrink-0" />
-            <span className="font-semibold text-emerald-900">Couple Channel:</span>
-            <span className="text-emerald-800 truncate">
-              {partnerInfo?.primaryName || "Primary"} & {partnerInfo?.name || "Partner"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            <div className="inline-flex rounded-md bg-emerald-100/70 p-0.5 border border-emerald-200">
+      <div className="rounded-2xl border border-gray-200 bg-white p-3 shadow-xs focus-within:border-[#7C3AED] focus-within:ring-2 focus-within:ring-[#7C3AED]/10 transition-all">
+        {coupleId && (
+          <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-gray-100 text-xs">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <Users className="size-3 text-emerald-600 shrink-0" />
+              <span className="font-semibold text-gray-700">Couple:</span>
+              <span className="text-gray-600 truncate">
+                {partnerInfo?.primaryName || "Primary"} & {partnerInfo?.name || "Partner"}
+              </span>
+            </div>
+            <div className="inline-flex rounded-full bg-gray-100 p-0.5 text-[11px]">
               <button
                 type="button"
                 onClick={() => setSendToCouple(false)}
                 className={cn(
-                  "px-2 py-0.5 rounded text-[11px] font-medium transition-colors",
-                  !sendToCouple
-                    ? "bg-white text-emerald-900 shadow-xs font-semibold"
-                    : "text-emerald-700 hover:text-emerald-950"
+                  "px-2.5 py-0.5 rounded-full font-medium transition-colors",
+                  !sendToCouple ? "bg-white text-gray-800 shadow-xs font-semibold" : "text-gray-500 hover:text-gray-700"
                 )}
               >
                 Patient only
@@ -562,143 +560,142 @@ export function ChatComposer({
                 type="button"
                 onClick={() => setSendToCouple(true)}
                 className={cn(
-                  "px-2 py-0.5 rounded text-[11px] font-semibold transition-colors flex items-center gap-1",
-                  sendToCouple
-                    ? "bg-emerald-600 text-white shadow-xs"
-                    : "text-emerald-700 hover:text-emerald-950 hover:bg-emerald-200/50"
+                  "px-2.5 py-0.5 rounded-full font-medium transition-colors flex items-center gap-1",
+                  sendToCouple ? "bg-emerald-600 text-white shadow-xs font-semibold" : "text-gray-500 hover:text-gray-700"
                 )}
               >
-                <Users className="size-3" /> Both (Couple Broadcast)
+                <Users className="size-3" /> Both
               </button>
             </div>
-            {partnerInfo?.conversationId && onSwitchConversation && (
-              <button
-                type="button"
-                onClick={() => onSwitchConversation(partnerInfo.conversationId!)}
-                className="text-[11px] font-medium text-emerald-800 hover:text-emerald-950 underline ml-1"
-              >
-                Open {partnerInfo.name}&apos;s chat →
-              </button>
-            )}
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="relative">
-        <Textarea
-          rows={2}
-          placeholder={pending ? "Optional caption…" : sendToCouple ? "Write a message to broadcast to BOTH partners…" : "Write a staff reply…"}
-          value={text}
-          disabled={disabled || sending || recording}
-          onChange={(e) => {
-            setText(e.target.value);
-            onTyping?.();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              primarySend();
-            }
-          }}
-        />
-        {emojiOpen ? (
-          <div className="absolute bottom-full left-0 z-20 mb-1 flex flex-wrap gap-1 rounded-lg border bg-background p-2 shadow-md">
-            {QUICK_EMOJI.map((em) => (
-              <button
-                key={em}
-                type="button"
-                className="rounded px-1.5 text-lg hover:bg-muted"
-                onClick={() => {
-                  setText((t) => t + em);
-                  setEmojiOpen(false);
-                }}
-              >
-                {em}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-1.5">
         <div className="relative">
-          <Button
-            size="sm"
-            variant="outline"
+          <Textarea
+            rows={2}
+            placeholder={pending ? "Optional caption…" : sendToCouple ? "Write a message to broadcast to BOTH partners…" : "Send a message"}
+            value={text}
             disabled={disabled || sending || recording}
-            onClick={() => setAttachOpen((o) => !o)}
-            className="gap-1"
-          >
-            <Paperclip className="size-3.5" /> Attach
-          </Button>
-          {attachOpen ? (
-            <div className="absolute bottom-full left-0 z-20 mb-1 min-w-[200px] rounded-lg border bg-background py-1 shadow-md">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => void loadDocs()}
-              >
-                <FileStack className="size-3.5" /> Patient Document
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => fileDocRef.current?.click()}
-              >
-                <FileText className="size-3.5" /> Upload Document
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => fileImageRef.current?.click()}
-              >
-                <ImageIcon className="size-3.5" /> Image
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => fileVideoRef.current?.click()}
-              >
-                <Video className="size-3.5" /> Video
-              </button>
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                onClick={() => void startRecording()}
-              >
-                <Mic className="size-3.5" /> Voice Note
-              </button>
+            onChange={(e) => {
+              setText(e.target.value);
+              onTyping?.();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                primarySend();
+              }
+            }}
+            className="w-full resize-none border-0 p-0 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-0 shadow-none bg-transparent min-h-[44px]"
+          />
+          {emojiOpen ? (
+            <div className="absolute bottom-full left-0 z-20 mb-2 flex flex-wrap gap-1 rounded-xl border border-gray-200 bg-white p-2 shadow-lg animate-in fade-in">
+              {QUICK_EMOJI.map((em) => (
+                <button
+                  key={em}
+                  type="button"
+                  className="rounded-lg p-1.5 text-lg hover:bg-gray-100 transition-colors"
+                  onClick={() => {
+                    setText((t) => t + em);
+                    setEmojiOpen(false);
+                  }}
+                >
+                  {em}
+                </button>
+              ))}
             </div>
           ) : null}
         </div>
 
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={disabled || sending}
-          onClick={() => setEmojiOpen((o) => !o)}
-        >
-          <Smile className="size-3.5" />
-        </Button>
+        <div className="flex items-center justify-between pt-2 mt-1 border-t border-gray-50">
+          <div className="flex items-center gap-1 relative">
+            <button
+              type="button"
+              disabled={disabled || sending}
+              onClick={() => setEmojiOpen((o) => !o)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Add emoji"
+            >
+              <Smile className="size-5" />
+            </button>
+            <button
+              type="button"
+              disabled={disabled || sending || recording}
+              onClick={() => setAttachOpen((o) => !o)}
+              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Attach media or file"
+            >
+              <Paperclip className="size-5" />
+            </button>
 
-        <Button size="sm" variant="outline" disabled={disabled || sending} onClick={() => void loadTemplates()}>
-          Template
-        </Button>
+            {attachOpen ? (
+              <div className="absolute bottom-full left-0 z-20 mb-2 min-w-[200px] rounded-xl border border-gray-200 bg-white py-1.5 shadow-xl animate-in fade-in">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => void loadDocs()}
+                >
+                  <FileStack className="size-4 text-purple-600" /> Patient Document
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => fileDocRef.current?.click()}
+                >
+                  <FileText className="size-4 text-blue-600" /> Upload Document
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => fileImageRef.current?.click()}
+                >
+                  <ImageIcon className="size-4 text-emerald-600" /> Image
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => fileVideoRef.current?.click()}
+                >
+                  <Video className="size-4 text-amber-600" /> Video
+                </button>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50"
+                  onClick={() => void startRecording()}
+                >
+                  <Mic className="size-4 text-rose-600" /> Voice Note
+                </button>
+              </div>
+            ) : null}
+          </div>
 
-        <div className="flex-1" />
-
-        <Button
-          size="sm"
-          disabled={disabled || sending || recording || (!text.trim() && !pending)}
-          onClick={() => void primarySend()}
-          className={cn(
-            "gap-1.5",
-            sendToCouple && "bg-emerald-600 hover:bg-emerald-700 text-white"
-          )}
-        >
-          {sending ? <Loader2 className="size-3.5 animate-spin" /> : sendToCouple ? <Users className="size-3.5" /> : <Send className="size-3.5" />}
-          {sending ? "Sending…" : pending ? "Send media" : sendToCouple ? "Broadcast to Couple" : "Send as staff"}
-        </Button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={disabled || sending}
+              onClick={() => void loadTemplates()}
+              className="rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+            >
+              Templates
+            </button>
+            <button
+              type="button"
+              disabled={disabled || sending || recording || (!text.trim() && !pending)}
+              onClick={() => void primarySend()}
+              className={cn(
+                "rounded-full px-4 py-1.5 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs",
+                (!text.trim() && !pending) || disabled || sending
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : sendToCouple
+                    ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    : "bg-[#7C3AED] hover:bg-[#6D28D9] text-white"
+              )}
+            >
+              {sending && <Loader2 className="size-3.5 animate-spin" />}
+              {sending ? "Sending…" : "Send"}
+            </button>
+          </div>
+        </div>
       </div>
 
       <input ref={fileImageRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onFileInput("IMAGE")} />
