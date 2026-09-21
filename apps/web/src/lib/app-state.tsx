@@ -108,6 +108,7 @@ export interface AppAppointment extends Appointment {
   notes?: string;
   startsAt?: string;
   whatsappConfirmation?: boolean;
+  isVoiceCall?: boolean;
   whatsappReminder?: boolean;
   careLoop?: boolean;
   patientName?: string;
@@ -287,7 +288,9 @@ function toTask(row: ClinicTask): CareTask {
 }
 
 function toAppointment(row: ClinicAppointment): AppAppointment {
-  const isWhatsapp = Boolean((row.notes || "").toLowerCase().includes("whatsapp"));
+  const notes = (row.notes || "").toLowerCase();
+  const isWhatsapp = notes.includes("whatsapp");
+  const isVoiceCall = notes.includes("voice") || notes.includes("sarvam") || notes.includes("phone call");
   return {
     id: row.id,
     ...(row.clinicId ? { clinicId: row.clinicId } : {}),
@@ -301,6 +304,7 @@ function toAppointment(row: ClinicAppointment): AppAppointment {
     ...(row.duration !== undefined ? { duration: row.duration } : {}),
     ...(row.notes ? { notes: row.notes } : {}),
     whatsappConfirmation: isWhatsapp,
+    isVoiceCall,
     ...(row.patientName ? { patientName: row.patientName } : {}),
     ...(row.coupleTitle ? { coupleTitle: row.coupleTitle } : {}),
     ...(row.coupleSlug ? { coupleSlug: row.coupleSlug } : {}),
@@ -481,6 +485,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     void reload();
     void reloadStaff();
   }, [reload, reloadStaff, clinicId]);
+
+  // Lightweight polling: refresh appointments and couples every 45 seconds so
+  // voice-call bookings (created async by Sarvam post-call sync) appear without
+  // the user needing to manually reload the page.
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const [apptsResult, couplesResult] = await Promise.all([
+          clinicApi.appointments().catch(() => null),
+          clinicApi.couples().catch(() => null),
+        ]);
+        if (apptsResult) setAppointmentList(apptsResult.map(toAppointment));
+        if (couplesResult) setCoupleList(couplesResult.map(toCouple));
+      } catch {
+        // Silent — polling failures should never crash the UI
+      }
+    }, 45_000);
+    return () => clearInterval(interval);
+  }, [clinicId]);
 
   const addCouple = useCallback(async (input: AddCoupleInput) => {
     const partner =

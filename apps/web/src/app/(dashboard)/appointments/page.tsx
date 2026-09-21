@@ -16,6 +16,7 @@ import {
   Filter,
   Grid,
   List,
+  RefreshCw,
   Search,
   User,
   Users,
@@ -111,7 +112,17 @@ export default function AppointmentsPage() {
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
 
   const { openAction } = useGlobalActions();
-  const { appointments, couples, pushActivity, patchAppointmentStatus, loadState } = useAppState();
+  const { appointments, couples, pushActivity, patchAppointmentStatus, loadState, reload } = useAppState();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await reload();
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const doctorsCatalog = useDoctors();
   const activeDoctors = useMemo(
     () => doctorsCatalog.filter((d) => d.status === "active" && !d.isDraft),
@@ -282,9 +293,22 @@ export default function AppointmentsPage() {
         title="Appointments"
         subtitle="Run the clinic schedule, patient arrivals, reminders, and doctor availability."
         actions={
-          <Button className="rounded-lg shadow-sm" onClick={() => openAction("new-appointment")}>
-            <CalendarPlus className="size-4 mr-1.5" /> New Appointment
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1.5 text-sm"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh appointments from server"
+            >
+              <RefreshCw className={cn("size-4", refreshing && "animate-spin")} />
+              <span className="hidden sm:inline">{refreshing ? "Refreshing…" : "Refresh"}</span>
+            </Button>
+            <Button className="rounded-lg shadow-sm" onClick={() => openAction("new-appointment")}>
+              <CalendarPlus className="size-4 mr-1.5" /> New Appointment
+            </Button>
+          </div>
         }
       />
 
@@ -1439,7 +1463,7 @@ function AppointmentTableView({
           const patientSlug = couple?.slug || (appointment as any).coupleSlug;
           const room = getAppointmentRoom(appointment);
           const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
-          const isVoiceCall = (appointment.notes || "").toLowerCase().includes("voice") || (appointment.notes || "").toLowerCase().includes("sarvam") || (appointment.notes || "").toLowerCase().includes("phone call");
+          const isVoiceCall = appointment.isVoiceCall || (appointment.notes || "").toLowerCase().includes("voice") || (appointment.notes || "").toLowerCase().includes("sarvam");
 
           return (
             <RecordCard key={appointment.id}>
