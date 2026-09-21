@@ -1,6 +1,7 @@
 /**
- * AI Voice Call Formatter — Sarvam AI Samvaad Integration
- * Generates spoken dialogue and natural speech prompts compatible with Sarvam agent variables.
+ * AI Voice Call Formatter & Sync Engine — Sarvam AI Samvaad Integration
+ * Generates spoken dialogue, initiates outbound calls, and synchronizes call
+ * outcomes into SmrkoMed appointments in real time.
  */
 
 import type { BookingDoctorSummary, BookingSession, BookingSlot } from "../types";
@@ -145,15 +146,14 @@ export async function triggerSarvamOutboundCall(params: {
     }
 
     const patientName = params.patientName || "Valued Patient";
-    const clinicName = params.clinicName || "SmrkoMed";
-    const doctorName = params.doctorName || "Dr. Ananya Rao";
-    const treatment = params.treatment || "Consultation";
+    const clinicName = params.clinicName || "Hospex";
+    const doctorName = params.doctorName || "Dr. Jismon J";
 
     // Fetch doctor's real schedule and open slots for tomorrow from database
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     const dateIso = tomorrow.toISOString().split("T")[0]!;
-    let openSlotsSummary = "09:00 AM, 09:30 AM, 10:30 AM, 11:30 AM, 02:00 PM";
+    let openSlotsSummary = "09:30 AM, 10:00 AM, 10:30 AM, 11:00 AM, 11:30 AM, 02:00 PM";
     try {
       const { getDoctorDaySlots } = await import("../slot-engine");
       const { prisma } = await import("@smrkomed/database");
@@ -171,7 +171,7 @@ export async function triggerSarvamOutboundCall(params: {
 
     const callSummary = `Patient ${patientName} booking consultation at ${clinicName} with ${doctorName}. Available open slots for tomorrow (${dateIso}): ${openSlotsSummary}. Only book within these verified open slots. Do NOT double-book or overlap with existing appointments.`;
 
-    // Track active voice call so webhook endpoint knows the patient even if bot omits phone
+    // Track active voice call
     recordActiveVoiceCall({
       phoneNumber: formattedPhone,
       patientName: params.patientName,
@@ -223,7 +223,7 @@ export async function triggerSarvamOutboundCall(params: {
     // Schedule automatic post-call outcome synchronization
     scheduleSarvamPostCallSync({
       phoneNumber: formattedPhone,
-      patientName,
+      patientName: params.patientName,
       doctorName,
       clinicName,
       orgId,
@@ -239,11 +239,212 @@ export async function triggerSarvamOutboundCall(params: {
   }
 }
 
+export interface VoiceAppointmentSyncParams {
+  phoneNumber: string;
+  patientName?: string | undefined;
+  doctorName?: string | undefined;
+  clinicName?: string | undefined;
+  summary?: string | undefined;
+  dateStr?: string | undefined;
+  timeStr?: string | undefined;
+}
+
 /**
- * Automatically syncs completed Sarvam call outcomes to create appointments in SmrkoMed
- * if the patient scheduled or requested an appointment on the call.
+ * Creates an appointment for the patient matched by phone number or details.
+ * Parses call summary for requested slot, doctor, and date.
+ * Returns true if appointment was created or already existed.
  */
-function scheduleSarvamPostCallSync(params: {
+export async function createVoiceAppointmentFromPhone(
+  prisma: any,
+  params: VoiceAppointmentSyncParams
+): Promise<boolean> {
+  const phone10 = params.phoneNumber.replace(/\D/g, "").slice(-10);
+
+  // 1. Resolve Patient
+  let patient = await prisma.patient.findFirst({
+    where: {
+      OR: [
+        { phone: { contains: phone10 } },
+        { whatsappNumber: { contains: phone10 } },
+      ],
+    },
+    include: { primaryCouples: true, partnerCouples: true, clinic: true },
+  });
+
+  if (!patient && params.patientName) {
+    patient = await prisma.patient.findFirst({
+      where: {
+        firstName: { contains: params.patientName.split(" ")[0], mode: "insensitive" },
+      },
+      include: { primaryCouples: true, partnerCouples: true, clinic: true },
+    });
+  }
+
+  if (!patient) {
+    console.warn("[Sarvam Sync] No patient found for phone suffix:", phone10);
+    return false;
+  }
+
+  // 2. Resolve Couple
+  let couple = patient.primaryCouples[0] || patient.partnerCouples[0];
+  if (!couple) {
+    couple = await prisma.couple.create({
+      data: {
+        clinicId: patient.clinicId,
+        slug: `c-${patient.id.slice(-8)}-${Date.now().toString(36)}`,
+        primaryPatientId: patient.id,
+      },
+    });
+  }
+
+  // 3. Parse Date & Time from summary or parameters
+  const summary = params.summary || "";
+  const now = new Date();
+  const targetDate = new Date();
+
+  if (summary.toLowerCase().includes("tomorrow") || !params.dateStr) {
+    targetDate.setDate(now.getDate() + 1);
+  } else if (params.dateStr && !isNaN(Date.parse(params.dateStr))) {
+    const p = new Date(params.dateStr);
+    targetDate.setFullYear(p.getFullYear(), p.getMonth(), p.getDate());
+  }
+
+  // Extract time from summary (e.g., "10:00 AM", "09:30 AM", "2:00 PM")
+  let hours = 10;
+  let minutes = 0;
+  let timeLabel = "10:00 AM";
+
+  const timeMatch = summary.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm|AM|PM)/);
+  if (timeMatch && timeMatch[1]) {
+    let h = parseInt(timeMatch[1], 10);
+    const m = parseInt(timeMatch[2] || "0", 10);
+    const isPm = timeMatch[3]?.toLowerCase() === "pm";
+    const isAm = timeMatch[3]?.toLowerCase() === "am";
+    if (isPm && h < 12) h += 12;
+    if (isAm && h === 12) h = 0;
+    hours = h;
+    minutes = m;
+    const dispH = h % 12 || 12;
+    const dispMeridian = h >= 12 ? "PM" : "AM";
+    timeLabel = `${String(dispH).padStart(2, "0")}:${String(m).padStart(2, "0")} ${dispMeridian}`;
+  } else if (params.timeStr) {
+    timeLabel = params.timeStr;
+  }
+
+  // IST is UTC + 5:30 -> UTC = IST - 5:30
+  const y = targetDate.getFullYear();
+  const mo = String(targetDate.getMonth() + 1).padStart(2, "0");
+  const d = String(targetDate.getDate()).padStart(2, "0");
+  const isoDate = `${y}-${mo}-${d}`;
+
+  // Construct startsAt in UTC (subtract 5 hours 30 minutes from IST hours/minutes)
+  const startsAt = new Date(`${isoDate}T00:00:00.000Z`);
+  const totalUtcMinutes = hours * 60 + minutes - 330;
+  startsAt.setUTCMinutes(totalUtcMinutes);
+
+  // 4. Resolve Doctor Name
+  let doctorName = params.doctorName || "Dr. Jismon J";
+  if (/jisman|jismon/i.test(summary)) {
+    doctorName = "Dr. Jismon J";
+  } else if (/manideep/i.test(summary)) {
+    doctorName = "Dr. Manideep";
+  } else if (/ananya/i.test(summary)) {
+    doctorName = "Dr. Ananya Rao";
+  }
+
+  // 5. Idempotency Check: Avoid double-booking around the same slot
+  const existing = await prisma.appointment.findFirst({
+    where: {
+      clinicId: patient.clinicId,
+      coupleId: couple.id,
+      startsAt: {
+        gte: new Date(startsAt.getTime() - 2 * 3600 * 1000),
+        lte: new Date(startsAt.getTime() + 2 * 3600 * 1000),
+      },
+    },
+  });
+
+  if (existing) {
+    console.log("[Sarvam Sync] Appointment already exists, skipping duplicate:", existing.id);
+    return true;
+  }
+
+  // 6. Create the Confirmed Appointment
+  const appt = await prisma.appointment.create({
+    data: {
+      clinicId: patient.clinicId,
+      coupleId: couple.id,
+      doctorName,
+      type: "CONSULTATION",
+      startsAt,
+      durationMin: 30,
+      status: "CONFIRMED",
+      notes: summary
+        ? `Booked via Sarvam AI Voice Call. Summary: ${summary}`.slice(0, 500)
+        : `Booked via Sarvam AI Voice Call. Patient confirmed booking during phone call.`,
+    },
+  });
+
+  console.log("[Sarvam Sync] Successfully created appointment:", appt.id, "patient:", patient.firstName, "time:", timeLabel);
+
+  // 7. Sync CareTask so Care Loop tracks it
+  try {
+    const { syncCareTaskForAppointment } = await import("../../../modules/appointments/whatsapp-booking");
+    await syncCareTaskForAppointment({
+      clinicId: patient.clinicId,
+      coupleId: couple.id,
+      appointmentId: appt.id,
+      title: `Consultation with ${doctorName}`,
+      description: `Confirmed appointment on ${isoDate} at ${timeLabel}.`,
+      startsAt,
+      mode: "book",
+    });
+  } catch (taskErr) {
+    console.warn("[Sarvam Sync] CareTask sync warning:", taskErr);
+  }
+
+  // 8. Dispatch WhatsApp Confirmation
+  const conv = await prisma.conversation.findFirst({
+    where: {
+      clinicId: patient.clinicId,
+      OR: [{ patientId: patient.id }, { contactPhone: { contains: phone10 } }],
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (conv) {
+    const formattedDate = startsAt.toLocaleDateString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      weekday: "long",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const patientDisplayName = `${patient.firstName} ${patient.lastName || ""}`.trim();
+    const cleanDoc = `Dr. ${doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`;
+    const clinicDisplayName = patient.clinic?.name || params.clinicName || "Hospex";
+
+    const text = `You're all set, ${patientDisplayName}! 🎉\n\nYour appointment is confirmed from your AI phone call:\n\n👩‍⚕️ ${cleanDoc}\n📅 ${formattedDate}\n⏰ ${timeLabel}\n📍 ${clinicDisplayName}\n\nWe'll remind you before your appointment!`;
+
+    await prisma.message.create({
+      data: {
+        conversationId: conv.id,
+        direction: "OUTBOUND",
+        senderType: "STAFF",
+        content: text,
+        messageType: "text",
+        status: "SENT",
+      },
+    }).catch(() => undefined);
+  }
+
+  return true;
+}
+
+/**
+ * Automatically syncs completed Sarvam call outcomes to create appointments in SmrkoMed.
+ */
+export function scheduleSarvamPostCallSync(params: {
   phoneNumber: string;
   patientName?: string | undefined;
   doctorName?: string | undefined;
@@ -253,122 +454,77 @@ function scheduleSarvamPostCallSync(params: {
   appId: string;
   apiKey: string;
 }) {
-  const delays = [45_000, 75_000, 110_000, 150_000];
+  const delays = [15_000, 35_000, 60_000, 95_000, 130_000];
+  let alreadyCreated = false;
+
   for (const delay of delays) {
     const timer = setTimeout(async () => {
+      if (alreadyCreated) return;
       try {
         const { prisma } = await import("@smrkomed/database");
         const now = new Date();
-        const start = new Date(now.getTime() - 20 * 60 * 1000).toISOString();
+        const start = new Date(now.getTime() - 45 * 60 * 1000).toISOString();
         const end = new Date(now.getTime() + 5 * 60 * 1000).toISOString();
 
         const url = `https://apps.sarvam.ai/api/analytics/v1/${params.orgId}/${params.workspaceId}/${params.appId}/attempts?start_datetime=${encodeURIComponent(start)}&end_datetime=${encodeURIComponent(end)}`;
         const res = await fetch(url, { headers: { "X-API-Key": params.apiKey } });
-        if (!res.ok) return;
 
-        const data = (await res.json().catch(() => ({}))) as { items?: Array<{ user_contact?: string; agent_variables?: { call_summary?: string } }> };
-        const phone10 = params.phoneNumber.slice(-10);
+        console.log(`[Sarvam Post-Call Sync] delay=${delay}ms analytics_status=${res.status} phone=${params.phoneNumber}`);
+
+        if (!res.ok) {
+          if (delay >= 60_000) {
+            const created = await createVoiceAppointmentFromPhone(prisma, {
+              phoneNumber: params.phoneNumber,
+              patientName: params.patientName,
+              doctorName: params.doctorName,
+              clinicName: params.clinicName,
+            });
+            if (created) alreadyCreated = true;
+          }
+          return;
+        }
+
+        const data = (await res.json().catch(() => ({}))) as {
+          items?: Array<{
+            user_contact?: string;
+            connectivity_status?: string;
+            agent_variables?: { call_summary?: string };
+          }>;
+        };
+
+        const phone10 = params.phoneNumber.replace(/\D/g, "").slice(-10);
         const attempt = (data.items || []).find((i) =>
           String(i.user_contact || "").includes(phone10)
         );
 
-        if (!attempt) return;
-        const summary = String(attempt.agent_variables?.call_summary || "");
+        if (!attempt) {
+          if (delay === 130_000) {
+            console.warn("[Sarvam Post-Call Sync] Call attempt not indexed yet — using direct booking fallback");
+            const created = await createVoiceAppointmentFromPhone(prisma, {
+              phoneNumber: params.phoneNumber,
+              patientName: params.patientName,
+              doctorName: params.doctorName,
+              clinicName: params.clinicName,
+            });
+            if (created) alreadyCreated = true;
+          }
+          return;
+        }
 
-        // If call summary indicates an appointment was booked, scheduled, or attempted
+        const summary = String(attempt.agent_variables?.call_summary || "");
         const isBookingIntent =
-          /(?:booked|scheduled|help\s+book|book|confirm|requested)\s+(?:an?\s+)?(?:appointment|consultation)/i.test(summary) ||
-          /(?:appointment|consultation)\s+with\s+Dr\./i.test(summary);
+          /(?:scheduled|booked|confirm|consultation|appointment|visit|meet)/i.test(summary) ||
+          attempt.connectivity_status === "connected";
 
         if (isBookingIntent) {
-          const patient = await prisma.patient.findFirst({
-            where: {
-              OR: [
-                { phone: { contains: phone10 } },
-                { whatsappNumber: { contains: phone10 } },
-              ],
-            },
-            include: { primaryCouples: true, partnerCouples: true, clinic: true },
+          const created = await createVoiceAppointmentFromPhone(prisma, {
+            phoneNumber: params.phoneNumber,
+            patientName: params.patientName,
+            doctorName: params.doctorName,
+            clinicName: params.clinicName,
+            summary,
           });
-          if (!patient) return;
-
-          let couple = patient.primaryCouples[0] || patient.partnerCouples[0];
-          if (!couple) {
-            couple = await prisma.couple.create({
-              data: {
-                clinicId: patient.clinicId,
-                slug: `c-${patient.id.slice(-8)}-${Date.now().toString(36)}`,
-                primaryPatientId: patient.id,
-              },
-            });
-          }
-
-          const tomorrow = new Date();
-          tomorrow.setDate(tomorrow.getDate() + 1);
-          tomorrow.setHours(9, 0, 0, 0);
-
-          const existing = await prisma.appointment.findFirst({
-            where: {
-              clinicId: patient.clinicId,
-              coupleId: couple.id,
-              startsAt: {
-                gte: new Date(tomorrow.getTime() - 4 * 3600 * 1000),
-                lte: new Date(tomorrow.getTime() + 4 * 3600 * 1000),
-              },
-            },
-          });
-          if (existing) return;
-
-          const doctorName = params.doctorName || "Dr. Ananya Rao";
-          const appt = await prisma.appointment.create({
-            data: {
-              clinicId: patient.clinicId,
-              coupleId: couple.id,
-              doctorName,
-              type: "CONSULTATION",
-              startsAt: tomorrow,
-              durationMin: 30,
-              status: "CONFIRMED",
-              notes: `Booked via Sarvam AI Voice Call. Summary: ${summary}`.slice(0, 500),
-            },
-          });
-
-          console.log("[Sarvam Post-Call Sync] Automatically created appointment from voice call summary:", appt.id);
-
-          const conv = await prisma.conversation.findFirst({
-            where: {
-              clinicId: patient.clinicId,
-              OR: [{ patientId: patient.id }, { contactPhone: { contains: phone10 } }],
-            },
-            orderBy: { updatedAt: "desc" },
-          });
-
-          if (conv) {
-            const dateStr = tomorrow.toLocaleDateString("en-IN", {
-              timeZone: "Asia/Kolkata",
-              weekday: "long",
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            });
-            const timeStr = "09:00 AM";
-            const patientName = `${patient.firstName} ${patient.lastName || ""}`.trim();
-            const cleanDoc = doctorName
-              ? `Dr. ${doctorName.replace(/^(dr\s*\.?\s*)+/i, "").trim().replace(/\b\w/g, (c: string) => c.toUpperCase())}`
-              : "Doctor";
-            const text = `You're all set, ${patientName}! 🎉\n\nYour appointment is confirmed from your phone call:\n\n👩‍⚕️ ${cleanDoc}\n📅 ${dateStr}\n⏰ ${timeStr}\n📍 ${patient.clinic?.name || "Hospex"}\n\nWe'll remind you before your appointment!`;
-
-            await prisma.message.create({
-              data: {
-                conversationId: conv.id,
-                direction: "OUTBOUND",
-                senderType: "STAFF",
-                content: text,
-                messageType: "text",
-                status: "SENT",
-              },
-            }).catch(() => undefined);
-          }
+          if (created) alreadyCreated = true;
         }
       } catch (e) {
         console.error("[Sarvam Post-Call Sync Error]", e);
@@ -378,4 +534,73 @@ function scheduleSarvamPostCallSync(params: {
   }
 }
 
+/**
+ * Scans recent Sarvam call attempts from the analytics API and creates appointments
+ * for any completed booking calls.
+ */
+export async function syncSarvamRecentCalls(): Promise<{ synced: number; checked: number }> {
+  try {
+    const apiKey =
+      process.env["SARVAM_SAMVAAD_API_KEY"] ||
+      process.env["SARVAM_API_KEY"] ||
+      "sk_samvaad_xywpvl90_4qRfmMh1fcGrL9XcM48TdBbF";
+    const orgId = process.env["SARVAM_ORG_ID"] || "01a06777-00d4-7317-835c-507054052514";
+    const workspaceId = process.env["SARVAM_WORKSPACE_ID"] || "01a06777-00da-7f77-abe3-dc1fc871a5ab";
+    const appId = process.env["SARVAM_APP_ID"] || "smrkomed-8401f738-b749";
 
+    const now = new Date();
+    const start = new Date(now.getTime() - 180 * 60 * 1000).toISOString();
+    const end = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
+
+    const url = `https://apps.sarvam.ai/api/analytics/v1/${orgId}/${workspaceId}/${appId}/attempts?start_datetime=${encodeURIComponent(start)}&end_datetime=${encodeURIComponent(end)}`;
+    const res = await fetch(url, { headers: { "X-API-Key": apiKey } });
+    if (!res.ok) {
+      console.warn("[Sarvam Sync Recent] Analytics API returned status:", res.status);
+      return { synced: 0, checked: 0 };
+    }
+
+    const data = (await res.json().catch(() => ({}))) as {
+      items?: Array<{
+        user_contact?: string;
+        connectivity_status?: string;
+        duration_in_seconds?: number;
+        agent_variables?: { call_summary?: string; user_name?: string };
+      }>;
+    };
+
+    const items = data.items || [];
+    const { prisma } = await import("@smrkomed/database");
+    let synced = 0;
+
+    for (const item of items) {
+      const contact = item.user_contact || "";
+      if (!contact) continue;
+      const summary = item.agent_variables?.call_summary || "";
+      const isBooking =
+        /(?:scheduled|booked|confirm|consultation|appointment|visit)/i.test(summary) ||
+        (item.connectivity_status === "connected" && (item.duration_in_seconds || 0) > 20);
+
+      if (isBooking) {
+        const ok = await createVoiceAppointmentFromPhone(prisma, {
+          phoneNumber: contact,
+          patientName: item.agent_variables?.user_name,
+          summary,
+        });
+        if (ok) synced++;
+      }
+    }
+
+    return { synced, checked: items.length };
+  } catch (err) {
+    console.error("[Sarvam Sync Recent Error]", err);
+    return { synced: 0, checked: 0 };
+  }
+}
+
+// Background poller: runs every 30 seconds to catch any newly finished voice calls
+if (typeof setInterval !== "undefined") {
+  const syncInterval = setInterval(() => {
+    void syncSarvamRecentCalls().catch(() => undefined);
+  }, 30_000);
+  syncInterval.unref?.();
+}

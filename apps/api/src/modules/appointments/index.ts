@@ -15,6 +15,11 @@ import { createAppointmentSchema, idParam, updateAppointmentSchema } from "./sch
 export const appointmentRoutes = new Hono<AppEnv>()
   .get("/", async (c) => {
     const tenant = requirePermission(c, PERMISSIONS.PATIENTS_READ);
+    // Non-blocking sync of recent Sarvam voice calls
+    try {
+      const { syncSarvamRecentCalls } = await import("../appointment-booking/channels/voice");
+      void syncSarvamRecentCalls().catch(() => undefined);
+    } catch {}
     const appointments = await getAppointmentsForClinic(tenant);
     return ok(c, appointments.map(serializeAppointment));
   })

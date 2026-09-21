@@ -114,6 +114,24 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       return c.json({ status: "ok", service: "ai-book-appointment", error: e?.message });
     }
   })
+  .get("/sync", async (c) => {
+    try {
+      const { syncSarvamRecentCalls } = await import("../modules/appointment-booking/channels/voice");
+      const result = await syncSarvamRecentCalls();
+      return c.json({ success: true, ...result });
+    } catch (e: any) {
+      return c.json({ success: false, error: e?.message }, 500);
+    }
+  })
+  .post("/sync", async (c) => {
+    try {
+      const { syncSarvamRecentCalls } = await import("../modules/appointment-booking/channels/voice");
+      const result = await syncSarvamRecentCalls();
+      return c.json({ success: true, ...result });
+    } catch (e: any) {
+      return c.json({ success: false, error: e?.message }, 500);
+    }
+  })
   .post("/", async (c) => {
   try {
     const json = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;

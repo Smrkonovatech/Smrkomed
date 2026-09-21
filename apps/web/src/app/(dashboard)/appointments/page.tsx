@@ -118,11 +118,29 @@ export default function AppointmentsPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
+      try {
+        await fetch("/api/v1/ai/book-appointment/sync", { method: "POST" });
+      } catch {}
       await reload();
     } finally {
       setRefreshing(false);
     }
   };
+
+  const todayIst = getTodayIst();
+  const todayCount = useMemo(() => {
+    return appointments.filter((a) => (a.date ?? todayIst) === todayIst).length;
+  }, [appointments, todayIst]);
+
+  const upcomingCount = useMemo(() => {
+    return appointments.filter(
+      (a) =>
+        (a.date ?? todayIst) > todayIst &&
+        a.status !== "Completed" &&
+        a.status !== "No-show",
+    ).length;
+  }, [appointments, todayIst]);
+
   const doctorsCatalog = useDoctors();
   const activeDoctors = useMemo(
     () => doctorsCatalog.filter((d) => d.status === "active" && !d.isDraft),
@@ -323,20 +341,35 @@ export default function AppointmentsPage() {
         {/* Top Navigation & Primary Controls */}
         <div className="flex flex-col gap-3 border-b p-3 xl:flex-row xl:items-center xl:justify-between bg-card">
           <nav className="flex min-w-0 gap-1 overflow-x-auto" aria-label="Appointment sections">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => handleTabChange(tab)}
-                className={cn(
-                  "shrink-0 rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
-                  activeTab === tab
-                    ? "bg-primary text-primary-foreground shadow-xs"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-              >
-                {tab}
-              </button>
-            ))}
+            {tabs.map((tab) => {
+              const count = tab === "Today" ? todayCount : tab === "Upcoming" ? upcomingCount : null;
+              return (
+                <button
+                  key={tab}
+                  onClick={() => handleTabChange(tab)}
+                  className={cn(
+                    "shrink-0 rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors inline-flex items-center gap-1.5",
+                    activeTab === tab
+                      ? "bg-primary text-primary-foreground shadow-xs"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  <span>{tab}</span>
+                  {count !== null && count > 0 && (
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 text-xs font-bold leading-none",
+                        activeTab === tab
+                          ? "bg-primary-foreground/20 text-primary-foreground"
+                          : "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </nav>
 
           {activeTab !== "Availability" && (
