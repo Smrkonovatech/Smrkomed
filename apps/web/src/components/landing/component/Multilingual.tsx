@@ -36,7 +36,7 @@ export function Multilingual() {
   ];
 
   return (
-    <section className="relative w-full bg-white py-24 overflow-hidden">
+    <section className="relative w-full bg-white py-10 lg:py-24 overflow-hidden">
       <div className="mx-auto flex max-w-7xl flex-col lg:flex-row items-center justify-between px-6 lg:px-12 gap-16 lg:gap-8">
         
         {/* Left Content */}

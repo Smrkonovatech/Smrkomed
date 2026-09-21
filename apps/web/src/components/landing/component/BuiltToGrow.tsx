@@ -4,7 +4,7 @@ import Image from "next/image";
 
 export function BuiltToGrow() {
   const [activeIndex, setActiveIndex] = useState(2);
-  
+
   const items = [
     { title: "Dermatology", desc: "Configurable workflows adapt to your specialty needs." },
     { title: "Dentistry", desc: "Configurable workflows adapt to your specialty needs." },
@@ -25,7 +25,7 @@ export function BuiltToGrow() {
     let offset = (index - activeIndex) % items.length;
     if (offset < -2) offset += items.length;
     if (offset > 2) offset -= items.length;
-    
+
     // Base style for off-screen cards (should not be reached with 5 items, but good fallback)
     let style = {
       transform: 'translateX(0px) scale(0)',
@@ -75,7 +75,7 @@ export function BuiltToGrow() {
   };
 
   return (
-    <section className="relative w-full bg-white py-24 overflow-hidden">
+    <section className="relative w-full bg-white py-10 lg:py-24 overflow-hidden">
       {/* Soft bottom mist */}
       <div className="absolute bottom-0 left-0 right-0 h-64 bg-gradient-to-t from-blue-50/50 to-transparent z-0 pointer-events-none" />
 
@@ -106,10 +106,10 @@ export function BuiltToGrow() {
                   fill
                   className="object-cover opacity-90 hover:opacity-100 transition-opacity"
                 />
-                
+
                 {/* Gradient overlay for text */}
                 <div className={`absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/90 transition-opacity duration-500 ${activeIndex === index ? 'opacity-100' : 'opacity-0'}`} />
-                
+
                 {/* Active Card Content */}
                 <div className={`absolute bottom-8 left-0 right-0 px-6 text-center transition-opacity duration-500 delay-100 ${activeIndex === index ? 'opacity-100' : 'opacity-0'}`}>
                   <h3 className="text-white text-xl sm:text-2xl font-normal mb-2 tracking-wide">{item.title}</h3>

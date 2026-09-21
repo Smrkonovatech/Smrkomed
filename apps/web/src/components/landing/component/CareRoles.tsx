@@ -66,17 +66,17 @@ export function CareRoles() {
   };
 
   return (
-    <section className="relative w-full overflow-hidden pt-24 pb-48">
-      <div className="mx-auto flex max-w-7xl flex-col items-center px-6 relative z-10">
+    <section className="relative w-full overflow-hidden pt-10 lg:pt-24 pb-16 lg:pb-48">
+      <div className="mx-auto flex max-w-7xl flex-col items-center px-6 relative z-30">
 
         {/* Heading Section */}
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-semibold text-[#0B1221] mb-4">
+        <div className="text-center mb-10 lg:mb-16">
+          <h2 className="text-3xl lg:text-4xl font-semibold text-[#0B1221] mb-3 lg:mb-4">
             Built for everyone <span className="font-light">who</span>
             <br />
             <span className="font-light">delivers care</span>
           </h2>
-          <p className="text-sm text-slate-700 max-w-xs mx-auto leading-relaxed">
+          <p className="text-[14px] lg:text-sm text-slate-700 max-w-xs mx-auto leading-relaxed">
             Every role gets a separate login,
             <br />
             with the tools, context and actions they need.
@@ -97,25 +97,25 @@ export function CareRoles() {
           {/* Cards Container */}
           <div
             ref={scrollRef}
-            className="flex w-full snap-x snap-mandatory gap-6 overflow-x-auto pb-8 pt-4 px-4 scrollbar-hide"
+            className="flex w-full snap-x snap-mandatory gap-4 md:gap-6 overflow-x-auto pb-8 pt-4 px-6 scrollbar-hide"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {roles.map((role, index) => (
               <div
                 key={index}
-                className="w-[150px] md:w-[184px] shrink-0 snap-center rounded-2xl bg-white p-6 transition-transform hover:-translate-y-1 flex flex-col items-center text-center"
+                className="w-[170px] md:w-[184px] shrink-0 snap-center rounded-2xl bg-white p-5 md:p-6 transition-transform hover:-translate-y-1 flex flex-col items-center text-center shadow-sm"
               >
-                <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full">
+                <div className="mb-4 md:mb-6 flex h-20 w-20 md:h-24 md:w-24 items-center justify-center rounded-full">
                   <Image
                     src={role.icon}
                     alt={role.name}
                     width={80}
                     height={80}
-                    className="object-contain drop-shadow-sm"
+                    className="object-contain drop-shadow-sm w-16 md:w-20"
                   />
                 </div>
-                <h3 className="text-sm font-medium text-[#1E293B] mb-1">{role.name}</h3>
-                <p className="text-[10px] text-slate-400">{role.description}</p>
+                <h3 className="text-[13px] md:text-sm font-medium text-[#1E293B] mb-1">{role.name}</h3>
+                <p className="text-[10px] md:text-[11px] text-slate-400">{role.description}</p>
               </div>
             ))}
           </div>

@@ -69,7 +69,7 @@ export function Pricing({ onOpenDemo }: PricingProps = {}) {
   ];
 
   return (
-    <section className="relative w-full py-24 sm:py-32 overflow-hidden bg-gradient-to-b from-[#F2FAFE] to-[#55CAF5]">
+    <section className="relative w-full py-12 lg:py-32 overflow-hidden bg-gradient-to-b from-[#F2FAFE] to-[#55CAF5]">
       {/* Decorative Background Blur */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[600px] bg-[#9CE0FF]/40 rounded-[100%] blur-[120px] pointer-events-none"></div>
 

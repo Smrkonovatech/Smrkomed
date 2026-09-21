@@ -2,23 +2,23 @@ import Image from "next/image";
 
 export function PatientWhatsApp() {
   return (
-    <section className="relative w-full bg-[#FAFAFA] pt-24 pb-32 overflow-hidden">
+    <section className="relative w-full bg-[#FAFAFA] pt-6 lg:pt-24 pb-20 lg:pb-32 overflow-hidden">
       <div className="mx-auto flex max-w-7xl flex-col items-center px-6 relative z-10">
         
         {/* Headings */}
-        <div className="text-center mb-16">
-          <h2 className="text-[2.75rem] leading-[1.2] text-[#1E293B] mb-6 font-light">
+        <div className="text-center mb-10 lg:mb-16">
+          <h2 className="text-3xl lg:text-[2.75rem] leading-[1.2] text-[#1E293B] mb-4 lg:mb-6 font-light">
             Everything patients need.<br />
             Right where they already are.
           </h2>
-          <p className="text-[15px] text-slate-500 max-w-xl mx-auto leading-relaxed">
-            Meet patients where they already are.<br />
+          <p className="text-[14px] lg:text-[15px] text-slate-500 max-w-xl mx-auto leading-relaxed">
+            Meet patients where they already are.<br className="hidden lg:block" />
             SmrkoMed turns WhatsApp into a secure healthcare communication channel.
           </p>
         </div>
 
         {/* Center Phone Container */}
-        <div className="relative w-full max-w-[1000px] flex justify-center mt-12">
+        <div className="relative w-full max-w-[1000px] flex justify-center mt-8 lg:mt-12">
           
           {/* Top WhatsApp Icon */}
           <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-20 flex h-20 w-20 items-center justify-center rounded-[24px] bg-white shadow-xl shadow-blue-500/10">
@@ -44,7 +44,7 @@ export function PatientWhatsApp() {
             {/* FLOATING CARDS */}
             
             {/* Top Left: Next Care Step */}
-            <div className="absolute top-[8%] -left-[220px] lg:-left-[260px] z-20 flex flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#EAF4FE] to-[#F1EEFE] p-4 backdrop-blur-md shadow-lg w-[240px]">
+            <div className="hidden lg:flex absolute top-[8%] -left-[220px] lg:-left-[260px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#EAF4FE] to-[#F1EEFE] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 text-blue-500">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -60,7 +60,7 @@ export function PatientWhatsApp() {
             </div>
 
             {/* Middle Left: Lab report ready */}
-            <div className="absolute top-[40%] -left-[260px] lg:-left-[320px] z-20 flex flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#DEF4FC] to-[#F1FBFE] p-4 backdrop-blur-md shadow-lg w-[240px]">
+            <div className="hidden lg:flex absolute top-[40%] -left-[260px] lg:-left-[320px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#DEF4FC] to-[#F1FBFE] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 text-[#00AEEF]">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
@@ -76,7 +76,7 @@ export function PatientWhatsApp() {
             </div>
 
             {/* Bottom Left: Appointment confirmed */}
-            <div className="absolute top-[72%] -left-[220px] lg:-left-[260px] z-20 flex flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#F3EBFE] to-[#F9F5FE] p-4 backdrop-blur-md shadow-lg w-[240px]">
+            <div className="hidden lg:flex absolute top-[72%] -left-[220px] lg:-left-[260px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#F3EBFE] to-[#F9F5FE] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 text-[#9333EA]">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -93,7 +93,7 @@ export function PatientWhatsApp() {
             </div>
 
             {/* Top Right: Payment received */}
-            <div className="absolute top-[18%] -right-[220px] lg:-right-[260px] z-20 flex flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#EFE8FE] to-[#FDFBFF] p-4 backdrop-blur-md shadow-lg w-[240px]">
+            <div className="hidden lg:flex absolute top-[18%] -right-[220px] lg:-right-[260px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#EFE8FE] to-[#FDFBFF] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">
                 <div className="flex flex-col">
                   <span className="text-[13px] font-semibold text-[#1E293B]">Payment received</span>
@@ -106,7 +106,7 @@ export function PatientWhatsApp() {
             </div>
 
             {/* Middle Right: Medication reminder */}
-            <div className="absolute top-[50%] -right-[260px] lg:-right-[320px] z-20 flex flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#FEEBF6] to-[#FFF5FB] p-4 backdrop-blur-md shadow-lg w-[240px]">
+            <div className="hidden lg:flex absolute top-[50%] -right-[260px] lg:-right-[320px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#FEEBF6] to-[#FFF5FB] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 text-pink-500">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
@@ -122,7 +122,7 @@ export function PatientWhatsApp() {
             </div>
 
             {/* Bottom Right: Connected to care team */}
-            <div className="absolute top-[82%] -right-[220px] lg:-right-[260px] z-20 flex flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#E3F9F2] to-[#F1FCF9] p-4 backdrop-blur-md shadow-lg w-[240px]">
+            <div className="hidden lg:flex absolute top-[82%] -right-[220px] lg:-right-[260px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#E3F9F2] to-[#F1FCF9] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 text-emerald-500">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>

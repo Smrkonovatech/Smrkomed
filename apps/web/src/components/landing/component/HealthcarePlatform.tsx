@@ -7,12 +7,12 @@ export function HealthcarePlatform() {
   const [activeTab, setActiveTab] = useState(0);
 
   return (
-    <section className="relative w-full bg-white pt-24 pb-24">
+    <section className="relative w-full bg-white pt-12 lg:pt-24 pb-12 lg:pb-24">
       <div className="mx-auto flex max-w-7xl flex-col items-center px-6 relative z-10">
 
         {/* Heading Section */}
-        <div className="text-center mb-8">
-          <h2 className="text-[2.75rem] leading-[1.1] text-[#0B1221] mb-4">
+        <div className="text-center mb-6 lg:mb-8">
+          <h2 className="text-3xl lg:text-[2.75rem] leading-[1.1] text-[#0B1221] mb-3 lg:mb-4">
             <span className="font-semibold">Everything your healthcare</span>
             <br />
             <span className="font-light">organisation needs</span>
@@ -43,7 +43,7 @@ export function HealthcarePlatform() {
         </div>
 
         {/* Cards Container - Sticky Stack */}
-        <div className="relative w-full max-w-[1100px] flex flex-col gap-[30vh] lg:gap-[50vh] pb-[20vh] lg:pb-[30vh]">
+        <div className="relative w-full max-w-[1100px] flex flex-col gap-[25vh] lg:gap-[50vh] pb-[5vh] lg:pb-[30vh]">
 
           {/* CARD 1: Clinical */}
           <div
@@ -51,18 +51,18 @@ export function HealthcarePlatform() {
             style={{ background: "linear-gradient(180deg, #00AEEF 0%, #FFFFFF 100%)", zIndex: 1 }}
           >
             {/* Left Content */}
-            <div className="w-full lg:w-[45%] p-10 lg:p-16 flex flex-col justify-center relative z-10">
-              <span className="text-[13px] font-medium text-[#1E293B] mb-4">Doctor Workspace</span>
-              <h3 className="text-4xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-6">
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Doctor Workspace</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
                 Clinical Care &<br />Patient 360
               </h3>
-              <p className="text-[14px] text-[#1E293B]/80 mb-8 max-w-[320px] leading-relaxed">
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
                 From clinical care to daily operations<br />all connected seamlessly without clutter.
               </p>
 
-              <ul className="flex flex-col gap-4 mb-10">
+              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-[14px] font-medium text-[#1E293B]">
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
@@ -73,14 +73,14 @@ export function HealthcarePlatform() {
                 ))}
               </ul>
 
-              <button className="self-start rounded-full bg-[#2A2B3D] px-8 py-3.5 text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
                 Explore Clinical Care
               </button>
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[400px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8">
-              <div className="relative w-full max-w-[600px] h-full flex items-end">
+            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+              <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/clinic.png"
                   alt="Doctor looking at digital records"
@@ -184,18 +184,18 @@ export function HealthcarePlatform() {
             style={{ background: "linear-gradient(180deg, #D4C4FA 0%, #FFFFFF 100%)", zIndex: 2 }}
           >
             {/* Left Content */}
-            <div className="w-full lg:w-[45%] p-10 lg:p-16 flex flex-col justify-center relative z-10">
-              <span className="text-[13px] font-medium text-[#1E293B] mb-4">Coordination Engine</span>
-              <h3 className="text-4xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-6">
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Coordination Engine</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
                 Care journeys<br />& execution
               </h3>
-              <p className="text-[14px] text-[#1E293B]/80 mb-8 max-w-[320px] leading-relaxed">
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
                 From clinical care to daily operations<br />all connected seamlessly without clutter.
               </p>
 
-              <ul className="flex flex-col gap-4 mb-10">
+              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-[14px] font-medium text-[#1E293B]">
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9333EA" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
@@ -206,14 +206,14 @@ export function HealthcarePlatform() {
                 ))}
               </ul>
 
-              <button className="self-start rounded-full bg-[#2A2B3D] px-8 py-3.5 text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
                 Request a walk thorugh
               </button>
             </div>
 
             {/* Right Image */}
-            <div className="w-full lg:w-[55%] relative min-h-[400px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8">
-              <div className="relative w-full max-w-[600px] h-full flex items-end">
+            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+              <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/care.png"
                   alt="Couple reviewing care plan"
@@ -231,18 +231,18 @@ export function HealthcarePlatform() {
             style={{ background: "linear-gradient(180deg, #BDEAE1 0%, #FFFFFF 100%)", zIndex: 3 }}
           >
             {/* Left Content */}
-            <div className="w-full lg:w-[45%] p-10 lg:p-16 flex flex-col justify-center relative z-10">
-              <span className="text-[13px] font-medium text-[#1E293B] mb-4">Operations Hub</span>
-              <h3 className="text-4xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-6">
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Operations Hub</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
                 Clinic & Hospital<br />Operations
               </h3>
-              <p className="text-[14px] text-[#1E293B]/80 mb-8 max-w-[320px] leading-relaxed">
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
                 Streamline appointments, staff roles, laboratory, pharmacy and patient discharge.
               </p>
 
-              <ul className="flex flex-col gap-4 mb-10">
+              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-[14px] font-medium text-[#1E293B]">
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2DD4BF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
@@ -253,14 +253,14 @@ export function HealthcarePlatform() {
                 ))}
               </ul>
 
-              <button className="self-start rounded-full bg-[#2A2B3D] px-8 py-3.5 text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
                 Request a walk thorugh
               </button>
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[400px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8">
-              <div className="relative w-full max-w-[600px] h-full flex items-end">
+            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+              <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/operation.png"
                   alt="Operations staff"
@@ -350,18 +350,18 @@ export function HealthcarePlatform() {
             style={{ background: "linear-gradient(180deg, #C2D2F2 0%, #FFFFFF 100%)", zIndex: 4 }}
           >
             {/* Left Content */}
-            <div className="w-full lg:w-[45%] p-10 lg:p-16 flex flex-col justify-center relative z-10">
-              <span className="text-[13px] font-medium text-[#1E293B] mb-4">Whatsapp layer</span>
-              <h3 className="text-4xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-6">
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Whatsapp layer</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
                 Connected Patient<br />Communication
               </h3>
-              <p className="text-[14px] text-[#1E293B]/80 mb-8 max-w-[320px] leading-relaxed">
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
                 Streamline appointments, staff roles, laboratory, pharmacy and patient discharge.
               </p>
 
-              <ul className="flex flex-col gap-4 mb-10">
+              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-[14px] font-medium text-[#1E293B]">
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
@@ -372,14 +372,14 @@ export function HealthcarePlatform() {
                 ))}
               </ul>
 
-              <button className="self-start rounded-full bg-[#2A2B3D] px-8 py-3.5 text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
                 Request a walk thorugh
               </button>
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[400px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8">
-              <div className="relative w-full max-w-[600px] h-full flex items-end">
+            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+              <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/communication.png"
                   alt="Doctor communicating"
@@ -517,18 +517,18 @@ export function HealthcarePlatform() {
             style={{ background: "linear-gradient(180deg, #FADBF8 0%, #FFFFFF 100%)", zIndex: 5 }}
           >
             {/* Left Content */}
-            <div className="w-full lg:w-[45%] p-10 lg:p-16 flex flex-col justify-center relative z-10">
-              <span className="text-[13px] font-medium text-[#1E293B] mb-4">Financial Operations</span>
-              <h3 className="text-4xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-6">
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Financial Operations</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
                 Billing, Packages &<br />Payments
               </h3>
-              <p className="text-[14px] text-[#1E293B]/80 mb-8 max-w-[320px] leading-relaxed">
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
                 Transparent billing packages, partial payments, instant receipts and insurance pre-authorisations.
               </p>
 
-              <ul className="flex flex-col gap-4 mb-10">
+              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
-                  <li key={i} className="flex items-center gap-3 text-[14px] font-medium text-[#1E293B]">
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="20 6 9 17 4 12"></polyline>
@@ -539,14 +539,14 @@ export function HealthcarePlatform() {
                 ))}
               </ul>
 
-              <button className="self-start rounded-full bg-[#2A2B3D] px-8 py-3.5 text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
                 Request a walk thorugh
               </button>
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[400px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8">
-              <div className="relative w-full max-w-[600px] h-full flex items-end">
+            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+              <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/finance.png"
                   alt="Finance operations"

@@ -16,7 +16,7 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
   ];
 
   return (
-    <section className="relative w-full bg-gradient-to-b from-[#55CAF5] to-[#25A9F4] overflow-hidden pt-24 sm:pt-32">
+    <section className="relative w-full bg-gradient-to-b from-[#55CAF5] to-[#25A9F4] overflow-hidden pt-12 lg:pt-32">
       
       {/* Top CTA Section */}
       <div className="mx-auto max-w-4xl px-6 text-center relative z-20 mb-32">
