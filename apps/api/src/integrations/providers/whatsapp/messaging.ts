@@ -999,7 +999,6 @@ export async function sendWhatsAppInteractiveList(
     buttonLabel: string;
     sections: InteractiveListSection[];
     headerText?: string;
-    headerImageUrl?: string;
     footerText?: string;
     senderType?: "STAFF" | "AI" | "SYSTEM";
   },
@@ -1078,7 +1077,6 @@ export async function sendWhatsAppInteractiveList(
       body,
       buttonLabel: input.buttonLabel,
       sections: input.sections,
-      ...(input.headerImageUrl ? { headerImageUrl: input.headerImageUrl } : {}),
       ...(input.headerText ? { headerText: input.headerText } : {}),
       ...(input.footerText ? { footerText: input.footerText } : {}),
     });

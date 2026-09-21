@@ -540,9 +540,11 @@ export async function handleMenuAction(input: {
       body: listBody,
       buttonLabel: "Choose Slot",
       sections,
-      ...(doc.photoUrl ? { headerImageUrl: doc.photoUrl } : {}),
+      headerText: doc.displayName.slice(0, 60),
       footerText: `${input.tenant.clinicName || "Smrkomed"} · Tap a slot to confirm`,
-    }).catch(() => undefined);
+    }).catch((err) => {
+      console.error("[WhatsApp Menu] Failed to send doctor slots interactive list:", err);
+    });
 
     return { handled: true, action: "DOCTOR_SELECTED", responseText: listBody };
   }

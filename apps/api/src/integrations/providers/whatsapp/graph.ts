@@ -431,7 +431,6 @@ export async function sendInteractiveList(input: {
   buttonLabel: string;
   sections: InteractiveListSection[];
   headerText?: string;
-  headerImageUrl?: string;
   footerText?: string;
 }) {
   const seenRowIds = new Set<string>();
@@ -472,9 +471,7 @@ export async function sendInteractiveList(input: {
     },
   };
 
-  if (input.headerImageUrl) {
-    interactive["header"] = { type: "image", image: { link: input.headerImageUrl } };
-  } else if (input.headerText) {
+  if (input.headerText) {
     interactive["header"] = { type: "text", text: input.headerText.slice(0, 60) };
   }
   if (input.footerText) {
