@@ -103,18 +103,18 @@ export function CareRoles() {
             {roles.map((role, index) => (
               <div
                 key={index}
-                className="w-[170px] md:w-[184px] shrink-0 snap-center rounded-2xl bg-white p-5 md:p-6 transition-transform hover:-translate-y-1 flex flex-col items-center text-center shadow-sm"
+                className="w-[170px] md:w-[184px] shrink-0 snap-center rounded-2xl bg-white p-5 md:p-6 transition-all duration-300 hover:-translate-y-2 hover:shadow-[0_12px_24px_rgba(0,0,0,0.08)] flex flex-col items-center text-center shadow-sm cursor-pointer group border border-transparent hover:border-slate-100"
               >
-                <div className="mb-4 md:mb-6 flex h-20 w-20 md:h-24 md:w-24 items-center justify-center rounded-full">
+                <div className="mb-4 md:mb-6 flex h-20 w-20 md:h-24 md:w-24 items-center justify-center rounded-full transition-transform duration-300 group-hover:scale-110">
                   <Image
                     src={role.icon}
                     alt={role.name}
                     width={80}
                     height={80}
-                    className="object-contain drop-shadow-sm w-16 md:w-20"
+                    className="object-contain drop-shadow-sm w-16 md:w-20 transition-all duration-300 group-hover:drop-shadow-md"
                   />
                 </div>
-                <h3 className="text-[13px] md:text-sm font-medium text-[#1E293B] mb-1">{role.name}</h3>
+                <h3 className="text-[13px] md:text-sm font-medium text-[#1E293B] mb-1 transition-colors group-hover:text-[#00AEEF]">{role.name}</h3>
                 <p className="text-[10px] md:text-[11px] text-slate-400">{role.description}</p>
               </div>
             ))}

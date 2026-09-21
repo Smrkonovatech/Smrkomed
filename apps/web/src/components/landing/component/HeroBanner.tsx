@@ -69,13 +69,17 @@ export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
           </div>
 
           {/* Floating UI: AI Summary Ready */}
-          <div
+          <div 
             className="absolute bottom-4 left-[10%] lg:left-[20%] z-40 flex items-center gap-4 rounded-full border border-white/30 bg-white/20 p-2 pr-6 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
             style={{ animation: 'floatAnim 3.5s ease-in-out infinite' }}
           >
             <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#2A2B3D]">
               {/* Outer Glow */}
               <div className="absolute inset-0 rounded-full bg-[#2A2B3D] opacity-40 blur-md"></div>
+              {/* Recording Wave Animations (Slow & Smooth) */}
+              <div className="absolute inset-0 rounded-full border-2 border-[#2A2B3D]/50 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
+              <div className="absolute inset-0 rounded-full border-2 border-[#2A2B3D]/40 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" style={{ animationDelay: '1000ms' }}></div>
+              <div className="absolute inset-0 rounded-full border-2 border-[#2A2B3D]/30 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]" style={{ animationDelay: '2000ms' }}></div>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
             </div>
             <span className="text-[13px] font-medium text-[#1E293B]/95">AI Summary Ready</span>

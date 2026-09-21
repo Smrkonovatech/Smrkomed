@@ -28,13 +28,13 @@ export function HealthcarePlatform() {
             <button
               key={index}
               onClick={() => setActiveTab(index)}
-              className={`flex items-center gap-2 rounded-full border px-5 py-2 text-[13px] font-medium transition-colors ${activeTab === index
-                ? "bg-[#D9F1FF] border-[#BBE3FB] text-[#1E293B]"
+              className={`flex items-center gap-2 rounded-full border px-5 py-2 text-[13px] font-medium transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md active:scale-95 ${activeTab === index
+                ? "bg-[#D9F1FF] border-[#BBE3FB] text-[#1E293B] shadow-sm"
                 : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
                 }`}
             >
               {/* Simple generic SVG for the tab icon */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 ${activeTab === index ? 'scale-110 text-[#00AEEF]' : ''}`}>
                 <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
               </svg>
               {tab}
@@ -214,13 +214,123 @@ export function HealthcarePlatform() {
             {/* Right Image */}
             <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
+                
+                {/* Purple glowing arch behind */}
+                <div className="absolute top-[10%] left-[5%] right-[5%] h-[80%] rounded-t-full border-t-[15px] border-l-[15px] border-r-[15px] border-[#A855F7]/30 blur-2xl z-0 pointer-events-none"></div>
+
                 <Image
                   src="/images/landing/healthcare/care.png"
                   alt="Couple reviewing care plan"
                   width={800}
                   height={800}
-                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-10"
+                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-40"
                 />
+
+                {/* Main Care Plan Glass Card */}
+                <div className="absolute left-[-15%] lg:left-[-10%] top-[10%] lg:top-[15%] z-30 flex flex-col rounded-[24px] border border-white/40 bg-white/40 p-5 backdrop-blur-xl shadow-lg w-[240px]">
+                  <div className="mb-4">
+                    <span className="text-[9px] font-bold text-[#9333EA] tracking-wider uppercase">Active Care Plan</span>
+                    <h4 className="text-[15px] font-semibold text-[#1E293B]">IVF Treatment</h4>
+                    <div className="mt-2 w-full bg-white/50 rounded-full h-1 overflow-hidden">
+                      <div className="bg-[#9333EA] h-full w-[60%] rounded-full"></div>
+                    </div>
+                    <div className="flex justify-between mt-1 text-[8px] font-medium text-[#1E293B]/70">
+                      <span>Stage 08 — Monitoring Scan</span>
+                      <span>8/15</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 mb-3">
+                    {/* Stat Item: 14 Care Tasks */}
+                    <div className="flex items-center gap-3 bg-white/50 rounded-[14px] p-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm text-[#8B5CF6]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-bold text-[#1E293B] leading-none">14</span>
+                        <span className="text-[9px] text-[#1E293B]/70">Care Tasks scheduled</span>
+                      </div>
+                    </div>
+                    
+                    {/* Stat Item: 12 Completed */}
+                    <div className="flex items-center gap-3 bg-white/50 rounded-[14px] p-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm text-[#10B981]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-bold text-[#1E293B] leading-none">12</span>
+                        <span className="text-[9px] text-[#1E293B]/70">Completed</span>
+                      </div>
+                    </div>
+
+                    {/* Stat Item: 2 Upcoming */}
+                    <div className="flex items-center gap-3 bg-white/50 rounded-[14px] p-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm text-[#F59E0B]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-bold text-[#1E293B] leading-none">2</span>
+                        <span className="text-[9px] text-[#1E293B]/70">Upcoming</span>
+                      </div>
+                    </div>
+
+                    {/* Stat Item: 0 Escalations */}
+                    <div className="flex items-center gap-3 bg-white/50 rounded-[14px] p-2">
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm text-[#EF4444]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[12px] font-bold text-[#1E293B] leading-none">0</span>
+                        <span className="text-[9px] text-[#1E293B]/70">Escalations</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Next Follow up */}
+                  <div className="flex items-center gap-3 pt-3 border-t border-white/20">
+                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#00AEEF] text-white shadow-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                     </div>
+                     <div className="flex flex-col">
+                        <span className="text-[8px] text-[#1E293B]/60 font-medium">Next Follow-up</span>
+                        <span className="text-[11px] font-bold text-[#1E293B]">Friday, 20 Sep</span>
+                     </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-2 text-[10px] font-semibold text-[#10B981]">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    Patient notified
+                  </div>
+                </div>
+
+                {/* Floating Icons Arch */}
+                <div className="absolute top-[10%] left-[25%] z-10 flex flex-col items-center gap-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                  </div>
+                  <span className="text-[9px] font-medium text-[#1E293B]">Review</span>
+                </div>
+
+                <div className="absolute top-[5%] left-[55%] z-10 flex flex-col items-center gap-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                  </div>
+                  <span className="text-[9px] font-medium text-[#1E293B]">Scan</span>
+                </div>
+
+                <div className="absolute top-[15%] right-[10%] lg:right-[5%] z-10 flex flex-col items-center gap-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="9" width="18" height="6" rx="3" ry="3"></rect><line x1="12" y1="9" x2="12" y2="15"></line></svg>
+                  </div>
+                  <span className="text-[9px] font-medium text-[#1E293B]">Medication</span>
+                </div>
+
+                <div className="absolute top-[40%] right-[-10%] lg:right-[-5%] z-10 flex flex-col items-center gap-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                  </div>
+                  <span className="text-[9px] font-medium text-[#1E293B]">Consultation</span>
+                </div>
+
               </div>
             </div>
           </div>
@@ -378,7 +488,7 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/communication.png"
@@ -389,12 +499,12 @@ export function HealthcarePlatform() {
                 />
 
                 {/* Floating WhatsApp Logo */}
-                <div className="absolute left-[20%] top-[35%] z-20 flex h-14 w-14 items-center justify-center rounded-full bg-[#00AEEF] shadow-lg shadow-[#00AEEF]/20">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                <div className="absolute left-[5%] lg:left-[20%] top-[20%] sm:top-[35%] z-20 flex h-10 w-10 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-[#00AEEF] shadow-lg shadow-[#00AEEF]/20">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="sm:w-7 sm:h-7"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                 </div>
 
                 {/* 1. Reminder Sent Automatically */}
-                <div className="absolute left-[-15%] lg:left-[-10%] top-[45%] z-20 flex flex-col rounded-[20px] border border-white/40 bg-white/40 p-4 backdrop-blur-xl shadow-lg w-[260px]">
+                <div className="absolute left-[-2%] sm:left-[-15%] lg:left-[-10%] top-[40%] sm:top-[45%] z-20 flex flex-col rounded-[20px] border border-white/40 bg-white/40 p-4 backdrop-blur-xl shadow-lg w-[260px] scale-[0.65] sm:scale-100 origin-left">
                   <div className="absolute -top-6 left-6 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-slate-100 text-[#10B981]">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                   </div>
@@ -414,7 +524,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 2. Patient Confirmed */}
-                <div className="absolute left-[5%] lg:left-[5%] top-[60%] z-20 flex flex-col rounded-full border border-white/40 bg-white/40 p-2 pr-4 backdrop-blur-xl shadow-lg w-[230px]">
+                <div className="absolute left-[5%] lg:left-[5%] top-[55%] sm:top-[60%] z-20 flex flex-col rounded-full border border-white/40 bg-white/40 p-2 pr-4 backdrop-blur-xl shadow-lg w-[230px] scale-[0.65] sm:scale-100 origin-left">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm text-[#00AEEF]">
@@ -436,8 +546,8 @@ export function HealthcarePlatform() {
                   </div>
                 </div>
 
-                {/* 3. EMR Synced */}
-                <div className="absolute left-[15%] lg:left-[20%] top-[72%] z-20 flex flex-col rounded-full border border-white/40 bg-white/40 p-2 pr-4 backdrop-blur-xl shadow-lg w-[220px]">
+                {/* 3. EMR Synced (Hidden on small mobile to reduce clutter) */}
+                <div className="absolute hidden sm:flex left-[15%] lg:left-[20%] top-[72%] z-20 flex-col rounded-full border border-white/40 bg-white/40 p-2 pr-4 backdrop-blur-xl shadow-lg w-[220px]">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm text-[#00AEEF]">
@@ -460,7 +570,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 4. Care Task Updated */}
-                <div className="absolute right-[0%] lg:right-[5%] bottom-[12%] z-30 flex flex-col rounded-full border border-white/40 bg-white/40 p-2 pr-4 backdrop-blur-xl shadow-lg w-[240px]">
+                <div className="absolute right-[0%] lg:right-[5%] bottom-[5%] sm:bottom-[12%] z-30 flex flex-col rounded-full border border-white/40 bg-white/40 p-2 pr-4 backdrop-blur-xl shadow-lg w-[240px] scale-[0.65] sm:scale-100 origin-right">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm text-[#F472B6]">
@@ -483,7 +593,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* Right Top: All done */}
-                <div className="absolute right-[10%] lg:right-[15%] top-[40%] z-20 flex items-center gap-3">
+                <div className="absolute right-[5%] sm:right-[10%] lg:right-[15%] top-[25%] sm:top-[40%] z-20 flex items-center gap-3 scale-[0.7] sm:scale-100 origin-right">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#10B981] shadow-md shrink-0">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </div>
@@ -494,7 +604,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* Right Middle: Human Handoff */}
-                <div className="absolute right-[-2%] lg:right-[5%] top-[55%] z-20 flex items-center gap-3 rounded-full border border-white/40 bg-white/30 p-2 pr-4 backdrop-blur-xl shadow-lg">
+                <div className="absolute right-[-5%] sm:right-[-2%] lg:right-[5%] top-[45%] sm:top-[55%] z-20 flex items-center gap-3 rounded-full border border-white/40 bg-white/30 p-2 pr-4 backdrop-blur-xl shadow-lg scale-[0.65] sm:scale-100 origin-right">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full text-[#00AEEF] bg-transparent opacity-50 shrink-0">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                   </div>

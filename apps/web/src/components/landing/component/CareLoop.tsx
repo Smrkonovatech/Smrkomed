@@ -33,14 +33,26 @@ export function CareLoop() {
         <div className="relative w-full max-w-[800px] flex justify-center items-center my-8 lg:my-0">
           
           {/* Main Loop Image (Glowing ring) */}
-          <Image 
-            src="/images/landing/loop.png" 
-            alt="Care Loop Diagram"
-            width={1000}
-            height={1000}
-            className="w-full h-auto object-contain scale-95 md:scale-100"
-            priority
-          />
+          <div className="relative w-full flex justify-center items-center">
+            {/* Blurred Background Glow */}
+            <Image 
+              src="/images/landing/loop.png" 
+              alt=""
+              width={1000}
+              height={1000}
+              className="absolute inset-0 w-full h-auto object-contain scale-95 md:scale-100 blur-3xl opacity-60 animate-[spin_15s_linear_infinite]"
+              priority
+            />
+            {/* Main Crisp Ring */}
+            <Image 
+              src="/images/landing/loop.png" 
+              alt="Care Loop Diagram"
+              width={1000}
+              height={1000}
+              className="relative w-full h-auto object-contain scale-95 md:scale-100 animate-[spin_15s_linear_infinite]"
+              priority
+            />
+          </div>
 
           {/* Center Content Overlaid */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">

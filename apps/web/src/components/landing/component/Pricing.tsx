@@ -91,7 +91,7 @@ export function Pricing({ onOpenDemo }: PricingProps = {}) {
           {tiers.map((tier, idx) => (
             <div 
               key={idx} 
-              className={`relative flex flex-col rounded-[24px] p-6 sm:p-8 backdrop-blur-xl transition-all duration-300 ${
+              className={`relative flex flex-col rounded-[24px] p-6 sm:p-8 backdrop-blur-xl transition-all duration-500 hover:-translate-y-3 hover:shadow-[0_30px_60px_rgba(0,0,0,0.12)] group cursor-pointer ${
                 tier.highlighted
                   ? "bg-white/40 border border-white/80 shadow-[0_0_40px_rgba(255,255,255,0.7)] pb-10" // Taller, glowing card
                   : "bg-white/20 border border-white/40 shadow-[0_8px_32px_rgba(0,0,0,0.04)]"
