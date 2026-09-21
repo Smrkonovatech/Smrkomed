@@ -147,6 +147,7 @@ export async function GET(request: NextRequest) {
     ]);
 
     // Overrides
+    // Overrides
     const overrideRule = await prisma.automationRule.findFirst({
       where: {
         trigger: "DOCTOR_SLOT_OVERRIDES",
@@ -158,28 +159,13 @@ export async function GET(request: NextRequest) {
     });
     let savedOverrides = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
 
-    // If no override exists yet for this doctor on this date, auto-initialize with default active slots
-    // so the database and UI are always 100% in sync with the WhatsApp booking engine
-    if (!overrideRule || !savedOverrides) {
-      const initialSlots = ["09:00 - 09:30", "09:30 - 10:00", "10:00 - 10:30", "11:00 - 11:30"];
-      try {
-        await prisma.automationRule.create({
-          data: {
-            clinicId,
-            trigger: "DOCTOR_SLOT_OVERRIDES",
-            name: `${doctorUser.id}_${requestedDate}`,
-            config: {
-              date: requestedDate,
-              doctorId: doctorUser.id,
-              activeSlots: initialSlots,
-              createdAt: new Date().toISOString(),
-            },
-          },
-        });
-        savedOverrides = initialSlots;
-      } catch {
-        savedOverrides = initialSlots;
-      }
+    // If legacy auto-override of only 4 slots was created, expand it so full day is available
+    if (
+      savedOverrides &&
+      savedOverrides.length === 4 &&
+      savedOverrides.join(",") === "09:00 - 09:30,09:30 - 10:00,10:00 - 10:30,11:00 - 11:30"
+    ) {
+      savedOverrides = undefined;
     }
 
     // Map booked labels
@@ -209,7 +195,10 @@ export async function GET(request: NextRequest) {
       bookedPatientMap.set(slotLabel, patientName);
     }
 
-    const defaultActiveSlots = new Set(["09:00 - 09:30", "10:30 - 11:00", "11:30 - 12:00", "15:00 - 15:30"]);
+    const defaultActiveSlots = new Set([
+      ...DEFAULT_MORNING_SLOTS.map((s) => s.label),
+      ...DEFAULT_AFTERNOON_SLOTS.map((s) => s.label),
+    ]);
 
     const mapSlots = (slotList: typeof DEFAULT_MORNING_SLOTS) => {
       return slotList.map((slot) => {
@@ -223,7 +212,9 @@ export async function GET(request: NextRequest) {
           };
         }
         if (savedOverrides) {
-          const isActive = savedOverrides.includes(slot.label);
+          const isActive = savedOverrides.some(
+            (o: string) => o === slot.label || o === slot.start || o.startsWith(slot.start),
+          );
           return {
             time: slot.label,
             startTime: slot.start,

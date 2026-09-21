@@ -1706,9 +1706,11 @@ async function executeNode(
     case "GET_AVAILABLE_DATES": {
       const daysAhead = Number(node.config["daysAhead"] ?? 7);
       const docName = vars["doctor.displayName"] || vars["doctor_name"] || (vars["doctor.name"] ? `Dr. ${vars["doctor.name"].replace(/^Dr\.?\s*/i, "").trim()}` : null);
+      const docId = vars["doctor.id"] || vars["selectedDoctorId"] || vars["doctor_id"] || null;
       const res = await getAvailableAppointmentSlots({
         clinicId: tenant.clinicId,
         doctorName: docName,
+        doctorId: docId,
         days: daysAhead,
       });
       const dates = groupAvailableDates(res.slots);
@@ -1727,11 +1729,12 @@ async function executeNode(
     case "GET_AVAILABLE_SLOTS": {
       const date = vars["selectedDate"] || vars["selected_date"] || vars["appointment.date"] || null;
       const docName = vars["doctor.displayName"] || vars["doctor_name"] || (vars["doctor.name"] ? `Dr. ${vars["doctor.name"].replace(/^Dr\.?\s*/i, "").trim()}` : null);
+      const docId = vars["doctor.id"] || vars["selectedDoctorId"] || vars["doctor_id"] || null;
       console.log("[APPOINTMENT_SLOT_LOOKUP_STARTED]", {
         clinicId: tenant.clinicId,
         executionId: execution.id,
         nodeId: node.id,
-        doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
+        doctorId: docId,
         doctorName: docName,
         selectedDate: date,
       });
@@ -1741,6 +1744,7 @@ async function executeNode(
         res = await getAvailableAppointmentSlots({
           clinicId: tenant.clinicId,
           doctorName: docName,
+          doctorId: docId,
           preferredDate: date,
           days: 1,
         });

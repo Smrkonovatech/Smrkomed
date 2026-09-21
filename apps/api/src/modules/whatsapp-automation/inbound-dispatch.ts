@@ -61,15 +61,25 @@ export function buildIncomingWhatsAppVars(input: {
     unmatched: input.unmatched ? "true" : "false",
     inbound_at: input.timestampIso,
     ...(text.startsWith("appt_doctor_slots_")
-      ? {
-          selectedDoctorId: text.replace("appt_doctor_slots_", "").trim(),
-          selected_doctor_id: text.replace("appt_doctor_slots_", "").trim(),
-        }
+      ? (() => {
+          const docId = text.replace("appt_doctor_slots_", "").trim();
+          return {
+            selectedDoctorId: docId,
+            selected_doctor_id: docId,
+            "doctor.id": docId,
+            doctor_id: docId,
+          };
+        })()
       : text.startsWith("appt_doctor_")
-        ? {
-            selectedDoctorId: text.replace("appt_doctor_", "").trim(),
-            selected_doctor_id: text.replace("appt_doctor_", "").trim(),
-          }
+        ? (() => {
+            const docId = text.replace("appt_doctor_", "").trim();
+            return {
+              selectedDoctorId: docId,
+              selected_doctor_id: docId,
+              "doctor.id": docId,
+              doctor_id: docId,
+            };
+          })()
         : {}),
     ...(text.startsWith("appt_date_")
       ? (() => {
