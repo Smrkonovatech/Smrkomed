@@ -527,12 +527,25 @@ export async function resumeWaitForReplyExecutions(input: {
         });
 
         if (callerPhone) {
+          const docMembership = await prisma.clinicMembership.findFirst({
+            where: {
+              clinicId: input.tenant.clinicId,
+              status: "ACTIVE",
+              OR: [
+                { role: { key: "DOCTOR" } },
+                { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+              ],
+            },
+            include: { user: { select: { name: true } } },
+          });
+          const activeDoctor = docMembership?.user?.name || "Dr. Jismon J";
+
           const { triggerSarvamOutboundCall } = await import("../appointment-booking/channels/voice");
           await triggerSarvamOutboundCall({
             phoneNumber: callerPhone,
             patientName: resolvedPatientName || undefined,
             clinicName: input.tenant.clinicName || "SmrkoMed",
-            doctorName: "Dr. Ananya Rao",
+            doctorName: activeDoctor,
           }).catch((err) => {
             console.error("[SARVAM OUTBOUND ERROR]", err);
           });

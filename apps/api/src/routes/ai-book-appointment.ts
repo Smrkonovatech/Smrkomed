@@ -64,15 +64,35 @@ function parseDateAndTime(dateStr?: string, timeStr?: string): Date {
 export const aiBookAppointmentRoute = new Hono<AppEnv>()
   .get("/", async (c) => {
     try {
-      const doctorQuery = c.req.query("doctor") || c.req.query("doctorName") || "Dr. Ananya Rao";
+      const clinic =
+        (await prisma.clinic.findFirst({
+          where: {
+            OR: [{ slug: { contains: "hospex" } }, { name: { contains: "Hospex" } }],
+          },
+        })) || (await prisma.clinic.findFirst());
+      const clinicId = clinic?.id || "clinic_default";
+
+      let doctorQuery = c.req.query("doctor") || c.req.query("doctorName") || "";
+      if (!doctorQuery) {
+        const docMembership = await prisma.clinicMembership.findFirst({
+          where: {
+            clinicId,
+            status: "ACTIVE",
+            OR: [
+              { role: { key: "DOCTOR" } },
+              { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+            ],
+          },
+          include: { user: { select: { name: true } } },
+        });
+        doctorQuery = docMembership?.user?.name || "Dr. Jismon J";
+      }
+
       const dateQuery = c.req.query("date") || "tomorrow";
 
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const dateIso = dateQuery === "tomorrow" ? tomorrow.toISOString().split("T")[0]! : dateQuery;
-
-      const clinic = await prisma.clinic.findFirst();
-      const clinicId = clinic?.id || "clinic_default";
 
       const { getDoctorDaySlots } = await import("../modules/appointment-booking/slot-engine");
       const slots = await getDoctorDaySlots(clinicId, doctorQuery, dateIso);
@@ -133,13 +153,27 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
         "",
     ).trim();
 
-    const doctorName = String(
+    let doctorName = String(
       json["doctorName"] ||
         json["doctor_name"] ||
         json["doctor"] ||
         activeCall?.doctorName ||
-        "Dr. Ananya Rao",
+        "",
     );
+
+    if (!doctorName) {
+      const docMembership = await prisma.clinicMembership.findFirst({
+        where: {
+          status: "ACTIVE",
+          OR: [
+            { role: { key: "DOCTOR" } },
+            { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+          ],
+        },
+        include: { user: { select: { name: true } } },
+      });
+      doctorName = docMembership?.user?.name || "Dr. Jismon J";
+    }
 
     const inputType = String(
       json["appointmentType"] ||
@@ -153,6 +187,18 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
     // Resilient patient & couple resolution
     let patient = null;
     let couple = null;
+
+    // 0. Direct coupleId match from request or active call
+    const requestedCoupleId = String(json["coupleId"] || json["couple_id"] || activeCall?.coupleId || "");
+    if (requestedCoupleId) {
+      couple = await prisma.couple.findUnique({
+        where: { id: requestedCoupleId },
+        include: { clinic: true, primaryPatient: true, partnerPatient: true },
+      });
+      if (couple?.primaryPatient) {
+        patient = couple.primaryPatient;
+      }
+    }
 
     // 1. Match patient by phone number
     if (phoneLast10.length >= 8) {
@@ -400,6 +446,22 @@ export const aiBookAppointmentRoute = new Hono<AppEnv>()
       minute: "2-digit",
       hour12: true,
     });
+
+    // Sync CareTask so Care Loop tracks this voice call booking
+    try {
+      const { syncCareTaskForAppointment } = await import("../modules/appointments/whatsapp-booking");
+      await syncCareTaskForAppointment({
+        clinicId: couple.clinicId,
+        coupleId: couple.id,
+        appointmentId: appointment.id,
+        title: `Consultation with ${doctorName}`,
+        description: `Confirmed appointment on ${formattedDate} at ${formattedTime}.`,
+        startsAt,
+        mode: existingPatientAppt ? "reschedule" : "book",
+      });
+    } catch (taskErr) {
+      console.warn("[AI Book Appointment Route] CareTask sync notice:", taskErr);
+    }
 
     // Send WhatsApp confirmation if conversation exists
     const conv = await prisma.conversation.findFirst({

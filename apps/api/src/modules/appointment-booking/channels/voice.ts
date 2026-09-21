@@ -82,6 +82,8 @@ export function formatVoiceSuccess(session: BookingSession, lang = "en"): string
 export interface ActiveVoiceCall {
   phoneNumber: string;
   patientName?: string | undefined;
+  partnerName?: string | undefined;
+  coupleId?: string | undefined;
   doctorName?: string | undefined;
   clinicName?: string | undefined;
   startedAt: number;
@@ -113,6 +115,7 @@ export async function triggerSarvamOutboundCall(params: {
   phoneNumber: string;
   patientName?: string | undefined;
   partnerName?: string | undefined;
+  coupleId?: string | undefined;
   treatment?: string | undefined;
   stage?: string | undefined;
   doctorName?: string | undefined;
@@ -172,6 +175,8 @@ export async function triggerSarvamOutboundCall(params: {
     recordActiveVoiceCall({
       phoneNumber: formattedPhone,
       patientName: params.patientName,
+      partnerName: params.partnerName,
+      coupleId: params.coupleId,
       doctorName,
       clinicName,
       startedAt: Date.now(),

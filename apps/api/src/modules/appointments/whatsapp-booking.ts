@@ -113,7 +113,7 @@ async function notifyStaffAiAppointmentAction(input: {
 }
 
 /** Create once, or update existing open CareTask for this appointment (no duplicates). */
-async function ensureCareTaskForAppointment(input: {
+export async function ensureCareTaskForAppointment(input: {
   clinicId: string;
   coupleId: string | null;
   appointmentId: string;
@@ -122,7 +122,7 @@ async function ensureCareTaskForAppointment(input: {
   startsAt: Date;
   doctorName?: string | null;
   appointmentType?: string | null;
-  mode?: "create" | "reschedule";
+  mode?: "create" | "reschedule" | "book";
 }) {
   if (!input.coupleId) return;
   const existing = await prisma.careTask.findFirst({
@@ -188,6 +188,8 @@ async function ensureCareTaskForAppointment(input: {
   });
   return task.id;
 }
+
+export const syncCareTaskForAppointment = ensureCareTaskForAppointment;
 
 export async function setConversationPendingAction(input: {
   clinicId: string;
