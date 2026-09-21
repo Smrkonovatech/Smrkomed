@@ -624,29 +624,30 @@ export default function WhatsAppInboxPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 pb-24">
-      <PageHeader
-        title="Inbox"
-        subtitle="Operational patient communication console with real-time Meta WhatsApp sync."
-        actions={
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                className="appearance-none bg-white border border-gray-200 hover:border-gray-300 rounded-xl px-4 py-2 pr-9 text-xs font-semibold text-gray-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] cursor-pointer min-w-[160px]"
-              >
-                {FILTERS.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
-            </div>
+    <div className="flex flex-col -mb-8">
+      {/* Compact Header */}
+      <div className="mb-2.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl font-bold tracking-tight text-gray-900 sm:text-2xl">Inbox</h1>
+          <p className="text-xs text-gray-500">Operational patient communication console with real-time Meta WhatsApp sync.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="appearance-none bg-white border border-gray-200 hover:border-gray-300 rounded-xl px-4 py-2 pr-9 text-xs font-semibold text-gray-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] cursor-pointer min-w-[160px]"
+            >
+              {FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
           </div>
-        }
-      />
+        </div>
+      </div>
 
       {rows.length === 0 && filter === "all" && !q ? (
         <EmptyState
@@ -654,7 +655,7 @@ export default function WhatsAppInboxPage() {
           description="Connect WhatsApp and wait for patient messages, or send an approved template."
         />
       ) : (
-        <div className="grid h-[65vh] min-h-[500px] mb-20 overflow-hidden rounded-xl border bg-white shadow-sm lg:grid-cols-[320px_minmax(0,1fr)_380px]">
+        <div className="grid h-[calc(100vh-140px)] min-h-[740px] 2xl:h-[calc(100vh-125px)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xs lg:grid-cols-[280px_minmax(0,1fr)_330px]">
           {/* Conversation List */}
           <aside className="border-r border-gray-100 flex flex-col bg-[#FAFAFA] h-full min-h-0 overflow-hidden">
             <div className="px-4 pt-4 pb-3 flex items-center gap-2">
@@ -744,7 +745,7 @@ export default function WhatsAppInboxPage() {
               </div>
             ) : (
               <>
-                <header className="border-b border-gray-100 px-6 py-3.5 bg-white flex flex-col gap-2.5">
+                <header className="border-b border-gray-100 px-5 py-2.5 bg-white flex flex-col gap-1.5 shrink-0">
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-3">
                       <div className="relative">
@@ -815,7 +816,7 @@ export default function WhatsAppInboxPage() {
                       setHasNewMessageBelow(false);
                     }
                   }}
-                  className="flex-1 space-y-3.5 overflow-y-auto bg-[#FAFAFA]/50 p-6 pb-8"
+                  className="flex-1 space-y-3.5 overflow-y-auto bg-[#FAFAFA]/50 px-6 py-4"
                 >
                   {detail.messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full min-h-[250px] text-center text-gray-400">
@@ -966,7 +967,7 @@ export default function WhatsAppInboxPage() {
                     : "Partner";
 
                   return (
-                    <div className="bg-white p-3 border-t border-gray-100">
+                    <div className="bg-white shrink-0">
                       <ChatComposer
                         conversationId={activeId}
                         {...(detail.patient?.id ? { patientId: detail.patient.id } : {})}

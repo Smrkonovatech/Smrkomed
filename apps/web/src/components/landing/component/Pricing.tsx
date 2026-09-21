@@ -1,6 +1,10 @@
 import { Check } from "lucide-react";
 
-export function Pricing() {
+interface PricingProps {
+  onOpenDemo?: (tier?: string) => void;
+}
+
+export function Pricing({ onOpenDemo }: PricingProps = {}) {
   const tiers = [
     {
       name: "Clinic",
@@ -148,7 +152,9 @@ export function Pricing() {
 
               {/* CTA Button */}
               <button 
-                className={`w-full rounded-full py-3 text-[13px] font-semibold transition-all ${
+                type="button"
+                onClick={() => onOpenDemo?.(tier.name)}
+                className={`w-full rounded-full py-3 text-[13px] font-semibold transition-all cursor-pointer ${
                   tier.highlighted
                     ? "bg-[#2B2B36] text-white hover:bg-[#1E1E26]"
                     : "bg-[#91CBEA] text-white hover:bg-[#7ABAE0] shadow-sm"

@@ -41,9 +41,9 @@ export function LandingPage() {
   return (
     <>
       <div className="min-h-screen bg-white">
-        <Header />
+        <Header onOpenDemo={() => handleOpenDemo("General Demo")} />
         <div className="bg-gradient-to-b from-[#00AEEF] to-white">
-          <HeroBanner />
+          <HeroBanner onOpenDemo={() => handleOpenDemo("General Demo")} />
           <CareRoles />
         </div>
         <HealthcarePlatform />
@@ -53,9 +53,16 @@ export function LandingPage() {
         <SmrkoAISection />
         <BuiltToGrow />
         <BuiltForCare />
-        <Pricing />
-        <Closing />
+        <Pricing onOpenDemo={(tier) => handleOpenDemo(tier ? `${tier} Plan` : undefined)} />
+        <Closing onOpenDemo={() => handleOpenDemo("General Demo")} />
       </div>
+
+      {/* Book a Demo Modal with FormSubmit to info@smrkomed.com & Thank You State */}
+      <DemoModal
+        isOpen={demoOpen}
+        onClose={handleCloseDemo}
+        defaultInterest={demoInterest}
+      />
     </>
   );
 }

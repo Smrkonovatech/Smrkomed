@@ -2,7 +2,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { Facebook, Instagram, Linkedin } from "lucide-react";
 
-export function Closing() {
+interface ClosingProps {
+  onOpenDemo?: () => void;
+}
+
+export function Closing({ onOpenDemo }: ClosingProps = {}) {
   const footerLinks = [
     { label: "Privacy Policy", href: "#" },
     { label: "Data Deletion", href: "#" },
@@ -24,10 +28,18 @@ export function Closing() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <button className="w-full sm:w-[160px] rounded-full border border-[#1E293B] py-3 text-[13px] font-medium text-[#1E293B] hover:bg-white/10 transition-colors">
+          <button 
+            type="button"
+            onClick={onOpenDemo}
+            className="w-full sm:w-[160px] rounded-full border border-[#1E293B] py-3 text-[13px] font-medium text-[#1E293B] hover:bg-white/10 transition-colors cursor-pointer"
+          >
             Talk to Us
           </button>
-          <button className="w-full sm:w-[160px] rounded-full bg-[#2B2B36] py-3 text-[13px] font-medium text-white shadow-lg hover:bg-[#1E1E26] transition-colors">
+          <button 
+            type="button"
+            onClick={onOpenDemo}
+            className="w-full sm:w-[160px] rounded-full bg-[#2B2B36] py-3 text-[13px] font-medium text-white shadow-lg hover:bg-[#1E1E26] transition-colors cursor-pointer"
+          >
             Book a Demo
           </button>
         </div>

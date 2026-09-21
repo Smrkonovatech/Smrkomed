@@ -1,6 +1,10 @@
 import Image from "next/image";
 
-export function HeroBanner() {
+interface HeroBannerProps {
+  onOpenDemo?: () => void;
+}
+
+export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
   return (
     <section className="relative w-full   pt-32 pb-20 lg:pt-40 lg:pb-32">
       {/* Subtle Background Glow/Gradient */}
@@ -87,7 +91,11 @@ export function HeroBanner() {
             SmrkoMed brings clinical care, care teams, patient communication, workflows, and intelligence together in one seamless healthcare platform.
           </p>
           <div className="mt-10">
-            <button className="rounded-full bg-[#2A2B3D] px-9 py-3.5 text-[15px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-xl">
+            <button 
+              type="button"
+              onClick={onOpenDemo}
+              className="rounded-full bg-[#2A2B3D] px-9 py-3.5 text-[15px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-xl cursor-pointer"
+            >
               Book a Demo
             </button>
           </div>
