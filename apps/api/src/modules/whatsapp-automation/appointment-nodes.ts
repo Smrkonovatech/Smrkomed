@@ -61,19 +61,14 @@ export const DEMO_DOCTORS: ClinicDoctor[] = [
   },
 ];
 
-export function isMockDoctorEmail(email?: string | null, name?: string | null): boolean {
+export function isMockDoctorEmail(email?: string | null, _name?: string | null): boolean {
   const e = (email || "").toLowerCase().trim();
-  const n = (name || "").toLowerCase().trim();
   return (
     e === "ananya@abcfertility.demo" ||
     e === "ravi@abcfertility.demo" ||
     e === "priya@abcfertility.demo" ||
     e === "rajesh@abcfertility.demo" ||
-    (e.endsWith("@abcfertility.demo") && (n.includes("ananya") || n.includes("rahul") || n.includes("priya") || n.includes("rajesh"))) ||
-    n.includes("ananya rao") ||
-    n.includes("rahul menon") ||
-    n.includes("priya nair") ||
-    n.includes("rajesh sharma")
+    (e.endsWith("@abcfertility.demo") && (e.includes("ananya") || e.includes("rahul") || e.includes("priya") || e.includes("rajesh")))
   );
 }
 
@@ -83,12 +78,27 @@ export async function resolveClinicDoctors(clinicId: string): Promise<ClinicDoct
     const isHospex =
       clinicId === "cmt0exo9n000vl804rbaabh32" ||
       clinicId === "cmu3nmx310026jy04gsi21hxl" ||
+      clinicId === "hospex-chennai-clinic" ||
       clinicId === "blr" ||
       clinicId === "kochi";
 
-    const targetClinicIds = isHospex
-      ? ["cmt0exo9n000vl804rbaabh32", "cmu3nmx310026jy04gsi21hxl"]
+    let targetClinicIds = isHospex
+      ? ["cmt0exo9n000vl804rbaabh32", "cmu3nmx310026jy04gsi21hxl", "hospex-chennai-clinic"]
       : [clinicId];
+
+    try {
+      const currentClinic = await prisma.clinic.findUnique({
+        where: { id: clinicId },
+        select: { organizationId: true },
+      });
+      if (currentClinic?.organizationId) {
+        const orgClinics = await prisma.clinic.findMany({
+          where: { organizationId: currentClinic.organizationId },
+          select: { id: true },
+        });
+        targetClinicIds = Array.from(new Set([...targetClinicIds, ...orgClinics.map((c) => c.id)]));
+      }
+    } catch {}
 
     const memberships = await prisma.clinicMembership.findMany({
       where: {

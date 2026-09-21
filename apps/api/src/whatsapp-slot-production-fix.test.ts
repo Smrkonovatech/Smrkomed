@@ -53,6 +53,10 @@ const sundayUtc = new Date(mondayUtc.getTime() + 6 * 86_400_000);
 const targetSundayStr = sundayUtc.toISOString().slice(0, 10);
 
 test.before(async () => {
+  await prisma.message.deleteMany({
+    where: { providerMessageId: "wamid.TEST_WAMID_12345" },
+  }).catch(() => undefined);
+
   const org = await prisma.organization.create({
     data: { name: `${PREFIX}-org` },
   });

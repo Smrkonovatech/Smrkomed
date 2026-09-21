@@ -58,19 +58,14 @@ const STANDARD_SLOT_TIMES = [
   "17:00",
 ];
 
-export function isMockDoctorEmail(email?: string | null, name?: string | null): boolean {
+export function isMockDoctorEmail(email?: string | null, _name?: string | null): boolean {
   const e = (email || "").toLowerCase().trim();
-  const n = (name || "").toLowerCase().trim();
   return (
     e === "ananya@abcfertility.demo" ||
     e === "ravi@abcfertility.demo" ||
     e === "priya@abcfertility.demo" ||
     e === "rajesh@abcfertility.demo" ||
-    (e.endsWith("@abcfertility.demo") && (n.includes("ananya") || n.includes("rahul") || n.includes("priya") || n.includes("rajesh"))) ||
-    n.includes("ananya rao") ||
-    n.includes("rahul menon") ||
-    n.includes("priya nair") ||
-    n.includes("rajesh sharma")
+    (e.endsWith("@abcfertility.demo") && (e.includes("ananya") || e.includes("rahul") || e.includes("priya") || e.includes("rajesh")))
   );
 }
 
@@ -97,12 +92,27 @@ export async function getClinicDoctors(clinicId: string): Promise<BookingDoctorS
     const isHospex =
       clinicId === "cmt0exo9n000vl804rbaabh32" ||
       clinicId === "cmu3nmx310026jy04gsi21hxl" ||
+      clinicId === "hospex-chennai-clinic" ||
       clinicId === "blr" ||
       clinicId === "kochi";
 
-    const targetClinicIds = isHospex
-      ? ["cmt0exo9n000vl804rbaabh32", "cmu3nmx310026jy04gsi21hxl"]
+    let targetClinicIds = isHospex
+      ? ["cmt0exo9n000vl804rbaabh32", "cmu3nmx310026jy04gsi21hxl", "hospex-chennai-clinic"]
       : [clinicId];
+
+    try {
+      const currentClinic = await prisma.clinic.findUnique({
+        where: { id: clinicId },
+        select: { organizationId: true },
+      });
+      if (currentClinic?.organizationId) {
+        const orgClinics = await prisma.clinic.findMany({
+          where: { organizationId: currentClinic.organizationId },
+          select: { id: true },
+        });
+        targetClinicIds = Array.from(new Set([...targetClinicIds, ...orgClinics.map((c) => c.id)]));
+      }
+    } catch {}
 
     const memberships = await prisma.clinicMembership.findMany({
       where: {
@@ -243,9 +253,14 @@ export async function getDoctorDaySlots(
   }
 
   const cleanDocId = doctorId.replace(/^doc_/, "");
+  const cleanDocName = doctorId.replace(/^dr\s*\.?\s*/i, "").trim();
   const doctorUser = await prisma.user.findFirst({
     where: {
-      OR: [{ id: cleanDocId }, { id: doctorId }],
+      OR: [
+        { id: cleanDocId },
+        { id: doctorId },
+        ...(cleanDocName ? [{ name: { contains: cleanDocName, mode: "insensitive" as const } }] : []),
+      ],
     },
     select: {
       id: true,
@@ -312,6 +327,7 @@ export async function getDoctorDaySlots(
       trigger: "DOCTOR_SLOT_OVERRIDES",
       OR: [
         { name: `${doctorUser?.id || cleanDocId}_${dateIso}` },
+        { name: `doc_${doctorUser?.id || cleanDocId}_${dateIso}` },
         { name: `${cleanDocId}_${dateIso}` },
         { name: `doc_${cleanDocId}_${dateIso}` },
       ],
@@ -370,7 +386,9 @@ export async function getDoctorDaySlots(
 
     // 3. DOCTOR AVAILABILITY OVERRIDE:
     // If doctor explicitly configured active slots for this day, respect their selection
-    const isDoctorEnabled = savedActiveSlots ? savedActiveSlots.includes(slotLabel) : true;
+    const isDoctorEnabled = savedActiveSlots
+      ? savedActiveSlots.some((s) => s === slotLabel || s === timeStr || s.startsWith(timeStr))
+      : true;
 
     const isAvailable = !isPast && !isConflict && isDoctorEnabled;
 
@@ -454,19 +472,42 @@ export async function recheckSlotAvailability(
       return { available: false, reason: "SLOT_TAKEN" };
     }
 
-    // 3. Check if slot was manually disabled by doctor in slot management
-    const override = await prisma.automationRule.findFirst({
-      where: {
-        trigger: "DOCTOR_SLOT_OVERRIDES",
-        name: { contains: dateIso },
-      },
-    });
+    // 3. Check if slot was manually disabled by this specific doctor in slot management
+    let targetDocId: string | null = null;
+    if (cleanDoc) {
+      const cleanDocUser = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { id: cleanDoc },
+            { name: { contains: cleanDoc, mode: "insensitive" as const } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (cleanDocUser) targetDocId = cleanDocUser.id;
+    }
+
+    const override = targetDocId
+      ? await prisma.automationRule.findFirst({
+          where: {
+            trigger: "DOCTOR_SLOT_OVERRIDES",
+            OR: [
+              { name: `${targetDocId}_${dateIso}` },
+              { name: `doc_${targetDocId}_${dateIso}` },
+            ],
+          },
+        })
+      : null;
+
     if (override?.config) {
       const activeSlots = (override.config as any)?.activeSlots as string[] | undefined;
       const endH = m === 30 ? h + 1 : h;
       const endM = m === 30 ? 0 : 30;
       const slotLabel = `${timeFormatted} - ${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
-      if (Array.isArray(activeSlots) && !activeSlots.includes(slotLabel)) {
+      if (
+        Array.isArray(activeSlots) &&
+        !activeSlots.some((s) => s === slotLabel || s === timeFormatted || s.startsWith(timeFormatted))
+      ) {
         return { available: false, reason: "SLOT_CLOSED_BY_DOCTOR" };
       }
     }

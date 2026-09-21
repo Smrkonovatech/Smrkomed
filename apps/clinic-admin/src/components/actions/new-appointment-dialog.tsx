@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 
@@ -65,17 +65,32 @@ export function NewAppointmentDialog({
     .map((d) => ({ id: d.id, name: displayNameOf(d) }));
   const firstCouple = couples[0];
 
+  const defaultDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }, []);
+
+  const getCoupleAppointmentLabel = (c?: typeof firstCouple) => {
+    if (!c) return "Couple";
+    if (c.partner?.name) {
+      return `${c.primary.name} & ${c.partner.name} (Couple)`;
+    }
+    return c.primary.name;
+  };
+
   const form = useForm<NewAppointmentValues>({
     resolver: zodResolver(newAppointmentSchema),
     defaultValues: {
       coupleId: coupleId ?? firstCouple?.id ?? "",
-      partner: firstCouple?.primary.name ?? "",
+      partner: getCoupleAppointmentLabel(firstCouple),
       type: "Fertility Consultation",
-      doctor: doctors[0]?.name ?? "Dr. Ananya Rao",
-      date: "2026-08-18",
+      doctor: doctors[0]?.name ?? "Dr. Jismon J",
+      date: defaultDate,
       time: "10:00",
       duration: 30,
-      room: "Room 2",
+      room: "Room 1",
       notes: "",
       whatsappConfirmation: true,
       whatsappReminder: true,
@@ -85,36 +100,48 @@ export function NewAppointmentDialog({
 
   const selectedCoupleId = form.watch("coupleId");
   const selectedCouple = couples.find((couple) => couple.id === selectedCoupleId) ?? firstCouple;
-  const partners = [selectedCouple?.primary.name, selectedCouple?.partner?.name].filter(
-    Boolean,
-  ) as string[];
+
+  const partnerOptions = useMemo(() => {
+    if (!selectedCouple) return [{ value: "Patient", label: "Patient" }];
+    const coupleLabel = getCoupleAppointmentLabel(selectedCouple);
+    if (selectedCouple.partner?.name) {
+      return [
+        { value: coupleLabel, label: `👥 ${coupleLabel} — Both Partners` },
+        { value: selectedCouple.primary.name, label: `👤 ${selectedCouple.primary.name}` },
+        { value: selectedCouple.partner.name, label: `👤 ${selectedCouple.partner.name}` },
+      ];
+    }
+    return [{ value: selectedCouple.primary.name, label: `👤 ${selectedCouple.primary.name}` }];
+  }, [selectedCouple]);
 
   useEffect(() => {
     if (!open) return;
     const nextCouple = couples.find((couple) => couple.id === coupleId) ?? firstCouple;
     if (!nextCouple) return;
+    const coupleLabel = getCoupleAppointmentLabel(nextCouple);
     form.reset({
       coupleId: nextCouple.id,
-      partner: nextCouple.primary.name,
+      partner: coupleLabel,
       type: "Fertility Consultation",
-      doctor: doctors[0]?.name ?? "Dr. Ananya Rao",
-      date: "2026-08-18",
+      doctor: doctors[0]?.name ?? "Dr. Jismon J",
+      date: defaultDate,
       time: "10:00",
       duration: 30,
-      room: "Room 2",
+      room: "Room 1",
       notes: "",
       whatsappConfirmation: true,
       whatsappReminder: true,
       careLoop: true,
     });
-  }, [open, coupleId, couples, firstCouple, form, doctors]);
+  }, [open, coupleId, couples, firstCouple, form, doctors, defaultDate]);
 
   useEffect(() => {
-    const selectedNames = [selectedCouple?.primary.name, selectedCouple?.partner?.name].filter(
-      Boolean,
-    ) as string[];
-    if (selectedCouple && !selectedNames.includes(form.getValues("partner"))) {
-      form.setValue("partner", selectedCouple.primary.name);
+    if (selectedCouple) {
+      const coupleLabel = getCoupleAppointmentLabel(selectedCouple);
+      const validValues = [coupleLabel, selectedCouple.primary.name, selectedCouple.partner?.name].filter(Boolean);
+      if (!validValues.includes(form.getValues("partner"))) {
+        form.setValue("partner", coupleLabel);
+      }
     }
   }, [form, selectedCouple]);
 
@@ -170,9 +197,9 @@ export function NewAppointmentDialog({
               <SelectField
                 control={form.control}
                 name="partner"
-                label="Patient / partner"
-                placeholder="Select person"
-                options={partners.map((name) => ({ value: name, label: name }))}
+                label="Appointment for"
+                placeholder="Select attendee"
+                options={partnerOptions}
               />
               <SelectField
                 control={form.control}

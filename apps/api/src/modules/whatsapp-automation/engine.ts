@@ -1706,9 +1706,11 @@ async function executeNode(
     case "GET_AVAILABLE_DATES": {
       const daysAhead = Number(node.config["daysAhead"] ?? 7);
       const docName = vars["doctor.displayName"] || vars["doctor_name"] || (vars["doctor.name"] ? `Dr. ${vars["doctor.name"].replace(/^Dr\.?\s*/i, "").trim()}` : null);
+      const docId = vars["doctor.id"] || vars["selectedDoctorId"] || vars["doctor_id"] || null;
       const res = await getAvailableAppointmentSlots({
         clinicId: tenant.clinicId,
         doctorName: docName,
+        doctorId: docId,
         days: daysAhead,
       });
       const dates = groupAvailableDates(res.slots);
@@ -1727,11 +1729,12 @@ async function executeNode(
     case "GET_AVAILABLE_SLOTS": {
       const date = vars["selectedDate"] || vars["selected_date"] || vars["appointment.date"] || null;
       const docName = vars["doctor.displayName"] || vars["doctor_name"] || (vars["doctor.name"] ? `Dr. ${vars["doctor.name"].replace(/^Dr\.?\s*/i, "").trim()}` : null);
+      const docId = vars["doctor.id"] || vars["selectedDoctorId"] || vars["doctor_id"] || null;
       console.log("[APPOINTMENT_SLOT_LOOKUP_STARTED]", {
         clinicId: tenant.clinicId,
         executionId: execution.id,
         nodeId: node.id,
-        doctorId: vars["doctor.id"] || vars["selectedDoctorId"] || null,
+        doctorId: docId,
         doctorName: docName,
         selectedDate: date,
       });
@@ -1741,6 +1744,7 @@ async function executeNode(
         res = await getAvailableAppointmentSlots({
           clinicId: tenant.clinicId,
           doctorName: docName,
+          doctorId: docId,
           preferredDate: date,
           days: 1,
         });
@@ -1805,7 +1809,23 @@ async function executeNode(
       const clinicName = clinicRow?.name ?? "SmrkoMed Clinic";
       vars["clinic.name"] = clinicName;
 
-      const summary = `Please confirm your appointment ✨\n\n👩‍⚕️ ${doctorName}${specialty ? `\n${specialty}` : ""}\n\n📅 ${date}\n⏰ ${time}\n📍 ${clinicName}`;
+      let attendeeText = "";
+      const coupleId = vars["coupleId"] || vars["couple.id"];
+      if (coupleId) {
+        const couple = await prisma.couple.findUnique({
+          where: { id: String(coupleId) },
+          include: { primaryPatient: true, partnerPatient: true },
+        });
+        if (couple?.partnerPatient?.firstName) {
+          attendeeText = `\n👥 ${couple.primaryPatient.firstName} & ${couple.partnerPatient.firstName} (Couple)`;
+        } else if (couple?.primaryPatient?.firstName) {
+          attendeeText = `\n👤 ${couple.primaryPatient.firstName}`;
+        }
+      } else if (vars["patient_name"]) {
+        attendeeText = `\n👤 ${vars["patient_name"]}`;
+      }
+
+      const summary = `Please confirm your appointment ✨\n\n👩‍⚕️ ${doctorName}${specialty ? `\n${specialty}` : ""}${attendeeText}\n\n📅 ${date}\n⏰ ${time}\n📍 ${clinicName}`;
       vars["bookingSummaryText"] = summary;
       vars["appointment.date"] = date;
       vars["appointment.time"] = time;
@@ -2114,17 +2134,35 @@ async function executeNode(
             coupleId: couple.id,
           });
         } else {
-          // Patient record exists but no registered couple file -> route to new patient registration
-          branch = "new_patient";
-          vars["patient_exists"] = "false";
-          vars["is_new_patient"] = "true";
+          // Patient record exists but no registered couple file -> auto-create couple record for this patient
+          const newCouple = await prisma.couple.create({
+            data: {
+              clinicId: tenant.clinicId,
+              slug: `c-${foundPatient.id.slice(-8)}-${Date.now().toString(36)}`,
+              primaryPatientId: foundPatient.id,
+              status: "ACTIVE",
+            },
+          });
+          branch = "existing_patient";
           vars["patient_name"] = `${foundPatient.firstName} ${foundPatient.lastName}`.trim();
           vars["patient_first_name"] = foundPatient.firstName;
+          vars["patient_exists"] = "true";
+          vars["is_new_patient"] = "false";
+          vars["couple.id"] = newCouple.id;
+          vars["coupleId"] = newCouple.id;
 
-          console.log("[PATIENT_FOUND_NO_COUPLE_REQUIRING_REGISTRATION]", {
+          if (execution.conversationId) {
+            await prisma.conversation.updateMany({
+              where: { id: execution.conversationId, clinicId: tenant.clinicId },
+              data: { patientId: foundPatient.id, coupleId: newCouple.id, unmatched: false },
+            });
+          }
+
+          console.log("[PATIENT_FOUND_AUTO_COUPLE_CREATED]", {
             clinicId: tenant.clinicId,
             executionId: execution.id,
             patientId: foundPatient.id,
+            coupleId: newCouple.id,
           });
         }
       } else {

@@ -11,8 +11,8 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Avoid logging patient data — only error identity.
-    console.error("App error boundary:", error.name, error.digest ?? "no-digest");
+    // Log error details to console for debugging
+    console.error("App error boundary:", error.name, error.message, error.digest ?? "no-digest", error.stack);
   }, [error]);
 
   return (

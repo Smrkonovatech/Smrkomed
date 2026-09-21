@@ -339,7 +339,10 @@ async function getSlotManagementData(tenant: any, targetDoctorId?: string | null
     bookedPatientMap.set(slotLabel, patientName);
   }
 
-  const defaultActiveSlots = new Set(["09:00 - 09:30", "10:30 - 11:00", "11:30 - 12:00", "15:00 - 15:30"]);
+  const defaultActiveSlots = new Set([
+    ...morningSlotTimes.map((s) => s.label),
+    ...afternoonSlotTimes.map((s) => s.label),
+  ]);
 
   const mapSlots = (slotList: typeof morningSlotTimes) => {
     return slotList.map((slot) => {

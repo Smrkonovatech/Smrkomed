@@ -46,6 +46,36 @@ export type DoctorDayAvailability = {
   bookedCount: number;
 };
 
+function parseWeeklyStructured(structured: any[]): WeeklySchedule {
+  const sched = defaultClinicSchedule();
+  if (!Array.isArray(structured)) return sched;
+  const dayMap: Record<string, Weekday> = {
+    Mon: "monday",
+    Tue: "tuesday",
+    Wed: "wednesday",
+    Thu: "thursday",
+    Fri: "friday",
+    Sat: "saturday",
+    Sun: "sunday",
+  };
+  for (const item of structured) {
+    const key = dayMap[item.day];
+    if (!key) continue;
+    if (item.active === false || item.tag === "Off Day") {
+      sched[key] = { enabled: false, slots: [] };
+    } else {
+      sched[key] = {
+        enabled: true,
+        slots: [
+          { id: `${key}-0`, start: "09:00", end: "13:00" },
+          { id: `${key}-1`, start: "14:00", end: "17:30" },
+        ],
+      };
+    }
+  }
+  return sched;
+}
+
 /**
  * Fetch or initialize doctor availability from PostgreSQL.
  */
@@ -53,93 +83,73 @@ export async function getDoctorAvailability(
   clinicId: string,
   doctorIdOrName: string,
 ): Promise<DoctorAvailabilityRecord> {
-  // Query DB with resilience
-  try {
-    const raw = await prisma.$queryRaw<any[]>`
-      SELECT * FROM "DoctorAvailability"
-      WHERE "clinicId" = ${clinicId}
-        AND ("doctorId" = ${doctorIdOrName} OR "doctorName" ILIKE ${`%${doctorIdOrName}%`})
-      LIMIT 1;
-    `;
+  const cleanDocId = (doctorIdOrName || "").replace(/^doc_/, "");
+  const cleanDocName = (doctorIdOrName || "").replace(/^dr\s*\.?\s*/i, "").trim();
 
-    if (raw && raw.length > 0) {
-      const row = raw[0];
-      return {
-        id: row.id,
-        clinicId: row.clinicId,
-        doctorId: row.doctorId,
-        doctorName: row.doctorName,
-        weeklySchedule: (typeof row.weeklySchedule === "string" ? JSON.parse(row.weeklySchedule) : row.weeklySchedule) || defaultClinicSchedule(),
-        settings: (typeof row.settings === "string" ? JSON.parse(row.settings) : row.settings) || defaultAppointmentSettings(),
-        leaves: (typeof row.leaves === "string" ? JSON.parse(row.leaves) : row.leaves) || [],
-        blockedTimes: (typeof row.blockedTimes === "string" ? JSON.parse(row.blockedTimes) : row.blockedTimes) || [],
-        updatedAt: row.updatedAt,
-      };
-    }
-  } catch {
-    // Table not created yet or query failed; fallback to seed
+  // 1. Look up user in DB
+  let doctorUser = null;
+  try {
+    doctorUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: cleanDocId },
+          { id: doctorIdOrName },
+          ...(cleanDocName ? [{ name: { contains: cleanDocName, mode: "insensitive" as const } }] : []),
+        ],
+      },
+      select: { id: true, name: true, email: true },
+    });
+  } catch {}
+
+  const resolvedId = doctorUser?.id || cleanDocId;
+  const resolvedName = doctorUser?.name
+    ? (doctorUser.name.startsWith("Dr.") ? doctorUser.name : `Dr. ${doctorUser.name}`)
+    : (cleanDocName ? `Dr. ${cleanDocName}` : "Dr. Ananya Rao");
+
+  // 2. Look up doctor profile rule in automationRule
+  let profileRule = null;
+  try {
+    profileRule = await prisma.automationRule.findFirst({
+      where: {
+        trigger: "DOCTOR_PROFILE",
+        OR: [
+          { name: resolvedId },
+          { name: `doc_${resolvedId}` },
+          { name: cleanDocId },
+        ],
+      },
+    });
+  } catch {}
+
+  const cfg = (profileRule?.config as any) || {};
+  let weeklySchedule: WeeklySchedule = cfg.weeklySchedule;
+  if (!weeklySchedule && Array.isArray(cfg.weeklyScheduleStructured)) {
+    weeklySchedule = parseWeeklyStructured(cfg.weeklyScheduleStructured);
+  }
+  if (!weeklySchedule) {
+    const seed = SEED_DOCTORS.find(
+      (d) =>
+        d.id === doctorIdOrName ||
+        d.displayName.toLowerCase().includes(doctorIdOrName.toLowerCase()) ||
+        d.lastName.toLowerCase().includes(doctorIdOrName.toLowerCase()),
+    );
+    weeklySchedule = seed?.weeklySchedule || defaultClinicSchedule();
   }
 
-  // Fallback to SEED_DOCTORS definition and persist initial record
-  const seed = SEED_DOCTORS.find(
-    (d) => d.id === doctorIdOrName || d.displayName.toLowerCase().includes(doctorIdOrName.toLowerCase()) || d.lastName.toLowerCase().includes(doctorIdOrName.toLowerCase()),
-  ) || SEED_DOCTORS[0]!;
-
-  const doctorId = seed.id || doctorIdOrName;
-  const doctorName = seed.displayName || "Dr. Ananya Rao";
-  const weeklySchedule = seed.weeklySchedule || defaultClinicSchedule();
-  const settings = seed.appointmentSettings || defaultAppointmentSettings();
-
-  try {
-    const inserted = await prisma.$queryRaw<any[]>`
-      INSERT INTO "DoctorAvailability" (
-        "id", "clinicId", "doctorId", "doctorName", "weeklySchedule", "settings", "leaves", "blockedTimes", "updatedAt"
-      ) VALUES (
-        ${`avail_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`},
-        ${clinicId},
-        ${doctorId},
-        ${doctorName},
-        ${JSON.stringify(weeklySchedule)}::jsonb,
-        ${JSON.stringify(settings)}::jsonb,
-        '[]'::jsonb,
-        '[]'::jsonb,
-        NOW()
-      )
-      ON CONFLICT ("clinicId", "doctorId") DO UPDATE SET
-        "doctorName" = EXCLUDED."doctorName",
-        "weeklySchedule" = EXCLUDED."weeklySchedule",
-        "updatedAt" = NOW()
-      RETURNING *;
-    `;
-
-    const row = inserted[0];
-    if (row) {
-      return {
-        id: row.id,
-        clinicId: row.clinicId,
-        doctorId: row.doctorId,
-        doctorName: row.doctorName,
-        weeklySchedule: (typeof row.weeklySchedule === "string" ? JSON.parse(row.weeklySchedule) : row.weeklySchedule) || defaultClinicSchedule(),
-        settings: (typeof row.settings === "string" ? JSON.parse(row.settings) : row.settings) || defaultAppointmentSettings(),
-        leaves: (typeof row.leaves === "string" ? JSON.parse(row.leaves) : row.leaves) || [],
-        blockedTimes: (typeof row.blockedTimes === "string" ? JSON.parse(row.blockedTimes) : row.blockedTimes) || [],
-        updatedAt: row.updatedAt,
-      };
-    }
-  } catch {
-    // If insert fails (e.g. table absent), safely return seed data
-  }
+  const settings: AppointmentSettings = cfg.appointmentSettings || defaultAppointmentSettings();
+  const leaves = Array.isArray(cfg.leaves) ? cfg.leaves : [];
+  const blockedTimes = Array.isArray(cfg.blockedTimes) ? cfg.blockedTimes : [];
 
   return {
-    id: `seed_${doctorId}`,
+    id: resolvedId,
     clinicId,
-    doctorId,
-    doctorName,
+    doctorId: resolvedId,
+    doctorName: resolvedName,
     weeklySchedule,
     settings,
-    leaves: [],
-    blockedTimes: [],
-    updatedAt: new Date(),
+    leaves,
+    blockedTimes,
+    updatedAt: profileRule?.updatedAt || new Date(),
   };
 }
 
@@ -155,58 +165,49 @@ export async function saveDoctorAvailability(
   leaves?: any[],
   blockedTimes?: any[],
 ): Promise<DoctorAvailabilityRecord> {
-  const schedJson = JSON.stringify(weeklySchedule);
-  const settingsJson = JSON.stringify(settings || defaultAppointmentSettings());
-  const leavesJson = JSON.stringify(leaves || []);
-  const blocksJson = JSON.stringify(blockedTimes || []);
-
+  const cleanId = (doctorId || "").replace(/^doc_/, "");
   try {
-    const res = await prisma.$queryRaw<any[]>`
-      INSERT INTO "DoctorAvailability" (
-        "id", "clinicId", "doctorId", "doctorName", "weeklySchedule", "settings", "leaves", "blockedTimes", "updatedAt"
-      ) VALUES (
-        ${`avail_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`},
-        ${clinicId},
-        ${doctorId},
-        ${doctorName},
-        ${schedJson}::jsonb,
-        ${settingsJson}::jsonb,
-        ${leavesJson}::jsonb,
-        ${blocksJson}::jsonb,
-        NOW()
-      )
-      ON CONFLICT ("clinicId", "doctorId") DO UPDATE SET
-        "doctorName" = EXCLUDED."doctorName",
-        "weeklySchedule" = EXCLUDED."weeklySchedule",
-        "settings" = EXCLUDED."settings",
-        "leaves" = EXCLUDED."leaves",
-        "blockedTimes" = EXCLUDED."blockedTimes",
-        "updatedAt" = NOW()
-      RETURNING *;
-    `;
+    const existingRule = await prisma.automationRule.findFirst({
+      where: {
+        clinicId,
+        trigger: "DOCTOR_PROFILE",
+        OR: [{ name: cleanId }, { name: `doc_${cleanId}` }],
+      },
+    });
 
-    const row = res[0];
-    if (row) {
-      return {
-        id: row.id,
-        clinicId: row.clinicId,
-        doctorId: row.doctorId,
-        doctorName: row.doctorName,
-        weeklySchedule: (typeof row.weeklySchedule === "string" ? JSON.parse(row.weeklySchedule) : row.weeklySchedule) || defaultClinicSchedule(),
-        settings: (typeof row.settings === "string" ? JSON.parse(row.settings) : row.settings) || defaultAppointmentSettings(),
-        leaves: (typeof row.leaves === "string" ? JSON.parse(row.leaves) : row.leaves) || [],
-        blockedTimes: (typeof row.blockedTimes === "string" ? JSON.parse(row.blockedTimes) : row.blockedTimes) || [],
-        updatedAt: row.updatedAt,
-      };
+    const existingConfig = (existingRule?.config as any) || {};
+    const updatedConfig = {
+      ...existingConfig,
+      displayName: doctorName,
+      weeklySchedule,
+      appointmentSettings: settings || existingConfig.appointmentSettings || defaultAppointmentSettings(),
+      leaves: leaves || existingConfig.leaves || [],
+      blockedTimes: blockedTimes || existingConfig.blockedTimes || [],
+    };
+
+    if (existingRule) {
+      await prisma.automationRule.update({
+        where: { id: existingRule.id },
+        data: {
+          config: updatedConfig,
+        },
+      });
+    } else {
+      await prisma.automationRule.create({
+        data: {
+          clinicId,
+          trigger: "DOCTOR_PROFILE",
+          name: cleanId,
+          config: updatedConfig,
+        },
+      });
     }
-  } catch {
-    // If DB save fails, return in-memory object
-  }
+  } catch {}
 
   return {
-    id: `avail_${Date.now()}`,
+    id: cleanId,
     clinicId,
-    doctorId,
+    doctorId: cleanId,
     doctorName,
     weeklySchedule,
     settings: settings || defaultAppointmentSettings(),
@@ -263,15 +264,22 @@ export async function getDoctorDaySlots(
   const dayStart = new Date(`${isoDate}T00:00:00+05:30`);
   const dayEnd = new Date(`${isoDate}T23:59:59.999+05:30`);
 
+  const cleanNameForSearch = avail.doctorName.replace(/^Dr\s*\.?\s*/i, "").trim();
+
   const bookedAppointments = await prisma.appointment.findMany({
     where: {
-      clinicId,
-      status: "CONFIRMED",
-      doctorName: { contains: avail.doctorName.replace("Dr. ", ""), mode: "insensitive" },
+      ...(clinicId && clinicId !== "clinic_default" ? { clinicId } : {}),
+      status: { in: ["CONFIRMED", "WAITING"] },
       startsAt: {
         gte: dayStart,
         lte: dayEnd,
       },
+      OR: [
+        { couple: { assignedDoctorId: avail.doctorId } },
+        ...(cleanNameForSearch
+          ? [{ doctorName: { contains: cleanNameForSearch, mode: "insensitive" as const } }]
+          : []),
+      ],
     },
     select: {
       id: true,
@@ -338,7 +346,9 @@ export async function getDoctorDaySlots(
       const endM = slotEnd % 60;
       const endStr = `${String(endH).padStart(2, "0")}:${String(endM).padStart(2, "0")}`;
       const slotLabel = `${timeStr} - ${endStr}`;
-      const isDoctorEnabled = savedActiveSlots ? savedActiveSlots.includes(slotLabel) : true;
+      const isDoctorEnabled = savedActiveSlots
+        ? savedActiveSlots.some((s) => s === slotLabel || s === timeStr || s.startsWith(timeStr))
+        : true;
 
       let status: DoctorSlotInfo["status"] = "available";
       if (isBooked) status = "booked";

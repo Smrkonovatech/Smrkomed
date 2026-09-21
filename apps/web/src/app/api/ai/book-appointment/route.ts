@@ -63,6 +63,56 @@ interface ActiveCallRecord {
   timestamp?: number | undefined;
 }
 
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const clinic =
+      (await prisma.clinic.findFirst({
+        where: {
+          OR: [{ slug: { contains: "hospex" } }, { name: { contains: "Hospex" } }],
+        },
+      })) || (await prisma.clinic.findFirst());
+    const clinicId = clinic?.id || "clinic_default";
+
+    let doctorQuery = searchParams.get("doctor") || searchParams.get("doctorName") || "";
+    if (!doctorQuery) {
+      const docMembership = await prisma.clinicMembership.findFirst({
+        where: {
+          clinicId,
+          status: "ACTIVE",
+          OR: [
+            { role: { key: "DOCTOR" } },
+            { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+          ],
+        },
+        include: { user: { select: { name: true } } },
+      });
+      doctorQuery = docMembership?.user?.name || "Dr. Jismon J";
+    }
+
+    const dateQuery = searchParams.get("date") || "tomorrow";
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dateIso = dateQuery === "tomorrow" ? tomorrow.toISOString().split("T")[0]! : dateQuery;
+
+    const slots = await getDoctorDaySlots(clinicId, doctorQuery, new Date(dateIso));
+
+    const availableSlots = slots.openSlots.map((s) => s.timeLabel);
+
+    return NextResponse.json({
+      status: "ok",
+      service: "ai-book-appointment",
+      doctor: doctorQuery,
+      date: dateIso,
+      is_working_day: slots.isWorkingDay,
+      available_slots: availableSlots,
+      total_slots: slots.openSlots.length,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ status: "ok", service: "ai-book-appointment", error: e?.message });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const json = (await request.json().catch(() => ({}))) as Record<string, unknown>;
@@ -123,7 +173,7 @@ export async function POST(request: Request) {
           ? json["doctor_name"]
           : typeof json["doctor"] === "string" && !json["doctor"].includes("<")
             ? json["doctor"]
-            : (lastActiveCall?.doctorName as string | undefined) || "Dr. Ananya Rao";
+            : (lastActiveCall?.doctorName as string | undefined) || "";
 
     const inputType =
       typeof json["appointmentType"] === "string" && !json["appointmentType"].includes("<")
@@ -260,7 +310,21 @@ export async function POST(request: Request) {
     }
 
     const startsAt = parseDateAndTime(inputDate, inputTime);
-    const doctorName = inputDoctor || couple.assignedDoctor?.name || "Dr. Ananya Rao";
+    let doctorName = inputDoctor || couple.assignedDoctor?.name || "";
+    if (!doctorName || doctorName.toLowerCase().includes("ananya rao")) {
+      const activeDoc = await prisma.clinicMembership.findFirst({
+        where: {
+          clinicId: couple.clinicId,
+          status: "ACTIVE",
+          OR: [
+            { role: { key: "DOCTOR" } },
+            { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+          ],
+        },
+        include: { user: { select: { name: true } } },
+      });
+      doctorName = activeDoc?.user?.name || couple.assignedDoctor?.name || "Dr. Jismon J";
+    }
     const appointmentType = inputType || "Consultation";
     const patientName = patient
       ? `${patient.firstName} ${patient.lastName}`.trim()
@@ -401,6 +465,106 @@ export async function POST(request: Request) {
             }`.trim(),
         },
       });
+    }
+
+    // Sync CareTask so Care Loop immediately tracks this voice call booking
+    try {
+      const existingTask = await prisma.careTask.findFirst({
+        where: {
+          clinicId: couple.clinicId,
+          coupleId: couple.id,
+          category: "APPOINTMENT",
+          description: { contains: appointment.id },
+          status: { notIn: ["COMPLETED", "CANCELLED", "SKIPPED"] },
+        },
+      });
+
+      const dueTime = startsAt.toLocaleTimeString("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+
+      const taskMeta = {
+        appointmentId: appointment.id,
+        doctorName,
+        appointmentType,
+        source: "AI_VOICE_CALL",
+        startsAt: startsAt.toISOString(),
+      };
+
+      if (existingTask) {
+        await prisma.careTask.update({
+          where: { id: existingTask.id },
+          data: {
+            title: `Consultation with ${doctorName}`,
+            description: `Confirmed appointment on ${formattedDate} at ${formattedTime}. (ID: ${appointment.id})`,
+            dueDate: startsAt,
+            dueTime,
+            ...(wasRescheduled
+              ? {
+                  rescheduledAt: new Date(),
+                  rescheduledReason: "Voice AI reschedule",
+                  originalDueDate: existingTask.dueDate ?? startsAt,
+                }
+              : {}),
+            metadata: taskMeta,
+          },
+        });
+      } else {
+        await prisma.careTask.create({
+          data: {
+            clinicId: couple.clinicId,
+            coupleId: couple.id,
+            title: `Consultation with ${doctorName}`,
+            description: `Confirmed appointment on ${formattedDate} at ${formattedTime}. (ID: ${appointment.id})`,
+            category: "APPOINTMENT",
+            status: "WAITING",
+            priority: "NORMAL",
+            dueDate: startsAt,
+            dueTime,
+            source: "AI_VOICE_CALL",
+            metadata: taskMeta,
+          },
+        });
+      }
+    } catch (taskErr) {
+      console.warn("[AI Book Appointment Route] CareTask sync notice:", taskErr);
+    }
+
+    // Send WhatsApp confirmation if conversation exists
+    try {
+      const conv = await prisma.conversation.findFirst({
+        where: {
+          clinicId: couple.clinicId,
+          OR: [
+            { coupleId: couple.id },
+            ...(patient?.id ? [{ patientId: patient.id }] : []),
+            ...(phoneLast10 ? [{ contactPhone: { contains: phoneLast10 } }] : []),
+          ],
+        },
+      });
+
+      if (conv) {
+        const attendeeInfo = couple.partnerPatient?.firstName
+          ? `${couple.primaryPatient.firstName} & ${couple.partnerPatient.firstName} (Couple)`
+          : patientName;
+        const msgText = wasRescheduled
+          ? `📅 *Appointment Rescheduled*\n\nDear ${patientName},\nYour fertility consultation with *${doctorName}* has been rescheduled to:\n📆 *${formattedDate}*\n⏰ *${formattedTime}*\n👥 *Attendee:* ${attendeeInfo}\n\nOur team is looking forward to seeing you. Reply to this message if you need to make any further changes.`
+          : `✅ *Appointment Confirmed*\n\nDear ${patientName},\nYour fertility consultation with *${doctorName}* has been confirmed for:\n📆 *${formattedDate}*\n⏰ *${formattedTime}*\n👥 *Attendee:* ${attendeeInfo}\n📍 Consultation Room 1\n\nIf you have any questions or need to reschedule, simply reply to this message.`;
+
+        await prisma.message.create({
+          data: {
+            conversationId: conv.id,
+            direction: "OUTBOUND",
+            senderType: "AI",
+            content: msgText,
+            status: "DELIVERED",
+          },
+        });
+      }
+    } catch (msgErr) {
+      console.warn("[AI Book Appointment Route] WhatsApp message notice:", msgErr);
     }
 
     const confirmMessage = wasRescheduled

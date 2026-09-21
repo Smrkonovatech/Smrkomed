@@ -54,6 +54,25 @@ export async function POST(request: Request) {
 
     const formattedPhone = formatE164(parsed.phoneNumber);
 
+    const clinic = await prisma.clinic.findFirst();
+    const clinicId = clinic?.id || "clinic_default";
+
+    let activeDoctorName = parsed.doctorName;
+    if (!activeDoctorName || activeDoctorName.toLowerCase().includes("ananya rao")) {
+      const activeDoc = await prisma.clinicMembership.findFirst({
+        where: {
+          clinicId,
+          status: "ACTIVE",
+          OR: [
+            { role: { key: "DOCTOR" } },
+            { role: { name: { contains: "Doctor", mode: "insensitive" } } },
+          ],
+        },
+        include: { user: { select: { name: true } } },
+      });
+      activeDoctorName = activeDoc?.user?.name || "Dr. Jismon J";
+    }
+
     // Save active call details globally so book-appointment always knows the exact patient
     (globalThis as unknown as { __lastActiveCall?: Record<string, unknown> }).__lastActiveCall = {
       coupleId: parsed.coupleId,
@@ -61,15 +80,12 @@ export async function POST(request: Request) {
       partnerName: parsed.partnerName,
       phoneNumber: formattedPhone,
       treatment: parsed.treatment,
-      doctorName: parsed.doctorName,
+      doctorName: activeDoctorName,
       clinicName: parsed.clinicName,
       callType: parsed.callType,
       maxDurationSeconds: parsed.maxDurationSeconds,
       timestamp: Date.now(),
     };
-
-    const clinic = await prisma.clinic.findFirst();
-    const clinicId = clinic?.id || "clinic_default";
 
     // Fetch doctor's real open slots for tomorrow from DB
     const tomorrow = new Date();
@@ -78,7 +94,7 @@ export async function POST(request: Request) {
     try {
       const tomorrowSlots = await getDoctorDaySlots(
         clinicId,
-        parsed.doctorName,
+        activeDoctorName,
         tomorrow,
       );
       if (tomorrowSlots.isWorkingDay && tomorrowSlots.openSlots.length > 0) {
@@ -113,7 +129,7 @@ export async function POST(request: Request) {
         } else if (parsed.language === "hi") {
           initialBotMessage = `नमस्ते ${parsed.patientName} जी, मैं ${clinicDisplayName} से कॉल कर रहा हूँ। आपके आगामी परामर्श और स्वास्थ्य के बारे में जानने के लिए कॉल किया है। आप कैसे हैं?`;
         } else {
-          initialBotMessage = `Hello ${parsed.patientName}, this is the Care Assistant calling from ${clinicDisplayName} regarding your ${parsed.treatment} consultation with ${parsed.doctorName}. How are you feeling today?`;
+          initialBotMessage = `Hello ${parsed.patientName}, this is the Care Assistant calling from ${clinicDisplayName} regarding your ${parsed.treatment} consultation with ${activeDoctorName}. How are you feeling today?`;
         }
       }
     }
@@ -159,7 +175,7 @@ CRITICAL INSTRUCTIONS & RULES:
       callSummary = `Patient ${parsed.patientName}${
         parsed.partnerName ? ` (partner: ${parsed.partnerName})` : ""
       } undergoing ${parsed.treatment} at stage ${parsed.stage}. Clinic: ${clinicDisplayName}. Doctor: ${
-        parsed.doctorName
+        activeDoctorName
       }.${parsed.upcomingAppointment ? ` Current appointment: ${parsed.upcomingAppointment}.` : ""}${
         openSlotsSummary
           ? ` Doctor's available open slots for tomorrow: ${openSlotsSummary}. Only book or reschedule within these exact open slots; do not allow overlapping bookings.`

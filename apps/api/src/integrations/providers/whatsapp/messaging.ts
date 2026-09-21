@@ -197,8 +197,17 @@ export async function sendWhatsAppTemplate(ctx: TenantContext, input: {
       metaMessageId: providerMessageId,
       httpStatus: 200,
     });
-    const stored = await prisma.message.create({
-      data: {
+    const stored = await prisma.message.upsert({
+      where: { providerMessageId },
+      update: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType: "STAFF",
+        content: `Template: ${template.name}`,
+        messageType: "template",
+        status: "SENT",
+      },
+      create: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
         senderType: "STAFF",
@@ -468,8 +477,17 @@ export async function sendWhatsAppSessionText(
         prefix: "pending_meta",
       });
     }
-    const stored = await prisma.message.create({
-      data: {
+    const stored = await prisma.message.upsert({
+      where: { providerMessageId },
+      update: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: body,
+        messageType: "text",
+        status: "SENT",
+      },
+      create: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
         senderType,
@@ -768,8 +786,17 @@ export async function sendWhatsAppInteractiveButtons(
       httpStatus: 200,
     });
 
-    const stored = await prisma.message.create({
-      data: {
+    const stored = await prisma.message.upsert({
+      where: { providerMessageId },
+      update: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: `${body}\n\n${buttonLabels}`,
+        messageType: "interactive",
+        status: "SENT",
+      },
+      create: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
         senderType,
@@ -897,8 +924,17 @@ export async function sendWhatsAppInteractiveCtaUrl(
       throw new IntegrationError("MESSAGE_SEND_FAILED", "Meta accepted request but returned no message ID.", 502);
     }
 
-    const stored = await prisma.message.create({
-      data: {
+    const stored = await prisma.message.upsert({
+      where: { providerMessageId },
+      update: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: `${input.body}\n\n[${input.displayText}](${input.url})`,
+        messageType: "interactive",
+        status: "SENT",
+      },
+      create: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
         senderType,
@@ -1060,8 +1096,17 @@ export async function sendWhatsAppInteractiveList(
       httpStatus: 200,
     });
 
-    const stored = await prisma.message.create({
-      data: {
+    const stored = await prisma.message.upsert({
+      where: { providerMessageId },
+      update: {
+        conversationId: conversation.id,
+        direction: "OUTBOUND",
+        senderType,
+        content: `${body}\n\n${listSummary}`,
+        messageType: "interactive",
+        status: "SENT",
+      },
+      create: {
         conversationId: conversation.id,
         direction: "OUTBOUND",
         senderType,

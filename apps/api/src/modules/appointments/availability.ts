@@ -188,41 +188,45 @@ export async function getAvailableAppointmentSlots(input: {
 
   // Resolve target doctor to honor their date slot overrides
   let targetDoctorUser: { id: string; name: string } | null = null;
-  const explicitDocId = (input.doctorId || "").replace(/^doc_/, "");
-  if (explicitDocId) {
-    targetDoctorUser = await prisma.user.findFirst({
-      where: {
-        OR: [{ id: explicitDocId }, { id: input.doctorId! }],
-      },
-      select: { id: true, name: true },
-    });
-    if (targetDoctorUser && !doctorName) {
-      doctorName = targetDoctorUser.name;
+  try {
+    const explicitDocId = (input.doctorId || "").replace(/^doc_/, "");
+    if (explicitDocId) {
+      targetDoctorUser = await prisma.user.findFirst({
+        where: {
+          OR: [{ id: explicitDocId }, { id: input.doctorId! }],
+        },
+        select: { id: true, name: true },
+      });
+      if (targetDoctorUser && !doctorName) {
+        doctorName = targetDoctorUser.name;
+      }
     }
-  }
 
-  const cleanDocName = (doctorName || "").replace(/^dr\.?\s*/i, "").trim();
-  if (!targetDoctorUser && cleanDocName) {
-    targetDoctorUser = await prisma.user.findFirst({
-      where: {
-        name: { contains: cleanDocName, mode: "insensitive" },
-      },
-      select: { id: true, name: true },
-    });
-  }
-  if (!targetDoctorUser) {
-    const docMembership = await prisma.clinicMembership.findFirst({
-      where: {
-        clinicId: input.clinicId,
-        status: "ACTIVE",
-        role: { OR: [{ key: "DOCTOR" }, { name: { contains: "Doctor", mode: "insensitive" } }] },
-      },
-      include: { user: { select: { id: true, name: true } } },
-    });
-    if (docMembership) {
-      targetDoctorUser = docMembership.user;
-      if (!doctorName) doctorName = docMembership.user.name;
+    const cleanDocName = (doctorName || "").replace(/^dr\.?\s*/i, "").trim();
+    if (!targetDoctorUser && cleanDocName) {
+      targetDoctorUser = await prisma.user.findFirst({
+        where: {
+          name: { contains: cleanDocName, mode: "insensitive" },
+        },
+        select: { id: true, name: true },
+      });
     }
+    if (!targetDoctorUser) {
+      const docMembership = await prisma.clinicMembership.findFirst({
+        where: {
+          clinicId: input.clinicId,
+          status: "ACTIVE",
+          role: { OR: [{ key: "DOCTOR" }, { name: { contains: "Doctor", mode: "insensitive" } }] },
+        },
+        include: { user: { select: { id: true, name: true } } },
+      });
+      if (docMembership) {
+        targetDoctorUser = docMembership.user;
+        if (!doctorName) doctorName = docMembership.user.name;
+      }
+    }
+  } catch (err) {
+    console.warn("[getAvailableAppointmentSlots] doctor lookup resilient fallback:", err);
   }
 
   for (let dayOffset = 0; dayOffset < scanDays && slots.length < limit; dayOffset++) {
@@ -242,16 +246,18 @@ export async function getAvailableAppointmentSlots(input: {
     // Check if doctor has explicit date slot overrides
     let savedActiveSlots: string[] | undefined = undefined;
     if (targetDoctorUser) {
-      const overrideRule = await prisma.automationRule.findFirst({
-        where: {
-          trigger: "DOCTOR_SLOT_OVERRIDES",
-          OR: [
-            { name: `${targetDoctorUser.id}_${dateIso}` },
-            { name: `doc_${targetDoctorUser.id}_${dateIso}` },
-          ],
-        },
-      });
-      savedActiveSlots = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+      try {
+        const overrideRule = await prisma.automationRule.findFirst({
+          where: {
+            trigger: "DOCTOR_SLOT_OVERRIDES",
+            OR: [
+              { name: `${targetDoctorUser.id}_${dateIso}` },
+              { name: `doc_${targetDoctorUser.id}_${dateIso}` },
+            ],
+          },
+        });
+        savedActiveSlots = (overrideRule?.config as any)?.activeSlots as string[] | undefined;
+      } catch {}
     }
 
     if (savedActiveSlots !== undefined && savedActiveSlots.length === 0) {

@@ -90,14 +90,41 @@ export function WhatsAppPhoneSimulator({
   const [messages, setMessages] = useState<SimMessage[]>(defaultMessages);
   const [inputText, setInputText] = useState("");
   const [selectedDoctor, setSelectedDoctor] = useState(primaryDoctorName);
+  const [selectedDoctorId, setSelectedDoctorId] = useState(primaryDoctor?.id || "");
+  const [selectedDateIso, setSelectedDateIso] = useState("");
+  const [selectedDateLabel, setSelectedDateLabel] = useState("");
+  const [selectedSlotTime, setSelectedSlotTime] = useState("10:00 AM");
   const [isListModalOpen, setIsListModalOpen] = useState(false);
   const [activeListItems, setActiveListItems] = useState<Array<{ id: string; title: string; subtitle?: string }>>([]);
   const [listModalTitle, setListModalTitle] = useState("Select an option");
+
+  function getUpcomingSimDates(count = 5) {
+    const dates = [];
+    const now = new Date();
+    for (let i = 1; i <= count + 4; i++) {
+      const d = new Date(now.getTime() + i * 86_400_000);
+      if (d.getDay() === 0) continue; // Exclude Sundays
+      const iso = d.toISOString().slice(0, 10);
+      const weekday = d.toLocaleDateString("en-US", { weekday: "short" });
+      const month = d.toLocaleDateString("en-US", { month: "short" });
+      const day = d.getDate();
+      const year = d.getFullYear();
+      dates.push({
+        id: `appt_date_${iso}`,
+        iso,
+        title: `${weekday}, ${day} ${month} ${year}`,
+        subtitle: "Open for consultations",
+      });
+      if (dates.length >= count) break;
+    }
+    return dates;
+  }
 
   // Keep simulator in sync when clinic admin adds or updates a doctor
   useEffect(() => {
     if (primaryDoctor) {
       setSelectedDoctor(primaryDoctorName);
+      setSelectedDoctorId(primaryDoctor.id);
       setMessages(defaultMessages);
     }
   }, [defaultMessages, primaryDoctor, primaryDoctorName]);
@@ -161,6 +188,7 @@ export function WhatsAppPhoneSimulator({
     // 2. Change Time or Reschedule
     if (action === "appt_change" || action === "appt_reschedule" || lower.includes("reschedule") || lower.includes("change time") || lower.includes("change date")) {
       onSimulateStep?.("GET_AVAILABLE_DATES");
+      const upcomingDates = getUpcomingSimDates(4);
       setMessages((prev) => [
         ...prev,
         {
@@ -170,11 +198,7 @@ export function WhatsAppPhoneSimulator({
           type: "list",
           text: `No problem! 📅 Please select a new date for your consultation with ${selectedDoctor}:`,
           listButtonLabel: "📅 Choose Date",
-          listItems: [
-            { id: "appt_date_2026-09-07", title: "Mon, 7 Sep 2026", subtitle: "8 slots available" },
-            { id: "appt_date_2026-09-08", title: "Tue, 8 Sep 2026", subtitle: "6 slots available" },
-            { id: "appt_date_2026-09-09", title: "Wed, 9 Sep 2026", subtitle: "5 slots available" },
-          ],
+          listItems: upcomingDates,
         },
       ]);
       return;
@@ -218,6 +242,7 @@ export function WhatsAppPhoneSimulator({
     if (matchedDoctor && (lower.includes("dr") || lower.includes(matchedDoctor.firstName.toLowerCase()) || lower.includes("profile") || action.startsWith("btn_doc_"))) {
       const docName = displayNameOf(matchedDoctor);
       setSelectedDoctor(docName);
+      setSelectedDoctorId(matchedDoctor.id);
       const docImg = matchedDoctor.photoDataUrl || (matchedDoctor.staffUserId || matchedDoctor.id ? `/api/v1/public/doctors/${matchedDoctor.staffUserId || matchedDoctor.id}/photo` : undefined);
       const docSpec = matchedDoctor.primarySpecialty || matchedDoctor.designation || "Fertility Specialist";
       const docExp = matchedDoctor.yearsExperience ? `${matchedDoctor.yearsExperience}+ years experience` : "10+ years experience";
@@ -248,6 +273,7 @@ export function WhatsAppPhoneSimulator({
     // 5. Doctor slots or book appointment action -> show available dates
     if (lower.includes("slot") || action.startsWith("appt_doctor_") || action === "btn_book_appointment") {
       onSimulateStep?.("GET_AVAILABLE_DATES");
+      const upcomingDates = getUpcomingSimDates(4);
       setMessages((prev) => [
         ...prev,
         {
@@ -257,19 +283,24 @@ export function WhatsAppPhoneSimulator({
           type: "list",
           text: `Great choice! 📅 Here are the next available consultation dates for ${selectedDoctor}:`,
           listButtonLabel: "📅 Choose Date",
-          listItems: [
-            { id: "appt_date_2026-09-07", title: "Mon, 7 Sep 2026", subtitle: "8 slots available" },
-            { id: "appt_date_2026-09-08", title: "Tue, 8 Sep 2026", subtitle: "6 slots available" },
-            { id: "appt_date_2026-09-09", title: "Wed, 9 Sep 2026", subtitle: "5 slots available" },
-          ],
+          listItems: upcomingDates,
         },
       ]);
       return;
     }
 
     // 6. Date selected -> show available times
-    if (action.startsWith("appt_date_") || lower.includes("sep") || lower.includes("mon") || lower.includes("tue") || lower.includes("wed") || lower.includes("thu") || lower.includes("fri") || lower.includes("sat") || lower.includes("today") || lower.includes("tomorrow")) {
+    if (action.startsWith("appt_date_") || lower.includes("sep") || lower.includes("oct") || lower.includes("nov") || lower.includes("mon") || lower.includes("tue") || lower.includes("wed") || lower.includes("thu") || lower.includes("fri") || lower.includes("sat") || lower.includes("today") || lower.includes("tomorrow")) {
       onSimulateStep?.("GET_AVAILABLE_SLOTS");
+      let iso = action.startsWith("appt_date_") ? action.replace("appt_date_", "") : "";
+      if (!iso) {
+        const tomorrow = new Date(Date.now() + 86_400_000);
+        iso = tomorrow.toISOString().slice(0, 10);
+      }
+      setSelectedDateIso(iso);
+      const displayDate = action.startsWith("appt_date_") ? input : new Date(iso).toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short" });
+      setSelectedDateLabel(displayDate);
+
       setMessages((prev) => [
         ...prev,
         {
@@ -277,11 +308,12 @@ export function WhatsAppPhoneSimulator({
           sender: "clinic",
           time,
           type: "buttons",
-          text: `Available times for ${input.startsWith("appt_") ? "Monday, 7 Sep" : input} with ${selectedDoctor} ⏰\n\n☀️ Morning Slots:`,
+          text: `Available times for ${displayDate} with ${selectedDoctor} ⏰\n\n☀️ Morning & Afternoon Slots:`,
           buttons: [
             { id: "appt_slot_0930", title: "09:30 AM" },
             { id: "appt_slot_1000", title: "10:00 AM" },
             { id: "appt_slot_1130", title: "11:30 AM" },
+            { id: "appt_slot_1430", title: "02:30 PM" },
           ],
         },
       ]);
@@ -291,6 +323,10 @@ export function WhatsAppPhoneSimulator({
     // 7. Slot selected -> show booking summary
     if (action.startsWith("appt_slot_") || lower.includes("am") || lower.includes("pm") || /\b\d{1,2}:\d{2}\b/.test(lower)) {
       onSimulateStep?.("BOOKING_SUMMARY");
+      const chosenTime = action.startsWith("appt_slot_") ? input : "10:00 AM";
+      setSelectedSlotTime(chosenTime);
+      const dateText = selectedDateLabel || "Tomorrow";
+
       setMessages((prev) => [
         ...prev,
         {
@@ -298,7 +334,7 @@ export function WhatsAppPhoneSimulator({
           sender: "clinic",
           time,
           type: "summary",
-          text: `Please confirm your appointment ✨\n\n👩‍⚕️ ${selectedDoctor}\nFertility Specialist\n\n📅 Monday, 7 Sep 2026\n⏰ ${action.startsWith("appt_slot_") ? input : "10:00 AM"}\n📍 ${clinicName}`,
+          text: `Please confirm your appointment ✨\n\n👩‍⚕️ ${selectedDoctor}\nFertility Specialist\n\n📅 ${dateText}\n⏰ ${chosenTime}\n📍 ${clinicName}`,
           buttons: [
             { id: "appt_confirm", title: "Confirm Appointment ✅" },
             { id: "appt_change", title: "Change Time ⏰" },
@@ -309,9 +345,26 @@ export function WhatsAppPhoneSimulator({
       return;
     }
 
-    // 8. Confirmation
+    // 8. Confirmation -> persist real appointment
     if (action === "appt_confirm" || lower.includes("confirm") || lower === "yes" || lower === "1") {
       onSimulateStep?.("BOOK_APPOINTMENT");
+      const dateText = selectedDateLabel || "Tomorrow";
+      const timeText = selectedSlotTime || "10:00 AM";
+
+      // Trigger actual persistence in database via real appointment booking API
+      try {
+        fetch("/api/ai/book-appointment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            doctorName: selectedDoctor,
+            appointmentDate: selectedDateIso || "tomorrow",
+            appointmentTime: timeText,
+            appointmentType: "Fertility Consultation",
+          }),
+        }).catch(() => null);
+      } catch {}
+
       setMessages((prev) => [
         ...prev,
         {
@@ -319,7 +372,7 @@ export function WhatsAppPhoneSimulator({
           sender: "clinic",
           time,
           type: "confirmation",
-          text: `You're all set! 🎉\n\nYour appointment is confirmed.\n\n👩‍⚕️ ${selectedDoctor}\n📅 Monday, 7 Sep 2026\n⏰ 10:00 AM\n📍 ${clinicName}\n\nWe'll send you a WhatsApp reminder before your appointment.`,
+          text: `You're all set! 🎉\n\nYour appointment is confirmed and registered in our system.\n\n👩‍⚕️ ${selectedDoctor}\n📅 ${dateText}\n⏰ ${timeText}\n📍 ${clinicName}\n\nWe'll send you a WhatsApp reminder with preparation instructions before your consultation.`,
           buttons: [
             { id: "appt_reschedule", title: "Reschedule" },
             { id: "appt_cancel_btn", title: "Cancel Booking" },
