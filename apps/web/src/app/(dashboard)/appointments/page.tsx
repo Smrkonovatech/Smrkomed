@@ -1294,6 +1294,7 @@ function AppointmentCardsList({
         const patientSlug = couple?.slug || (appointment as any).coupleSlug;
         const room = getAppointmentRoom(appointment);
         const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
+        const isVoiceCall = (appointment.notes || "").toLowerCase().includes("voice") || (appointment.notes || "").toLowerCase().includes("sarvam") || (appointment.notes || "").toLowerCase().includes("phone call");
 
         return (
           <div
@@ -1309,6 +1310,11 @@ function AppointmentCardsList({
                     {isWhatsapp && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Booked via WhatsApp AI">
                         WhatsApp
+                      </span>
+                    )}
+                    {isVoiceCall && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-300 dark:border-purple-800" title="Booked via AI Phone Call">
+                        📞 AI Call
                       </span>
                     )}
                   </p>
@@ -1433,6 +1439,7 @@ function AppointmentTableView({
           const patientSlug = couple?.slug || (appointment as any).coupleSlug;
           const room = getAppointmentRoom(appointment);
           const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
+          const isVoiceCall = (appointment.notes || "").toLowerCase().includes("voice") || (appointment.notes || "").toLowerCase().includes("sarvam") || (appointment.notes || "").toLowerCase().includes("phone call");
 
           return (
             <RecordCard key={appointment.id}>
@@ -1443,6 +1450,11 @@ function AppointmentTableView({
                     {isWhatsapp && (
                       <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Booked via WhatsApp AI">
                         WhatsApp
+                      </span>
+                    )}
+                    {isVoiceCall && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-300 dark:border-purple-800" title="Booked via AI Phone Call">
+                        📞 AI Call
                       </span>
                     )}
                   </div>
@@ -1542,6 +1554,7 @@ function AppointmentTableView({
               const patientSlug = couple?.slug || (appointment as any).coupleSlug;
               const room = getAppointmentRoom(appointment);
               const isWhatsapp = appointment.whatsappConfirmation || (appointment.notes || "").toLowerCase().includes("whatsapp");
+              const isVoiceCall = (appointment.notes || "").toLowerCase().includes("voice") || (appointment.notes || "").toLowerCase().includes("sarvam") || (appointment.notes || "").toLowerCase().includes("phone call");
 
               return (
                 <tr
@@ -1559,6 +1572,11 @@ function AppointmentTableView({
                       {isWhatsapp && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800" title="Booked via WhatsApp AI">
                           WhatsApp
+                        </span>
+                      )}
+                      {isVoiceCall && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-300 dark:border-purple-800" title="Booked via AI Phone Call">
+                          📞 AI Call
                         </span>
                       )}
                     </div>
