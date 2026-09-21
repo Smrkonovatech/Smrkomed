@@ -92,11 +92,11 @@ function matchSlotByTimeLabel(
 }
 
 function isAffirmative(message: string): boolean {
-  return /^(yes|yep|yeah|confirm|book\s*it|ok|okay|sure|go\s*ahead)\s*[!.]*$/i.test(message.trim());
+  return /^(yes|yep|yeah|confirm|book\s*it|ok|okay|sure|go\s*ahead|appt_confirm|action_confirm_appointment|yes,\s*confirm)\s*[!.]*$/i.test(message.trim());
 }
 
 function isNegative(message: string): boolean {
-  return /^(no|nope|cancel|keep|keep\s+it|never\s*mind|dont|don't)\s*[!.]*$/i.test(message.trim());
+  return /^(no|nope|cancel|keep|keep\s+it|never\s*mind|dont|don't|appt_cancel|action_cancel_confirm|no,\s*change)\s*[!.]*$/i.test(message.trim());
 }
 
 function confirmPrompt(kind: "BOOK" | "RESCHEDULE", label: string, clinicName: string): string {

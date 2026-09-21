@@ -549,7 +549,7 @@ export async function handleMenuAction(input: {
     return { handled: true, action: "DOCTOR_SELECTED", responseText: listBody };
   }
 
-  // Slot selection via interactive list tap — show confirmation prompt
+  // Slot selection via interactive list tap — show confirmation prompt with doctor image and quick Yes/No buttons
   if (clean.startsWith("appt_slot_")) {
     const slotId = clean.replace("appt_slot_", "").trim();
     const { decodeSlotId, formatTime12IST, formatDateFriendlyIST } = await import("../appointments/availability");
@@ -566,31 +566,158 @@ export async function handleMenuAction(input: {
     }
 
     const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
-    const slotLabel = timeLabel
-      ? `📅 *${dateLabel}* at *${timeLabel}*${doctorName ? ` with *${doctorName}*` : ""}`
-      : `Slot ID: ${slotId}`;
+    const doctors = await getClinicDoctors(input.tenant.clinicId);
+    const cleanDocName = doctorName.toLowerCase().replace(/^dr\.?\s*/i, "").trim();
+    const doc = doctors.find((d) =>
+      cleanDocName && (
+        d.displayName.toLowerCase().includes(cleanDocName) ||
+        d.name.toLowerCase().includes(cleanDocName)
+      )
+    ) || doctors[0];
 
-    // Persist pending action so confirmAppointment can complete it
+    const photoUrl = doc?.photoUrl && doc.photoUrl.startsWith("http") ? doc.photoUrl : undefined;
+    const docSpecialty = doc?.specialty || "Fertility Specialist";
+    const docDisplayName = doc?.displayName || (doctorName ? `Dr. ${doctorName.replace(/^dr\.?\s*/i, "")}` : "Specialist");
+
+    // Persist pending action as BOOK_CONFIRM so affirmative reply ("Yes" or appt_confirm button) immediately books it
     await setConversationPendingAction({
       clinicId: input.tenant.clinicId,
       conversationId: input.conversationId,
       action: {
-        kind: "SLOT_CHOICE" as const,
-        slots: [{ index: 1, slotId, label: slotLabel }],
+        kind: "BOOK_CONFIRM" as const,
+        slotId,
         idempotencyKey: `slot_tap_${input.conversationId}_${slotId}`,
-        purpose: "BOOK" as const,
+        appointmentType: decoded?.appointmentType ?? "Consultation",
+        doctorName: docDisplayName,
+        startTime: decoded ? new Date(decoded.startMs).toISOString() : new Date().toISOString(),
+        durationMin: decoded?.durationMin ?? 30,
       },
     }).catch(() => undefined);
 
-    const clinicName = input.tenant.clinicName || "the clinic";
-    const confirmMsg = `✦ Smrko AI\n\nPlease confirm your appointment:\n\n${slotLabel}\n${clinicName}\n\nWould you like to book this appointment?\n\nReply *Yes* to confirm, or *No* to choose another time.`;
+    const clinicName = input.tenant.clinicName || "Hospex";
+    const locLine = doc?.location ? ` · 📍 ${doc.location}` : "";
+    const confirmBody = [
+      `Please confirm your appointment ✨`,
+      ``,
+      `👩‍⚕️ *${docDisplayName}*${locLine}`,
+      `_${docSpecialty}_`,
+      ``,
+      `📅 *${dateLabel}*`,
+      `⏰ *${timeLabel}*`,
+      `📍 *${clinicName}*`,
+      ``,
+      `Would you like to book this appointment?`,
+    ].join("\n");
 
-    await sendWhatsAppAiSessionText(input.tenant, {
+    await sendWhatsAppInteractiveButtons(input.tenant, {
       conversationId: input.conversationId,
-      body: confirmMsg,
-    }).catch(() => undefined);
+      body: confirmBody,
+      buttons: [
+        { id: "appt_confirm", title: "Yes, Confirm ✅" },
+        { id: "appt_cancel", title: "No, Change ❌" },
+      ],
+      ...(photoUrl ? { header: { type: "image", link: photoUrl } } : {}),
+      footer: `${clinicName} · Tap a button to confirm`,
+    }).catch(async (err) => {
+      console.warn("[WhatsApp Menu] Failed to send interactive buttons with image, falling back to text:", err);
+      await sendWhatsAppAiSessionText(input.tenant, {
+        conversationId: input.conversationId,
+        body: `${confirmBody}\n\nReply *Yes* to confirm, or *No* to choose another time.`,
+      }).catch(() => undefined);
+    });
 
-    return { handled: true, action: "SLOT_SELECTED", responseText: confirmMsg };
+    return { handled: true, action: "SLOT_SELECTED", responseText: confirmBody };
+  }
+
+  // Confirmation button tapped: [Yes, Confirm ✅]
+  if (clean === "appt_confirm" || clean === "action_confirm_appointment") {
+    const { getConversationPendingAction, setConversationPendingAction, bookAppointmentFromSlot } = await import("../appointments/whatsapp-booking");
+    const pending = await getConversationPendingAction({
+      clinicId: input.tenant.clinicId,
+      conversationId: input.conversationId,
+    });
+
+    if (pending && (pending.kind === "BOOK_CONFIRM" || (pending.kind === "SLOT_CHOICE" && pending.slots?.[0]))) {
+      const slotId = pending.kind === "BOOK_CONFIRM" ? pending.slotId : pending.slots[0]!.slotId;
+      const idempotencyKey = pending.idempotencyKey || `menu_confirm_${input.conversationId}_${slotId}`;
+
+      const res = await bookAppointmentFromSlot({
+        tenant: input.tenant,
+        conversationId: input.conversationId,
+        patientId: conversation.patientId ?? null,
+        coupleId: conversation.coupleId ?? null,
+        slotId,
+        idempotencyKey,
+      });
+
+      await setConversationPendingAction({
+        clinicId: input.tenant.clinicId,
+        conversationId: input.conversationId,
+        action: null,
+      });
+
+      if (res.ok) {
+        const when = new Date(res.startsAt).toLocaleString("en-IN", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        });
+        const docText = res.doctorName ? ` with *${res.doctorName}*` : "";
+        const bookedMsg = `✅ *Appointment Confirmed!*\n\n📅 *${when}*${docText}\n📍 ${res.clinicName}\n\nYour appointment has been successfully scheduled. We look forward to seeing you!`;
+
+        await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: input.conversationId,
+          body: bookedMsg,
+        }).catch(() => undefined);
+
+        return { handled: true, action: "APPOINTMENT_CONFIRMED", responseText: bookedMsg };
+      } else {
+        const failMsg = res.reason === "SLOT_CONFLICT"
+          ? `That slot was just taken. Please choose another slot from the list.`
+          : `We couldn't confirm this appointment. Our care team has been notified.`;
+        await sendWhatsAppAiSessionText(input.tenant, {
+          conversationId: input.conversationId,
+          body: failMsg,
+        }).catch(() => undefined);
+        return { handled: true, action: "APPOINTMENT_CONFIRM_FAILED", responseText: failMsg };
+      }
+    }
+  }
+
+  // Cancel button tapped: [No, Change ❌]
+  if (clean === "appt_cancel" || clean === "appt_change_slot" || clean === "action_cancel_confirm") {
+    const { setConversationPendingAction } = await import("../appointments/whatsapp-booking");
+    await setConversationPendingAction({
+      clinicId: input.tenant.clinicId,
+      conversationId: input.conversationId,
+      action: null,
+    });
+
+    const doctors = await getClinicDoctors(input.tenant.clinicId);
+    if (doctors.length > 0) {
+      await sendWhatsAppInteractiveList(input.tenant, {
+        conversationId: input.conversationId,
+        body: "No problem! Please select a doctor below to see their available slots 👇",
+        buttonLabel: "Choose Doctor",
+        sections: [
+          {
+            title: "Fertility Specialists",
+            rows: doctors.slice(0, 10).map((d) => {
+              const locPrefix = d.location ? `📍 ${d.location} · ` : "";
+              return {
+                id: `appt_doctor_${d.id}`,
+                title: d.displayName.slice(0, 24),
+                description: `${locPrefix}${d.specialty} (${d.experienceYears}+ yrs)`.slice(0, 72),
+              };
+            }),
+          },
+        ],
+      }).catch(() => undefined);
+    }
+    return { handled: true, action: "APPOINTMENT_CANCELLED", responseText: "Appointment booking cancelled." };
   }
 
   // 3. Book Consultation / Appointment (menu item 2)

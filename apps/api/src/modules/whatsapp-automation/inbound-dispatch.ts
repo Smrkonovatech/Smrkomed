@@ -806,6 +806,10 @@ export async function handleInboundWhatsAppAutomation(input: InboundPayload) {
     cleanInboundText === "menu_book_appt" ||
     cleanInboundText === "appt_doctors_list" ||
     cleanInboundText === "menu_doctor_slots" ||
+    cleanInboundText === "appt_confirm" ||
+    cleanInboundText === "appt_cancel" ||
+    cleanInboundText === "action_confirm_appointment" ||
+    cleanInboundText === "action_cancel_confirm" ||
     cleanInboundText.startsWith("menu_") ||
     cleanInboundText.startsWith("appt_doctor_") ||
     cleanInboundText.startsWith("appt_slot_") ||
