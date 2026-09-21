@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { EmptyState, LoadingRows, PageHeader, StatusBadge } from "@/components/ui-kit";
 import { 
   Bot, Plus, User, MoreVertical, Sparkles, Layout, CornerDownRight, Smile, Paperclip, FileImage, Download,
-  Calendar, Clock, CheckCircle2, Send, ChevronRight, MessageSquare, AlertCircle, FileText, Users
+  Calendar, Clock, CheckCircle2, Send, ChevronRight, ChevronDown, MessageSquare, AlertCircle, FileText, Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,61 @@ import {
   type RealtimeTypingPayload,
 } from "@/lib/realtime/use-realtime-inbox";
 import { cn } from "@/lib/utils";
+
+function formatMessageDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }).toLowerCase();
+  if (d.toDateString() === now.toDateString()) {
+    return `Today ${timeStr}`;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) {
+    return `Yesterday ${timeStr}`;
+  }
+  return `${d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })} ${timeStr}`;
+}
+
+function renderMessageContent(content: string, isOutbound: boolean) {
+  const buttonMatches = [...content.matchAll(/\[([^\]]+)\]/g)];
+  if (buttonMatches.length > 0 && buttonMatches[0]?.[0]) {
+    const firstMatchIndex = content.indexOf(buttonMatches[0][0]);
+    const body = content.substring(0, firstMatchIndex).trim();
+    const buttons = buttonMatches.map((m) => (m[1] ?? "").trim()).filter(Boolean);
+
+    return (
+      <div className="space-y-2.5">
+        {body && <p className="whitespace-pre-wrap leading-relaxed">{body}</p>}
+        <div className="flex flex-wrap gap-2 pt-1">
+          {buttons.map((btn, i) => {
+            const isDone = btn.toLowerCase().includes("done") || btn.includes("✓");
+            const isHelp = btn.toLowerCase().includes("help") || btn.includes("?");
+            return (
+              <span
+                key={i}
+                className={cn(
+                  "inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-semibold shadow-xs border transition-colors cursor-pointer",
+                  isOutbound
+                    ? "bg-white/15 text-white border-white/30 hover:bg-white/25"
+                    : isDone
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200/80 hover:bg-emerald-100"
+                      : isHelp
+                        ? "bg-amber-50 text-amber-800 border-amber-200/80 hover:bg-amber-100"
+                        : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100"
+                )}
+              >
+                {btn}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  return <p className="whitespace-pre-wrap leading-relaxed">{content}</p>;
+}
 
 type InboxRow = {
   id: string;
@@ -574,56 +629,24 @@ export default function WhatsAppInboxPage() {
         title="Inbox"
         subtitle="Operational patient communication console with real-time Meta WhatsApp sync."
         actions={
-          <div className="flex items-center gap-2.5">
-            {isConnected ? (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-600 dark:text-emerald-400"
-                title="Real-time communication connected"
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <select
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+                className="appearance-none bg-white border border-gray-200 hover:border-gray-300 rounded-xl px-4 py-2 pr-9 text-xs font-semibold text-gray-700 shadow-xs focus:outline-none focus:ring-2 focus:ring-[#7C3AED]/20 focus:border-[#7C3AED] cursor-pointer min-w-[160px]"
               >
-                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live
-              </span>
-            ) : isReconnecting ? (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-600 dark:text-amber-400"
-                title="Reconnecting to real-time events…"
-              >
-                <span className="size-2 rounded-full bg-amber-500 animate-ping" />
-                Reconnecting…
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-muted bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                <span className="size-2 rounded-full bg-muted-foreground/50" />
-                Offline
-              </span>
-            )}
-            <Button asChild variant="outline" size="sm">
-              <Link href="/whatsapp/templates">Templates</Link>
-            </Button>
+                {FILTERS.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
+            </div>
           </div>
         }
       />
-
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => {
-          const active = filter === f.id;
-          return (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => setFilter(f.id)}
-              className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors border",
-                active 
-                  ? "bg-[#F3F0FF] text-[#866BE3] border-[#866BE3]/20" 
-                  : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50"
-              )}
-            >
-              {f.label}
-            </button>
-          );
-        })}
-      </div>
 
       {rows.length === 0 && filter === "all" && !q ? (
         <EmptyState
@@ -721,76 +744,65 @@ export default function WhatsAppInboxPage() {
               </div>
             ) : (
               <>
-                <header className="border-b border-gray-100 px-6 py-4 bg-white flex flex-col gap-4">
+                <header className="border-b border-gray-100 px-6 py-3.5 bg-white flex flex-col gap-2.5">
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-3">
                       <div className="relative">
-                        <div className="size-11 shrink-0 rounded-full overflow-hidden border border-gray-200 shadow-sm">
+                        <div className="size-10 shrink-0 rounded-full overflow-hidden border border-gray-200 shadow-xs">
                            <img src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="avatar" className="w-full h-full object-cover" />
                         </div>
-                        <div className="absolute -bottom-0.5 -right-0.5 bg-blue-500 rounded-full size-4 flex items-center justify-center border-2 border-white text-white">
-                          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <div className="absolute -bottom-0.5 -right-0.5 bg-blue-500 rounded-full size-3.5 flex items-center justify-center border-2 border-white text-white">
+                          <svg width="7" height="7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         </div>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h2 className="font-bold text-gray-900 text-[15px]">
+                        <div className="flex items-center gap-1.5">
+                          <h2 className="font-bold text-gray-900 text-sm">
                             {detail.patient ? `${detail.patient.firstName} ${detail.patient.lastName}` : "Unmatched contact"}
                           </h2>
-                          <span className="size-1.5 rounded-full bg-emerald-500" />
+                          <span className="size-2 rounded-full bg-emerald-500" />
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">
+                        <p className="text-xs text-gray-500">
                           {detail.patient?.phone ?? "No phone"} · {detail.clinicName}
                         </p>
-                        {detail.couple && (
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200/80">
-                              <Users className="size-3 text-emerald-600" />
-                              Couple: {detail.couple.primaryPatient ? `${detail.couple.primaryPatient.firstName || ""} ${detail.couple.primaryPatient.lastName || ""}`.trim() : "Primary"} & {detail.couple.partnerPatient ? `${detail.couple.partnerPatient.firstName || ""} ${detail.couple.partnerPatient.lastName || ""}`.trim() : "Partner"}
-                            </span>
-                            {detail.partnerConversationId && (
-                              <button
-                                type="button"
-                                onClick={() => setActiveId(detail.partnerConversationId!)}
-                                className="text-[11px] font-medium text-emerald-700 hover:text-emerald-950 underline"
-                              >
-                                Switch to partner chat →
-                              </button>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                       <Button variant="outline" size="sm" className="rounded-full h-8 px-3.5 text-xs font-semibold text-gray-600 border-gray-200">
+                       <Button variant="outline" size="sm" className="rounded-full h-8 px-3.5 text-xs font-semibold text-gray-600 border-gray-200 hover:bg-gray-50">
                          <Bot className="size-3.5 mr-1.5" />
                          Automation
                        </Button>
-                       <Button size="icon" className="rounded-full size-8 bg-[#866BE3] hover:bg-[#7254d1] text-white shadow-sm">
+                       <Button size="icon" className="rounded-full size-8 bg-[#7C3AED] hover:bg-[#6D28D9] text-white shadow-xs">
                          <Plus className="size-4" />
                        </Button>
                        <Button size="icon" variant="outline" className="rounded-full size-8 border-gray-200">
                          <User className="size-4 text-gray-500" />
                        </Button>
-                       <Button size="icon" variant="ghost" className="rounded-full size-8">
-                         <MoreVertical className="size-4 text-gray-400" />
+                       <Button size="icon" variant="ghost" className="rounded-full size-8 text-gray-400">
+                         <MoreVertical className="size-4" />
                        </Button>
                     </div>
                   </div>
                   
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex gap-2">
-                      <span className="rounded-full bg-[#F3F0FF] px-2.5 py-0.5 text-[10px] font-semibold text-[#866BE3] border border-[#866BE3]/10 tracking-wide">
+                  <div className="flex items-center justify-between w-full pt-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-[#F3F0FF] px-2.5 py-0.5 text-[10px] font-semibold text-[#7C3AED] border border-[#7C3AED]/15 tracking-wide">
                         {detail.status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </span>
-                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-500 tracking-wide">
+                      <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-[10px] font-semibold text-gray-600 tracking-wide">
                         {detail.automation ? "Auto" : "Manual"}
                       </span>
+                      {detail.couple && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                          <Users className="size-3 text-emerald-600" />
+                          Couple: {detail.couple.primaryPatient?.firstName || "Primary"} & {detail.couple.partnerPatient?.firstName || "Partner"}
+                        </span>
+                      )}
                     </div>
                     
                     <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 border border-emerald-100 tracking-wide">
-                      <span className="size-1.5 rounded-full bg-emerald-500" />
+                      <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       AI Live
                     </span>
                   </div>
@@ -803,7 +815,7 @@ export default function WhatsAppInboxPage() {
                       setHasNewMessageBelow(false);
                     }
                   }}
-                  className="flex-1 space-y-4 overflow-y-auto bg-[#FAFAFA] p-6 pb-8"
+                  className="flex-1 space-y-3.5 overflow-y-auto bg-[#FAFAFA]/50 p-6 pb-8"
                 >
                   {detail.messages.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full min-h-[250px] text-center text-gray-400">
@@ -824,14 +836,12 @@ export default function WhatsAppInboxPage() {
                       const orderData = parseOrderMessage(m.content);
 
                       return (
-                        <div key={m.id} className="space-y-4">
+                        <div key={m.id} className="space-y-3">
                           {showDate && (
-                            <div className="text-center text-[10px] text-gray-400 font-semibold my-2">
-                              {new Date(m.createdAt).toLocaleDateString("en-IN", {
-                                weekday: "short",
-                                day: "numeric",
-                                month: "short",
-                              })}
+                            <div className="flex items-center justify-center my-3">
+                              <span className="text-[11px] font-medium text-gray-400 bg-white/90 border border-gray-100 shadow-2xs px-3 py-0.5 rounded-full">
+                                {formatMessageDate(m.createdAt)}
+                              </span>
                             </div>
                           )}
                           {orderData ? (
@@ -855,53 +865,69 @@ export default function WhatsAppInboxPage() {
                               />
                             </div>
                           ) : (
-                            <div
-                              className={cn(
-                                "max-w-[70%] text-[15px] transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
-                                m.direction === "INBOUND"
-                                  ? "bg-white border border-gray-100 shadow-sm text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
-                                  : "ml-auto bg-[#866BE3] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-3",
-                              )}
-                            >
-                              {m.label && m.direction === "OUTBOUND" && (
-                                <div className="text-[10px] font-bold text-white/80 mb-1 flex items-center gap-1">
-                                  {m.label}
-                                </div>
-                              )}
-                              {m.media ? (
-                                <div className="my-1.5">
-                                  <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
-                                </div>
-                              ) : (
-                                <p className="whitespace-pre-wrap leading-relaxed">{m.content}</p>
-                              )}
-
-                              <p
+                            <div className={cn("flex flex-col", m.direction === "INBOUND" ? "items-start" : "items-end")}>
+                              <div
                                 className={cn(
-                                  "mt-1 flex items-center justify-end gap-1.5 text-[9px] font-medium",
-                                  m.direction === "INBOUND" ? "text-gray-400" : "text-white/70",
+                                  "max-w-[72%] text-[14px] leading-relaxed transition-all duration-150 animate-in fade-in slide-in-from-bottom-1",
+                                  m.direction === "INBOUND"
+                                    ? "bg-white border border-gray-100 shadow-[0_1px_3px_rgba(0,0,0,0.04)] text-gray-800 rounded-2xl rounded-tl-sm px-4 py-3"
+                                    : "bg-[#7C3AED] text-white shadow-sm rounded-2xl rounded-tr-sm px-4 py-2.5",
                                 )}
                               >
-                                <span>
-                                  {new Date(m.createdAt).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
-                                {m.direction === "OUTBOUND" && (
-                                  <span className="font-bold">
-                                    {m.status === "READ"
-                                      ? "✓✓"
-                                      : m.status === "DELIVERED"
-                                        ? "✓✓"
-                                        : m.status === "SENT"
-                                          ? "✓"
-                                          : m.status === "FAILED"
-                                            ? "⚠ Failed"
-                                            : ""}
-                                  </span>
+                                {m.label && m.direction === "OUTBOUND" && (
+                                  <div className="text-[10px] font-bold text-white/80 mb-1 flex items-center gap-1">
+                                    {m.label}
+                                  </div>
                                 )}
-                              </p>
+                                {m.media ? (
+                                  <div className="my-1.5">
+                                    <MediaBubble media={m.media} isOutbound={m.direction === "OUTBOUND"} />
+                                  </div>
+                                ) : (
+                                  renderMessageContent(m.content, m.direction === "OUTBOUND")
+                                )}
+
+                                <p
+                                  className={cn(
+                                    "mt-1 flex items-center justify-end gap-1.5 text-[10px] font-medium",
+                                    m.direction === "INBOUND" ? "text-gray-400" : "text-white/75",
+                                  )}
+                                >
+                                  <span>
+                                    {new Date(m.createdAt).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                  {m.direction === "OUTBOUND" && (
+                                    <span className="font-bold">
+                                      {m.status === "READ"
+                                        ? "✓✓"
+                                        : m.status === "DELIVERED"
+                                          ? "✓✓"
+                                          : m.status === "SENT"
+                                            ? "✓"
+                                            : m.status === "FAILED"
+                                              ? "⚠ Failed"
+                                              : ""}
+                                    </span>
+                                  )}
+                                </p>
+                              </div>
+
+                              {m.direction === "INBOUND" && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveRightTab("ai");
+                                    void handleAskAi(`Suggest a reply for: "${m.content}"`);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#7C3AED] hover:text-[#6D28D9] hover:underline mt-1.5 ml-1 transition-colors"
+                                >
+                                  <Sparkles className="size-3" />
+                                  Ask Smrko AI
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -940,7 +966,7 @@ export default function WhatsAppInboxPage() {
                     : "Partner";
 
                   return (
-                    <div className="bg-white pt-2 border-t border-gray-100">
+                    <div className="bg-white p-3 border-t border-gray-100">
                       <ChatComposer
                         conversationId={activeId}
                         {...(detail.patient?.id ? { patientId: detail.patient.id } : {})}
@@ -979,32 +1005,20 @@ export default function WhatsAppInboxPage() {
 
           <aside className="border-l border-gray-100 flex flex-col bg-[#FAFAFA] h-full min-h-0 overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between bg-white">
-              <div className="flex items-center gap-1 bg-gray-100 p-0.5 rounded-lg text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="font-bold text-sm text-gray-900 flex items-center gap-1.5">
+                  {activeRightTab === "ai" ? "Ask Smrko AI" : "Patient Context"}
+                  {activeRightTab === "ai" && <Sparkles className="size-4 text-[#7C3AED]" />}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setActiveRightTab("ai")}
-                  className={cn(
-                    "px-3 py-1 rounded-md font-semibold transition-colors flex items-center gap-1.5",
-                    activeRightTab === "ai"
-                      ? "bg-white text-[#866BE3] shadow-xs"
-                      : "text-gray-500 hover:text-gray-800"
-                  )}
+                  onClick={() => setActiveRightTab((t) => (t === "ai" ? "context" : "ai"))}
+                  title={activeRightTab === "ai" ? "Switch to Patient Context" : "Switch to Ask Smrko AI"}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                 >
-                  <Sparkles className="size-3.5 text-[#866BE3]" />
-                  Smrko AI
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveRightTab("context")}
-                  className={cn(
-                    "px-3 py-1 rounded-md font-semibold transition-colors flex items-center gap-1.5",
-                    activeRightTab === "context"
-                      ? "bg-white text-[#866BE3] shadow-xs"
-                      : "text-gray-500 hover:text-gray-800"
-                  )}
-                >
-                  <User className="size-3.5 text-gray-500" />
-                  Context
+                  <Layout className="size-4" />
                 </button>
               </div>
             </div>

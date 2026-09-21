@@ -99,15 +99,13 @@ export async function POST(req: NextRequest) {
       finalSummary = [
         `English Dialogue Transcript:\n${dialogueLines}`,
         `Critical Clinical Details:\n${criticalStr}`,
-        transcript ? `Audio Transcript (Sarvam AI):\n"${transcript.trim()}"` : null,
         clinicalNotes ? `Clinical Notes:\n${clinicalNotes.trim()}` : null,
         aiAnalysis.doctorAssessment ? `Doctor Assessment:\n${aiAnalysis.doctorAssessment}` : null,
       ].filter(Boolean).join("\n\n");
     } else {
       const contentParts = [
-        transcript ? `Audio Transcript (Sarvam AI):\n"${transcript.trim()}"` : null,
         clinicalNotes ? `Clinical Notes:\n${clinicalNotes.trim()}` : null,
-        summary ? summary.trim() : null,
+        summary && !summary.startsWith("Audio Transcript") ? summary.trim() : null,
       ].filter(Boolean);
 
       finalSummary = contentParts.length > 0

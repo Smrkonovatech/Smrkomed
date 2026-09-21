@@ -49,9 +49,8 @@ export async function POST(req: NextRequest) {
 
     // Compile clinical summary
     const contentParts = [
-      transcript ? `Audio Transcript (Sarvam AI):\n"${transcript.trim()}"` : null,
       clinicalNotes ? `Clinical Notes:\n${clinicalNotes.trim()}` : null,
-      summary ? summary.trim() : null,
+      summary && !summary.startsWith("Audio Transcript") ? summary.trim() : null,
     ].filter(Boolean);
 
     const finalSummary = contentParts.length > 0

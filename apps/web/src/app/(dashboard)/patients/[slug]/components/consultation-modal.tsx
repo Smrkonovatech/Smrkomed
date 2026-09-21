@@ -470,7 +470,6 @@ export function ConsultationModal({
         clinicalNotes ? `Notes: ${clinicalNotes}` : null,
         prescriptionNotes ? `Prescriptions: ${prescriptionNotes}` : null,
         nextSteps ? `Next Steps: ${nextSteps}` : null,
-        transcript ? `Audio Transcript:\n${transcript}` : null,
       ]
         .filter(Boolean)
         .join("\n\n");

@@ -162,9 +162,7 @@ export function DoctorRightSidebar() {
     }));
 
     const cleanTranscript = finalTranscript && finalTranscript.trim().length > 0 ? finalTranscript.trim() : "";
-    const cleanSummary = cleanTranscript.length > 0
-      ? `Audio Transcript (Sarvam AI):\n"${cleanTranscript}"`
-      : "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
+    const cleanSummary = "Consultation complete. Patient vitals and ovarian response stable. Continued prescribed stimulation schedule.";
 
     const payload = {
       coupleId: nextCouple?.id || undefined,
