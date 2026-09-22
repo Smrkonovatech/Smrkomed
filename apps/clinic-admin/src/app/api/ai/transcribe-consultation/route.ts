@@ -16,7 +16,6 @@ export async function POST(req: NextRequest) {
     }
 
     const requestedLang = (formData.get("language_code") as string) || "unknown";
-    // Default to "translate" so whatever language they speak (Malayalam, Kannada, Hindi, etc.) comes in English
     const requestedMode = (formData.get("mode") as string) || "translate";
 
     const languageCode =
@@ -24,7 +23,6 @@ export async function POST(req: NextRequest) {
         ? requestedLang
         : "unknown";
 
-    // 1. Transcribe/Translate using paid Sarvam AI saaras:v4 via the official SDK
     try {
       const result = await transcribeAudioWithSarvam(audioFile, {
         model: "saaras:v4",
@@ -45,7 +43,6 @@ export async function POST(req: NextRequest) {
       console.warn("Sarvam AI saaras:v4 transcription failed, attempting fallback:", sarvamErr?.message || sarvamErr);
     }
 
-    // 2. Fallback to OpenAI Whisper if configured
     const openaiApiKey = process.env["OPENAI_API_KEY"];
     if (openaiApiKey) {
       try {
