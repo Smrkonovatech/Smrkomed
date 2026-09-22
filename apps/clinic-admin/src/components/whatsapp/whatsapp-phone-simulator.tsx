@@ -148,15 +148,15 @@ export function WhatsAppPhoneSimulator({
     if (action === "appt_other_doc" || lower.includes("other doctor") || lower.includes("all doctor") || lower.includes("choose doctor")) {
       const docItems = realDoctors.length > 0
         ? realDoctors.map((d) => ({
-            id: `appt_doctor_${d.id}`,
-            title: displayNameOf(d),
-            subtitle: `${d.primarySpecialty || d.designation || "Fertility Specialist"}`,
-          }))
+          id: `appt_doctor_${d.id}`,
+          title: displayNameOf(d),
+          subtitle: `${d.primarySpecialty || d.designation || "Fertility Specialist"}`,
+        }))
         : [
-            { id: "appt_doctor_doc_ananya", title: "Dr. Ananya Rao", subtitle: "Fertility Specialist" },
-            { id: "appt_doctor_doc_rahul", title: "Dr. Rahul Mehta", subtitle: "IVF Specialist" },
-            { id: "appt_doctor_doc_priya", title: "Dr. Priya Nair", subtitle: "Gynecologist" },
-          ];
+          { id: "appt_doctor_doc_ananya", title: "Dr. Ananya Rao", subtitle: "Fertility Specialist" },
+          { id: "appt_doctor_doc_rahul", title: "Dr. Rahul Mehta", subtitle: "IVF Specialist" },
+          { id: "appt_doctor_doc_priya", title: "Dr. Priya Nair", subtitle: "Gynecologist" },
+        ];
 
       setMessages((prev) => [
         ...prev,
@@ -351,7 +351,7 @@ export function WhatsAppPhoneSimulator({
             appointmentType: "Fertility Consultation",
           }),
         }).catch(() => null);
-      } catch {}
+      } catch { }
 
       setMessages((prev) => [
         ...prev,
@@ -373,29 +373,29 @@ export function WhatsAppPhoneSimulator({
     // 9. Generic / Natural conversation fallback -> show doctor options
     const docButtons = realDoctors.length > 0
       ? realDoctors.slice(0, 3).map((d) => ({
-          id: `btn_doc_${d.id}`,
-          title: displayNameOf(d),
-        }))
+        id: `btn_doc_${d.id}`,
+        title: displayNameOf(d),
+      }))
       : [
-          { id: "btn_doc_ananya", title: "Dr. Ananya Rao" },
-          { id: "btn_doc_rahul", title: "Dr. Rahul Mehta" },
-          { id: "btn_doc_priya", title: "Dr. Priya Nair" },
-        ];
+        { id: "btn_doc_ananya", title: "Dr. Ananya Rao" },
+        { id: "btn_doc_rahul", title: "Dr. Rahul Mehta" },
+        { id: "btn_doc_priya", title: "Dr. Priya Nair" },
+      ];
 
     setMessages((prev) => [
       ...prev,
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `c_${Date.now()}`,
-        sender: "clinic",
-        time,
-        type: "buttons",
-        text: "Let's find the right doctor for you 👩‍⚕️",
-        buttons: docButtons,
-      },
-    ]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `c_${Date.now()}`,
+          sender: "clinic",
+          time,
+          type: "buttons",
+          text: "Let's find the right doctor for you 👩‍⚕️",
+          buttons: docButtons,
+        },
+      ]);
   }
 
   function handleButtonClick(button: { id: string; title: string }) {

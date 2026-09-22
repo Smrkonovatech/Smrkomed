@@ -369,7 +369,7 @@ export function ConsultationModal({
 
       const formData = new FormData();
       formData.append("file", audioBlob, "consultation_audio.webm");
-      formData.append("mode", "transcribe");
+      formData.append("mode", "translate");
       formData.append("language_code", "unknown");
 
       const res = await fetch("/api/ai/transcribe-consultation", {
