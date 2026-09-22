@@ -6,11 +6,11 @@ export function BuiltToGrow() {
   const [activeIndex, setActiveIndex] = useState(2);
 
   const items = [
-    { title: "Dermatology", desc: "Configurable workflows adapt to your specialty needs." },
-    { title: "Dentistry", desc: "Configurable workflows adapt to your specialty needs." },
-    { title: "Fertility", desc: "Configurable workflows adapt to your specialty needs." },
-    { title: "Orthopedics", desc: "Configurable workflows adapt to your specialty needs." },
-    { title: "Pediatrics", desc: "Configurable workflows adapt to your specialty needs." },
+    { title: "Dermatology", image: "/images/grow/dermatology.png", desc: "Configurable workflows adapt to your specialty needs." },
+    { title: "Dentistry", image: "/images/grow/dentistry.png", desc: "Configurable workflows adapt to your specialty needs." },
+    { title: "Fertility", image: "/images/grow/fertility.png", desc: "Configurable workflows adapt to your specialty needs." },
+    { title: "Orthopedics", image: "/images/grow/orthopedics.png", desc: "Configurable workflows adapt to your specialty needs." },
+    { title: "Pediatrics", image: "/images/grow/pediatrics.png", desc: "Configurable workflows adapt to your specialty needs." },
   ];
 
   useEffect(() => {
@@ -101,7 +101,7 @@ export function BuiltToGrow() {
             >
               <div className="relative w-[240px] h-[340px] sm:w-[320px] sm:h-[440px] rounded-[32px] overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.15)] bg-slate-900 border border-white/20">
                 <Image
-                  src="/images/grow/1.png"
+                  src={item.image}
                   alt={item.title}
                   fill
                   className="object-cover opacity-90 hover:opacity-100 transition-opacity"

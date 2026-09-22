@@ -60,7 +60,7 @@ export function HealthcarePlatform() {
                 From clinical care to daily operations<br />all connected seamlessly without clutter.
               </p>
 
-              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
@@ -79,7 +79,7 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/clinic.png"
@@ -91,7 +91,7 @@ export function HealthcarePlatform() {
                 />
 
                 {/* 1. Today's Appointments */}
-                <div className="absolute -left-[5%] lg:left-[0%] top-[15%] lg:top-[20%] z-20 flex flex-col rounded-3xl border border-white/20 bg-white/20 p-5 backdrop-blur-md shadow-lg w-[180px]">
+                <div className="absolute left-[0%] lg:left-[0%] top-[10%] sm:top-[15%] lg:top-[20%] z-20 flex flex-col rounded-3xl border border-white/20 bg-white/20 p-5 backdrop-blur-md shadow-lg w-[180px] scale-[0.7] sm:scale-100 origin-left">
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-[13px] font-medium text-white/90 leading-tight">Today's<br />Appointments</span>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -105,7 +105,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 2. Schedule List */}
-                <div className="absolute -left-[10%] lg:-left-[5%] top-[45%] lg:top-[50%] z-0 flex flex-col rounded-2xl border border-white/20 bg-white/20 p-4 backdrop-blur-md shadow-lg w-[220px]">
+                <div className="absolute left-[0%] sm:-left-[10%] lg:-left-[5%] top-[40%] lg:top-[50%] z-0 flex flex-col rounded-2xl border border-white/20 bg-white/20 p-4 backdrop-blur-md shadow-lg w-[220px] scale-[0.7] sm:scale-100 origin-left">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-2 bg-white rounded-md px-2 py-1">
                       <span className="text-[10px] font-bold text-[#00AEEF]">10</span>
@@ -154,7 +154,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 3. Patient record updated */}
-                <div className="absolute -left-[20%] lg:-left-[15%] bottom-[20%] lg:bottom-[25%] z-20 flex items-center gap-3">
+                <div className="absolute hidden sm:flex -left-[20%] lg:-left-[15%] bottom-[20%] lg:bottom-[25%] z-20 items-center gap-3">
                   <div className="text-right">
                     <span className="text-[11px] font-medium leading-tight text-[#1E293B] block">Patient record updated</span>
                     <span className="text-[10px] text-[#1E293B]/60">Lab results synced to EMR</span>
@@ -165,7 +165,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 4. Patient need review */}
-                <div className="absolute left-[30%] lg:left-[40%] bottom-[8%] z-30 flex items-center gap-3 rounded-full border border-white/40 bg-white/30 p-1 pr-4 backdrop-blur-xl shadow-lg">
+                <div className="absolute left-[10%] sm:left-[30%] lg:left-[40%] bottom-[5%] sm:bottom-[8%] z-30 flex items-center gap-3 rounded-full border border-white/40 bg-white/30 p-1 pr-4 backdrop-blur-xl shadow-lg scale-[0.75] sm:scale-100 origin-bottom">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-xl font-light text-[#00AEEF] shadow-sm">
                     2
                   </div>
@@ -193,7 +193,7 @@ export function HealthcarePlatform() {
                 From clinical care to daily operations<br />all connected seamlessly without clutter.
               </p>
 
-              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
@@ -212,7 +212,7 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image */}
-            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 
                 {/* Purple glowing arch behind */}
@@ -227,7 +227,7 @@ export function HealthcarePlatform() {
                 />
 
                 {/* Main Care Plan Glass Card */}
-                <div className="absolute left-[-15%] lg:left-[-10%] top-[10%] lg:top-[15%] z-30 flex flex-col rounded-[24px] border border-white/40 bg-white/40 p-5 backdrop-blur-xl shadow-lg w-[240px]">
+                <div className="absolute left-[-5%] sm:left-[-15%] lg:left-[-10%] top-[5%] lg:top-[15%] z-30 flex flex-col rounded-[24px] border border-white/40 bg-white/40 p-5 backdrop-blur-xl shadow-lg w-[240px] scale-[0.65] sm:scale-100 origin-left">
                   <div className="mb-4">
                     <span className="text-[9px] font-bold text-[#9333EA] tracking-wider uppercase">Active Care Plan</span>
                     <h4 className="text-[15px] font-semibold text-[#1E293B]">IVF Treatment</h4>
@@ -303,28 +303,28 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* Floating Icons Arch */}
-                <div className="absolute top-[10%] left-[25%] z-10 flex flex-col items-center gap-1">
+                <div className="absolute top-[10%] left-[25%] z-10 flex flex-col items-center gap-1 scale-[0.75] sm:scale-100">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                   </div>
                   <span className="text-[9px] font-medium text-[#1E293B]">Review</span>
                 </div>
 
-                <div className="absolute top-[5%] left-[55%] z-10 flex flex-col items-center gap-1">
+                <div className="absolute top-[5%] left-[55%] z-10 flex flex-col items-center gap-1 scale-[0.75] sm:scale-100">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
                   </div>
                   <span className="text-[9px] font-medium text-[#1E293B]">Scan</span>
                 </div>
 
-                <div className="absolute top-[15%] right-[10%] lg:right-[5%] z-10 flex flex-col items-center gap-1">
+                <div className="absolute top-[15%] right-[10%] lg:right-[5%] z-10 flex flex-col items-center gap-1 scale-[0.75] sm:scale-100">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="9" width="18" height="6" rx="3" ry="3"></rect><line x1="12" y1="9" x2="12" y2="15"></line></svg>
                   </div>
                   <span className="text-[9px] font-medium text-[#1E293B]">Medication</span>
                 </div>
 
-                <div className="absolute top-[40%] right-[-10%] lg:right-[-5%] z-10 flex flex-col items-center gap-1">
+                <div className="absolute top-[40%] right-[0%] lg:right-[-5%] z-10 flex flex-col items-center gap-1 scale-[0.75] sm:scale-100 origin-right">
                   <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/60 bg-white/30 backdrop-blur-md shadow-lg text-white">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                   </div>
@@ -350,7 +350,7 @@ export function HealthcarePlatform() {
                 Streamline appointments, staff roles, laboratory, pharmacy and patient discharge.
               </p>
 
-              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
@@ -369,7 +369,7 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/operation.png"
@@ -380,7 +380,7 @@ export function HealthcarePlatform() {
                 />
 
                 {/* Today's Appointments */}
-                <div className="absolute left-[5%] lg:left-[10%] top-[20%] z-20 flex flex-col rounded-[24px] border border-white/40 bg-white/30 p-5 backdrop-blur-xl shadow-lg w-[160px]">
+                <div className="absolute left-[0%] sm:left-[5%] lg:left-[10%] top-[15%] sm:top-[20%] z-20 flex flex-col rounded-[24px] border border-white/40 bg-white/30 p-5 backdrop-blur-xl shadow-lg w-[160px] scale-[0.7] sm:scale-100 origin-left">
                   <div className="flex items-start justify-between mb-2">
                     <span className="text-[12px] font-medium text-white leading-tight">Today's<br />Appointments</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
@@ -394,7 +394,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* Doctors on duty */}
-                <div className="absolute left-[2%] lg:left-[5%] top-[55%] z-20 flex flex-col rounded-[24px] border border-white/40 bg-white/30 p-5 backdrop-blur-xl shadow-lg w-[160px]">
+                <div className="absolute left-[-5%] sm:left-[2%] lg:left-[5%] top-[45%] sm:top-[55%] z-20 flex flex-col rounded-[24px] border border-white/40 bg-white/30 p-5 backdrop-blur-xl shadow-lg w-[160px] scale-[0.7] sm:scale-100 origin-left">
                   <div className="flex items-start justify-between mb-2">
                     <span className="text-[12px] font-medium text-white leading-tight">Doctors<br />on duty</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-80"><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.5.5 0 0 0-.1.3"></path><path d="M8 15v0a5 5 0 0 0 5 5h1a3 3 0 0 1 3 3v0"></path><circle cx="17" cy="22" r="1"></circle></svg>
@@ -405,7 +405,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* Clinical Operations Active */}
-                <div className="absolute right-[5%] lg:right-[15%] top-[35%] z-20 flex flex-col items-end gap-2">
+                <div className="absolute right-[0%] sm:right-[5%] lg:right-[15%] top-[30%] sm:top-[35%] z-20 flex flex-col items-end gap-2 scale-[0.7] sm:scale-100 origin-right">
                   <span className="text-[12px] font-medium text-white drop-shadow-sm">Clinical Operations</span>
                   <div className="flex items-center gap-2 rounded-full border border-white/40 bg-white/30 px-3 py-1 backdrop-blur-md shadow-sm">
                     <div className="h-2 w-2 rounded-full bg-[#10B981]"></div>
@@ -414,7 +414,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* Today's Schedule */}
-                <div className="absolute right-[2%] lg:right-[10%] bottom-[15%] z-30 flex flex-col rounded-[20px] border border-white/40 bg-white/40 p-4 backdrop-blur-xl shadow-lg w-[240px]">
+                <div className="absolute right-[-5%] sm:right-[2%] lg:right-[10%] bottom-[5%] sm:bottom-[15%] z-30 flex flex-col rounded-[20px] border border-white/40 bg-white/40 p-4 backdrop-blur-xl shadow-lg w-[240px] scale-[0.7] sm:scale-100 origin-right">
                   <div className="flex items-center justify-between mb-3 border-b border-white/30 pb-2">
                     <span className="text-[11px] font-bold text-[#1E293B]">Today's Schedule</span>
                     <div className="flex items-center gap-1 text-[9px] font-bold text-[#00AEEF] cursor-pointer">
@@ -469,7 +469,7 @@ export function HealthcarePlatform() {
                 Streamline appointments, staff roles, laboratory, pharmacy and patient discharge.
               </p>
 
-              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
@@ -636,7 +636,7 @@ export function HealthcarePlatform() {
                 Transparent billing packages, partial payments, instant receipts and insurance pre-authorisations.
               </p>
 
-              <ul className="grid grid-cols-2 lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
                 {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
@@ -655,7 +655,7 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[180px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/finance.png"
@@ -666,7 +666,7 @@ export function HealthcarePlatform() {
                 />
 
                 {/* 1. Insurance Pre-Auth */}
-                <div className="absolute left-[-5%] lg:left-[5%] top-[25%] z-20 flex items-start gap-3 rounded-2xl border border-white/40 bg-white/40 p-4 backdrop-blur-xl shadow-lg">
+                <div className="absolute left-[-5%] lg:left-[5%] top-[20%] sm:top-[25%] z-20 flex items-start gap-3 rounded-2xl border border-white/40 bg-white/40 p-4 backdrop-blur-xl shadow-lg scale-[0.75] sm:scale-100 origin-left">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm text-[#8B5CF6]">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 12 11 14 15 10"></polyline></svg>
                   </div>
@@ -681,7 +681,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 2. Today's Collections */}
-                <div className="absolute left-[0%] lg:left-[5%] bottom-[15%] z-20 flex flex-col items-center rounded-[32px] border border-white/40 bg-white/50 p-6 backdrop-blur-xl shadow-lg w-[160px]">
+                <div className="absolute left-[0%] lg:left-[5%] bottom-[10%] sm:bottom-[15%] z-20 flex flex-col items-center rounded-[32px] border border-white/40 bg-white/50 p-6 backdrop-blur-xl shadow-lg w-[160px] scale-[0.7] sm:scale-100 origin-left">
                   <span className="text-[10px] text-[#1E293B]/70 w-full text-left mb-4">Today's Collections</span>
                   <div className="flex items-end gap-1.5 h-16 w-full justify-center mb-4">
                     <div className="w-4 rounded-t-sm bg-transparent border-2 border-[#00AEEF] h-[40%]"></div>
@@ -699,7 +699,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 3. Payment Received */}
-                <div className="absolute right-[5%] lg:right-[0%] top-[45%] z-20 flex items-center gap-3 rounded-full border border-white/40 bg-white/40 p-2 pr-5 backdrop-blur-xl shadow-lg">
+                <div className="absolute right-[0%] lg:right-[0%] top-[35%] sm:top-[45%] z-20 flex items-center gap-3 rounded-full border border-white/40 bg-white/40 p-2 pr-5 backdrop-blur-xl shadow-lg scale-[0.75] sm:scale-100 origin-right">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white shadow-sm text-[#10B981]">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </div>
@@ -710,7 +710,7 @@ export function HealthcarePlatform() {
                 </div>
 
                 {/* 4. Invoice Generated */}
-                <div className="absolute right-[10%] lg:right-[15%] bottom-[20%] z-20 flex items-center gap-3 rounded-full border border-white/40 bg-white/40 p-2 pr-3 backdrop-blur-xl shadow-lg">
+                <div className="absolute right-[-5%] sm:right-[10%] lg:right-[15%] bottom-[15%] sm:bottom-[20%] z-20 flex items-center gap-3 rounded-full border border-white/40 bg-white/40 p-2 pr-3 backdrop-blur-xl shadow-lg scale-[0.75] sm:scale-100 origin-right">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/60 shadow-sm text-white">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                   </div>

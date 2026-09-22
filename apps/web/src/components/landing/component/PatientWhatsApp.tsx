@@ -4,7 +4,7 @@ export function PatientWhatsApp() {
   return (
     <section className="relative w-full bg-[#FAFAFA] pt-6 lg:pt-24 pb-20 lg:pb-32 overflow-hidden">
       <div className="mx-auto flex max-w-7xl flex-col items-center px-6 relative z-10">
-        
+
         {/* Headings */}
         <div className="text-center mb-10 lg:mb-16">
           <h2 className="text-3xl lg:text-[2.75rem] leading-[1.2] text-[#1E293B] mb-4 lg:mb-6 font-light">
@@ -18,31 +18,32 @@ export function PatientWhatsApp() {
         </div>
 
         {/* Center Phone Container */}
-        <div className="relative w-full max-w-[1000px] flex justify-center mt-8 lg:mt-12">
-          
-          {/* Top WhatsApp Icon */}
-          <div className="absolute -top-16 left-1/2 -translate-x-1/2 z-20 flex h-20 w-20 items-center justify-center rounded-[24px] bg-white shadow-xl shadow-blue-500/10">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-            </svg>
-          </div>
+        <div className="relative w-full max-w-[1000px] flex justify-center mt-12 lg:mt-24">
 
           {/* Glowing Background Blob */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[600px] bg-[#E8F5FF] rounded-full blur-[100px] opacity-60 z-0 pointer-events-none"></div>
 
           {/* The Phone & Floating Cards */}
           <div className="relative z-10 w-[300px]">
+
+            {/* Top Chat Icon */}
+            <div className="absolute -top-[55px] md:-top-[100px] left-[55%] -translate-x-1/2 z-20 flex h-12 w-12 items-center justify-center rounded-[16px] bg-white shadow-[0_10px_40px_rgba(0,174,239,0.2)] animate-pulse-slow">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="#00AEEF" stroke="none" className="-ml-[1.5px] mt-[1.5px]">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+              </svg>
+            </div>
+
             <Image
               src="/images/landing/phone-chat.png"
               alt="WhatsApp Chat interface on mobile phone"
               width={400}
               height={800}
-              className="w-full h-auto drop-shadow-2xl"
+              className="w-full h-auto drop-shadow-2xl relative z-10"
               priority
             />
 
             {/* FLOATING CARDS */}
-            
+
             {/* Top Left: Next Care Step */}
             <div className="hidden lg:flex absolute top-[8%] -left-[220px] lg:-left-[260px] z-20 flex-col rounded-2xl border border-white/40 bg-gradient-to-r from-[#EAF4FE] to-[#F1EEFE] p-4 backdrop-blur-md shadow-lg w-[240px]">
               <div className="flex items-start gap-3">

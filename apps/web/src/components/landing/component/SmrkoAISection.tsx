@@ -7,12 +7,12 @@ export function SmrkoAISection() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-12">
         {/* Main Blue Card */}
         <div className="relative w-full rounded-[40px] bg-gradient-to-br from-[#77D0F1] to-[#9CDDF4] h-[750px] lg:h-[650px] flex flex-col-reverse lg:flex-row items-center justify-end px-8 lg:px-20 py-12 lg:py-0 shadow-lg">
-          
+
           {/* Lady Image Background Container (Clips to card corners) */}
           <div className="absolute inset-0 overflow-hidden rounded-[40px] z-0 pointer-events-none">
             <div className="absolute left-[-8%] lg:left-[2%] bottom-0 w-[95%] lg:w-[65%] max-w-[700px]">
-              <Image 
-                src="/images/ai-lady.png" 
+              <Image
+                src="/images/ai-lady.png"
                 alt="Smrko AI"
                 width={800}
                 height={1000}
@@ -79,12 +79,12 @@ export function SmrkoAISection() {
 
           {/* Right Content */}
           <div className="relative z-30 w-full lg:w-[45%] flex flex-col items-center lg:items-start text-center lg:text-left mt-8 lg:mt-[-40px] lg:mr-[2%]">
-            
+
             {/* Logo Header */}
             <div className="flex items-center gap-2 mb-2">
-              <div className="flex items-center text-[#1E293B] font-bold text-[32px] tracking-tight">
+              <div className="flex items-flex-start text-[#1E293B] font-bold text-[32px] tracking-tight">
                 <span className="italic mr-2 flex items-center font-black">
-                  SI<Sparkles className="w-5 h-5 ml-0.5 text-[#1E293B]" strokeWidth={2.5} />
+                  <Image src="/images/landing/smr-ai.svg" alt="Smrko AI Icon" width={40} height={40} className="w-10 h-10 object-contain" />
                 </span>
                 Smrko AI.
               </div>
@@ -95,7 +95,7 @@ export function SmrkoAISection() {
               built <br className="hidden lg:block" />
               into care.
             </h2>
-            
+
             <p className="text-[14px] sm:text-[15px] text-[#475569] leading-[1.6] mb-8 max-w-[380px]">
               AI supports the care journey through calls, WhatsApp, multilingual communication, summaries and structured follow-up.
             </p>

@@ -1,20 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { 
-  Bot, 
-  Workflow, 
-  PhoneCall, 
-  Sparkles, 
-  MessageSquare, 
-  ArrowRight, 
-  CheckCircle2, 
-  Clock, 
-  ShieldAlert, 
-  Mic, 
-  Volume2, 
-  UserCheck, 
-  GitBranch, 
+import {
+  Bot,
+  Workflow,
+  PhoneCall,
+  Sparkles,
+  MessageSquare,
+  ArrowRight,
+  CheckCircle2,
+  Clock,
+  ShieldAlert,
+  Mic,
+  Volume2,
+  UserCheck,
+  GitBranch,
   Layers
 } from "lucide-react";
 
@@ -28,7 +28,7 @@ export function SmrkoAI({ onOpenDemo }: SmrkoAIProps) {
   return (
     <section id="ai" className="py-20 sm:py-28 bg-white border-t border-slate-100">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        
+
         {/* Section Header */}
         <div className="text-center max-w-2xl mx-auto">
           <div className="inline-flex items-center gap-1.5 rounded-full bg-purple-100/80 px-3.5 py-1 text-xs font-semibold text-purple-700 mb-4">
@@ -61,11 +61,10 @@ export function SmrkoAI({ onOpenDemo }: SmrkoAIProps) {
                   key={t.id}
                   type="button"
                   onClick={() => setActiveTab(t.id as any)}
-                  className={`flex items-center gap-2 rounded-2xl px-4 sm:px-6 py-3 text-xs sm:text-sm font-bold transition-all ${
-                    isSelected
+                  className={`flex items-center gap-2 rounded-2xl px-4 sm:px-6 py-3 text-xs sm:text-sm font-bold transition-all ${isSelected
                       ? "bg-purple-600 text-white shadow-lg shadow-purple-600/30 scale-105"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900"
-                  }`}
+                    }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span>{t.label}</span>
