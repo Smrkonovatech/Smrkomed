@@ -44,7 +44,7 @@ export function BuiltForCare() {
           </div>
 
           {/* Right Side - Content */}
-          <div className="flex flex-col items-start z-10 lg:pl-10 text-center lg:text-left mx-auto lg:mx-0">
+          <div className="flex flex-col items-center lg:items-start z-10 lg:pl-10 text-center lg:text-left mx-auto lg:mx-0 order-first lg:order-last">
             <h2 className="text-3xl lg:text-[3.5rem] leading-[1.15] text-[#1E293B] tracking-tight">
               Real software.<br />
               Built for daily care.

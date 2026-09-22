@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { useState } from "react";
 
-const tabs = ["Clinical", "Care", "Operations", "Communication", "Finance", "Clinical"];
+const tabs = ["Clinical", "Care", "Operations", "Communication", "Billing", "Smrko AI", "Ecosystem"];
 
 export function HealthcarePlatform() {
   const [activeTab, setActiveTab] = useState(0);
@@ -47,7 +47,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 1: Clinical */}
           <div
-            className="sticky top-[100px] w-full overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-2xl transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #00AEEF 0%, #FFFFFF 100%)", zIndex: 1 }}
           >
             {/* Left Content */}
@@ -57,7 +57,7 @@ export function HealthcarePlatform() {
                 Clinical Care &<br />Patient 360
               </h3>
               <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
-                From clinical care to daily operations<br />all connected seamlessly without clutter.
+                From clinical care to daily operations, keep every part of the patient journey connected.
               </p>
 
               <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
@@ -79,14 +79,14 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/clinic.png"
                   alt="Doctor looking at digital records"
                   width={800}
                   height={800}
-                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-10"
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-10"
                   priority
                 />
 
@@ -180,21 +180,21 @@ export function HealthcarePlatform() {
 
           {/* CARD 2: Care */}
           <div
-            className="sticky top-[100px] w-full overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-2xl transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #D4C4FA 0%, #FFFFFF 100%)", zIndex: 2 }}
           >
             {/* Left Content */}
             <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
               <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Coordination Engine</span>
               <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
-                Care journeys<br />& execution
+                Care Journeys &<br />Execution
               </h3>
               <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
-                From clinical care to daily operations<br />all connected seamlessly without clutter.
+                Plan, coordinate and track every step of the patient’s care journey.
               </p>
 
               <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
-                {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
+                {["Care Plans", "Care Tasks", "Treatment Milestones", "Patient Follow-ups", "Escalations", "Patient Notifications"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9333EA" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -212,7 +212,7 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image */}
-            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 
                 {/* Purple glowing arch behind */}
@@ -223,7 +223,7 @@ export function HealthcarePlatform() {
                   alt="Couple reviewing care plan"
                   width={800}
                   height={800}
-                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-40"
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-40"
                 />
 
                 {/* Main Care Plan Glass Card */}
@@ -337,7 +337,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 3: Operations */}
           <div
-            className="sticky top-[100px] w-full overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-2xl transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #BDEAE1 0%, #FFFFFF 100%)", zIndex: 3 }}
           >
             {/* Left Content */}
@@ -347,11 +347,11 @@ export function HealthcarePlatform() {
                 Clinic & Hospital<br />Operations
               </h3>
               <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
-                Streamline appointments, staff roles, laboratory, pharmacy and patient discharge.
+                Streamline the day-to-day operations of your clinic with one connected workspace.
               </p>
 
               <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
-                {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
+                {["Appointments", "Staff Management", "Laboratory", "Pharmacy", "Patient Discharge", "Daily Schedule"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2DD4BF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -369,14 +369,14 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/operation.png"
                   alt="Operations staff"
                   width={800}
                   height={800}
-                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-10"
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-10"
                 />
 
                 {/* Today's Appointments */}
@@ -456,7 +456,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 4: Communication */}
           <div
-            className="sticky top-[100px] w-full overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-2xl transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #C2D2F2 0%, #FFFFFF 100%)", zIndex: 4 }}
           >
             {/* Left Content */}
@@ -466,11 +466,11 @@ export function HealthcarePlatform() {
                 Connected Patient<br />Communication
               </h3>
               <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
-                Streamline appointments, staff roles, laboratory, pharmacy and patient discharge.
+                Keep patients connected through timely, personalised and automated communication.
               </p>
 
               <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
-                {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
+                {["WhatsApp Communication", "Appointment Reminders", "Medication Reminders", "Patient Confirmations", "Care Updates", "Human Handoff"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -488,14 +488,14 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/communication.png"
                   alt="Doctor communicating"
                   width={800}
                   height={800}
-                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-10"
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-10"
                 />
 
                 {/* Floating WhatsApp Logo */}
@@ -623,7 +623,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 5: Finance */}
           <div
-            className="sticky top-[100px] w-full overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-2xl transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #FADBF8 0%, #FFFFFF 100%)", zIndex: 5 }}
           >
             {/* Left Content */}
@@ -633,11 +633,11 @@ export function HealthcarePlatform() {
                 Billing, Packages &<br />Payments
               </h3>
               <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
-                Transparent billing packages, partial payments, instant receipts and insurance pre-authorisations.
+                Manage billing, packages and payments with greater visibility and less manual work.
               </p>
 
               <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
-                {["Patient Management", "Consultations", "Clinical Records", "Medications", "Reports", "Diagnostics"].map((item, i) => (
+                {["Invoices", "Treatment Packages", "Partial Payments", "Payment Receipts", "Insurance Pre-authorisation", "Collections"].map((item, i) => (
                   <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
                     <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -655,14 +655,14 @@ export function HealthcarePlatform() {
             </div>
 
             {/* Right Image & Floating UI */}
-            <div className="w-full lg:w-[55%] relative min-h-[220px] sm:min-h-[250px] lg:min-h-[600px] flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-center lg:justify-end pr-0 lg:pr-8 overflow-hidden lg:overflow-visible pt-2 lg:pt-0">
               <div className="relative w-full max-w-[480px] h-full flex items-end">
                 <Image
                   src="/images/landing/healthcare/finance.png"
                   alt="Finance operations"
                   width={800}
                   height={800}
-                  className="object-contain object-bottom w-full h-auto drop-shadow-2xl relative z-10"
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-10"
                 />
 
                 {/* 1. Insurance Pre-Auth */}
@@ -726,6 +726,212 @@ export function HealthcarePlatform() {
               </div>
             </div>
           </div>
+
+          {/* CARD 6: Intelligence */}
+          <div
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            style={{ background: "linear-gradient(180deg, #C1ECFC 0%, #FFFFFF 100%)", zIndex: 6 }}
+          >
+            {/* Left Content */}
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">AI Assistant</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
+                Smrko AI —<br />Intelligence Layer
+              </h3>
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
+                Assist doctors and care teams with patient summaries, tasks and intelligent workflow support.
+              </p>
+
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+                {["Patient Summaries", "Consultation Capture", "Task Extraction", "Care Insights", "Smart Handoffs", "AI Assistance"].map((item, i) => (
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </div>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+                Meet Smrko AI
+              </button>
+            </div>
+
+            {/* Right Image & Floating UI */}
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-end overflow-hidden pt-2 lg:pt-0">
+              
+              {/* Floating UI: Listening to consultation */}
+              <div className="absolute right-[0%] sm:right-[5%] lg:right-[15%] top-[5%] sm:top-[8%] lg:top-[12%] z-30 flex flex-col gap-3 rounded-[24px] border border-white/40 bg-white/30 p-4 pr-6 backdrop-blur-xl shadow-lg scale-[0.7] sm:scale-[0.85] lg:scale-100 origin-right">
+                <div className="flex items-center gap-4">
+                  {/* Glowing Mic Icon */}
+                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[#2A2B3D] text-white z-10">
+                    <div className="absolute inset-0 rounded-full bg-[#00AEEF] blur-[10px] opacity-60 animate-pulse"></div>
+                    <div className="absolute inset-0 rounded-full bg-[#00AEEF] blur-[20px] opacity-40 animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-20"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-[#1E293B]">Listening to consultation...</span>
+                    
+                    {/* Waveform graphic placeholder */}
+                    <div className="flex items-center gap-[2px] mt-1 h-4">
+                      {[1, 2, 3, 2, 1, 4, 6, 4, 2, 3, 5, 8, 5, 3, 2, 1, 3, 5, 3, 1, 2].map((height, idx) => (
+                        <div key={idx} className="w-[1.5px] bg-[#1E293B]/40 rounded-full animate-pulse" style={{ height: `${height * 10}%`, animationDelay: `${idx * 0.1}s` }}></div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 mt-2">
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-1.5 w-1.5 rounded-full bg-[#6366F1]"></div>
+                    <span className="text-[9px] font-bold text-[#1E293B]">Transcribing</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 opacity-50">
+                    <div className="h-1.5 w-1.5 rounded-full border border-[#1E293B]"></div>
+                    <span className="text-[9px] font-medium text-[#1E293B]">Identifying tasks</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 opacity-50">
+                    <div className="h-1.5 w-1.5 rounded-full border border-[#1E293B]"></div>
+                    <span className="text-[9px] font-medium text-[#1E293B]">Summarising</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="absolute bottom-0 right-0 w-[95%] sm:w-[85%] lg:w-[110%] max-w-[650px] flex items-end">
+                <Image
+                  src="/images/landing/healthcare/intelligence.png"
+                  alt="Smrko AI Intelligence Layer"
+                  width={800}
+                  height={800}
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-10 translate-x-[5%] lg:translate-x-[10%]"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* CARD 7: Ecosystem */}
+          <div
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            style={{ background: "linear-gradient(180deg, #D4CBF6 0%, #FFFFFF 100%)", zIndex: 7 }}
+          >
+            {/* Left Content */}
+            <div className="w-full lg:w-[45%] p-5 md:p-8 lg:p-16 flex flex-col justify-center relative z-10">
+              <span className="text-[12px] lg:text-[13px] font-medium text-[#1E293B] mb-2 lg:mb-4">Ecosystem hub</span>
+              <h3 className="text-3xl lg:text-[2.75rem] leading-[1.1] font-light text-[#1E293B] mb-3 lg:mb-6">
+                Connected<br />Digital Ecosystem
+              </h3>
+              <p className="text-[13px] lg:text-[14px] text-[#1E293B]/80 mb-5 lg:mb-8 max-w-[320px] leading-relaxed">
+                Connect your healthcare ecosystem with digital health networks, systems, labs and payments.
+              </p>
+
+              <ul className="hidden lg:flex lg:flex-col gap-x-2 gap-y-2 lg:gap-4 mb-4 lg:mb-10">
+                {["ABDM / ABHA", "Health Records", "Laboratory Systems", "Hospital Systems", "Digital Health", "Payment Integrations"].map((item, i) => (
+                  <li key={i} className="flex items-center gap-2 lg:gap-3 text-[13px] lg:text-[14px] font-medium text-[#1E293B]">
+                    <div className="flex h-5 w-5 items-center justify-center rounded-full bg-white shadow-sm">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </div>
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              <button className="self-start rounded-full bg-[#2A2B3D] px-5 py-2 lg:px-8 lg:py-3.5 text-[12px] lg:text-[14px] font-medium text-white transition-all hover:bg-[#1a1b26] hover:shadow-lg">
+                Request a walk through
+              </button>
+            </div>
+
+            {/* Right Image */}
+            <div className="w-full lg:w-[55%] relative flex-1 flex items-end justify-end overflow-hidden pt-2 lg:pt-0">
+              
+              {/* Floating UI: Digital India Bubble */}
+              <div className="absolute left-[15%] top-[10%] z-20 flex h-14 w-14 items-center justify-center rounded-full border border-white/40 bg-white/60 backdrop-blur-md shadow-lg animate-float" style={{ animationDelay: '0s' }}>
+                <div className="flex flex-col items-center">
+                  <span className="text-[10px] font-black text-blue-700 leading-none">Digital</span>
+                  <span className="text-[8px] font-bold text-orange-500 leading-none">India</span>
+                </div>
+              </div>
+
+              {/* Floating UI: NHA Bubble (Small) */}
+              <div className="absolute left-[20%] top-[40%] z-20 flex h-12 w-12 items-center justify-center rounded-full border border-white/40 bg-white/60 backdrop-blur-md shadow-lg animate-float" style={{ animationDelay: '1s' }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+              </div>
+
+              {/* Floating UI: NHA Bubble (Top Right) */}
+              <div className="absolute right-[15%] top-[25%] z-20 flex h-16 w-16 items-center justify-center rounded-full border border-white/40 bg-white/60 backdrop-blur-md shadow-lg animate-float" style={{ animationDelay: '0.5s' }}>
+                <div className="text-center">
+                  <span className="text-[7px] font-bold text-slate-800 block leading-tight">national</span>
+                  <span className="text-[7px] font-bold text-slate-800 block leading-tight">health</span>
+                  <span className="text-[7px] font-bold text-slate-800 block leading-tight">authority</span>
+                </div>
+              </div>
+
+              {/* Floating UI: India.gov.in Bubble */}
+              <div className="absolute right-[5%] bottom-[15%] z-30 flex h-20 w-20 items-center justify-center rounded-full border border-white/40 bg-white/80 backdrop-blur-md shadow-xl animate-float" style={{ animationDelay: '1.5s' }}>
+                <div className="text-center">
+                  <span className="text-[12px] font-black text-blue-700 tracking-tight">india</span>
+                  <span className="text-[12px] font-black text-green-600 tracking-tight">.gov.in</span>
+                </div>
+              </div>
+
+              {/* Floating UI: ABHA Card */}
+              <div className="absolute left-[-5%] sm:left-[5%] bottom-[5%] sm:bottom-[10%] z-30 flex w-[280px] sm:w-[320px] flex-col overflow-hidden rounded-2xl border border-white/60 bg-white/80 backdrop-blur-xl shadow-2xl scale-[0.8] sm:scale-100 origin-bottom-left">
+                <div className="flex items-start justify-between p-4 pb-2">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-slate-800 leading-tight">national</span>
+                    <span className="text-[10px] font-bold text-slate-800 leading-tight">health</span>
+                    <span className="text-[10px] font-bold text-slate-800 leading-tight">authority</span>
+                  </div>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F97316" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                  </div>
+                </div>
+                
+                <div className="flex gap-4 p-4 pt-0">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-400">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                  </div>
+                  <div className="flex flex-col justify-center gap-1.5 w-full">
+                    <div>
+                      <span className="block text-[7px] text-slate-500 font-medium">ABHA Number</span>
+                      <span className="block text-[11px] font-bold text-slate-800">91-XXXX-XXXX-XXXX</span>
+                    </div>
+                    <div>
+                      <span className="block text-[7px] text-slate-500 font-medium">Name</span>
+                      <span className="block text-[10px] font-semibold text-slate-800">Your name</span>
+                    </div>
+                    <div>
+                      <span className="block text-[7px] text-slate-500 font-medium">Date of Birth</span>
+                      <span className="block text-[10px] font-semibold text-slate-800">18/09/1995</span>
+                    </div>
+                  </div>
+                  <div className="shrink-0 flex items-center justify-center bg-white p-1 rounded-lg border border-slate-200 self-center">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1E293B" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M7 7h.01"></path><path d="M17 7h.01"></path><path d="M7 17h.01"></path><path d="M17 17h.01"></path><path d="M12 7v10"></path><path d="M7 12h10"></path></svg>
+                  </div>
+                </div>
+                
+                <div className="w-full bg-[#474254] py-2 text-center">
+                  <span className="text-[9px] font-medium text-white/90">Access your health records digitally</span>
+                </div>
+              </div>
+
+              <div className="absolute bottom-0 right-[2%] lg:right-[5%] w-[85%] sm:w-[75%] lg:w-[85%] max-w-[500px] flex items-end">
+                <Image
+                  src="/images/landing/healthcare/integrations.png"
+                  alt="Connected Digital Ecosystem"
+                  width={800}
+                  height={800}
+                  className="object-contain object-bottom w-full h-full drop-shadow-lg relative z-10"
+                />
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>
