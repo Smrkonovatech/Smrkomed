@@ -67,7 +67,8 @@ export function ActiveConsultationModal({
   const [transcript, setTranscript] = useState<string>("");
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [detectedLang, setDetectedLang] = useState<string>("ml-IN");
-  const [providerTag, setProviderTag] = useState<string>("Sarvam AI (Saaras)");
+  const [outputLanguage, setOutputLanguage] = useState<"en" | "original">("en");
+  const [providerTag, setProviderTag] = useState<string>("Sarvam AI (Saaras v4) • English Notes");
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -212,10 +213,10 @@ export function ActiveConsultationModal({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       try {
         mediaRecorderRef.current.stop();
-      } catch (e) {}
+      } catch (e) { }
     }
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current.close().catch(() => { });
     }
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -235,8 +236,8 @@ export function ActiveConsultationModal({
 
       const formData = new FormData();
       formData.append("file", audioBlob, "consultation_recording.webm");
-      formData.append("mode", "transcribe");
-      formData.append("language_code", detectedLang || "ml-IN");
+      formData.append("mode", outputLanguage === "en" ? "translate" : "transcribe");
+      formData.append("language_code", detectedLang || "unknown");
 
       const res = await fetch("/api/ai/transcribe-consultation", {
         method: "POST",
@@ -251,7 +252,11 @@ export function ActiveConsultationModal({
             setDetectedLang(data.language_code);
           }
           if (data.provider === "sarvam") {
-            setProviderTag("Sarvam AI (Saaras)");
+            setProviderTag(
+              outputLanguage === "en"
+                ? "Sarvam AI (Saaras v4) • English Notes"
+                : "Sarvam AI (Saaras v4)"
+            );
           }
         }
       }
@@ -404,12 +409,22 @@ export function ActiveConsultationModal({
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
+                  <select
+                    value={outputLanguage}
+                    onChange={(e) => setOutputLanguage(e.target.value as "en" | "original")}
+                    className="rounded-md bg-purple-50 border border-purple-200 px-2 py-0.5 text-[11px] font-semibold text-purple-700 focus:outline-none focus:ring-1 focus:ring-purple-400 cursor-pointer"
+                    title="Clinical Output Mode"
+                  >
+                    <option value="en">English Notes</option>
+                    <option value="original">Original Script</option>
+                  </select>
+
                   <select
                     value={detectedLang}
                     onChange={(e) => setDetectedLang(e.target.value)}
                     className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-700 focus:outline-none focus:ring-1 focus:ring-[#866BE3] cursor-pointer"
-                    title="Consultation Language"
+                    title="Spoken Language"
                   >
                     <option value="ml-IN">Malayalam (മലയാളം)</option>
                     <option value="en-IN">English</option>
@@ -417,6 +432,7 @@ export function ActiveConsultationModal({
                     <option value="ta-IN">Tamil (தமிழ்)</option>
                     <option value="hi-IN">Hindi (हिन्दी)</option>
                     <option value="te-IN">Telugu (తెలుగు)</option>
+                    <option value="unknown">Auto-Detect</option>
                   </select>
                   {transcript && (
                     <button
@@ -438,7 +454,7 @@ export function ActiveConsultationModal({
                   <p className="text-slate-400 italic">
                     {session.isPaused
                       ? "Consultation paused."
-                      : "Speak naturally in English, Hindi, or any Indian language. Sarvam AI will transcribe in real time..."}
+                      : "Speak naturally in Malayalam, Kannada, Hindi, English, or any Indian language — Sarvam AI (Saaras v4) translates live into English clinical notes..."}
                   </p>
                 )}
               </div>

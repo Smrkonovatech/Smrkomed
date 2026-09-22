@@ -7,6 +7,8 @@ import { AI_MODEL } from "@/lib/ai/config";
 import { AI_LIMITS } from "@/lib/ai/config";
 import { whisperLanguageFor, type ConsultationLanguageCode } from "@/lib/voice/languages";
 
+import { transcribeAudioWithSarvam } from "@/lib/sarvam/client";
+
 export async function transcribeAudioBlob(
   file: File,
   options?: { language?: ConsultationLanguageCode },
@@ -16,6 +18,34 @@ export async function transcribeAudioBlob(
     throw new AiUserError("Recording is too large. Keep consultations shorter and try again.");
   }
 
+  // 1. Try paid Sarvam AI saaras:v4 with mode: "translate" so any spoken Indic language converts to English notes
+  const sarvamKey = process.env["SARVAM_API_KEY"] || process.env["SARVAM_SAMVAAD_API_KEY"];
+  if (sarvamKey) {
+    try {
+      const sarvamLangMap: Record<string, string> = {
+        en: "en-IN",
+        hi: "hi-IN",
+        ml: "ml-IN",
+        ta: "ta-IN",
+        kn: "kn-IN",
+      };
+      const langCode = options?.language ? sarvamLangMap[options.language] || "unknown" : "unknown";
+      const sarvamRes = await transcribeAudioWithSarvam(file, {
+        model: "saaras:v4",
+        language_code: langCode,
+        mode: "translate", // Translates Indic speech (Malayalam, Kannada, Hindi, etc.) into English
+        sample_rate: 16000,
+      });
+      const sarvamText = (sarvamRes.transcript ?? "").trim();
+      if (sarvamText) {
+        return sarvamText.slice(0, AI_LIMITS.maxTranscriptChars);
+      }
+    } catch (sarvamErr) {
+      console.warn("Sarvam AI saaras:v4 translation fallback to Whisper:", sarvamErr);
+    }
+  }
+
+  // 2. Fallback to OpenAI Whisper
   const client = new OpenAI({ apiKey: assertOpenAIConfigured() });
   const buffer = Buffer.from(await file.arrayBuffer());
   const upload = await toFile(buffer, file.name || "consultation.webm", {
