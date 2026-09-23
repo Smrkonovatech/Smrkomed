@@ -384,18 +384,15 @@ export function WhatsAppPhoneSimulator({
 
     setMessages((prev) => [
       ...prev,
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `c_${Date.now()}`,
-          sender: "clinic",
-          time,
-          type: "buttons",
-          text: "Let's find the right doctor for you 👩‍⚕️",
-          buttons: docButtons,
-        },
-      ]);
+      {
+        id: `c_${Date.now()}`,
+        sender: "clinic",
+        time,
+        type: "buttons",
+        text: "Let's find the right doctor for you 👩‍⚕️",
+        buttons: docButtons,
+      },
+    ]);
   }
 
   function handleButtonClick(button: { id: string; title: string }) {

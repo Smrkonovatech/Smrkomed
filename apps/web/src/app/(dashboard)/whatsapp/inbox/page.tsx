@@ -229,20 +229,41 @@ export default function WhatsAppInboxPage() {
     setAiPrompt("");
     setAiLoading(true);
     try {
-      const res = await apiPost<{ reply: string }>(`/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`, {
-        prompt: p,
-        includeContext: true,
-      });
-      setAiMessages((prev) => [...prev, { role: "assistant", text: res.reply }]);
+      const res = await apiPost<{ reply?: string; text?: string; summary?: string }>(
+        `/api/v1/whatsapp-automation/inbox/${activeId}/ai/reply`,
+        {
+          prompt: p,
+          promptHint: p,
+          message: p,
+          includeContext: true,
+        },
+      );
+      const replyText = (res.reply || res.text || res.summary || "").trim();
+      if (!replyText) throw new Error("Empty AI response");
+      setAiMessages((prev) => [...prev, { role: "assistant", text: replyText }]);
     } catch {
       const patientName = detail?.patient
         ? `${detail.patient.firstName} ${detail.patient.lastName}`.trim()
         : "Patient";
+      const pLower = p.toLowerCase();
+      let fallbackText = "";
+
+      if (pLower.includes("summariz") || pLower.includes("summary")) {
+        const lastInbound = detail?.messages.filter((m) => m.direction === "INBOUND").slice(-1)[0];
+        fallbackText = `📋 **Patient Context**: ${patientName} (${detail?.contactPhone || ""})\n\n💬 **Conversation Summary**: ${detail?.messages.length || 0} messages exchanged.\n\n❓ **Recent Query**: "${lastInbound?.content || "General check-in"}"\n\n⚡ **Recommended Action**: Reply warmly and confirm appointment schedule.\n\n💡 **Suggested Reply**:\n"Hello ${detail?.patient?.firstName || "there"}, thank you for messaging Hospex Fertility Clinic. We are reviewing your record and our care coordinator will assist you with your schedule shortly."`;
+      } else if (pLower.includes("reminder") || pLower.includes("appointment")) {
+        fallbackText = `Suggested WhatsApp Appointment Reminder for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, this is a gentle reminder from Hospex Fertility Clinic regarding your upcoming consultation. Please let us know if you need directions or have any questions beforehand!"`;
+      } else if (pLower.includes("instruction") || pLower.includes("pre-visit") || pLower.includes("fasting")) {
+        fallbackText = `Suggested Pre-visit Instructions for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, ahead of your visit to Hospex Fertility Clinic, please remember to bring your prior medical records, ID, and recent scan reports. If morning fasting tests were advised, please fast 8 hours prior."`;
+      } else {
+        fallbackText = `Suggested draft for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, thank you for contacting Hospex Fertility Clinic. We have received your query and our team will update you shortly. Please let us know if you have any questions!"`;
+      }
+
       setAiMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          text: `Suggested draft for ${patientName}:\n\n"Hello ${detail?.patient?.firstName || "there"}, thank you for contacting ${detail?.clinicName || "Hospex"}. We are reviewing your record and our medical team will update you shortly with details."`,
+          text: fallbackText,
         },
       ]);
     } finally {

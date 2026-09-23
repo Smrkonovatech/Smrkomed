@@ -47,7 +47,7 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
 
   // Care Connect WhatsApp state
   const [waMessage, setWaMessage] = useState(
-    `Hello ${patient.clinicName}! I have just checked in at reception via QR Code. My name is ${patient.fullName} (Phone: ${patient.phone}). Please connect me on Care Connect.`,
+    `hi bro`,
   );
 
   // Sync targetPhone if patient changes
@@ -403,11 +403,10 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
                         key={lang.code}
                         type="button"
                         onClick={() => setSelectedLanguage(lang.code as "en" | "kn" | "hi" | "ta" | "te")}
-                        className={`rounded-xl border py-1.5 px-2 text-xs font-medium transition-all ${
-                          selectedLanguage === lang.code
-                            ? "border-primary bg-primary-soft text-primary font-bold shadow-sm"
-                            : "border-border bg-card text-muted-foreground hover:bg-muted"
-                        }`}
+                        className={`rounded-xl border py-1.5 px-2 text-xs font-medium transition-all ${selectedLanguage === lang.code
+                          ? "border-primary bg-primary-soft text-primary font-bold shadow-sm"
+                          : "border-border bg-card text-muted-foreground hover:bg-muted"
+                          }`}
                       >
                         {lang.label}
                       </button>
@@ -416,16 +415,27 @@ export function QrActionOptions({ patient, onReset }: QrActionOptionsProps) {
 
                   {/* Greeting Preview */}
                   <div className="mt-2.5 rounded-xl border border-primary/15 bg-primary-soft/40 p-2.5 text-[11px] text-muted-foreground">
-                    <span className="font-semibold text-primary block mb-0.5">Opening Greeting:</span>
-                    {selectedLanguage === "kn"
-                      ? `“ನಮಸ್ಕಾರ ${patient.firstName} ಅವರೇ, ನಾನು Hospex Fertility Clinic ಪರವಾಗಿ ಕರೆ ಮಾಡುತ್ತಿರುವ ಕೇರ್ ವಾಯ್ಸ್ (Care Voice). ಇಂದು ನಾವು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?”`
-                      : selectedLanguage === "hi"
-                      ? `“नमस्ते ${patient.firstName} जी, मैं Hospex Fertility Clinic की ओर से बात कर रहा हूँ। आज हम आपकी क्या सहायता कर सकते हैं?”`
-                      : selectedLanguage === "ta"
-                      ? `“வணக்கம் ${patient.firstName}, நான் Hospex Fertility Clinic சார்பாக பேசும் கேர் வாய்ஸ். இன்று நாங்கள் உங்களுக்கு எவ்வாறு உதவலாம்?”`
-                      : selectedLanguage === "te"
-                      ? `“నమస్కారం ${patient.firstName} గారూ, నేను Hospex Fertility Clinic తరపున మాట్లాడుతున్న కేర్ వాయిస్. ఈరోజు మేము మీకు ఎలా సహాయపడగలము?”`
-                      : `“Hi ${patient.firstName}, I’m Care Voice, calling on behalf of Hospex Fertility Clinic. How can we help you today?”`}
+                    <span className="font-semibold text-primary block mb-0.5">Opening Greeting (English):</span>
+                    <p className="font-medium text-foreground">
+                      &ldquo;Hi {patient.firstName || "there"}, I&apos;m Care Voice from Hospex Fertility Clinic. How can I help you today?&rdquo;
+                    </p>
+                    {selectedLanguage !== "en" && (
+                      <p className="mt-1 text-[10px] text-primary/85">
+                        ↳ Follow-up conversation continues in{" "}
+                        <strong className="font-semibold text-primary">
+                          {
+                            ({
+                              kn: "ಕನ್ನಡ (Kannada)",
+                              hi: "हिंदी (Hindi)",
+                              ta: "தமிழ் (Tamil)",
+                              te: "తెలుగు (Telugu)",
+                              en: "English",
+                            } as Record<string, string>)[selectedLanguage] || "English"
+                          }
+                        </strong>{" "}
+                        based on your responses.
+                      </p>
+                    )}
                   </div>
                 </div>
 

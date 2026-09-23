@@ -457,15 +457,7 @@ export function PatientDetailsModal({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mr-8">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors cursor-pointer"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              <span>View Full Profile</span>
-            </button>
-          </div>
+          <div className="mr-8" />
         </div>
 
         {/* HORIZONTAL TAB NAVIGATION */}
@@ -644,7 +636,7 @@ export function PatientDetailsModal({
               </div>
 
               {/* Next Appointment */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm flex items-center justify-between">
+              <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <Calendar className="w-4 h-4 text-[#866BE3]" />
@@ -653,14 +645,6 @@ export function PatientDetailsModal({
                   <p className="text-xs font-semibold text-gray-800">16 Sep 2026, 10:30 AM</p>
                   <p className="text-xs text-gray-500 mt-0.5">Follow-up Consultation</p>
                 </div>
-
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#866BE3] text-[#866BE3] text-xs font-semibold hover:bg-[#866BE3]/5 transition-colors cursor-pointer"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>View in Calendar</span>
-                </button>
               </div>
 
             </div>

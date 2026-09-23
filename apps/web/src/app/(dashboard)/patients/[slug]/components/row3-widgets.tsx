@@ -21,6 +21,7 @@ export function LastSessionSummaryWidget({
 }) {
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
   const [newConsultModalOpen, setNewConsultModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
   const [dbConsultation, setDbConsultation] = useState<any>(null);
 
   // Fetch patient-specific consultation note from DB whenever couple or p360 updates
@@ -126,14 +127,23 @@ export function LastSessionSummaryWidget({
           })()}
         </div>
 
-        {/* Action Button */}
-        <div className="mt-6">
+        {/* Action Buttons */}
+        <div className="mt-6 flex flex-col gap-2">
           <button
             type="button"
             onClick={() => setSummaryModalOpen(true)}
             className="py-2 px-5 rounded-full bg-white text-[#7C5CEB] text-xs font-semibold hover:bg-white/90 transition-all flex items-center gap-2 shadow-sm cursor-pointer active:scale-95"
           >
             <span>View detailed summary</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setHistoryModalOpen(true)}
+            className="py-2 px-5 rounded-full bg-white/15 text-white text-xs font-semibold hover:bg-white/25 transition-all flex items-center gap-2 backdrop-blur-sm cursor-pointer active:scale-95 border border-white/20"
+          >
+            <Activity className="w-3.5 h-3.5" />
+            <span>Previous Consultations</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -144,6 +154,13 @@ export function LastSessionSummaryWidget({
         onOpenChange={setSummaryModalOpen}
         consultation={latestConsultation}
         p360={p360}
+      />
+
+      <ConsultationHistoryModal
+        isOpen={historyModalOpen}
+        onOpenChange={setHistoryModalOpen}
+        p360={p360}
+        coupleId={couple?.id}
       />
 
       <ConsultationModal
@@ -172,11 +189,32 @@ export function ConsultationHistoryWidget({
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [newConsultModalOpen, setNewConsultModalOpen] = useState(false);
+  const [dbHistory, setDbHistory] = useState<any[]>([]);
 
-  const history =
+  // Fetch consultation history from DB
+  useEffect(() => {
+    const fetchHistory = async () => {
+      if (!couple?.id) return;
+      try {
+        const res = await fetch(`/api/consultations/history?coupleId=${encodeURIComponent(couple.id)}&limit=5`);
+        const json = await res.json();
+        if (json.success && Array.isArray(json.data)) {
+          setDbHistory(json.data);
+        }
+      } catch (e) {
+        console.warn("Failed to fetch consultation history:", e);
+      }
+    };
+    fetchHistory();
+  }, [couple?.id]);
+
+  // Use DB history if available, otherwise fall back to timeline items
+  const timelineHistory =
     p360?.timeline?.items?.filter(
       (i: any) => i.type === "Consultation" || i.type === "Appointment"
     ).slice(0, 5) || [];
+
+  const history = dbHistory.length > 0 ? dbHistory : timelineHistory;
 
   const handleRowClick = (item: any) => {
     setSelectedItem(item);
@@ -212,11 +250,22 @@ export function ConsultationHistoryWidget({
               >
                 <div className="flex items-center gap-3 min-w-0">
                   <span className="text-xs text-gray-400 shrink-0 w-12">
-                    {item.date ? new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Visit"}
+                    {item.rawDate
+                      ? new Date(item.rawDate).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+                      : item.date
+                        ? (typeof item.date === "string" && /\d{2}\s\w{3}/.test(item.date)
+                            ? item.date.split(" ").slice(0, 2).join(" ")
+                            : new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" }))
+                        : "Visit"}
                   </span>
                   <span className="font-medium text-xs text-gray-800 truncate group-hover:text-[#866BE3] transition-colors">
                     {item.title}
                   </span>
+                  {item.actor && (
+                    <span className="text-[10px] text-gray-400 font-medium shrink-0 hidden sm:inline">
+                      {item.actor}
+                    </span>
+                  )}
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-[#866BE3] transition-colors shrink-0" />
               </div>
@@ -240,6 +289,7 @@ export function ConsultationHistoryWidget({
         isOpen={historyModalOpen}
         onOpenChange={setHistoryModalOpen}
         p360={p360}
+        coupleId={couple?.id}
         onStartNewSession={() => setNewConsultModalOpen(true)}
       />
 
@@ -262,6 +312,7 @@ export function ConsultationHistoryWidget({
     </>
   );
 }
+
 
 import { PrescriptionDetailsModal } from "./prescription-details-modal";
 

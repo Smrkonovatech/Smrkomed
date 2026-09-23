@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Mic, Clock, ArrowRight, Square, Sparkles } from "lucide-react";
+import { Mic, Clock, ArrowRight, Square, Sparkles, History } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useAppState } from "@/lib/app-state";
@@ -16,6 +16,7 @@ import {
   formatSecondsToTime,
 } from "@/components/consultation/active-consultation";
 import { ConsultationSummaryModal } from "@/app/(dashboard)/patients/[slug]/components/consultation-summary-modal";
+import { ConsultationHistoryModal } from "@/app/(dashboard)/patients/[slug]/components/consultation-history-modal";
 import { parseConsultationContent } from "@/lib/ai/consultation-analyzer";
 import { toast } from "sonner";
 
@@ -65,6 +66,7 @@ export function DoctorRightSidebar() {
   } | null>(null);
 
   const [summaryModalOpen, setSummaryModalOpen] = useState(false);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Fetch latest consultation directly from PostgreSQL database
   const fetchLatestConsultation = async () => {
@@ -411,9 +413,9 @@ export function DoctorRightSidebar() {
           )}
         </div>
 
-        {/* Action Button */}
-        {lastConsultation && (
-          <div className="mt-3 relative z-10">
+        {/* Action Buttons */}
+        <div className="mt-3 relative z-10 flex flex-col gap-2">
+          {lastConsultation && (
             <button
               type="button"
               onClick={() => setSummaryModalOpen(true)}
@@ -422,8 +424,17 @@ export function DoctorRightSidebar() {
               <span>View detailed summary</span>
               <ArrowRight className="size-3" />
             </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            onClick={() => setHistoryModalOpen(true)}
+            className="py-1.5 px-4 rounded-full bg-white/15 text-white text-xs font-semibold hover:bg-white/25 transition-all flex items-center gap-1.5 backdrop-blur-sm cursor-pointer active:scale-95 border border-white/20"
+          >
+            <History className="size-3" />
+            <span>Previous Consultations</span>
+            <ArrowRight className="size-3" />
+          </button>
+        </div>
       </div>
 
       {/* Consultation Summary Modal */}
@@ -434,6 +445,12 @@ export function DoctorRightSidebar() {
           consultation={lastConsultation}
         />
       )}
+
+      {/* Consultation History Modal */}
+      <ConsultationHistoryModal
+        isOpen={historyModalOpen}
+        onOpenChange={setHistoryModalOpen}
+      />
 
       {/* Active Consultation Modal, Minimized Floating Dock & Confirmation Dialog (Images 2, 3, 4) */}
       <ActiveConsultationModal

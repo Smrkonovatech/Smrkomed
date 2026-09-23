@@ -228,7 +228,7 @@ export default function QrRegisterPage() {
     const targetNumber = patient?.phone || phone || "8660717328";
     const clinicNumber = "918660717328";
     const patientName = patient?.fullName || fullName || "Patient";
-    const message = `Hello SmrkoMed Care Connect! I have just checked in at reception via QR Code. My name is ${patientName} (Phone: ${targetNumber}). Please assist me with my appointment and care updates.`;
+    const message = `hi`;
 
     const waUrl = `https://wa.me/${clinicNumber}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, "_blank");
@@ -460,11 +460,10 @@ export default function QrRegisterPage() {
                       <button
                         type="button"
                         onClick={() => setGender("Male")}
-                        className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all cursor-pointer ${
-                          gender === "Male"
-                            ? "border-sky-500 bg-sky-50/70 shadow-xs"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
+                        className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all cursor-pointer ${gender === "Male"
+                          ? "border-sky-500 bg-sky-50/70 shadow-xs"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
                       >
                         <User className="size-5 text-[#00A3FF] mb-1" />
                         <span className="text-xs font-bold text-slate-800">
@@ -476,11 +475,10 @@ export default function QrRegisterPage() {
                       <button
                         type="button"
                         onClick={() => setGender("Female")}
-                        className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all cursor-pointer ${
-                          gender === "Female"
-                            ? "border-pink-500 bg-pink-50/70 shadow-xs"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
+                        className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all cursor-pointer ${gender === "Female"
+                          ? "border-pink-500 bg-pink-50/70 shadow-xs"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
                       >
                         <User className="size-5 text-[#FF3B80] mb-1" />
                         <span className="text-xs font-bold text-slate-800">
@@ -492,11 +490,10 @@ export default function QrRegisterPage() {
                       <button
                         type="button"
                         onClick={() => setGender("Other")}
-                        className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all cursor-pointer ${
-                          gender === "Other"
-                            ? "border-purple-500 bg-purple-50/70 shadow-xs"
-                            : "border-slate-200 hover:border-slate-300 bg-white"
-                        }`}
+                        className={`flex flex-col items-center justify-center py-2.5 px-2 rounded-2xl border transition-all cursor-pointer ${gender === "Other"
+                          ? "border-purple-500 bg-purple-50/70 shadow-xs"
+                          : "border-slate-200 hover:border-slate-300 bg-white"
+                          }`}
                       >
                         <User className="size-5 text-[#866BE3] mb-1" />
                         <span className="text-xs font-bold text-slate-800">

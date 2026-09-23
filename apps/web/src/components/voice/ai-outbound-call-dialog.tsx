@@ -65,12 +65,7 @@ export function AiOutboundCallDialog({
     setTargetPhone(phoneNumber);
   }, [phoneNumber, open]);
 
-  const greetingPreview =
-    language === "kn"
-      ? `ನಮಸ್ಕಾರ ${patientName} ಅವರೇ, ನಾನು ${clinicName} ಆಸ್ಪತ್ರೆಯ AI ಕಡೆಯಿಂದ ಕರೆ ಮಾಡುತ್ತಿದ್ದೇನೆ. ನಿಮ್ಮ ${treatment} ಕನ್ಸಲ್ಟೇಶನ್ ಬಗ್ಗೆ ವಿಚಾರಿಸಲು ಕರೆ ಮಾಡಿದೆ. ನೀವು ಹೇಗಿದ್ದೀರಾ?`
-      : language === "hi"
-      ? `नमस्ते ${patientName} जी, मैं ${clinicName} से बात कर रहा हूँ। आपके आगामी परामर्श और स्वास्थ्य के बारे में जानने के लिए कॉल किया है। आप कैसे हैं?`
-      : `Hello ${patientName}, this is the Care Assistant calling from ${clinicName} regarding your ${treatment} consultation with ${doctorName}. How are you feeling today?`;
+  const greetingPreview = `Hi ${patientName || "there"}, I'm Care Voice from Hospex Fertility Clinic. How can I help you today?`;
 
   const handleInitiateCall = async () => {
     setCalling(true);
@@ -243,13 +238,29 @@ export function AiOutboundCallDialog({
 
           {/* Opening message preview */}
           <div className="space-y-1.5 rounded-lg border border-primary/20 bg-primary-soft/30 p-3 text-xs">
-            <div className="flex items-center gap-1.5 font-medium text-primary text-[11px]">
-              <Sparkles className="size-3" />
-              AI Opening Speech Preview:
+            <div className="flex items-center justify-between font-medium text-primary text-[11px]">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="size-3" />
+                Initial Opening Greeting (English):
+              </span>
+              {language !== "en" && (
+                <span className="text-[10px] text-muted-foreground">
+                  Follow-up in {language === "kn" ? "ಕನ್ನಡ (Kannada)" : "हिन्दी (Hindi)"}
+                </span>
+              )}
             </div>
-            <p className="text-muted-foreground italic leading-relaxed">
+            <p className="text-foreground font-medium italic leading-relaxed">
               &quot;{greetingPreview}&quot;
             </p>
+            {language !== "en" && (
+              <p className="text-[11px] text-muted-foreground">
+                The call starts with this initial English greeting, then automatically converses in{" "}
+                <strong className="text-foreground">
+                  {language === "kn" ? "Kannada (ಕನ್ನಡ)" : "Hindi (हिन्दी)"}
+                </strong>{" "}
+                according to the patient&apos;s responses.
+              </p>
+            )}
           </div>
 
           {/* Result Banner */}

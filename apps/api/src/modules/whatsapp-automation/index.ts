@@ -2236,35 +2236,302 @@ export const whatsappAutomationRoutes = new Hono<AppEnv>()
       message?: string;
       mode?: "draft" | "send";
       promptHint?: string;
+      prompt?: string;
+      includeContext?: boolean;
     };
+
     const conversation = await prisma.conversation.findFirst({
       where: { id, clinicId: tenant.clinicId, channel: "WHATSAPP" },
+      include: {
+        patient: {
+          include: {
+            primaryCouples: {
+              include: {
+                carePlans: {
+                  where: { status: "ACTIVE" },
+                  take: 1,
+                  orderBy: { createdAt: "desc" },
+                },
+                appointments: {
+                  where: { startsAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
+                  take: 2,
+                  orderBy: { startsAt: "asc" },
+                },
+              },
+            },
+            partnerCouples: {
+              include: {
+                carePlans: {
+                  where: { status: "ACTIVE" },
+                  take: 1,
+                  orderBy: { createdAt: "desc" },
+                },
+                appointments: {
+                  where: { startsAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
+                  take: 2,
+                  orderBy: { startsAt: "asc" },
+                },
+              },
+            },
+          },
+        },
+        couple: {
+          include: {
+            carePlans: {
+              where: { status: "ACTIVE" },
+              take: 1,
+              orderBy: { createdAt: "desc" },
+            },
+            appointments: {
+              where: { startsAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
+              take: 2,
+              orderBy: { startsAt: "asc" },
+            },
+          },
+        },
+        messages: {
+          orderBy: { createdAt: "asc" },
+          take: 40,
+        },
+      },
     });
     if (!conversation) throw new HttpError(404, "NOT_FOUND", "Conversation not found");
-    const lastInbound = await prisma.message.findFirst({
-      where: { conversationId: id, direction: "INBOUND" },
-      orderBy: { createdAt: "desc" },
-      select: { content: true },
-    });
-    const { runWhatsAppAiPipeline } = await import("../whatsapp-ai/pipeline");
-    const { resumeWhatsAppAi } = await import("../whatsapp-ai/handoff");
-    // Staff-triggered send: clear pause so AI can reply now.
-    if (body.mode === "send") {
-      await resumeWhatsAppAi(tenant, id).catch(() => undefined);
+
+    const promptText = (body.prompt || body.promptHint || body.message || "").trim();
+    const isSummarize = /\b(summariz|summary|recap|overview|catch\s*me\s*up)\b/i.test(promptText);
+
+    // Patient & Clinical context
+    const patientName = conversation.patient
+      ? `${conversation.patient.firstName} ${conversation.patient.lastName || ""}`.trim()
+      : conversation.contactPhone || "Patient";
+    const patientFirstName = conversation.patient?.firstName || "there";
+    const couple =
+      conversation.couple ||
+      conversation.patient?.primaryCouples?.[0] ||
+      conversation.patient?.partnerCouples?.[0];
+    const activeStage = couple?.carePlans?.[0]?.currentStageName || "Consultation & Evaluation";
+    const upcomingAppt = couple?.appointments?.[0];
+    const apptTimeStr = upcomingAppt
+      ? new Date(upcomingAppt.startsAt).toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
+        })
+      : null;
+    const doctorName = upcomingAppt?.doctorName || "Dr. Jismon J";
+    const clinicName = tenant.clinicName || "Hospex Fertility Clinic";
+
+    const allMsgs = conversation.messages || [];
+    const inboundMsgs = allMsgs.filter((m: { direction: string }) => m.direction === "INBOUND");
+    const outboundMsgs = allMsgs.filter((m: { direction: string }) => m.direction === "OUTBOUND");
+    const lastInbound = inboundMsgs[inboundMsgs.length - 1];
+    const lastInboundText = lastInbound?.content?.trim() || "";
+
+    let finalOutput = "";
+
+    // If staff explicitly asks to summarize conversation
+    if (isSummarize) {
+      let sentiment = "NEUTRAL";
+      let intent = "GENERAL_INQUIRY";
+      const lowerRecent = inboundMsgs.slice(-3).map((m: { content: string }) => m.content.toLowerCase()).join(" ");
+
+      if (lowerRecent.includes("pain") || lowerRecent.includes("bleeding") || lowerRecent.includes("cramp") || lowerRecent.includes("emergency")) {
+        sentiment = "DISTRESSED";
+        intent = "CLINICAL_SYMPTOMS";
+      } else if (lowerRecent.includes("thank") || lowerRecent.includes("done") || lowerRecent.includes("taken") || lowerRecent.includes("confirmed")) {
+        sentiment = "POSITIVE";
+        intent = "TREATMENT_COMPLIANCE";
+      } else if (lowerRecent.includes("reschedule") || lowerRecent.includes("time") || lowerRecent.includes("change")) {
+        sentiment = "NEUTRAL";
+        intent = "RESCHEDULE_REQUEST";
+      } else if (lowerRecent.includes("cost") || lowerRecent.includes("price") || lowerRecent.includes("fee") || lowerRecent.includes("package")) {
+        sentiment = "NEUTRAL";
+        intent = "FINANCIAL_PACKAGE_QUERY";
+      } else if (lowerRecent.includes("appointment") || lowerRecent.includes("book") || lowerRecent.includes("slot")) {
+        sentiment = "NEUTRAL";
+        intent = "APPOINTMENT_BOOKING";
+      }
+
+      const mainQuery = lastInboundText
+        ? `"${lastInboundText}"`
+        : "Patient connected on WhatsApp; awaiting specific question.";
+
+      const recommendedAction =
+        sentiment === "DISTRESSED"
+          ? "Immediate nurse/doctor clinical triage and callback"
+          : intent === "APPOINTMENT_BOOKING" || intent === "RESCHEDULE_REQUEST"
+          ? "Send open consultation slots and confirm appointment"
+          : "Send warm acknowledgement and follow-up guidance";
+
+      const suggestedReply =
+        sentiment === "DISTRESSED"
+          ? `Hello ${patientFirstName}, we understand you are experiencing discomfort. Our clinical care team has been immediately alerted and a nurse will call you right away.`
+          : apptTimeStr
+          ? `Hello ${patientFirstName}, thank you for contacting ${clinicName}. We look forward to your upcoming appointment with ${doctorName} on ${apptTimeStr}. Please let us know if you have any questions before your visit!`
+          : `Hello ${patientFirstName}, thank you for reaching out to ${clinicName}. We are reviewing your record and our care team is available to assist you with your consultation and treatment questions.`;
+
+      // Try OpenAI for enhanced summary if key is available
+      const openaiKey = process.env["OPENAI_API_KEY"]?.trim();
+      if (openaiKey && allMsgs.length > 0) {
+        try {
+          const formattedHistory = allMsgs.slice(-15).map((m: { direction: string; content: string }) => `${m.direction === "INBOUND" ? "Patient" : "Staff"}: ${m.content}`).join("\n");
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 6000);
+          const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openaiKey}`,
+              "Content-Type": "application/json",
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+              model: process.env["OPENAI_MODEL"]?.trim() || "gpt-4.1-mini",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are Smrko AI, clinical care assistant at Hospex Fertility Clinic. Provide a concise, structured WhatsApp conversation summary for clinic staff. Always include a recommended action and a suggested patient reply in quotes at the end so staff can click 'Use in reply'.",
+                },
+                {
+                  role: "user",
+                  content: `Summarize this conversation concisely:
+Patient: ${patientName} (${conversation.contactPhone || ""})
+Stage: ${activeStage}
+Next Appointment: ${apptTimeStr || "None"}
+Message History:
+${formattedHistory}
+
+Output format:
+📋 **Patient Context**: [1 line summary]
+💬 **Chat History**: [1-2 sentences on recent messages]
+❓ **Main Query**: [Core patient need]
+⚡ **Recommended Action**: [Next operational step]
+💡 **Suggested Reply**:
+"[Draft reply message here]"`,
+                },
+              ],
+              max_tokens: 350,
+            }),
+          });
+          clearTimeout(timer);
+          if (aiRes.ok) {
+            const aiJson = (await aiRes.json()) as { choices?: Array<{ message?: { content?: string } }> };
+            const aiText = aiJson.choices?.[0]?.message?.content?.trim();
+            if (aiText) finalOutput = aiText;
+          }
+        } catch {
+          // Fallback to deterministic summary below
+        }
+      }
+
+      if (!finalOutput) {
+        finalOutput =
+          `📋 **Patient Context**: ${patientName} (${conversation.contactPhone || ""}) · Stage: ${activeStage}${apptTimeStr ? ` · Next Appointment: ${apptTimeStr}` : ""}\n\n` +
+          `💬 **Chat History**: ${allMsgs.length} messages (${inboundMsgs.length} from patient, ${outboundMsgs.length} from clinic). Intent: ${intent} (${sentiment}).\n\n` +
+          `❓ **Main Query**: ${mainQuery}\n\n` +
+          `⚡ **Recommended Action**: ${recommendedAction}.\n\n` +
+          `💡 **Suggested Reply**:\n"${suggestedReply}"`;
+      }
+    } else {
+      // Draft reply generation (e.g. Appointment Reminder, Pre-visit Instructions, or custom staff prompt)
+      const pLower = promptText.toLowerCase();
+
+      // Check if OpenAI key available
+      const openaiKey = process.env["OPENAI_API_KEY"]?.trim();
+      if (openaiKey) {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 6000);
+          const aiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openaiKey}`,
+              "Content-Type": "application/json",
+            },
+            signal: controller.signal,
+            body: JSON.stringify({
+              model: process.env["OPENAI_MODEL"]?.trim() || "gpt-4.1-mini",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are Smrko AI, clinical assistant at Hospex Fertility Clinic. Draft a professional, empathetic WhatsApp message to the patient per staff instruction. Wrap the exact reply text inside quotation marks so staff can easily insert it with 'Use in reply'.",
+                },
+                {
+                  role: "user",
+                  content: `Staff instruction: ${promptText || "Draft a warm follow-up response"}
+Patient: ${patientName}
+Stage: ${activeStage}
+Appointment: ${apptTimeStr ? `${apptTimeStr} with ${doctorName}` : "None scheduled"}
+Last patient message: "${lastInboundText || "Hello"}"
+
+Draft the reply:`,
+                },
+              ],
+              max_tokens: 300,
+            }),
+          });
+          clearTimeout(timer);
+          if (aiRes.ok) {
+            const aiJson = (await aiRes.json()) as { choices?: Array<{ message?: { content?: string } }> };
+            const aiText = aiJson.choices?.[0]?.message?.content?.trim();
+            if (aiText) finalOutput = aiText;
+          }
+        } catch {
+          // Fall through to deterministic draft
+        }
+      }
+
+      if (!finalOutput) {
+        if (pLower.includes("reminder") || pLower.includes("appointment")) {
+          const apptNotice = apptTimeStr ? `on ${apptTimeStr} with ${doctorName}` : "as scheduled";
+          finalOutput =
+            `Suggested WhatsApp Appointment Reminder for ${patientName}:\n\n` +
+            `"Hello ${patientFirstName}, this is a gentle reminder from ${clinicName} regarding your upcoming consultation ${apptNotice}. Please arrive 10 minutes prior with your prior records. Reply to this message if you have any questions or need directions!"`;
+        } else if (pLower.includes("instruction") || pLower.includes("pre-visit") || pLower.includes("fasting")) {
+          finalOutput =
+            `Suggested Pre-visit Instructions for ${patientName}:\n\n` +
+            `"Hello ${patientFirstName}, ahead of your visit to ${clinicName}, please remember to carry your ID, relevant medical reports, and previous scan records. If morning blood tests (like AMH or hormone profile) were requested, please fast for 8 hours prior. Contact our care team if you need any assistance!"`;
+        } else {
+          finalOutput =
+            `Suggested draft for ${patientName}:\n\n` +
+            `"Hello ${patientFirstName}, thank you for contacting ${clinicName}. We have received your query regarding ${lastInboundText ? `"${lastInboundText}"` : "your care"} and our clinical team will assist you shortly. Please let us know if you need anything in the meantime!"`;
+        }
+      }
     }
-    const result = await runWhatsAppAiPipeline({
-      tenant,
-      conversationId: id,
-      patientMessage: body.message?.trim() || lastInbound?.content || "Hello",
-      trigger: "staff",
-      mode: body.mode === "send" ? "send" : "draft",
-      force: true,
-      ...(body.promptHint ? { promptHint: body.promptHint } : {}),
-    });
+
+    // If staff specified mode === "send", send message to patient via Meta/session
+    let sentMessageId: string | undefined;
+    if (body.mode === "send") {
+      try {
+        const { sendWhatsAppAiSessionText } = await import("../../integrations/providers/whatsapp/messaging");
+        const match = finalOutput.match(/"([^"]+)"/);
+        const textToSend = match ? match[1]! : finalOutput;
+        const sent = await sendWhatsAppAiSessionText(tenant, {
+          conversationId: id,
+          body: textToSend,
+        });
+        sentMessageId = sent.id;
+      } catch {
+        // Best-effort send
+      }
+    }
+
     await audit(tenant, "whatsapp.ai.staff_reply", "Conversation", id, {
       mode: body.mode ?? "draft",
+      isSummarize,
     });
-    return ok(c, result);
+
+    return ok(c, {
+      reply: finalOutput,
+      text: finalOutput,
+      summary: finalOutput,
+      draft: true,
+      conversationId: id,
+      ...(sentMessageId ? { messageId: sentMessageId } : {}),
+    });
   })
 
   .post("/inbox/:id/ai/resume", validate("param", idParam), async (c) => {

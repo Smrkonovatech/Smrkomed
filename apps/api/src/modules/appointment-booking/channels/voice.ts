@@ -169,7 +169,23 @@ export async function triggerSarvamOutboundCall(params: {
       console.warn("[Voice Call Schedule Fetch Warning]", e);
     }
 
-    const callSummary = `Patient ${patientName} booking consultation at ${clinicName} with ${doctorName}. Available open slots for tomorrow (${dateIso}): ${openSlotsSummary}. Only book within these verified open slots. Do NOT double-book or overlap with existing appointments.`;
+    const initialGreeting = `Hi ${patientName}, I'm Care Voice from Hospex Fertility Clinic. How can I help you today?`;
+    const targetLang =
+      params.language === "kn"
+        ? "Kannada (ಕನ್ನಡ)"
+        : params.language === "hi"
+        ? "Hindi (हिन्दी)"
+        : "English";
+
+    const callSummary = `[Hospex Voice Concierge] Patient ${patientName} booking consultation at Hospex Fertility Clinic with ${doctorName}. Available open slots for tomorrow (${dateIso}): ${openSlotsSummary}. Only book within these verified open slots. Do NOT double-book or overlap with existing appointments.
+Target User Language: ${targetLang}.
+
+INITIAL OPENING GREETING (SPOKEN IMMEDIATELY IN ENGLISH):
+"${initialGreeting}"
+
+CRITICAL LANGUAGE RULES:
+1. Speak the OPENING GREETING in ENGLISH: "${initialGreeting}".
+2. Immediately after this initial English greeting, speak and respond according to the user's language (${targetLang}). If the patient replies in Kannada, Hindi, Tamil, Telugu, or English, adapt immediately and converse in that language.`;
 
     // Track active voice call
     recordActiveVoiceCall({
