@@ -37,10 +37,10 @@ export function Multilingual() {
 
   return (
     <section className="relative w-full bg-white py-10 lg:py-24 overflow-hidden">
-      <div className="mx-auto flex max-w-7xl flex-col lg:flex-row items-center justify-between px-6 lg:px-12 gap-16 lg:gap-8">
+      <div className="mx-auto flex max-w-7xl flex-col md:flex-row items-center justify-between px-6 lg:px-12 gap-16 md:gap-8">
 
         {/* Left Content */}
-        <div className="flex flex-col w-full lg:w-[45%] z-10">
+        <div className="flex flex-col w-full md:w-[45%] z-10">
           <h2 className="text-[3rem] lg:text-[4rem] leading-[1.1] text-[#1E293B] mb-6 font-light tracking-tight">
             In your<br />
             Language
@@ -66,7 +66,7 @@ export function Multilingual() {
         </div>
 
         {/* Right Content - Graphic */}
-        <div className="w-full lg:w-[55%] flex justify-end relative z-10 pt-10 lg:pt-0">
+        <div className="w-full md:w-[55%] flex justify-end relative z-10 pt-10 md:pt-0">
           {/* Subtle background glow behind the image for depth */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-[#E8F5FF] rounded-full blur-[100px] opacity-50 -z-10"></div>
           

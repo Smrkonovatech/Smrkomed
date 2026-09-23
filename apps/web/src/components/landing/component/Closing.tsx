@@ -17,7 +17,7 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
 
   return (
     <section className="relative w-full bg-gradient-to-b from-[#55CAF5] to-[#25A9F4] overflow-hidden pt-12 lg:pt-32">
-      
+
       {/* Top CTA Section */}
       <div className="mx-auto max-w-4xl px-6 text-center relative z-20 mb-32">
         <h2 className="text-[2.5rem] sm:text-[3.5rem] font-light text-[#1E293B] tracking-tight mb-4">
@@ -28,14 +28,14 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-          <button 
+          <button
             type="button"
             onClick={onOpenDemo}
             className="w-full sm:w-[160px] rounded-full border border-[#1E293B] py-3 text-[13px] font-medium text-[#1E293B] hover:bg-white/10 transition-colors cursor-pointer"
           >
             Talk to Us
           </button>
-          <button 
+          <button
             type="button"
             onClick={onOpenDemo}
             className="w-full sm:w-[160px] rounded-full bg-[#2B2B36] py-3 text-[13px] font-medium text-white shadow-lg hover:bg-[#1E1E26] transition-colors cursor-pointer"
@@ -48,7 +48,7 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
       {/* Footer Content Grid */}
       <div className="mx-auto max-w-7xl px-6 lg:px-12 relative z-20">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-12 lg:gap-8 items-start">
-          
+
           {/* Column 1: Brand / Description */}
           <div className="col-span-1 md:col-span-1 flex flex-col justify-between h-full min-h-[160px]">
             <p className="text-[13px] leading-relaxed text-[#1E293B] font-medium max-w-[260px]">
@@ -57,13 +57,12 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
             <div className="mt-8 flex items-center gap-2">
               <span className="text-[10px] font-medium text-[#1E293B]">Powered by</span>
               <Image 
-                src="/branding/smrkomed-mark.png" 
-                alt="SmrkoMed Logo"
-                width={20}
-                height={20}
-                className="object-contain"
+                src="/images/landing/logo-footer.svg" 
+                alt="Smrkonova Logo"
+                width={100}
+                height={24}
+                className="object-contain h-4 w-auto"
               />
-              <span className="text-[12px] font-bold text-[#1E293B] tracking-tight">SMRKONOVA</span>
             </div>
           </div>
 
@@ -103,7 +102,7 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
                 </a>
               </div>
             </div>
-            
+
             <div className="mt-8 text-[10px] font-medium text-[#1E293B]">
               © 2026 Smrkonova Softech Solutions LLP. All rights reserved.
             </div>
@@ -125,12 +124,12 @@ export function Closing({ onOpenDemo }: ClosingProps = {}) {
 
       {/* Massive Bottom Image */}
       <div className="relative w-full overflow-hidden flex justify-center items-end mt-16 pointer-events-none z-10 select-none pb-4 px-4">
-        <Image 
-          src="/images/landing/footer-logo.svg" 
-          alt="SMRKOMED" 
-          width={1400} 
-          height={150} 
-          className="w-full max-w-[1400px] h-auto opacity-90 drop-shadow-sm" 
+        <Image
+          src="/images/landing/footer-logo.svg"
+          alt="SMRKOMED"
+          width={1400}
+          height={150}
+          className="w-full max-w-[1400px] h-auto opacity-90 drop-shadow-sm"
           priority
         />
       </div>

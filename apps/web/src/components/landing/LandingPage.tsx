@@ -46,14 +46,26 @@ export function LandingPage() {
           <HeroBanner onOpenDemo={() => handleOpenDemo("General Demo")} />
           <CareRoles />
         </div>
-        <HealthcarePlatform />
+        <div id="platform">
+          <HealthcarePlatform />
+        </div>
         <PatientWhatsApp />
         <Multilingual />
-        <CareLoop />
-        <SmrkoAISection />
-        <BuiltToGrow />
-        <BuiltForCare />
-        <Pricing onOpenDemo={(tier) => handleOpenDemo(tier ? `${tier} Plan` : undefined)} />
+        <div id="careloop">
+          <CareLoop />
+        </div>
+        <div id="smrko-ai">
+          <SmrkoAISection />
+        </div>
+        <div id="solutions">
+          <BuiltToGrow />
+        </div>
+        <div id="integrations">
+          <BuiltForCare />
+        </div>
+        <div id="pricing">
+          <Pricing onOpenDemo={(tier) => handleOpenDemo(tier ? `${tier} Plan` : undefined)} />
+        </div>
         <Closing onOpenDemo={() => handleOpenDemo("General Demo")} />
       </div>
 

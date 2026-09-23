@@ -27,10 +27,14 @@ export function PatientWhatsApp() {
           <div className="relative z-10 w-[300px]">
 
             {/* Top Chat Icon */}
-            <div className="absolute -top-[55px] md:-top-[100px] left-[55%] -translate-x-1/2 z-20 flex h-12 w-12 items-center justify-center rounded-[16px] bg-white shadow-[0_10px_40px_rgba(0,174,239,0.2)] animate-pulse-slow">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="#00AEEF" stroke="none" className="-ml-[1.5px] mt-[1.5px]">
-                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
-              </svg>
+            <div className="absolute -top-[55px] md:-top-[100px] left-[55%] -translate-x-1/2 z-20 flex ">
+              <Image
+                src="/images/landing/chat.svg"
+                alt="Chat Icon"
+                width={86}
+                height={86}
+                className="object-contain w-[46px] h-[46px] lg:w-[86px] md:h-[86px]"
+              />
             </div>
 
             <Image
