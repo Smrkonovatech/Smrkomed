@@ -26,7 +26,7 @@ export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
           </div>
 
           {/* Floating UI: Today's Appointments */}
-          <div className="absolute left-2 lg:left-6 xl:-left-4 top-12 z-30 flex flex-col rounded-[24px] border border-white/20 bg-white/10 p-5 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.1)]">
+          <div className="absolute left-2 lg:left-6 xl:-left-4 top-12 z-30 flex flex-col rounded-[24px] border border-white/20 bg-white/10 p-5 backdrop-blur-md shadow-[0_8px_32px_rgba(0,0,0,0.1)] scale-[0.75] sm:scale-100 origin-top-left">
             <div className="flex items-center justify-between gap-6">
               <span className="text-[13px] leading-tight text-white/90">Today's<br />Appointments</span>
               <div className="h-6 w-6 rounded bg-white/20 p-1">
@@ -42,7 +42,7 @@ export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
           </div>
 
           {/* Floating UI: Patient Confirmed */}
-          <div className="absolute left-2 lg:left-4 xl:-left-4 top-[45%] z-30 flex items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md shadow-lg">
+          <div className="absolute left-2 lg:left-4 xl:-left-4 top-[45%] z-30 flex items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md shadow-lg scale-[0.75] sm:scale-100 origin-left">
             <span className="text-[11px] font-medium text-[#1E293B]/90">Patient Confirmed</span>
             <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white">
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -51,7 +51,7 @@ export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
 
           {/* Floating UI: Patient Record Updated */}
           <div 
-            className="absolute left-2 lg:left-0 xl:-left-8 top-[60%] z-30 flex items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md shadow-lg"
+            className="absolute left-2 lg:left-0 xl:-left-8 top-[60%] z-30 flex items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md shadow-lg scale-[0.75] sm:scale-100 origin-left"
             style={{ animation: 'floatAnim 4s ease-in-out infinite' }}
           >
             <span className="text-[11px] font-medium leading-tight text-[#1E293B]/90 text-right">Patient record updated<br />Lab results synced to EMR</span>
@@ -61,7 +61,7 @@ export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
           </div>
 
           {/* Floating UI: Care Task Completed */}
-          <div className="absolute right-2 lg:right-[-1rem] bottom-[25%] z-30 flex items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md shadow-lg">
+          <div className="absolute right-2 lg:right-[-1rem] bottom-[25%] z-30 flex items-center gap-2.5 rounded-full border border-white/20 bg-white/10 px-4 py-2 backdrop-blur-md shadow-lg scale-[0.75] sm:scale-100 origin-right">
             <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white">
               <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="#00AEEF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             </div>
@@ -70,7 +70,7 @@ export function HeroBanner({ onOpenDemo }: HeroBannerProps = {}) {
 
           {/* Floating UI: AI Summary Ready */}
           <div 
-            className="absolute bottom-4 left-[10%] lg:left-[20%] z-40 flex items-center gap-4 rounded-full border border-white/30 bg-white/20 p-2 pr-6 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
+            className="absolute bottom-4 left-[10%] lg:left-[20%] z-40 flex items-center gap-4 rounded-full border border-white/30 bg-white/20 p-2 pr-6 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.15)] scale-[0.75] sm:scale-100 origin-bottom-left"
             style={{ animation: 'floatAnim 3.5s ease-in-out infinite' }}
           >
             <div className="relative flex h-11 w-11 items-center justify-center rounded-full bg-[#2A2B3D]">

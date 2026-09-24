@@ -37,27 +37,27 @@ export function Multilingual() {
 
   return (
     <section className="relative w-full bg-white py-10 lg:py-24 overflow-hidden">
-      <div className="mx-auto flex max-w-7xl flex-col md:flex-row items-center justify-between px-6 lg:px-12 gap-16 md:gap-8">
+      <div className="mx-auto flex max-w-7xl flex-col md:flex-row items-center justify-between px-6 lg:px-12 gap-8 lg:gap-16">
 
         {/* Left Content */}
-        <div className="flex flex-col w-full md:w-[45%] z-10">
-          <h2 className="text-[3rem] lg:text-[4rem] leading-[1.1] text-[#1E293B] mb-6 font-light tracking-tight">
+        <div className="flex flex-col items-center md:items-start w-full md:w-[45%] z-10 text-center md:text-left">
+          <h2 className="text-[2.5rem] md:text-[3rem] lg:text-[4rem] leading-[1.1] text-[#1E293B] mb-4 md:mb-6 font-light tracking-tight">
             In your<br />
             Language
           </h2>
-          <p className="text-[15px] text-slate-500 max-w-[400px] leading-[1.7] mb-12">
-            Voice capture, real-time translation and<br />
-            AI summaries make doctor–patient communication<br />
+          <p className="text-[14px] sm:text-[15px] text-slate-500 max-w-[400px] leading-[1.7] mb-8 md:mb-12">
+            Voice capture, real-time translation and<br className="hidden sm:block" />
+            AI summaries make doctor–patient communication<br className="hidden sm:block" />
             easier for everyone.
           </p>
 
-          <div className="flex flex-col gap-8">
+          <div className="flex flex-col gap-5 md:gap-8 w-full max-w-[300px] md:max-w-none text-left">
             {features.map((feature, idx) => (
-              <div key={idx} className="flex items-center gap-6">
-                <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${feature.bgColor} ${feature.color}`}>
+              <div key={idx} className="flex items-center gap-4 md:gap-6">
+                <div className={`flex shrink-0 items-center justify-center w-10 h-10 rounded-xl ${feature.bgColor} ${feature.color}`}>
                   {feature.icon}
                 </div>
-                <span className="text-[15px] font-medium text-[#1E293B]">
+                <span className="text-[14px] sm:text-[15px] font-medium text-[#1E293B]">
                   {feature.title}
                 </span>
               </div>
@@ -66,7 +66,7 @@ export function Multilingual() {
         </div>
 
         {/* Right Content - Graphic */}
-        <div className="w-full md:w-[55%] flex justify-end relative z-10 pt-10 md:pt-0">
+        <div className="w-full md:w-[55%] flex justify-center md:justify-end relative z-10 pt-4 md:pt-0">
           {/* Subtle background glow behind the image for depth */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[80%] h-[80%] bg-[#E8F5FF] rounded-full blur-[100px] opacity-50 -z-10"></div>
           
