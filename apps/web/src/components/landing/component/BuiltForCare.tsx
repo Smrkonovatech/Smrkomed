@@ -8,9 +8,9 @@ export function BuiltForCare() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
 
           {/* Left Side - Images */}
-          <div className="relative flex justify-center items-center h-[400px] sm:h-[500px] lg:h-[700px] w-full mt-4 lg:mt-0">
+          <div className="relative flex justify-center items-center h-[400px] sm:h-[500px] lg:h-[700px] w-full mt-4 lg:mt-0 order-last lg:order-first">
             {/* Girl Image */}
-            <div className="absolute bottom-0 left-0 lg:left-[-15%] sm:left-[-10%] z-30 lg:z-10 w-[75%] sm:w-[65%] max-w-[450px]">
+            <div className="absolute bottom-0 left-[2%] md:left-[5%] lg:left-[-15%] z-10 w-[75%] md:w-[60%] lg:w-[75%] max-w-[450px]">
               <Image
                 src="/images/built-left.png"
                 alt="Doctor using SmrkoMed"
@@ -21,7 +21,7 @@ export function BuiltForCare() {
             </div>
 
             {/* Cloud Image Background */}
-            <div className="absolute top-[40%] right-[5%] sm:right-[15%] -translate-y-1/2 w-[85%] sm:w-[75%] max-w-[550px] z-0">
+            <div className="absolute top-[40%] right-[5%] md:right-[10%] lg:right-[15%] -translate-y-1/2 w-[85%] md:w-[70%] lg:w-[85%] max-w-[550px] z-0">
               <Image
                 src="/images/built-cloud.png"
                 alt="Cloud Background"
@@ -32,7 +32,7 @@ export function BuiltForCare() {
             </div>
 
             {/* Mobile Image Overlay */}
-            <div className="absolute z-20 right-[5%] sm:-right-[6%] top-[50%] lg:top-[65%] -translate-y-1/2 w-[60%] lg:w-[65%] sm:w-[55%] max-w-[380px]">
+            <div className="absolute z-20 right-[5%] md:right-[5%] lg:-right-[6%] top-[50%] lg:top-[65%] -translate-y-1/2 w-[60%] md:w-[50%] lg:w-[65%] max-w-[380px]">
               <Image
                 src="/images/software.png"
                 alt="Mobile Interface"
@@ -50,15 +50,15 @@ export function BuiltForCare() {
               Built for daily care.
             </h2>
 
-            <p className="mt-4 lg:mt-8 text-[14px] sm:text-[16px] text-slate-500 max-w-[480px] leading-[1.7]">
-              SmrkoMed brings together people, technology and<br className="hidden sm:block" />
-              workflows to simplify healthcare delivery across<br className="hidden sm:block" />
+            <p className="mt-4 lg:mt-8 text-[14px] sm:text-[16px] text-slate-500 max-w-[480px] md:max-w-[600px] leading-[1.7]">
+              SmrkoMed brings together people, technology and<br className="hidden lg:block" />
+              workflows to simplify healthcare delivery across<br className="hidden lg:block" />
               specialties.
             </p>
 
-            <p className="mt-4 lg:mt-8 text-[14px] sm:text-[16px] text-slate-500 max-w-[480px] leading-[1.7]">
-              Stay on top of appointments, active care<br className="hidden sm:block" />
-              journeys, escalations and patient<br className="hidden sm:block" />
+            <p className="mt-4 lg:mt-8 text-[14px] sm:text-[16px] text-slate-500 max-w-[480px] md:max-w-[600px] leading-[1.7]">
+              Stay on top of appointments, active care<br className="hidden lg:block" />
+              journeys, escalations and patient<br className="hidden lg:block" />
               communication—right from your phone.
             </p>
 

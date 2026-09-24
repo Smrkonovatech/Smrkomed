@@ -47,7 +47,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 1: Clinical */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #00AEEF 0%, #FFFFFF 100%)", zIndex: 1 }}
           >
             {/* Left Content */}
@@ -180,7 +180,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 2: Care */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #D4C4FA 0%, #FFFFFF 100%)", zIndex: 2 }}
           >
             {/* Left Content */}
@@ -337,7 +337,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 3: Operations */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #BDEAE1 0%, #FFFFFF 100%)", zIndex: 3 }}
           >
             {/* Left Content */}
@@ -456,7 +456,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 4: Communication */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #C2D2F2 0%, #FFFFFF 100%)", zIndex: 4 }}
           >
             {/* Left Content */}
@@ -623,7 +623,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 5: Finance */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #FADBF8 0%, #FFFFFF 100%)", zIndex: 5 }}
           >
             {/* Left Content */}
@@ -729,7 +729,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 6: Intelligence */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #C1ECFC 0%, #FFFFFF 100%)", zIndex: 6 }}
           >
             {/* Left Content */}
@@ -801,7 +801,7 @@ export function HealthcarePlatform() {
                 </div>
               </div>
 
-              <div className="absolute bottom-0 right-0 w-[95%] sm:w-[85%] lg:w-[110%] max-w-[650px] flex items-end">
+              <div className="absolute bottom-0 right-0 h-full w-[95%] sm:w-[85%] lg:w-[110%] max-w-[650px] flex items-end">
                 <Image
                   src="/images/landing/healthcare/intelligence.png"
                   alt="Smrko AI Intelligence Layer"
@@ -815,7 +815,7 @@ export function HealthcarePlatform() {
 
           {/* CARD 7: Ecosystem */}
           <div
-            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row shadow-lg transition-transform duration-500 origin-top"
+            className="sticky top-[100px] w-full h-[650px] sm:h-[700px] lg:h-[650px] overflow-hidden rounded-[40px] flex flex-col lg:flex-row transition-transform duration-500 origin-top"
             style={{ background: "linear-gradient(180deg, #D4CBF6 0%, #FFFFFF 100%)", zIndex: 7 }}
           >
             {/* Left Content */}
@@ -920,7 +920,7 @@ export function HealthcarePlatform() {
                 </div>
               </div>
 
-              <div className="absolute bottom-0 right-[2%] lg:right-[5%] w-[85%] sm:w-[75%] lg:w-[85%] max-w-[500px] flex items-end">
+              <div className="absolute bottom-0 right-[2%] lg:right-[5%] h-full w-[85%] sm:w-[75%] lg:w-[85%] max-w-[500px] flex items-end">
                 <Image
                   src="/images/landing/healthcare/integrations.png"
                   alt="Connected Digital Ecosystem"
@@ -937,3 +937,5 @@ export function HealthcarePlatform() {
     </section>
   );
 }
+
+

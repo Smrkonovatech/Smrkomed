@@ -33,7 +33,7 @@ export function Pricing({ onOpenDemo }: PricingProps = {}) {
         "Diagnostic & LIS Orders",
         "Billing & Treatment",
       ],
-      ctaText: "Choose growth",
+      ctaText: "Choose Growth",
       highlighted: false,
     },
     {
@@ -78,16 +78,16 @@ export function Pricing({ onOpenDemo }: PricingProps = {}) {
         {/* Header Content */}
         <div className="text-center mb-16 sm:mb-20">
           <h2 className="text-[2.5rem] sm:text-[3.5rem] leading-[1.2] text-[#1E293B] font-light tracking-tight mb-4">
-            Built to grow across<br />healthcare
+            Simple, transparent<br />pricing
           </h2>
           <p className="text-[14px] sm:text-[15px] text-slate-500 max-w-[500px] mx-auto leading-relaxed">
-            SmrkoMed brings together people, technology and workflows<br className="hidden sm:block" />
-            to simplify healthcare delivery across specialties.
+            Choose the perfect plan for your practice size.<br className="hidden sm:block" />
+            No hidden fees, cancel anytime.
           </p>
         </div>
 
         {/* Pricing Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-end">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 lg:gap-8 items-end max-w-[1400px] mx-auto">
           {tiers.map((tier, idx) => (
             <div 
               key={idx} 
@@ -99,11 +99,11 @@ export function Pricing({ onOpenDemo }: PricingProps = {}) {
             >
               {/* Highlighted Top Badges */}
               {tier.highlighted && (
-                <div className="absolute -top-4 right-6 flex items-center gap-2">
-                  <span className="rounded-full bg-white/60 backdrop-blur-md px-3 py-1 text-[10px] font-semibold text-[#1E293B] shadow-sm">
+                <div className="absolute -top-4 right-6 xl:-top-11 xl:left-1/2 xl:-translate-x-1/2 xl:right-auto flex xl:flex-col items-center justify-center gap-1.5 w-max z-10">
+                  <span className="rounded-full bg-[#1E293B] px-3 py-1 text-[10px] xl:text-[9px] font-semibold text-white shadow-sm whitespace-nowrap">
                     Most Popular
                   </span>
-                  <span className="rounded-full bg-white/60 backdrop-blur-md px-3 py-1 text-[10px] font-semibold text-[#1E293B] shadow-sm">
+                  <span className="rounded-full bg-white backdrop-blur-md px-3 py-1 text-[10px] xl:text-[9px] font-semibold text-[#1E293B] shadow-sm border border-slate-100 whitespace-nowrap">
                     IVF Care studio
                   </span>
                 </div>
